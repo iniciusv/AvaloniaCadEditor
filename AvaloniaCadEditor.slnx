@@ -1,0 +1,7 @@
+<Solution>
+  <Project Path="AvaloniaCadEditor.Application/AvaloniaCadEditor.Application.csproj" />
+  <Project Path="AvaloniaCadEditor.Domain/AvaloniaCadEditor.Domain.csproj" />
+  <Project Path="AvaloniaCadEditor.Infrastructure/AvaloniaCadEditor.Infrastructure.csproj" />
+  <Project Path="AvaloniaCadEditor.Tests/AvaloniaCadEditor.Tests.csproj" />
+  <Project Path="AvaloniaCadEditor.UI/AvaloniaCadEditor.UI.csproj" />
+</Solution>
