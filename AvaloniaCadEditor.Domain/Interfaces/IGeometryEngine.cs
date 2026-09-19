@@ -33,4 +33,9 @@ public interface IGeometryEngine
     /// Retorna as entidades modificadas (as originais encurtadas) e a nova entidade de Arco.
     /// </summary>
     IEnumerable<Entity> FilletEntities(Entity e1, Point3D click1, Entity e2, Point3D click2, double radius);
+
+    /// <summary>
+    /// Recebe as entidades 2D do Sketch e gera a representação de um sólido 3D (extrusão).
+    /// </summary>
+    object Extrude(IEnumerable<Entity> entities, double thickness);
 }

@@ -1,8 +1,10 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net10.0</TargetFramework>
+    <TargetFramework>net10.0-windows</TargetFramework>
     <Nullable>enable</Nullable>
+    <PlatformTarget>x64</PlatformTarget>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
     <ApplicationManifest>app.manifest</ApplicationManifest>
   </PropertyGroup>
 
@@ -21,6 +23,7 @@
       <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
     </PackageReference>
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="Occt.NET" Version="7.9.0" />
   </ItemGroup>
 
   <ItemGroup>
@@ -28,4 +31,9 @@
     <ProjectReference Include="..\AvaloniaCadEditor.Domain\AvaloniaCadEditor.Domain.csproj" />
     <ProjectReference Include="..\AvaloniaCadEditor.Infrastructure\AvaloniaCadEditor.Infrastructure.csproj" />
   </ItemGroup>
+  <Target Name="CopyIjwhost" AfterTargets="Build">
+    <Copy SourceFiles="$(NetCoreRoot)packs\Microsoft.NETCore.App.Host.win-x64\$(NetCoreAppHostPackageVersion)\runtimes\win-x64\native\ijwhost.dll" 
+          DestinationFolder="$(OutDir)" 
+          Condition="Exists('$(NetCoreRoot)packs\Microsoft.NETCore.App.Host.win-x64\$(NetCoreAppHostPackageVersion)\runtimes\win-x64\native\ijwhost.dll')" />
+  </Target>
 </Project>

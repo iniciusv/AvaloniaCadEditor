@@ -17,7 +17,7 @@ public partial class App : Avalonia.Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            var geometryEngine = new AvaloniaCadEditor.Infrastructure.Engines.DummyGeometryEngine();
+            var geometryEngine = new AvaloniaCadEditor.Infrastructure.Engines.OcctGeometryEngine();
             var osnapService = new AvaloniaCadEditor.Application.Services.OSnapService(geometryEngine);
             var viewModel = new AvaloniaCadEditor.UI.ViewModels.CadViewModel(geometryEngine, osnapService);
 

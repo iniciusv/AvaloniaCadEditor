@@ -55,4 +55,10 @@ public class DummyGeometryEngine : IGeometryEngine
         // Dummy
         return Enumerable.Empty<Entity>();
     }
+
+    public object Extrude(IEnumerable<Entity> entities, double thickness)
+    {
+        // Dummy
+        return new object();
+    }
 }
