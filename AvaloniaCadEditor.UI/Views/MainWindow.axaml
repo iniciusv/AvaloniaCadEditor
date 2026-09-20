@@ -18,7 +18,8 @@
             <Button Content="Line (L)" Command="{Binding SelectLineToolCommand}" />
             <Button Content="Circle (C)" Command="{Binding SelectCircleToolCommand}" />
             <Button Content="Trim (T)" Command="{Binding SelectTrimToolCommand}" />
-            <Button Content="Extrude (E)" Command="{Binding SelectExtrudeToolCommand}" Background="#007ACC" Foreground="White" FontWeight="Bold" />
+            <Button Content="Extrude (P)" Command="{Binding SelectExtrudeToolCommand}" Background="#007ACC" Foreground="White" FontWeight="Bold" />
+            <Button Content="Delete (Del)" Command="{Binding DeleteSelectedCommand}" Background="#A83232" Foreground="White" />
 
             <Separator Width="1" Height="20" Background="#555" Margin="4,0" />
             <CheckBox IsChecked="{Binding OsnapEnabled}" Content="OSnap" Foreground="White"/>

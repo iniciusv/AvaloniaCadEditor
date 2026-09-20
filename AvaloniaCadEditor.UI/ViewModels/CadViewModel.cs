@@ -116,6 +116,7 @@ public class CadViewModel : INotifyPropertyChanged
 
     public ICommand SelectSelectToolCommand { get; }
     public ICommand SelectMoveToolCommand { get; }
+    public ICommand DeleteSelectedCommand { get; }
 
     public bool OsnapEnabled
     {
@@ -156,6 +157,7 @@ public class CadViewModel : INotifyPropertyChanged
 
         SelectSelectToolCommand = new RelayCommand(() => CurrentTool = new SelectTool(_geometryEngine, _selectionService));
         SelectMoveToolCommand = new RelayCommand(() => CurrentTool = new MoveTool());
+        DeleteSelectedCommand = new RelayCommand(DeleteSelected);
 
         CurrentTool = new SelectTool(_geometryEngine, _selectionService);
     }
@@ -303,6 +305,7 @@ public class CadViewModel : INotifyPropertyChanged
             case "C":
                 SelectCircleToolCommand.Execute(null);
                 break;
+            case "P":
             case "E":
                 SelectExtrudeToolCommand.Execute(null);
                 break;
@@ -318,6 +321,11 @@ public class CadViewModel : INotifyPropertyChanged
             case "SPACE":
                 ClearVcb();
                 SelectSelectToolCommand.Execute(null);
+                break;
+            case "DELETE":
+            case "DEL":
+                CurrentTool?.OnKeyDown(Sketch, CadKey.Delete);
+                DeleteSelected();
                 break;
             case "ESCAPE":
                 ClearVcb();
@@ -340,6 +348,95 @@ public class CadViewModel : INotifyPropertyChanged
             case "RIGHTCTRL":
                 CurrentTool?.OnKeyDown(Sketch, CadKey.Control);
                 break;
+        }
+    }
+
+    public void DeleteSelected()
+    {
+        var selectedId = _selectionService.SelectedId ?? ModelTree.SelectedNode?.Id;
+
+        if (selectedId.HasValue)
+        {
+            var id = selectedId.Value;
+
+            // 1. Check in Entities
+            var targetEntity = Sketch.Entities.FirstOrDefault(e => e.Id == id);
+            if (targetEntity != null)
+            {
+                Sketch.RemoveEntity(targetEntity);
+                ClearSelection();
+                RefreshProfiles();
+                return;
+            }
+
+            // 2. Check in Features
+            var targetFeature = Sketch.Features.FirstOrDefault(f => f.Id == id);
+            if (targetFeature != null)
+            {
+                Sketch.RemoveFeature(targetFeature);
+                ClearSelection();
+                RefreshProfiles();
+                return;
+            }
+
+            // 3. Check in Profiles
+            var targetProfile = Sketch.Profiles.FirstOrDefault(p => p.Id == id);
+            if (targetProfile != null)
+            {
+                var entitiesToRemove = Sketch.Entities.Where(e => targetProfile.SourceEntityIds.Contains(e.Id)).ToList();
+                foreach (var entity in entitiesToRemove)
+                {
+                    Sketch.RemoveEntity(entity);
+                }
+                Sketch.RemoveProfile(targetProfile);
+                ClearSelection();
+                RefreshProfiles();
+                return;
+            }
+        }
+        else
+        {
+            // Check IsSelected flags on Entities, Features, and Profiles
+            var selectedEntities = Sketch.Entities.Where(e => e.IsSelected).ToList();
+            if (selectedEntities.Count > 0)
+            {
+                foreach (var entity in selectedEntities)
+                {
+                    Sketch.RemoveEntity(entity);
+                }
+                ClearSelection();
+                RefreshProfiles();
+                return;
+            }
+
+            var selectedFeatures = Sketch.Features.Where(f => f.IsSelected).ToList();
+            if (selectedFeatures.Count > 0)
+            {
+                foreach (var feature in selectedFeatures)
+                {
+                    Sketch.RemoveFeature(feature);
+                }
+                ClearSelection();
+                RefreshProfiles();
+                return;
+            }
+
+            var selectedProfiles = Sketch.Profiles.Where(p => p.IsSelected).ToList();
+            if (selectedProfiles.Count > 0)
+            {
+                foreach (var profile in selectedProfiles)
+                {
+                    var entitiesToRemove = Sketch.Entities.Where(e => profile.SourceEntityIds.Contains(e.Id)).ToList();
+                    foreach (var entity in entitiesToRemove)
+                    {
+                        Sketch.RemoveEntity(entity);
+                    }
+                    Sketch.RemoveProfile(profile);
+                }
+                ClearSelection();
+                RefreshProfiles();
+                return;
+            }
         }
     }
 

@@ -49,7 +49,7 @@ public class SelectBehaviorTests
         var mockEngine = new Mock<IGeometryEngine>();
         // Mocking hit test to return null (empty click)
         mockEngine.Setup(e => e.HitTest(sketch.Entities, It.IsAny<Point3D>(), It.IsAny<double>()))
-                  .Returns((Entity)null);
+                  .Returns((Entity?)null!);
 
         var selectTool = new SelectTool(mockEngine.Object);
 
