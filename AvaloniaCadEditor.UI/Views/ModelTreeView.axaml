@@ -23,20 +23,29 @@
                       Background="Transparent">
                 <TreeView.ItemTemplate>
                     <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="vm:TreeItemNode">
-                        <StackPanel Orientation="Horizontal" Spacing="6" Margin="2">
-                            <TextBlock Text="{Binding Icon}" FontSize="13" VerticalAlignment="Center" />
-                            <TextBlock Text="{Binding Name}" Foreground="#CCCCCC" FontSize="12" VerticalAlignment="Center" />
-                        </StackPanel>
+                        <Border Classes.selectedNode="{Binding IsSelected}" CornerRadius="3" Padding="6,3" Margin="1">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <TextBlock Text="{Binding Icon}" FontSize="13" VerticalAlignment="Center" />
+                                <TextBlock Text="{Binding Name}" FontSize="12" VerticalAlignment="Center" />
+                            </StackPanel>
+                        </Border>
                     </TreeDataTemplate>
                 </TreeView.ItemTemplate>
                 <TreeView.Styles>
                     <Style Selector="TreeViewItem" x:DataType="vm:TreeItemNode">
                         <Setter Property="IsExpanded" Value="{Binding IsExpanded, Mode=TwoWay}" />
                         <Setter Property="IsSelected" Value="{Binding IsSelected, Mode=TwoWay}" />
-                        <Setter Property="Padding" Value="4,2" />
+                        <Setter Property="Padding" Value="2,1" />
                     </Style>
-                    <Style Selector="TreeViewItem:selected /template/ Border#PART_LayoutRoot">
+                    <Style Selector="Border.selectedNode">
                         <Setter Property="Background" Value="#007ACC" />
+                    </Style>
+                    <Style Selector="Border.selectedNode TextBlock">
+                        <Setter Property="Foreground" Value="#FFFFFF" />
+                        <Setter Property="FontWeight" Value="Bold" />
+                    </Style>
+                    <Style Selector="Border:not(.selectedNode) TextBlock">
+                        <Setter Property="Foreground" Value="#CCCCCC" />
                     </Style>
                 </TreeView.Styles>
             </TreeView>

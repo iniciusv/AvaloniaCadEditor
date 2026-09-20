@@ -148,8 +148,8 @@ public class ModelTreeViewModel : INotifyPropertyChanged
                     if (item.Id == selectedId.Value)
                     {
                         item.IsSelected = true;
+                        group.IsExpanded = true;
                         SelectedNode = item;
-                        return;
                     }
                     else
                     {
