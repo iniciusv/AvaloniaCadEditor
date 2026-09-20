@@ -21,7 +21,13 @@
         </StackPanel>
         
         <!-- Viewport -->
-        <controls:ViewportControl Grid.Row="1" DataContext="{Binding}" />
+        <Panel Grid.Row="1" Background="Transparent"
+               PointerPressed="Viewport_PointerPressed"
+               PointerMoved="Viewport_PointerMoved"
+               PointerReleased="Viewport_PointerReleased"
+               PointerWheelChanged="Viewport_PointerWheelChanged">
+            <controls:SilkViewportControl x:Name="ViewportControl" DataContext="{Binding}" />
+        </Panel>
 
         <!-- Status Bar -->
         <Border Grid.Row="2" Background="#007ACC" Padding="5,2">
