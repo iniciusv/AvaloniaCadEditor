@@ -21,10 +21,15 @@ public class CadViewModel : INotifyPropertyChanged
     private readonly IOSnapService _osnapService;
     private readonly IProfileRecognitionService _profileRecognitionService;
     private readonly IGeometryKernel _geometryKernel;
+    private readonly ISelectionService _selectionService;
     
     public Sketch Sketch { get; } = new Sketch();
     
     public IReadOnlyList<IProfile> Profiles => Sketch.Profiles;
+
+    public ModelTreeViewModel ModelTree { get; }
+    public PropertyInspectorViewModel PropertyInspector { get; }
+    public ISelectionService SelectionService => _selectionService;
 
     private TriangleMesh _solidMesh = TriangleMesh.Empty;
     public TriangleMesh SolidMesh
@@ -61,10 +66,7 @@ public class CadViewModel : INotifyPropertyChanged
 
     private void ClearSelection()
     {
-        foreach (var entity in Sketch.Entities)
-        {
-            entity.IsSelected = false;
-        }
+        _selectionService.ClearSelection(Sketch);
     }
 
     private string _statusText = "Ready";
@@ -112,19 +114,30 @@ public class CadViewModel : INotifyPropertyChanged
         IGeometryEngine geometryEngine,
         IOSnapService osnapService,
         IProfileRecognitionService? profileRecognitionService = null,
-        IGeometryKernel? geometryKernel = null)
+        IGeometryKernel? geometryKernel = null,
+        ISelectionService? selectionService = null)
     {
         _geometryEngine = geometryEngine;
         _osnapService = osnapService;
         _profileRecognitionService = profileRecognitionService ?? new ProfileRecognitionService();
         _geometryKernel = geometryKernel ?? new NullGeometryKernel();
+        _selectionService = selectionService ?? new SelectionService();
         
+        ModelTree = new ModelTreeViewModel(_selectionService);
+        PropertyInspector = new PropertyInspectorViewModel(_selectionService, () =>
+        {
+            RefreshSolidMesh();
+            ModelTree.RebuildTree();
+        });
+
+        ModelTree.BindSketch(Sketch);
+
         SelectLineToolCommand = new RelayCommand(() => CurrentTool = new DrawLineCommand());
         SelectCircleToolCommand = new RelayCommand(() => CurrentTool = new DrawCircleCommand());
         SelectTrimToolCommand = new RelayCommand(() => CurrentTool = new TrimCommand(_geometryEngine));
         SelectExtrudeToolCommand = new RelayCommand(() => CurrentTool = new ExtrudeCommand());
 
-        SelectSelectToolCommand = new RelayCommand(() => CurrentTool = new SelectTool(_geometryEngine));
+        SelectSelectToolCommand = new RelayCommand(() => CurrentTool = new SelectTool(_geometryEngine, _selectionService));
         SelectMoveToolCommand = new RelayCommand(() => CurrentTool = new MoveTool());
 
         CurrentTool = new DrawLineCommand();
@@ -136,6 +149,7 @@ public class CadViewModel : INotifyPropertyChanged
         Sketch.SetProfiles(recognized);
         OnPropertyChanged(nameof(Profiles));
         RefreshSolidMesh();
+        ModelTree.RebuildTree();
     }
 
     public void RefreshSolidMesh()

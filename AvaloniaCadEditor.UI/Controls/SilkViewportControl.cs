@@ -10,6 +10,7 @@ using AvaloniaCadEditor.Domain.ValueObjects;
 using AvaloniaCadEditor.UI.ViewModels;
 using Silk.NET.OpenGL;
 using System.Numerics;
+using System.Linq;
 
 namespace AvaloniaCadEditor.UI.Controls;
 
@@ -449,10 +450,16 @@ public class SilkViewportControl : OpenGlControlBase
             var solidMesh = ViewModel.SolidMesh;
             if (solidMesh != null && solidMesh.TriangleCount > 0)
             {
+                bool isAnyFeatureSelected = ViewModel.Sketch.Features.Any(f => f.IsSelected);
                 int vertexCount = solidMesh.VertexCount;
                 float[] solidVertexData = new float[vertexCount * 9];
 
-                // Interleave position + CAD metallic steel blue color + Normal
+                // Base Face Color: Cool Steel Blue (or Warm Amber if selected)
+                float faceR = isAnyFeatureSelected ? 0.90f : 0.55f;
+                float faceG = isAnyFeatureSelected ? 0.60f : 0.70f;
+                float faceB = isAnyFeatureSelected ? 0.20f : 0.90f;
+
+                // Interleave position + color + Normal
                 for (int i = 0; i < vertexCount; i++)
                 {
                     int posIdx = i * 3;
@@ -462,10 +469,9 @@ public class SilkViewportControl : OpenGlControlBase
                     solidVertexData[outIdx + 1] = solidMesh.Positions[posIdx + 1];
                     solidVertexData[outIdx + 2] = solidMesh.Positions[posIdx + 2];
 
-                    // CAD solid base color (Cool Steel Blue)
-                    solidVertexData[outIdx + 3] = 0.55f;
-                    solidVertexData[outIdx + 4] = 0.70f;
-                    solidVertexData[outIdx + 5] = 0.90f;
+                    solidVertexData[outIdx + 3] = faceR;
+                    solidVertexData[outIdx + 4] = faceG;
+                    solidVertexData[outIdx + 5] = faceB;
 
                     // Normal vector for real-time diffuse shading
                     solidVertexData[outIdx + 6] = solidMesh.Normals[posIdx + 0];
@@ -500,7 +506,11 @@ public class SilkViewportControl : OpenGlControlBase
                     _gl.DrawElements(PrimitiveType.Triangles, (uint)solidMesh.Indices.Length, DrawElementsType.UnsignedInt, (void*)0);
                 }
 
-                // --- Render Dark Edge Outlines (Arestas e Vértices Nítidos) ---
+                // --- Render Edge Outlines (Arestas e Vértices Nítidos / Highlight se selecionado) ---
+                float edgeR = isAnyFeatureSelected ? 1.0f : 0.12f;
+                float edgeG = isAnyFeatureSelected ? 0.85f : 0.16f;
+                float edgeB = isAnyFeatureSelected ? 0.30f : 0.22f;
+
                 var edgeLines = new System.Collections.Generic.List<float>();
                 for (int i = 0; i < solidMesh.Indices.Length; i += 3)
                 {
@@ -517,15 +527,15 @@ public class SilkViewportControl : OpenGlControlBase
                         edgeLines.Add(solidMesh.Positions[pA + 0]);
                         edgeLines.Add(solidMesh.Positions[pA + 1]);
                         edgeLines.Add(solidMesh.Positions[pA + 2]);
-                        // Dark Edge Color (Charcoal / Deep Slate)
-                        edgeLines.Add(0.12f); edgeLines.Add(0.16f); edgeLines.Add(0.22f);
+                        // Edge Color
+                        edgeLines.Add(edgeR); edgeLines.Add(edgeG); edgeLines.Add(edgeB);
 
                         // Point B
                         edgeLines.Add(solidMesh.Positions[pB + 0]);
                         edgeLines.Add(solidMesh.Positions[pB + 1]);
                         edgeLines.Add(solidMesh.Positions[pB + 2]);
-                        // Dark Edge Color
-                        edgeLines.Add(0.12f); edgeLines.Add(0.16f); edgeLines.Add(0.22f);
+                        // Edge Color
+                        edgeLines.Add(edgeR); edgeLines.Add(edgeG); edgeLines.Add(edgeB);
                     }
 
                     AddEdge(i0, i1);

@@ -17,6 +17,7 @@ public class RectangleProfile : IProfile
     public double Height { get; set; }
     public double RotationAngle { get; set; } // in radians, relative to reference axis
     public Vector3D Normal { get; set; }
+    public bool IsSelected { get; set; } = false;
 
     public double Area => Width * Height;
 

@@ -14,6 +14,7 @@ public class PolygonProfile : IProfile
 
     public List<Point3D> Vertices { get; set; }
     public Vector3D Normal { get; set; }
+    public bool IsSelected { get; set; } = false;
 
     public Point3D Center
     {

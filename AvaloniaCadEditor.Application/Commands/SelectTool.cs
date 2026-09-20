@@ -9,28 +9,68 @@ namespace AvaloniaCadEditor.Application.Commands;
 public class SelectTool : ICommandTool
 {
     private readonly IGeometryEngine _geometryEngine;
+    private readonly Services.ISelectionService? _selectionService;
 
-    public SelectTool(IGeometryEngine geometryEngine)
+    public SelectTool(IGeometryEngine geometryEngine, Services.ISelectionService? selectionService = null)
     {
         _geometryEngine = geometryEngine;
+        _selectionService = selectionService;
     }
 
     public string Name => "Select";
 
     public void OnMouseDown(Sketch sketch, Point3D point)
     {
-        // First, clear all selections unless we want to implement multi-select with modifiers later
-        foreach (var entity in sketch.Entities)
-        {
-            entity.IsSelected = false;
-        }
-
-        // Perform HitTest with a tolerance of 5.0 (can be adjusted)
+        // 1. Try 2D HitTest on entities
         var hitEntity = _geometryEngine.HitTest(sketch.Entities, point, 5.0);
 
         if (hitEntity != null)
         {
-            hitEntity.IsSelected = true;
+            if (_selectionService != null)
+            {
+                _selectionService.SelectById(sketch, hitEntity.Id);
+            }
+            else
+            {
+                foreach (var e in sketch.Entities) e.IsSelected = false;
+                hitEntity.IsSelected = true;
+            }
+            return;
+        }
+
+        // 2. Try 3D Features (e.g. Cylinders / Extrusions) HitTest
+        foreach (var feature in sketch.Features)
+        {
+            if (feature is Domain.Features.ExtrudeFeature ef)
+            {
+                // Check if point is inside profile boundary or near base
+                if (ef.Profile is Domain.Profiles.CircleProfile cp)
+                {
+                    double dist = Math.Sqrt(Math.Pow(point.X - cp.Center.X, 2) + Math.Pow(point.Y - cp.Center.Y, 2));
+                    if (dist <= cp.Radius + 3.0)
+                    {
+                        if (_selectionService != null)
+                        {
+                            _selectionService.SelectById(sketch, ef.Id);
+                        }
+                        else
+                        {
+                            ef.IsSelected = true;
+                        }
+                        return;
+                    }
+                }
+            }
+        }
+
+        // 3. Clear selection if clicked in empty space
+        if (_selectionService != null)
+        {
+            _selectionService.ClearSelection(sketch);
+        }
+        else
+        {
+            foreach (var e in sketch.Entities) e.IsSelected = false;
         }
     }
 

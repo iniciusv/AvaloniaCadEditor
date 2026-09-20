@@ -1,0 +1,127 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:AvaloniaCadEditor.UI.ViewModels"
+             mc:Ignorable="d" d:DesignWidth="300" d:DesignHeight="400"
+             x:Class="AvaloniaCadEditor.UI.Views.PropertyInspectorView"
+             x:DataType="vm:PropertyInspectorViewModel">
+
+    <Border Background="#1E1E1E" Padding="8">
+        <ScrollViewer VerticalScrollBarVisibility="Auto">
+            <StackPanel Spacing="8">
+                <!-- Header -->
+                <Border Background="#282828" CornerRadius="4" Padding="8,6">
+                    <Grid ColumnDefinitions="*, Auto">
+                        <TextBlock Grid.Column="0" Text="📋 Propriedades" FontWeight="Bold" Foreground="#DDDDDD" FontSize="13" />
+                        <Border Grid.Column="1" Background="#007ACC" CornerRadius="3" Padding="4,2" IsVisible="{Binding HasSelection}">
+                            <TextBlock Text="{Binding TypeBadge}" FontSize="9" FontWeight="Bold" Foreground="White" />
+                        </Border>
+                    </Grid>
+                </Border>
+
+                <!-- Empty State Message -->
+                <Border Background="#252525" CornerRadius="4" Padding="16" IsVisible="{Binding !HasSelection}">
+                    <TextBlock Text="Selecione um sólido 3D, perfil ou linha na árvore ou no modelo para inspecionar seus parâmetros matemáticos."
+                               Foreground="#888888" TextWrapping="Wrap" TextAlignment="Center" FontSize="11" />
+                </Border>
+
+                <!-- Property Details Container -->
+                <StackPanel Spacing="8" IsVisible="{Binding HasSelection}">
+                    
+                    <!-- Element Title -->
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="#00BFFF" FontSize="13" />
+
+                    <!-- Mathematical Center -->
+                    <Border Background="#262626" CornerRadius="4" Padding="8">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="📍 Centro Matemático (mm)" FontWeight="SemiBold" Foreground="#AAAAAA" FontSize="11" />
+                            <Grid ColumnDefinitions="*,*,*" Margin="0,2,0,0">
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
+                                    <TextBlock Text="X:" Foreground="#FF6B6B" FontWeight="Bold" VerticalAlignment="Center" FontSize="11"/>
+                                    <NumericUpDown Value="{Binding CenterX, Mode=TwoWay}" ShowButtonSpinner="False" FormatString="F2" Increment="1" Width="65" Height="26" FontSize="11" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                                    <TextBlock Text="Y:" Foreground="#51CF66" FontWeight="Bold" VerticalAlignment="Center" FontSize="11"/>
+                                    <NumericUpDown Value="{Binding CenterY, Mode=TwoWay}" ShowButtonSpinner="False" FormatString="F2" Increment="1" Width="65" Height="26" FontSize="11" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
+                                    <TextBlock Text="Z:" Foreground="#339AF0" FontWeight="Bold" VerticalAlignment="Center" FontSize="11"/>
+                                    <NumericUpDown Value="{Binding CenterZ, Mode=TwoWay}" ShowButtonSpinner="False" FormatString="F2" Increment="1" Width="65" Height="26" FontSize="11" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Radius & Diameter (for Cylinder/Circle) -->
+                    <Border Background="#262626" CornerRadius="4" Padding="8" IsVisible="{Binding IsCylinder}">
+                        <StackPanel Spacing="6">
+                            <TextBlock Text="⭕ Dimensões Radiais (mm)" FontWeight="SemiBold" Foreground="#AAAAAA" FontSize="11" />
+                            <Grid ColumnDefinitions="*, *" Margin="0,2,0,0">
+                                <StackPanel Grid.Column="0" Spacing="2" Margin="0,0,4,0">
+                                    <TextBlock Text="Raio (R):" Foreground="#CCCCCC" FontSize="11" />
+                                    <NumericUpDown Value="{Binding Radius, Mode=TwoWay}" Minimum="0.1" ShowButtonSpinner="False" FormatString="F2" Increment="1" Height="26" FontSize="11" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1" Spacing="2" Margin="4,0,0,0">
+                                    <TextBlock Text="Diâmetro (Ø):" Foreground="#CCCCCC" FontSize="11" />
+                                    <NumericUpDown Value="{Binding Diameter, Mode=TwoWay}" Minimum="0.2" ShowButtonSpinner="False" FormatString="F2" Increment="1" Height="26" FontSize="11" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Height / Depth (for 3D Extrusions) -->
+                    <Border Background="#262626" CornerRadius="4" Padding="8" IsVisible="{Binding IsCylinder}">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="📏 Altura / Extrusão (mm)" FontWeight="SemiBold" Foreground="#AAAAAA" FontSize="11" />
+                            <NumericUpDown Value="{Binding Height, Mode=TwoWay}" ShowButtonSpinner="False" FormatString="F2" Increment="5" Height="26" FontSize="11" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Height / Depth (for Prism Extrusions) -->
+                    <Border Background="#262626" CornerRadius="4" Padding="8" IsVisible="{Binding IsPrism}">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="📏 Altura / Extrusão (mm)" FontWeight="SemiBold" Foreground="#AAAAAA" FontSize="11" />
+                            <NumericUpDown Value="{Binding Height, Mode=TwoWay}" ShowButtonSpinner="False" FormatString="F2" Increment="5" Height="26" FontSize="11" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Analytical Metrics (Area & Volume) -->
+                    <Border Background="#262626" CornerRadius="4" Padding="8">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="📐 Propriedades Físicas e Geométricas" FontWeight="SemiBold" Foreground="#AAAAAA" FontSize="11" />
+                            
+                            <Grid ColumnDefinitions="*, *" Margin="0,2,0,0">
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="Área da Base:" Foreground="#888888" FontSize="10" />
+                                    <TextBlock Text="{Binding BaseArea, StringFormat='{}{0:F2} mm²'}" Foreground="#4ECCA3" FontWeight="Bold" FontSize="12" />
+                                </StackPanel>
+                                <StackPanel Grid.Column="1">
+                                    <TextBlock Text="Volume Total:" Foreground="#888888" FontSize="10" />
+                                    <TextBlock Text="{Binding Volume, StringFormat='{}{0:F2} mm³'}" Foreground="#FFD166" FontWeight="Bold" FontSize="12" />
+                                </StackPanel>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Direction Vector -->
+                    <Border Background="#262626" CornerRadius="4" Padding="8" IsVisible="{Binding DirectionText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="🧭 Vetor Normal de Extrusão" FontWeight="SemiBold" Foreground="#AAAAAA" FontSize="11" />
+                            <TextBlock Text="{Binding DirectionText}" Foreground="#CCCCCC" FontFamily="Consolas" FontSize="11" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Additional Details -->
+                    <Border Background="#262626" CornerRadius="4" Padding="8" IsVisible="{Binding AdditionalInfo, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="ℹ️ Detalhes da Geometria" FontWeight="SemiBold" Foreground="#AAAAAA" FontSize="11" />
+                            <TextBlock Text="{Binding AdditionalInfo}" Foreground="#AAAAAA" FontSize="11" TextWrapping="Wrap" />
+                        </StackPanel>
+                    </Border>
+
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Border>
+</UserControl>

@@ -15,8 +15,22 @@ public class CircleProfile : IProfile
     public Point3D Center { get; set; }
     public double Radius { get; set; }
     public Vector3D Normal { get; set; }
+    public bool IsSelected { get; set; } = false;
 
     public double Area => Math.PI * Radius * Radius;
+
+    public void UpdateRadius(double newRadius)
+    {
+        if (newRadius > 0)
+        {
+            Radius = newRadius;
+        }
+    }
+
+    public void UpdateCenter(Point3D newCenter)
+    {
+        Center = newCenter;
+    }
 
     public CircleProfile(
         Point3D center,

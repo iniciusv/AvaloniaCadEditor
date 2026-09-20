@@ -13,6 +13,7 @@ public interface IProfile
     Point3D Center { get; }
     Vector3D Normal { get; }
     double Area { get; }
+    bool IsSelected { get; set; }
 
     IReadOnlyList<Point3D> GetVertices();
     IProfile SwitchClassification(ProfileClassification targetClassification);
