@@ -238,11 +238,34 @@ public class SilkViewportControl : OpenGlControlBase
             _gl.EnableVertexAttribArray(1);
         }
         _gl.BindVertexArray(0);
+
+        // --- Setup Solid Mesh VAO / VBO / EBO ---
+        _solidVao = _gl.GenVertexArray();
+        _solidVbo = _gl.GenBuffer();
+        _solidEbo = _gl.GenBuffer();
+
+        _gl.BindVertexArray(_solidVao);
+        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _solidVbo);
+        _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, _solidEbo);
+
+        unsafe
+        {
+            // Attribute 0: Position (vec3), Attribute 1: Color/Normal (vec3) -> 6 floats stride
+            _gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)0);
+            _gl.EnableVertexAttribArray(0);
+            _gl.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+            _gl.EnableVertexAttribArray(1);
+        }
+        _gl.BindVertexArray(0);
     }
 
 
     private uint _sketchVao;
     private uint _sketchVbo;
+
+    private uint _solidVao;
+    private uint _solidVbo;
+    private uint _solidEbo;
 
     protected override void OnOpenGlDeinit(GlInterface gl)
     {
@@ -252,6 +275,9 @@ public class SilkViewportControl : OpenGlControlBase
             _gl.DeleteBuffer(_vbo);
             _gl.DeleteVertexArray(_sketchVao);
             _gl.DeleteBuffer(_sketchVbo);
+            _gl.DeleteVertexArray(_solidVao);
+            _gl.DeleteBuffer(_solidVbo);
+            _gl.DeleteBuffer(_solidEbo);
             _gl.DeleteProgram(_shaderProgram);
             _gl.Dispose();
         }
@@ -378,6 +404,56 @@ public class SilkViewportControl : OpenGlControlBase
                 }
                 
                 _gl.DrawArrays(PrimitiveType.Lines, 0, (uint)(sketchVertices.Count / 6));
+            }
+
+            // --- Render 3D Solid Mesh from OpenCASCADE ---
+            var solidMesh = ViewModel.SolidMesh;
+            if (solidMesh != null && solidMesh.TriangleCount > 0)
+            {
+                int vertexCount = solidMesh.VertexCount;
+                float[] solidVertexData = new float[vertexCount * 6];
+
+                // Interleave position + CAD metallic blue color
+                for (int i = 0; i < vertexCount; i++)
+                {
+                    int posIdx = i * 3;
+                    int outIdx = i * 6;
+
+                    solidVertexData[outIdx + 0] = solidMesh.Positions[posIdx + 0];
+                    solidVertexData[outIdx + 1] = solidMesh.Positions[posIdx + 1];
+                    solidVertexData[outIdx + 2] = solidMesh.Positions[posIdx + 2];
+
+                    // Subtle CAD solid color (light steel blue)
+                    solidVertexData[outIdx + 3] = 0.60f;
+                    solidVertexData[outIdx + 4] = 0.72f;
+                    solidVertexData[outIdx + 5] = 0.88f;
+                }
+
+                _gl.BindVertexArray(_solidVao);
+
+                _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _solidVbo);
+                unsafe
+                {
+                    fixed (float* vPtr = solidVertexData)
+                    {
+                        _gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(solidVertexData.Length * sizeof(float)), vPtr, BufferUsageARB.DynamicDraw);
+                    }
+                }
+
+                _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, _solidEbo);
+                unsafe
+                {
+                    fixed (uint* iPtr = solidMesh.Indices)
+                    {
+                        _gl.BufferData(BufferTargetARB.ElementArrayBuffer, (nuint)(solidMesh.Indices.Length * sizeof(uint)), iPtr, BufferUsageARB.DynamicDraw);
+                    }
+                }
+
+                unsafe
+                {
+                    _gl.UniformMatrix4(modelLoc, 1, false, (float*)&identity);
+                    _gl.DrawElements(PrimitiveType.Triangles, (uint)solidMesh.Indices.Length, DrawElementsType.UnsignedInt, (void*)0);
+                }
             }
         }
     }

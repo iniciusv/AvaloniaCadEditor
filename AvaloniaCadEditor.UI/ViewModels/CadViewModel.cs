@@ -4,9 +4,11 @@ using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using AvaloniaCadEditor.Application.Commands;
+using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Application.Services;
 using AvaloniaCadEditor.Domain.Entities;
 using AvaloniaCadEditor.Domain.Interfaces;
+using AvaloniaCadEditor.Domain.Mesh;
 using AvaloniaCadEditor.Domain.Profiles;
 using AvaloniaCadEditor.Domain.ValueObjects;
 using System.Globalization;
@@ -18,10 +20,18 @@ public class CadViewModel : INotifyPropertyChanged
     private readonly IGeometryEngine _geometryEngine;
     private readonly IOSnapService _osnapService;
     private readonly IProfileRecognitionService _profileRecognitionService;
+    private readonly IGeometryKernel _geometryKernel;
     
     public Sketch Sketch { get; } = new Sketch();
     
     public IReadOnlyList<IProfile> Profiles => Sketch.Profiles;
+
+    private TriangleMesh _solidMesh = TriangleMesh.Empty;
+    public TriangleMesh SolidMesh
+    {
+        get => _solidMesh;
+        private set { _solidMesh = value; OnPropertyChanged(); }
+    }
 
     private IProfile? _selectedProfile;
     public IProfile? SelectedProfile
@@ -83,6 +93,7 @@ public class CadViewModel : INotifyPropertyChanged
     public ICommand SelectLineToolCommand { get; }
     public ICommand SelectCircleToolCommand { get; }
     public ICommand SelectTrimToolCommand { get; }
+    public ICommand SelectExtrudeToolCommand { get; }
 
     public ICommand SelectSelectToolCommand { get; }
     public ICommand SelectMoveToolCommand { get; }
@@ -100,15 +111,18 @@ public class CadViewModel : INotifyPropertyChanged
     public CadViewModel(
         IGeometryEngine geometryEngine,
         IOSnapService osnapService,
-        IProfileRecognitionService? profileRecognitionService = null)
+        IProfileRecognitionService? profileRecognitionService = null,
+        IGeometryKernel? geometryKernel = null)
     {
         _geometryEngine = geometryEngine;
         _osnapService = osnapService;
         _profileRecognitionService = profileRecognitionService ?? new ProfileRecognitionService();
+        _geometryKernel = geometryKernel ?? new NullGeometryKernel();
         
         SelectLineToolCommand = new RelayCommand(() => CurrentTool = new DrawLineCommand());
         SelectCircleToolCommand = new RelayCommand(() => CurrentTool = new DrawCircleCommand());
         SelectTrimToolCommand = new RelayCommand(() => CurrentTool = new TrimCommand(_geometryEngine));
+        SelectExtrudeToolCommand = new RelayCommand(() => CurrentTool = new ExtrudeCommand());
 
         SelectSelectToolCommand = new RelayCommand(() => CurrentTool = new SelectTool(_geometryEngine));
         SelectMoveToolCommand = new RelayCommand(() => CurrentTool = new MoveTool());
@@ -121,6 +135,12 @@ public class CadViewModel : INotifyPropertyChanged
         var recognized = _profileRecognitionService.RecognizeProfiles(Sketch);
         Sketch.SetProfiles(recognized);
         OnPropertyChanged(nameof(Profiles));
+        RefreshSolidMesh();
+    }
+
+    public void RefreshSolidMesh()
+    {
+        SolidMesh = _geometryKernel.BuildSolidMesh(Sketch.Features);
     }
 
     public void OnPointerPressed(Point3D worldPoint)
@@ -188,6 +208,9 @@ public class CadViewModel : INotifyPropertyChanged
                 break;
             case "C":
                 SelectCircleToolCommand.Execute(null);
+                break;
+            case "E":
+                SelectExtrudeToolCommand.Execute(null);
                 break;
             case "T":
                 SelectTrimToolCommand.Execute(null);

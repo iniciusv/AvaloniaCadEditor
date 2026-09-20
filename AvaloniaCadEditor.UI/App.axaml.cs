@@ -20,7 +20,9 @@ public partial class App : Avalonia.Application
 		{
 			var geometryEngine = new MathGeometryEngine();
 			var osnapService = new OSnapService(geometryEngine);
-			var viewModel = new CadViewModel(geometryEngine, osnapService);
+			var profileRecognitionService = new ProfileRecognitionService();
+			var geometryKernel = new AvaloniaCadEditor.Infrastructure.OpenCascade.OpenCascadeGeometryKernel();
+			var viewModel = new CadViewModel(geometryEngine, osnapService, profileRecognitionService, geometryKernel);
 
 			desktop.MainWindow = new MainWindow
 			{

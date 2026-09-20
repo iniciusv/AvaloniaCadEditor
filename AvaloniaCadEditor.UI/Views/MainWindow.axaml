@@ -16,6 +16,7 @@
             <Button Content="Line" Command="{Binding SelectLineToolCommand}" />
             <Button Content="Circle" Command="{Binding SelectCircleToolCommand}" />
             <Button Content="Trim" Command="{Binding SelectTrimToolCommand}" />
+            <Button Content="Extrude (3D)" Command="{Binding SelectExtrudeToolCommand}" Background="#007ACC" Foreground="White" FontWeight="Bold" />
 
             <CheckBox IsChecked="{Binding OsnapEnabled}" Content="OSnap" Foreground="White"/>
         </StackPanel>
