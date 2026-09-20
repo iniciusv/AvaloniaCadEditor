@@ -61,8 +61,47 @@ public class ExtrudeCommand : ICommandTool
         _currentDepth = 20.0;
     }
 
+    public IFeature? GetPreviewFeature()
+    {
+        if (_currentState == State.DefiningDepth && _selectedProfile != null)
+        {
+            return new ExtrudeFeature(_selectedProfile, _currentDepth);
+        }
+        return null;
+    }
+
     public IEnumerable<Entity> GetPreviewEntities()
     {
+        if (_currentState == State.DefiningDepth && _selectedProfile != null)
+        {
+            var previewLines = new List<Entity>();
+            var baseVerts = _selectedProfile.GetVertices();
+            var dir = _selectedProfile.Normal * _currentDepth;
+
+            // 1. Top perimeter lines
+            for (int i = 0; i < baseVerts.Count; i++)
+            {
+                var p1 = baseVerts[i];
+                var p2 = baseVerts[(i + 1) % baseVerts.Count];
+
+                var top1 = new Point3D(p1.X + dir.X, p1.Y + dir.Y, p1.Z + dir.Z);
+                var top2 = new Point3D(p2.X + dir.X, p2.Y + dir.Y, p2.Z + dir.Z);
+
+                previewLines.Add(new LineEntity(top1, top2));
+            }
+
+            // 2. Vertical corner lines
+            int step = Math.Max(1, baseVerts.Count / 8);
+            for (int i = 0; i < baseVerts.Count; i += step)
+            {
+                var p1 = baseVerts[i];
+                var top1 = new Point3D(p1.X + dir.X, p1.Y + dir.Y, p1.Z + dir.Z);
+                previewLines.Add(new LineEntity(p1, top1));
+            }
+
+            return previewLines;
+        }
+
         return Enumerable.Empty<Entity>();
     }
 

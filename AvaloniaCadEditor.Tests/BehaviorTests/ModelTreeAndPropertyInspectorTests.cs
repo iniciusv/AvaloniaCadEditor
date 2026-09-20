@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using AvaloniaCadEditor.Application.Commands;
 using AvaloniaCadEditor.Application.Services;
 using AvaloniaCadEditor.Domain.Entities;
 using AvaloniaCadEditor.Domain.Features;
@@ -232,5 +233,41 @@ public class ModelTreeAndPropertyInspectorTests
 
         // Assert 2: HoveredProfile is cleared
         Assert.Null(vm.HoveredProfile);
+    }
+
+    [Fact]
+    public void ExtrudeCommand_LivePreview_ShouldUpdateSolidMeshDuringMouseMove()
+    {
+        var kernel = new PureMathGeometryKernel();
+        var mockGeo = new Moq.Mock<AvaloniaCadEditor.Domain.Interfaces.IGeometryEngine>();
+        var mockSnap = new Moq.Mock<AvaloniaCadEditor.Application.Services.IOSnapService>();
+        mockSnap.Setup(s => s.GetSnappedPoint(Moq.It.IsAny<Sketch>(), Moq.It.IsAny<Point3D>(), Moq.It.IsAny<double>()))
+                .Returns<Sketch, Point3D, double>((s, p, t) => p);
+
+        var selectionService = new SelectionService();
+        var vm = new CadViewModel(mockGeo.Object, mockSnap.Object, null, kernel, selectionService);
+
+        var circle = new CircleProfile(new Point3D(0, 0, 0), 10.0);
+        vm.Sketch.AddProfile(circle);
+
+        var extrudeCmd = new ExtrudeCommand();
+        vm.CurrentTool = extrudeCmd;
+
+        // Step 1: Click to pick profile and start defining depth
+        vm.OnPointerPressed(new Point3D(0, 0, 0));
+
+        // Step 2: Move mouse upwards to define height 35mm
+        vm.OnPointerMoved(new Point3D(0, 35, 0));
+
+        // Assert: SolidMesh now contains the live 3D preview cylinder with height 35mm!
+        Assert.NotNull(vm.SolidMesh);
+        Assert.True(vm.SolidMesh.TriangleCount > 0);
+
+        float maxZ = 0;
+        for (int i = 2; i < vm.SolidMesh.Positions.Length; i += 3)
+        {
+            if (vm.SolidMesh.Positions[i] > maxZ) maxZ = vm.SolidMesh.Positions[i];
+        }
+        Assert.Equal(35.0f, maxZ, 1e-2f);
     }
 }

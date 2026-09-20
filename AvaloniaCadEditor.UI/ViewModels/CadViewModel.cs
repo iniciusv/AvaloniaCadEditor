@@ -200,7 +200,17 @@ public class CadViewModel : INotifyPropertyChanged
 
     public void RefreshSolidMesh()
     {
-        SolidMesh = _geometryKernel.BuildSolidMesh(Sketch.Features);
+        var featuresToRender = new List<IFeature>(Sketch.Features);
+        if (CurrentTool is ExtrudeCommand extCmd)
+        {
+            var preview = extCmd.GetPreviewFeature();
+            if (preview != null)
+            {
+                featuresToRender.Add(preview);
+            }
+        }
+
+        SolidMesh = _geometryKernel.BuildSolidMesh(featuresToRender);
     }
 
     public void OnPointerPressed(Point3D worldPoint)
@@ -229,6 +239,11 @@ public class CadViewModel : INotifyPropertyChanged
         var snapped = _osnapService.GetSnappedPoint(Sketch, worldPoint, 5.0);
         CurrentSnappedPoint = snapped;
         CurrentTool?.OnMouseMove(Sketch, snapped);
+
+        if (CurrentTool is ExtrudeCommand)
+        {
+            RefreshSolidMesh();
+        }
         
         // Update 2D Profile Hover
         var hitProfile = Sketch.Profiles.FirstOrDefault(p => p.ContainsPoint(snapped));
