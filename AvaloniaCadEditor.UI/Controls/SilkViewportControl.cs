@@ -547,32 +547,50 @@ public class SilkViewportControl : OpenGlControlBase
                 _gl.DrawArrays(PrimitiveType.Lines, 0, (uint)(sketchVertices.Count / 6));
             }
 
-            // --- Render 3D Solid Mesh with Directional Lighting & Crisp Edges ---
-            var solidMesh = ViewModel.SolidMesh;
-            if (solidMesh != null && solidMesh.TriangleCount > 0)
+            // --- Render 3D Solid Features with Individual Lighting & Crisp Edges ---
+            var featuresToRender = new System.Collections.Generic.List<(AvaloniaCadEditor.Domain.Features.IFeature Feature, bool IsPreview)>();
+            if (ViewModel != null)
             {
-                bool isExtruding = ViewModel.CurrentTool is Application.Commands.ExtrudeCommand;
-                bool isAnyFeatureSelected = ViewModel.Sketch.Features.Any(f => f.IsSelected);
-                int vertexCount = solidMesh.VertexCount;
+                foreach (var f in ViewModel.Sketch.Features)
+                {
+                    featuresToRender.Add((f, false));
+                }
+
+                if (ViewModel.CurrentTool is Application.Commands.ExtrudeCommand extCmd)
+                {
+                    var preview = extCmd.GetPreviewFeature();
+                    if (preview != null)
+                    {
+                        featuresToRender.Add((preview, true));
+                    }
+                }
+            }
+
+            foreach (var (feature, isPreview) in featuresToRender)
+            {
+                var mesh = ViewModel!.GeometryKernel.BuildSolidMesh(new[] { feature });
+                if (mesh == null || mesh.TriangleCount == 0) continue;
+
+                int vertexCount = mesh.VertexCount;
                 float[] solidVertexData = new float[vertexCount * 9];
 
-                // Base Face Color: Emerald when extruding, Warm Amber if selected, Cool Steel Blue default
+                // Base Face Color: Emerald when previewing, Warm Amber if selected, Cool Steel Blue default
                 float faceR, faceG, faceB;
                 float edgeR, edgeG, edgeB;
 
-                if (isExtruding)
+                if (isPreview)
                 {
                     faceR = 0.20f; faceG = 0.85f; faceB = 0.60f; // Vibrant Emerald Creation Feedback
                     edgeR = 0.05f; edgeG = 0.95f; edgeB = 0.65f;
                 }
-                else if (isAnyFeatureSelected)
+                else if (feature.IsSelected)
                 {
-                    faceR = 0.90f; faceG = 0.60f; faceB = 0.20f; // Warm Amber Selection
+                    faceR = 0.90f; faceG = 0.60f; faceB = 0.20f; // Warm Amber Selection Highlight
                     edgeR = 1.00f; edgeG = 0.85f; edgeB = 0.30f;
                 }
                 else
                 {
-                    faceR = 0.55f; faceG = 0.70f; faceB = 0.90f; // Metallic Steel Blue
+                    faceR = 0.55f; faceG = 0.70f; faceB = 0.90f; // Metallic Steel Blue Unselected
                     edgeR = 0.12f; edgeG = 0.16f; edgeB = 0.22f;
                 }
 
@@ -582,18 +600,18 @@ public class SilkViewportControl : OpenGlControlBase
                     int posIdx = i * 3;
                     int outIdx = i * 9;
 
-                    solidVertexData[outIdx + 0] = solidMesh.Positions[posIdx + 0];
-                    solidVertexData[outIdx + 1] = solidMesh.Positions[posIdx + 1];
-                    solidVertexData[outIdx + 2] = solidMesh.Positions[posIdx + 2];
+                    solidVertexData[outIdx + 0] = mesh.Positions[posIdx + 0];
+                    solidVertexData[outIdx + 1] = mesh.Positions[posIdx + 1];
+                    solidVertexData[outIdx + 2] = mesh.Positions[posIdx + 2];
 
                     solidVertexData[outIdx + 3] = faceR;
                     solidVertexData[outIdx + 4] = faceG;
                     solidVertexData[outIdx + 5] = faceB;
 
                     // Normal vector for real-time diffuse shading
-                    solidVertexData[outIdx + 6] = solidMesh.Normals[posIdx + 0];
-                    solidVertexData[outIdx + 7] = solidMesh.Normals[posIdx + 1];
-                    solidVertexData[outIdx + 8] = solidMesh.Normals[posIdx + 2];
+                    solidVertexData[outIdx + 6] = mesh.Normals[posIdx + 0];
+                    solidVertexData[outIdx + 7] = mesh.Normals[posIdx + 1];
+                    solidVertexData[outIdx + 8] = mesh.Normals[posIdx + 2];
                 }
 
                 _gl.BindVertexArray(_solidVao);
@@ -610,9 +628,9 @@ public class SilkViewportControl : OpenGlControlBase
                 _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, _solidEbo);
                 unsafe
                 {
-                    fixed (uint* iPtr = solidMesh.Indices)
+                    fixed (uint* iPtr = mesh.Indices)
                     {
-                        _gl.BufferData(BufferTargetARB.ElementArrayBuffer, (nuint)(solidMesh.Indices.Length * sizeof(uint)), iPtr, BufferUsageARB.DynamicDraw);
+                        _gl.BufferData(BufferTargetARB.ElementArrayBuffer, (nuint)(mesh.Indices.Length * sizeof(uint)), iPtr, BufferUsageARB.DynamicDraw);
                     }
                 }
 
@@ -620,17 +638,16 @@ public class SilkViewportControl : OpenGlControlBase
                 {
                     _gl.UniformMatrix4(modelLoc, 1, false, (float*)&identity);
                     _gl.Uniform1(lightingLoc, 1); // Enable directional lighting for 3D faces!
-                    _gl.DrawElements(PrimitiveType.Triangles, (uint)solidMesh.Indices.Length, DrawElementsType.UnsignedInt, (void*)0);
+                    _gl.DrawElements(PrimitiveType.Triangles, (uint)mesh.Indices.Length, DrawElementsType.UnsignedInt, (void*)0);
                 }
 
                 // --- Render Edge Outlines (Arestas e Vértices Nítidos / Highlight se selecionado) ---
-
                 var edgeLines = new System.Collections.Generic.List<float>();
-                for (int i = 0; i < solidMesh.Indices.Length; i += 3)
+                for (int i = 0; i < mesh.Indices.Length; i += 3)
                 {
-                    uint i0 = solidMesh.Indices[i + 0];
-                    uint i1 = solidMesh.Indices[i + 1];
-                    uint i2 = solidMesh.Indices[i + 2];
+                    uint i0 = mesh.Indices[i + 0];
+                    uint i1 = mesh.Indices[i + 1];
+                    uint i2 = mesh.Indices[i + 2];
 
                     void AddEdge(uint idxA, uint idxB)
                     {
@@ -638,16 +655,16 @@ public class SilkViewportControl : OpenGlControlBase
                         int pB = (int)idxB * 3;
 
                         // Point A
-                        edgeLines.Add(solidMesh.Positions[pA + 0]);
-                        edgeLines.Add(solidMesh.Positions[pA + 1]);
-                        edgeLines.Add(solidMesh.Positions[pA + 2]);
+                        edgeLines.Add(mesh.Positions[pA + 0]);
+                        edgeLines.Add(mesh.Positions[pA + 1]);
+                        edgeLines.Add(mesh.Positions[pA + 2]);
                         // Edge Color
                         edgeLines.Add(edgeR); edgeLines.Add(edgeG); edgeLines.Add(edgeB);
 
                         // Point B
-                        edgeLines.Add(solidMesh.Positions[pB + 0]);
-                        edgeLines.Add(solidMesh.Positions[pB + 1]);
-                        edgeLines.Add(solidMesh.Positions[pB + 2]);
+                        edgeLines.Add(mesh.Positions[pB + 0]);
+                        edgeLines.Add(mesh.Positions[pB + 1]);
+                        edgeLines.Add(mesh.Positions[pB + 2]);
                         // Edge Color
                         edgeLines.Add(edgeR); edgeLines.Add(edgeG); edgeLines.Add(edgeB);
                     }

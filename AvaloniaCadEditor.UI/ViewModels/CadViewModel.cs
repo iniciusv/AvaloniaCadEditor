@@ -32,6 +32,7 @@ public class CadViewModel : INotifyPropertyChanged
     public ModelTreeViewModel ModelTree { get; }
     public PropertyInspectorViewModel PropertyInspector { get; }
     public ISelectionService SelectionService => _selectionService;
+    public IGeometryKernel GeometryKernel => _geometryKernel;
 
     private TriangleMesh _solidMesh = TriangleMesh.Empty;
     public TriangleMesh SolidMesh
