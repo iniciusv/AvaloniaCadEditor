@@ -46,7 +46,7 @@ public class CadViewModel : INotifyPropertyChanged
     public ICommand SelectLineToolCommand { get; }
     public ICommand SelectCircleToolCommand { get; }
     public ICommand SelectTrimToolCommand { get; }
-    public ICommand SelectFilletToolCommand { get; }
+
     public ICommand SelectSelectToolCommand { get; }
     public ICommand SelectMoveToolCommand { get; }
 
@@ -68,7 +68,7 @@ public class CadViewModel : INotifyPropertyChanged
         SelectLineToolCommand = new RelayCommand(() => CurrentTool = new DrawLineCommand());
         SelectCircleToolCommand = new RelayCommand(() => CurrentTool = new DrawCircleCommand());
         SelectTrimToolCommand = new RelayCommand(() => CurrentTool = new TrimCommand(_geometryEngine));
-        SelectFilletToolCommand = new RelayCommand(() => CurrentTool = new FilletCommand(_geometryEngine));
+
         SelectSelectToolCommand = new RelayCommand(() => CurrentTool = new SelectTool(_geometryEngine));
         SelectMoveToolCommand = new RelayCommand(() => CurrentTool = new MoveTool());
 

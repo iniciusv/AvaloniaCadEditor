@@ -16,7 +16,7 @@
             <Button Content="Line" Command="{Binding SelectLineToolCommand}" />
             <Button Content="Circle" Command="{Binding SelectCircleToolCommand}" />
             <Button Content="Trim" Command="{Binding SelectTrimToolCommand}" />
-            <Button Content="Fillet" Command="{Binding SelectFilletToolCommand}" />
+
             <CheckBox IsChecked="{Binding OsnapEnabled}" Content="OSnap" Foreground="White"/>
         </StackPanel>
         
