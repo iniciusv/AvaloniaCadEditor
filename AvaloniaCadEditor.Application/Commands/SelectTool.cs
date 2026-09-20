@@ -43,4 +43,6 @@ public class SelectTool : ICommandTool
     public void OnKeyDown(Sketch sketch, CadKey key) { }
 
     public void OnValueEntered(Sketch sketch, double value) { }
+
+    public string GetMeasurementText() => "";
 }

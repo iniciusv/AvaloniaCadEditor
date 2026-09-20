@@ -103,8 +103,16 @@ public class CadViewModel : INotifyPropertyChanged
 
     private void UpdateStatusText(Point3D snapped)
     {
-        string vcbInfo = string.IsNullOrEmpty(_inputBuffer) ? "" : $" | VCB: {_inputBuffer}";
-        StatusText = $"X: {snapped.X:F2}, Y: {snapped.Y:F2}{vcbInfo}";
+        StatusText = $"X: {snapped.X:F2}, Y: {snapped.Y:F2}";
+        
+        if (!string.IsNullOrEmpty(_inputBuffer))
+        {
+            VcbText = _inputBuffer;
+        }
+        else
+        {
+            VcbText = CurrentTool?.GetMeasurementText() ?? "";
+        }
     }
 
     public void OnKeyDown(string keyName)

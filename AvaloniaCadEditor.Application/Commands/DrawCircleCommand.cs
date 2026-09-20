@@ -66,8 +66,15 @@ public class DrawCircleCommand : ICommandTool
         if (_currentState == State.WaitingForRadius && _currentRadius > 0)
         {
             yield return new CircleEntity(_center, _currentRadius);
-            // Optionally, return a line from center to mouse cursor
-            yield return new LineEntity(_center, new Point3D(_center.X + _currentRadius, _center.Y, _center.Z));
         }
+    }
+
+    public string GetMeasurementText()
+    {
+        if (_currentState == State.WaitingForRadius)
+        {
+            return $"Radius: {_currentRadius:F2}";
+        }
+        return "";
     }
 }

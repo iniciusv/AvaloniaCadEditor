@@ -141,4 +141,14 @@ public class DrawLineCommand : ICommandTool
             yield return new LineEntity(_startPoint, _currentMousePosition);
         }
     }
+
+    public string GetMeasurementText()
+    {
+        if (_currentState == State.WaitingForEndPoint)
+        {
+            var distance = (_currentMousePosition - _startPoint).Length;
+            return $"Length: {distance:F2}";
+        }
+        return "";
+    }
 }

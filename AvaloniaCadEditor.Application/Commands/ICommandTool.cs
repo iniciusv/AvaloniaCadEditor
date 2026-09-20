@@ -36,4 +36,9 @@ public interface ICommandTool
     /// Called when the user types a numeric value and presses Enter.
     /// </summary>
     void OnValueEntered(Sketch sketch, double value);
+
+    /// <summary>
+    /// Returns the text to display in the Value Control Box (e.g. "Length: 50.0")
+    /// </summary>
+    string GetMeasurementText();
 }

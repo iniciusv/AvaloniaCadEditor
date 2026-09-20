@@ -112,4 +112,14 @@ public class MoveTool : ICommandTool
             yield return new LineEntity(_basePoint, _currentMouse);
         }
     }
+
+    public string GetMeasurementText()
+    {
+        if (_currentState == State.WaitingForTargetPoint)
+        {
+            var distance = (_currentMouse - _basePoint).Length;
+            return $"Distance: {distance:F2}";
+        }
+        return "";
+    }
 }
