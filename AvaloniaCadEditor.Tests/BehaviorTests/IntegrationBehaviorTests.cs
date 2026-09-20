@@ -67,4 +67,22 @@ public class IntegrationBehaviorTests
         quadrado.StartPoint.Should().Be(new Point3D(50, 50));
         quadrado.EndPoint.Should().Be(new Point3D(60, 50));
     }
+
+    [Fact]
+    public void ViewModel_AoTrocarParaFerramentaDeDesenho_DeveLimparSelecao()
+    {
+        var mockEngine = new Mock<IGeometryEngine>();
+        var mockSnap = new Mock<IOSnapService>();
+        var vm = new CadViewModel(mockEngine.Object, mockSnap.Object);
+
+        // Seleciona uma linha e adiciona ao Sketch
+        var line = new LineEntity(new Point3D(0, 0), new Point3D(10, 0)) { IsSelected = true };
+        vm.Sketch.AddEntity(line);
+
+        // Ao ativar a ferramenta de desenhar linha
+        vm.SelectLineToolCommand.Execute(null);
+
+        // A seleção anterior deve ter sido limpa
+        line.IsSelected.Should().BeFalse();
+    }
 }

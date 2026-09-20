@@ -27,7 +27,21 @@ public class CadViewModel : INotifyPropertyChanged
             _currentTool?.Cancel();
             _currentTool = value;
             ClearVcb();
+            
+            if (value != null && !(value is SelectTool) && !(value is MoveTool))
+            {
+                ClearSelection();
+            }
+
             OnPropertyChanged();
+        }
+    }
+
+    private void ClearSelection()
+    {
+        foreach (var entity in Sketch.Entities)
+        {
+            entity.IsSelected = false;
         }
     }
 
