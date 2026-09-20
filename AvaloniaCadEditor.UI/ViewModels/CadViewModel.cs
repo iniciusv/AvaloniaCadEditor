@@ -7,6 +7,7 @@ using AvaloniaCadEditor.Application.Commands;
 using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Application.Services;
 using AvaloniaCadEditor.Domain.Entities;
+using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.Interfaces;
 using AvaloniaCadEditor.Domain.Mesh;
 using AvaloniaCadEditor.Domain.Profiles;
@@ -140,7 +141,37 @@ public class CadViewModel : INotifyPropertyChanged
         SelectSelectToolCommand = new RelayCommand(() => CurrentTool = new SelectTool(_geometryEngine, _selectionService));
         SelectMoveToolCommand = new RelayCommand(() => CurrentTool = new MoveTool());
 
-        CurrentTool = new DrawLineCommand();
+        CurrentTool = new SelectTool(_geometryEngine, _selectionService);
+    }
+
+    public bool TrySelect3DFeature(Ray ray)
+    {
+        if (Sketch.Features.Count == 0) return false;
+
+        float bestDist = float.MaxValue;
+        IFeature? hitFeature = null;
+
+        foreach (var feature in Sketch.Features)
+        {
+            var mesh = _geometryKernel.BuildSolidMesh(new[] { feature });
+            if (mesh != null && ray.IntersectMesh(mesh, out float dist))
+            {
+                if (dist < bestDist)
+                {
+                    bestDist = dist;
+                    hitFeature = feature;
+                }
+            }
+        }
+
+        if (hitFeature != null)
+        {
+            _selectionService.SelectById(Sketch, hitFeature.Id);
+            ModelTree.RebuildTree();
+            return true;
+        }
+
+        return false;
     }
 
     public void RefreshProfiles()

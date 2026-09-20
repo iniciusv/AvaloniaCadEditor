@@ -148,4 +148,34 @@ public class ModelTreeAndPropertyInspectorTests
         }
         Assert.Equal(50.0f, maxZ2, 1e-3f);
     }
+
+    [Fact]
+    public void Raycast_ShouldIntersectAndSelect3DSolidFeature()
+    {
+        // Arrange: A cylinder centered at (0,0) with radius 10 and height 40
+        var kernel = new PureMathGeometryKernel();
+        var circleProfile = new CircleProfile(new Point3D(0, 0, 0), 10.0);
+        var cylinder = new ExtrudeFeature(circleProfile, 40.0);
+
+        var mockGeo = new Moq.Mock<AvaloniaCadEditor.Domain.Interfaces.IGeometryEngine>();
+        var mockSnap = new Moq.Mock<AvaloniaCadEditor.Application.Services.IOSnapService>();
+        var selectionService = new SelectionService();
+        var vm = new CadViewModel(mockGeo.Object, mockSnap.Object, null, kernel, selectionService);
+        vm.Sketch.AddFeature(cylinder);
+        vm.RefreshSolidMesh();
+
+        // Ray aimed from (0, 0, 100) pointing downwards towards the top face of the cylinder (0, 0, 40)
+        var ray = new Ray(new System.Numerics.Vector3(0, 0, 100), new System.Numerics.Vector3(0, 0, -1));
+
+        // Act
+        bool hit = vm.TrySelect3DFeature(ray);
+
+        // Assert
+        Assert.True(hit);
+        Assert.True(cylinder.IsSelected);
+        Assert.Equal(cylinder.Id, selectionService.SelectedId);
+        Assert.True(vm.PropertyInspector.HasSelection);
+        Assert.True(vm.PropertyInspector.IsCylinder);
+        Assert.Equal(40.0, vm.PropertyInspector.Height);
+    }
 }

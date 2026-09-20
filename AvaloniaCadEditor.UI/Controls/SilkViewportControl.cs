@@ -607,6 +607,20 @@ public class SilkViewportControl : OpenGlControlBase
                     new Vector2((float)point.Position.X, (float)point.Position.Y), 
                     new Vector2((float)Bounds.Width, (float)Bounds.Height)
                 );
+
+                // 1. Try 3D Solid Raycast Selection first
+                if (ViewModel != null && (ViewModel.CurrentTool is Application.Commands.SelectTool || 
+                    (ViewModel.CurrentTool is not Application.Commands.DrawLineCommand && 
+                     ViewModel.CurrentTool is not Application.Commands.DrawCircleCommand)))
+                {
+                    if (ViewModel.TrySelect3DFeature(ray))
+                    {
+                        RequestNextFrameRendering();
+                        return;
+                    }
+                }
+
+                // 2. Intersect 2D Ground Plane for 2D entity selection and drawing tools
                 var intersection = ray.IntersectPlane(Vector3.UnitZ, Vector3.Zero);
                 if (intersection.HasValue)
                 {
