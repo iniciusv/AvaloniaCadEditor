@@ -13,6 +13,7 @@ using AvaloniaCadEditor.Domain.Mesh;
 using AvaloniaCadEditor.Domain.Profiles;
 using AvaloniaCadEditor.Domain.ValueObjects;
 using System.Globalization;
+using System.Linq;
 
 namespace AvaloniaCadEditor.UI.ViewModels;
 
@@ -44,6 +45,20 @@ public class CadViewModel : INotifyPropertyChanged
     {
         get => _selectedProfile;
         set { _selectedProfile = value; OnPropertyChanged(); }
+    }
+
+    private IProfile? _hoveredProfile;
+    public IProfile? HoveredProfile
+    {
+        get => _hoveredProfile;
+        set
+        {
+            if (_hoveredProfile != value)
+            {
+                _hoveredProfile = value;
+                OnPropertyChanged();
+            }
+        }
     }
 
     private ICommandTool? _currentTool;
@@ -191,6 +206,20 @@ public class CadViewModel : INotifyPropertyChanged
     public void OnPointerPressed(Point3D worldPoint)
     {
         var snapped = _osnapService.GetSnappedPoint(Sketch, worldPoint, 5.0); // 5.0 world units tolerance
+
+        // If SelectTool is active and user clicked a 2D profile
+        if (CurrentTool is SelectTool)
+        {
+            var hitProfile = Sketch.Profiles.FirstOrDefault(p => p.ContainsPoint(snapped));
+            if (hitProfile != null)
+            {
+                _selectionService.SelectById(Sketch, hitProfile.Id);
+                ModelTree.RebuildTree();
+                RefreshProfiles();
+                return;
+            }
+        }
+
         CurrentTool?.OnMouseDown(Sketch, snapped);
         RefreshProfiles();
     }
@@ -201,6 +230,10 @@ public class CadViewModel : INotifyPropertyChanged
         CurrentSnappedPoint = snapped;
         CurrentTool?.OnMouseMove(Sketch, snapped);
         
+        // Update 2D Profile Hover
+        var hitProfile = Sketch.Profiles.FirstOrDefault(p => p.ContainsPoint(snapped));
+        HoveredProfile = hitProfile;
+
         UpdateStatusText(snapped);
     }
 

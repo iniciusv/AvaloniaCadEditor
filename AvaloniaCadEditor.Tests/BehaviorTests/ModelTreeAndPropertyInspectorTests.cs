@@ -178,4 +178,59 @@ public class ModelTreeAndPropertyInspectorTests
         Assert.True(vm.PropertyInspector.IsCylinder);
         Assert.Equal(40.0, vm.PropertyInspector.Height);
     }
+
+    [Fact]
+    public void Profile_ContainsPoint_ShouldAccuratelyDetectInsideAndOutside()
+    {
+        // 1. CircleProfile centered at (10, 10) with Radius = 5
+        var circle = new CircleProfile(new Point3D(10, 10, 0), 5.0);
+        Assert.True(circle.ContainsPoint(new Point3D(10, 10, 0))); // Center
+        Assert.True(circle.ContainsPoint(new Point3D(13, 10, 0))); // Inside
+        Assert.True(circle.ContainsPoint(new Point3D(15, 10, 0))); // Perimeter
+        Assert.False(circle.ContainsPoint(new Point3D(16, 10, 0))); // Outside
+
+        // 2. RectangleProfile centered at (0, 0) with Width = 20, Height = 10
+        var rect = new RectangleProfile(new Point3D(0, 0, 0), 20.0, 10.0);
+        Assert.True(rect.ContainsPoint(new Point3D(0, 0, 0)));
+        Assert.True(rect.ContainsPoint(new Point3D(8, 4, 0)));
+        Assert.False(rect.ContainsPoint(new Point3D(12, 4, 0))); // Outside X
+        Assert.False(rect.ContainsPoint(new Point3D(5, 7, 0))); // Outside Y
+
+        // 3. Tessellation
+        var (circleVerts, circleIndices) = circle.GetTessellatedFace();
+        Assert.True(circleVerts.Count > 0);
+        Assert.True(circleIndices.Count > 0);
+
+        var (rectVerts, rectIndices) = rect.GetTessellatedFace();
+        Assert.Equal(4, rectVerts.Count);
+        Assert.Equal(6, rectIndices.Count); // 2 triangles
+    }
+
+    [Fact]
+    public void CadViewModel_PointerMove_ShouldTriggerProfileHover()
+    {
+        var mockGeo = new Moq.Mock<AvaloniaCadEditor.Domain.Interfaces.IGeometryEngine>();
+        var mockSnap = new Moq.Mock<AvaloniaCadEditor.Application.Services.IOSnapService>();
+        mockSnap.Setup(s => s.GetSnappedPoint(Moq.It.IsAny<Sketch>(), Moq.It.IsAny<Point3D>(), Moq.It.IsAny<double>()))
+                .Returns<Sketch, Point3D, double>((s, p, t) => p);
+
+        var selectionService = new SelectionService();
+        var vm = new CadViewModel(mockGeo.Object, mockSnap.Object, null, null, selectionService);
+
+        var circle = new CircleProfile(new Point3D(50, 50, 0), 20.0);
+        vm.Sketch.AddProfile(circle);
+
+        // Act 1: Move mouse inside circle
+        vm.OnPointerMoved(new Point3D(55, 55, 0));
+
+        // Assert 1: HoveredProfile is detected
+        Assert.NotNull(vm.HoveredProfile);
+        Assert.Equal(circle.Id, vm.HoveredProfile.Id);
+
+        // Act 2: Move mouse outside circle
+        vm.OnPointerMoved(new Point3D(0, 0, 0));
+
+        // Assert 2: HoveredProfile is cleared
+        Assert.Null(vm.HoveredProfile);
+    }
 }

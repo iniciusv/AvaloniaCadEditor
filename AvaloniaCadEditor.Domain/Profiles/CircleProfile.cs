@@ -61,6 +61,46 @@ public class CircleProfile : IProfile
         return vertices;
     }
 
+    public (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace()
+    {
+        int segments = 36;
+        var verts = new List<Point3D>(segments + 1);
+        var indices = new List<uint>(segments * 3);
+
+        // Center vertex (index 0)
+        verts.Add(Center);
+
+        // Perimeter vertices (indices 1 .. segments)
+        for (int i = 0; i < segments; i++)
+        {
+            double theta = 2.0 * Math.PI * i / segments;
+            verts.Add(new Point3D(
+                Center.X + Radius * Math.Cos(theta),
+                Center.Y + Radius * Math.Sin(theta),
+                Center.Z
+            ));
+        }
+
+        // Fan triangles
+        for (int i = 0; i < segments; i++)
+        {
+            uint current = (uint)(i + 1);
+            uint next = (uint)((i + 1) % segments + 1);
+            indices.Add(0);
+            indices.Add(current);
+            indices.Add(next);
+        }
+
+        return (verts, indices);
+    }
+
+    public bool ContainsPoint(Point3D point)
+    {
+        double dx = point.X - Center.X;
+        double dy = point.Y - Center.Y;
+        return (dx * dx + dy * dy) <= (Radius * Radius + 1e-4);
+    }
+
     public IProfile SwitchClassification(ProfileClassification targetClassification)
     {
         var candidate = AvailableCandidates.FirstOrDefault(c => c.Classification == targetClassification);

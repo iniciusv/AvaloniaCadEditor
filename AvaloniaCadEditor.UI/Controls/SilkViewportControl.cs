@@ -91,11 +91,12 @@ public class SilkViewportControl : OpenGlControlBase
             precision mediump float;
             #endif
             
+            uniform float uAlpha;
             varying vec3 vertexColor;
             
             void main()
             {
-                gl_FragColor = vec4(vertexColor, 1.0);
+                gl_FragColor = vec4(vertexColor, uAlpha);
             }";
 
         uint vertexShader = _gl!.CreateShader(ShaderType.VertexShader);
@@ -290,6 +291,26 @@ public class SilkViewportControl : OpenGlControlBase
             _gl.EnableVertexAttribArray(1);
         }
         _gl.BindVertexArray(0);
+
+        // --- Setup 2D Profile Face Shading VAO / VBO / EBO ---
+        _profileFaceVao = _gl.GenVertexArray();
+        _profileFaceVbo = _gl.GenBuffer();
+        _profileFaceEbo = _gl.GenBuffer();
+
+        _gl.BindVertexArray(_profileFaceVao);
+        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _profileFaceVbo);
+        _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, _profileFaceEbo);
+
+        unsafe
+        {
+            _gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 9 * sizeof(float), (void*)0);
+            _gl.EnableVertexAttribArray(0);
+            _gl.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, 9 * sizeof(float), (void*)(3 * sizeof(float)));
+            _gl.EnableVertexAttribArray(1);
+            _gl.VertexAttribPointer(2, 3, VertexAttribPointerType.Float, false, 9 * sizeof(float), (void*)(6 * sizeof(float)));
+            _gl.EnableVertexAttribArray(2);
+        }
+        _gl.BindVertexArray(0);
     }
 
     private uint _sketchVao;
@@ -301,6 +322,10 @@ public class SilkViewportControl : OpenGlControlBase
 
     private uint _solidEdgesVao;
     private uint _solidEdgesVbo;
+
+    private uint _profileFaceVao;
+    private uint _profileFaceVbo;
+    private uint _profileFaceEbo;
 
     protected override void OnOpenGlDeinit(GlInterface gl)
     {
@@ -315,6 +340,9 @@ public class SilkViewportControl : OpenGlControlBase
             _gl.DeleteBuffer(_solidEbo);
             _gl.DeleteVertexArray(_solidEdgesVao);
             _gl.DeleteBuffer(_solidEdgesVbo);
+            _gl.DeleteVertexArray(_profileFaceVao);
+            _gl.DeleteBuffer(_profileFaceVbo);
+            _gl.DeleteBuffer(_profileFaceEbo);
             _gl.DeleteProgram(_shaderProgram);
             _gl.Dispose();
         }
@@ -339,6 +367,7 @@ public class SilkViewportControl : OpenGlControlBase
         int projLoc = _gl.GetUniformLocation(_shaderProgram, "uProjection");
         int modelLoc = _gl.GetUniformLocation(_shaderProgram, "uModel");
         int lightingLoc = _gl.GetUniformLocation(_shaderProgram, "uUseLighting");
+        int alphaLoc = _gl.GetUniformLocation(_shaderProgram, "uAlpha");
         
         unsafe
         {
@@ -351,11 +380,83 @@ public class SilkViewportControl : OpenGlControlBase
         {
             _gl.UniformMatrix4(modelLoc, 1, false, (float*)&identity);
             _gl.Uniform1(lightingLoc, 0); // No lighting for grid and 2D lines
+            _gl.Uniform1(alphaLoc, 1.0f);
         }
 
         // Draw Grid
         _gl.BindVertexArray(_vao);
         _gl.DrawArrays(PrimitiveType.Lines, 0, (uint)_vertexCount);
+
+        // --- Render 2D Profiles Face Shading (Subtle Shading, Hover Pre-highlight, Selection) ---
+        if (ViewModel != null && ViewModel.Sketch.Profiles.Count > 0)
+        {
+            foreach (var profile in ViewModel.Sketch.Profiles)
+            {
+                var (faceVerts, faceIndices) = profile.GetTessellatedFace();
+                if (faceVerts.Count == 0 || faceIndices.Count == 0) continue;
+
+                float r = 0.38f, g = 0.55f, b = 0.80f, a = 0.22f; // Default subtle translucent fill
+                if (profile.IsSelected)
+                {
+                    r = 1.00f; g = 0.65f; b = 0.15f; a = 0.50f; // Selected = Amber Gold
+                }
+                else if (profile == ViewModel.HoveredProfile)
+                {
+                    r = 0.20f; g = 0.80f; b = 1.00f; a = 0.42f; // Hover = Luminous Cyan
+                }
+
+                float[] vData = new float[faceVerts.Count * 9];
+                for (int i = 0; i < faceVerts.Count; i++)
+                {
+                    int outIdx = i * 9;
+                    vData[outIdx + 0] = (float)faceVerts[i].X;
+                    vData[outIdx + 1] = (float)faceVerts[i].Y;
+                    vData[outIdx + 2] = (float)faceVerts[i].Z;
+
+                    vData[outIdx + 3] = r;
+                    vData[outIdx + 4] = g;
+                    vData[outIdx + 5] = b;
+
+                    vData[outIdx + 6] = 0.0f;
+                    vData[outIdx + 7] = 0.0f;
+                    vData[outIdx + 8] = 1.0f;
+                }
+
+                _gl.BindVertexArray(_profileFaceVao);
+                _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _profileFaceVbo);
+                unsafe
+                {
+                    fixed (float* vPtr = vData)
+                    {
+                        _gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(vData.Length * sizeof(float)), vPtr, BufferUsageARB.DynamicDraw);
+                    }
+                }
+
+                _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, _profileFaceEbo);
+                uint[] iData = faceIndices.ToArray();
+                unsafe
+                {
+                    fixed (uint* iPtr = iData)
+                    {
+                        _gl.BufferData(BufferTargetARB.ElementArrayBuffer, (nuint)(iData.Length * sizeof(uint)), iPtr, BufferUsageARB.DynamicDraw);
+                    }
+                }
+
+                unsafe
+                {
+                    _gl.UniformMatrix4(modelLoc, 1, false, (float*)&identity);
+                    _gl.Uniform1(lightingLoc, 0);
+                    _gl.Uniform1(alphaLoc, a);
+                    _gl.DrawElements(PrimitiveType.Triangles, (uint)iData.Length, DrawElementsType.UnsignedInt, (void*)0);
+                }
+            }
+        }
+
+        // Reset alpha to 1.0 for lines and solids
+        unsafe
+        {
+            _gl.Uniform1(alphaLoc, 1.0f);
+        }
 
         // --- Render Sketch Entities ---
         if (ViewModel != null)
@@ -450,14 +551,30 @@ public class SilkViewportControl : OpenGlControlBase
             var solidMesh = ViewModel.SolidMesh;
             if (solidMesh != null && solidMesh.TriangleCount > 0)
             {
+                bool isExtruding = ViewModel.CurrentTool is Application.Commands.ExtrudeCommand;
                 bool isAnyFeatureSelected = ViewModel.Sketch.Features.Any(f => f.IsSelected);
                 int vertexCount = solidMesh.VertexCount;
                 float[] solidVertexData = new float[vertexCount * 9];
 
-                // Base Face Color: Cool Steel Blue (or Warm Amber if selected)
-                float faceR = isAnyFeatureSelected ? 0.90f : 0.55f;
-                float faceG = isAnyFeatureSelected ? 0.60f : 0.70f;
-                float faceB = isAnyFeatureSelected ? 0.20f : 0.90f;
+                // Base Face Color: Emerald when extruding, Warm Amber if selected, Cool Steel Blue default
+                float faceR, faceG, faceB;
+                float edgeR, edgeG, edgeB;
+
+                if (isExtruding)
+                {
+                    faceR = 0.20f; faceG = 0.85f; faceB = 0.60f; // Vibrant Emerald Creation Feedback
+                    edgeR = 0.05f; edgeG = 0.95f; edgeB = 0.65f;
+                }
+                else if (isAnyFeatureSelected)
+                {
+                    faceR = 0.90f; faceG = 0.60f; faceB = 0.20f; // Warm Amber Selection
+                    edgeR = 1.00f; edgeG = 0.85f; edgeB = 0.30f;
+                }
+                else
+                {
+                    faceR = 0.55f; faceG = 0.70f; faceB = 0.90f; // Metallic Steel Blue
+                    edgeR = 0.12f; edgeG = 0.16f; edgeB = 0.22f;
+                }
 
                 // Interleave position + color + Normal
                 for (int i = 0; i < vertexCount; i++)
@@ -507,9 +624,6 @@ public class SilkViewportControl : OpenGlControlBase
                 }
 
                 // --- Render Edge Outlines (Arestas e Vértices Nítidos / Highlight se selecionado) ---
-                float edgeR = isAnyFeatureSelected ? 1.0f : 0.12f;
-                float edgeG = isAnyFeatureSelected ? 0.85f : 0.16f;
-                float edgeB = isAnyFeatureSelected ? 0.30f : 0.22f;
 
                 var edgeLines = new System.Collections.Generic.List<float>();
                 for (int i = 0; i < solidMesh.Indices.Length; i += 3)

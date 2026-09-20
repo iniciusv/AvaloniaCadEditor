@@ -65,6 +65,30 @@ public class RectangleProfile : IProfile
         return vertices;
     }
 
+    public (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace()
+    {
+        var verts = GetVertices();
+        var indices = new uint[] { 0, 1, 2, 0, 2, 3 };
+        return (verts, indices);
+    }
+
+    public bool ContainsPoint(Point3D point)
+    {
+        double dx = point.X - Center.X;
+        double dy = point.Y - Center.Y;
+
+        double cos = Math.Cos(RotationAngle);
+        double sin = Math.Sin(RotationAngle);
+
+        double lx = dx * cos + dy * sin;
+        double ly = -dx * sin + dy * cos;
+
+        double halfW = Width / 2.0;
+        double halfH = Height / 2.0;
+
+        return Math.Abs(lx) <= halfW + 1e-4 && Math.Abs(ly) <= halfH + 1e-4;
+    }
+
     public IProfile SwitchClassification(ProfileClassification targetClassification)
     {
         var candidate = AvailableCandidates.FirstOrDefault(c => c.Classification == targetClassification);

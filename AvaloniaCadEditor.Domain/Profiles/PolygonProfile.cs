@@ -56,6 +56,48 @@ public class PolygonProfile : IProfile
 
     public IReadOnlyList<Point3D> GetVertices() => Vertices.AsReadOnly();
 
+    public (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace()
+    {
+        if (Vertices == null || Vertices.Count < 3)
+            return (Array.Empty<Point3D>(), Array.Empty<uint>());
+
+        var verts = new List<Point3D>(Vertices.Count + 1);
+        var indices = new List<uint>(Vertices.Count * 3);
+
+        verts.Add(Center);
+        verts.AddRange(Vertices);
+
+        for (int i = 0; i < Vertices.Count; i++)
+        {
+            uint current = (uint)(i + 1);
+            uint next = (uint)((i + 1) % Vertices.Count + 1);
+            indices.Add(0);
+            indices.Add(current);
+            indices.Add(next);
+        }
+
+        return (verts, indices);
+    }
+
+    public bool ContainsPoint(Point3D point)
+    {
+        if (Vertices == null || Vertices.Count < 3) return false;
+        bool inside = false;
+        int count = Vertices.Count;
+        for (int i = 0, j = count - 1; i < count; j = i++)
+        {
+            var vi = Vertices[i];
+            var vj = Vertices[j];
+
+            if (((vi.Y > point.Y) != (vj.Y > point.Y)) &&
+                (point.X < (vj.X - vi.X) * (point.Y - vi.Y) / (vj.Y - vi.Y) + vi.X))
+            {
+                inside = !inside;
+            }
+        }
+        return inside;
+    }
+
     public IProfile SwitchClassification(ProfileClassification targetClassification)
     {
         var candidate = AvailableCandidates.FirstOrDefault(c => c.Classification == targetClassification);
