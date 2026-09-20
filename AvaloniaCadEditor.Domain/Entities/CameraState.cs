@@ -71,4 +71,33 @@ public class CameraState
         Distance *= factor;
         if (Distance < 0.1f) Distance = 0.1f;
     }
+
+    public Ray ScreenPointToRay(Vector2 screenPoint, Vector2 viewportSize)
+    {
+        // 1. Convert screen coordinates (X, Y) to Normalized Device Coordinates (NDC)
+        // Screen Y goes down, NDC Y goes up.
+        float ndcX = (2.0f * screenPoint.X) / viewportSize.X - 1.0f;
+        float ndcY = 1.0f - (2.0f * screenPoint.Y) / viewportSize.Y;
+
+        // 2. We want to find points on the Near and Far planes in NDC space
+        var ndcNear = new Vector4(ndcX, ndcY, -1.0f, 1.0f); // OpenGL depth range is -1 to 1 (in some configs), but generally Z=-1 is near
+        var ndcFar = new Vector4(ndcX, ndcY, 1.0f, 1.0f);
+
+        // 3. Get the Inverse View-Projection Matrix
+        var viewProj = GetViewMatrix() * GetProjectionMatrix();
+        Matrix4x4.Invert(viewProj, out var invViewProj);
+
+        // 4. Unproject by multiplying with the inverse matrix
+        var worldNear4 = Vector4.Transform(ndcNear, invViewProj);
+        var worldFar4 = Vector4.Transform(ndcFar, invViewProj);
+
+        // 5. Perspective divide to get true 3D coordinates
+        var worldNear = new Vector3(worldNear4.X, worldNear4.Y, worldNear4.Z) / worldNear4.W;
+        var worldFar = new Vector3(worldFar4.X, worldFar4.Y, worldFar4.Z) / worldFar4.W;
+
+        // 6. The ray goes from the near plane into the far plane
+        var direction = Vector3.Normalize(worldFar - worldNear);
+
+        return new Ray(worldNear, direction);
+    }
 }

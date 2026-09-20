@@ -28,4 +28,14 @@ public partial class MainWindow : Window
     {
         ViewportControl.HandlePointerWheelChanged(e);
     }
+
+    protected override void OnKeyDown(Avalonia.Input.KeyEventArgs e)
+    {
+        base.OnKeyDown(e);
+        if (DataContext is AvaloniaCadEditor.UI.ViewModels.CadViewModel vm)
+        {
+            vm.OnKeyDown(e.Key.ToString());
+            ViewportControl.RequestNextFrameRendering();
+        }
+    }
 }

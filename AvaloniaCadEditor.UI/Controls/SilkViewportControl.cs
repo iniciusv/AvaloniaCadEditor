@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
 using AvaloniaCadEditor.Domain.Entities;
+using AvaloniaCadEditor.Domain.ValueObjects;
 using AvaloniaCadEditor.UI.ViewModels;
 using Silk.NET.OpenGL;
 using System.Numerics;
@@ -18,8 +19,10 @@ public class SilkViewportControl : OpenGlControlBase
     private CameraState _camera;
 
     private Point? _lastMousePos;
-    private bool _isPanning;
-    private bool _isOrbiting;
+    private bool _isPanning = false;
+    private bool _isOrbiting = false;
+    
+    private Vector3 _cubePos = Vector3.Zero;
 
     private uint _shaderProgram;
     private uint _vao;
@@ -57,6 +60,7 @@ public class SilkViewportControl : OpenGlControlBase
             attribute vec3 aPos;
             attribute vec3 aColor;
             
+            uniform mat4 uModel;
             uniform mat4 uView;
             uniform mat4 uProjection;
             
@@ -64,7 +68,7 @@ public class SilkViewportControl : OpenGlControlBase
             
             void main()
             {
-                gl_Position = uProjection * uView * vec4(aPos, 1.0);
+                gl_Position = uProjection * uView * uModel * vec4(aPos, 1.0);
                 vertexColor = aColor;
             }";
 
@@ -218,8 +222,27 @@ public class SilkViewportControl : OpenGlControlBase
         
         _vertexCount = gridVertexCount; // We will use _vertexCount for DrawArrays for grid
         // Cube uses DrawElements
+        
+        // --- Setup Sketch VAO / VBO ---
+        _sketchVao = _gl.GenVertexArray();
+        _sketchVbo = _gl.GenBuffer();
+        
+        _gl.BindVertexArray(_sketchVao);
+        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _sketchVbo);
+        
+        unsafe
+        {
+            _gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)0);
+            _gl.EnableVertexAttribArray(0);
+            _gl.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+            _gl.EnableVertexAttribArray(1);
+        }
+        _gl.BindVertexArray(0);
     }
 
+
+    private uint _sketchVao;
+    private uint _sketchVbo;
 
     protected override void OnOpenGlDeinit(GlInterface gl)
     {
@@ -227,6 +250,8 @@ public class SilkViewportControl : OpenGlControlBase
         {
             _gl.DeleteVertexArray(_vao);
             _gl.DeleteBuffer(_vbo);
+            _gl.DeleteVertexArray(_sketchVao);
+            _gl.DeleteBuffer(_sketchVbo);
             _gl.DeleteProgram(_shaderProgram);
             _gl.Dispose();
         }
@@ -247,27 +272,114 @@ public class SilkViewportControl : OpenGlControlBase
         _gl.UseProgram(_shaderProgram);
 
         // Pass matrices to shader
+        int viewLoc = _gl.GetUniformLocation(_shaderProgram, "uView");
+        int projLoc = _gl.GetUniformLocation(_shaderProgram, "uProjection");
+        int modelLoc = _gl.GetUniformLocation(_shaderProgram, "uModel");
+        
         unsafe
         {
-            int viewLoc = _gl.GetUniformLocation(_shaderProgram, "uView");
             _gl.UniformMatrix4(viewLoc, 1, false, (float*)&viewMatrix);
-
-            int projLoc = _gl.GetUniformLocation(_shaderProgram, "uProjection");
             _gl.UniformMatrix4(projLoc, 1, false, (float*)&projMatrix);
         }
 
-        // Draw Grid
         _gl.BindVertexArray(_vao);
-        _gl.DrawArrays(PrimitiveType.Lines, 0, (uint)_vertexCount);
 
-        // Draw Cube
+        // Draw Grid (Model matrix = Identity)
+        var identity = Matrix4x4.Identity;
         unsafe
         {
-            _gl.DrawElements(PrimitiveType.Lines, 24, DrawElementsType.UnsignedInt, (void*)0);
+            _gl.UniformMatrix4(modelLoc, 1, false, (float*)&identity);
         }
+        _gl.DrawArrays(PrimitiveType.Lines, 0, (uint)_vertexCount);
 
-        // We can call RequestNextFrameRendering() to constantly render, 
-        // but typically we only do it when camera changes.
+        // --- Render Sketch Entities ---
+        if (ViewModel != null)
+        {
+            var sketchVertices = new System.Collections.Generic.List<float>();
+
+            void AddLine(Point3D p1, Point3D p2, float r, float g, float b)
+            {
+                sketchVertices.Add((float)p1.X); sketchVertices.Add((float)p1.Y); sketchVertices.Add((float)p1.Z);
+                sketchVertices.Add(r); sketchVertices.Add(g); sketchVertices.Add(b);
+                sketchVertices.Add((float)p2.X); sketchVertices.Add((float)p2.Y); sketchVertices.Add((float)p2.Z);
+                sketchVertices.Add(r); sketchVertices.Add(g); sketchVertices.Add(b);
+            }
+
+            // Draw finalized entities
+            foreach (var entity in ViewModel.Sketch.Entities)
+            {
+                float r = entity.IsSelected ? 1.0f : 1.0f;
+                float g = entity.IsSelected ? 0.5f : 1.0f;
+                float b = entity.IsSelected ? 0.0f : 1.0f; // Selected = Orange, Normal = White
+
+                if (entity is LineEntity line)
+                {
+                    AddLine(line.StartPoint, line.EndPoint, r, g, b);
+                }
+                else if (entity is CircleEntity circle)
+                {
+                    int segments = 32;
+                    for (int i = 0; i < segments; i++)
+                    {
+                        double theta1 = 2.0 * Math.PI * i / segments;
+                        double theta2 = 2.0 * Math.PI * (i + 1) / segments;
+                        
+                        Point3D p1 = new Point3D(circle.Center.X + circle.Radius * Math.Cos(theta1), circle.Center.Y + circle.Radius * Math.Sin(theta1), circle.Center.Z);
+                        Point3D p2 = new Point3D(circle.Center.X + circle.Radius * Math.Cos(theta2), circle.Center.Y + circle.Radius * Math.Sin(theta2), circle.Center.Z);
+                        
+                        AddLine(p1, p2, r, g, b);
+                    }
+                }
+            }
+
+            // Draw preview entities (ghost lines)
+            if (ViewModel.CurrentTool != null)
+            {
+                foreach (var entity in ViewModel.CurrentTool.GetPreviewEntities())
+                {
+                    if (entity is LineEntity line)
+                    {
+                        AddLine(line.StartPoint, line.EndPoint, 1.0f, 1.0f, 0.0f); // Preview = Yellow
+                    }
+                    else if (entity is CircleEntity circle)
+                    {
+                        int segments = 32;
+                        for (int i = 0; i < segments; i++)
+                        {
+                            double theta1 = 2.0 * Math.PI * i / segments;
+                            double theta2 = 2.0 * Math.PI * (i + 1) / segments;
+                            
+                            Point3D p1 = new Point3D(circle.Center.X + circle.Radius * Math.Cos(theta1), circle.Center.Y + circle.Radius * Math.Sin(theta1), circle.Center.Z);
+                            Point3D p2 = new Point3D(circle.Center.X + circle.Radius * Math.Cos(theta2), circle.Center.Y + circle.Radius * Math.Sin(theta2), circle.Center.Z);
+                            
+                            AddLine(p1, p2, 1.0f, 1.0f, 0.0f);
+                        }
+                    }
+                }
+            }
+
+            if (sketchVertices.Count > 0)
+            {
+                _gl.BindVertexArray(_sketchVao);
+                _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _sketchVbo);
+
+                unsafe
+                {
+                    var arr = sketchVertices.ToArray();
+                    fixed (float* ptr = arr)
+                    {
+                        _gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(arr.Length * sizeof(float)), ptr, BufferUsageARB.DynamicDraw);
+                    }
+                }
+
+                unsafe
+                {
+                    _gl.UniformMatrix4(modelLoc, 1, false, (float*)&identity); // Reset model to Identity
+                }
+                
+                _gl.DrawArrays(PrimitiveType.Lines, 0, (uint)(sketchVertices.Count / 6));
+            }
+        }
     }
 
     public void HandlePointerWheelChanged(PointerWheelEventArgs e)
@@ -307,7 +419,19 @@ public class SilkViewportControl : OpenGlControlBase
         else if (point.Properties.IsLeftButtonPressed)
         {
             Debug.WriteLine("[DEBUG] Left Click");
-            // TODO: Raycast logic for picking/drawing
+            if (Bounds.Width > 0 && Bounds.Height > 0)
+            {
+                var ray = _camera.ScreenPointToRay(
+                    new Vector2((float)point.Position.X, (float)point.Position.Y), 
+                    new Vector2((float)Bounds.Width, (float)Bounds.Height)
+                );
+                var intersection = ray.IntersectPlane(Vector3.UnitZ, Vector3.Zero);
+                if (intersection.HasValue)
+                {
+                    ViewModel?.OnPointerPressed(intersection.Value);
+                    RequestNextFrameRendering();
+                }
+            }
         }
     }
 
@@ -325,17 +449,33 @@ public class SilkViewportControl : OpenGlControlBase
                 Debug.WriteLine($"[DEBUG] Orbiting delta: {deltaX}, {deltaY}");
                 float sens = 0.01f;
                 _camera.Orbit(deltaX * sens, deltaY * sens);
-                RequestNextFrameRendering();
             }
             else if (_isPanning)
             {
                 Debug.WriteLine($"[DEBUG] Panning delta: {deltaX}, {deltaY}");
                 _camera.Pan(deltaX, deltaY);
-                RequestNextFrameRendering();
             }
-
-            _lastMousePos = point.Position;
         }
+        
+        // --- Raycasting ---
+        if (Bounds.Width > 0 && Bounds.Height > 0)
+        {
+            var ray = _camera.ScreenPointToRay(
+                new Vector2((float)point.Position.X, (float)point.Position.Y), 
+                new Vector2((float)Bounds.Width, (float)Bounds.Height)
+            );
+
+            // Intersect with default XY plane (Z=0)
+            var intersection = ray.IntersectPlane(Vector3.UnitZ, Vector3.Zero);
+            if (intersection.HasValue)
+            {
+                _cubePos = new Vector3((float)intersection.Value.X, (float)intersection.Value.Y, (float)intersection.Value.Z);
+                ViewModel?.OnPointerMoved(intersection.Value);
+            }
+        }
+
+        RequestNextFrameRendering();
+        _lastMousePos = point.Position;
     }
 
     public void HandlePointerReleased(PointerReleasedEventArgs e)
