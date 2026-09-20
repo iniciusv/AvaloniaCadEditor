@@ -73,5 +73,7 @@ public class TrimCommand : ICommandTool
         return Enumerable.Empty<Entity>();
     }
 
-    public void OnKeyDown(CadKey key) { }
+    public void OnKeyDown(Sketch sketch, CadKey key) { }
+
+    public void OnValueEntered(Sketch sketch, double value) { }
 }

@@ -16,7 +16,6 @@ public class MoveTool : ICommandTool
     private Point3D _currentMouse;
     public bool IsCopyMode { get; private set; } = false;
     
-    // Store clones for preview
     private List<Entity> _previewClones = new List<Entity>();
     private List<Entity> _selectedOriginals = new List<Entity>();
 
@@ -35,28 +34,32 @@ public class MoveTool : ICommandTool
         else if (_currentState == State.WaitingForTargetPoint)
         {
             var vector = point - _basePoint;
-
-            if (IsCopyMode)
-            {
-                foreach (var entity in _selectedOriginals)
-                {
-                    var clone = entity.Clone();
-                    clone.Translate(vector);
-                    sketch.AddEntity(clone);
-                }
-            }
-            else
-            {
-                foreach (var entity in _selectedOriginals)
-                {
-                    entity.Translate(vector);
-                }
-            }
-
-            _currentState = State.WaitingForBasePoint;
-            _previewClones.Clear();
-            _selectedOriginals.Clear();
+            ApplyMove(sketch, vector);
         }
+    }
+
+    private void ApplyMove(Sketch sketch, Vector3D vector)
+    {
+        if (IsCopyMode)
+        {
+            foreach (var entity in _selectedOriginals)
+            {
+                var clone = entity.Clone();
+                clone.Translate(vector);
+                sketch.AddEntity(clone);
+            }
+        }
+        else
+        {
+            foreach (var entity in _selectedOriginals)
+            {
+                entity.Translate(vector);
+            }
+        }
+
+        _currentState = State.WaitingForBasePoint;
+        _previewClones.Clear();
+        _selectedOriginals.Clear();
     }
 
     public void OnMouseMove(Sketch sketch, Point3D point)
@@ -71,11 +74,25 @@ public class MoveTool : ICommandTool
         _selectedOriginals.Clear();
     }
 
-    public void OnKeyDown(CadKey key)
+    public void OnKeyDown(Sketch sketch, CadKey key)
     {
         if (key == CadKey.Control)
         {
             IsCopyMode = !IsCopyMode;
+        }
+    }
+
+    public void OnValueEntered(Sketch sketch, double value)
+    {
+        if (_currentState == State.WaitingForTargetPoint)
+        {
+            var currentVector = _currentMouse - _basePoint;
+            if (currentVector.Length > 0)
+            {
+                var direction = currentVector.Normalize();
+                var vector = direction * value;
+                ApplyMove(sketch, vector);
+            }
         }
     }
 
@@ -85,18 +102,13 @@ public class MoveTool : ICommandTool
         {
             var vector = _currentMouse - _basePoint;
             
-            // Retorna os clones transladados para dar o preview real-time
             foreach (var clone in _previewClones)
             {
-                // Reset to original position (we stored them as exact copies)
-                // We shouldn't mutate _previewClones directly in a Get getter to avoid cumulative translation, 
-                // so we clone the clone!
                 var previewEntity = clone.Clone();
                 previewEntity.Translate(vector);
                 yield return previewEntity;
             }
             
-            // Uma cordinha visual do basepoint ao mouse
             yield return new LineEntity(_basePoint, _currentMouse);
         }
     }

@@ -47,8 +47,18 @@ public class DrawCircleCommand : ICommandTool
         _currentState = State.WaitingForCenter;
     }
 
-    public void OnKeyDown(CadKey key)
+    public void OnKeyDown(Sketch sketch, CadKey key)
     {
+    }
+
+    public void OnValueEntered(Sketch sketch, double value)
+    {
+        if (_currentState == State.WaitingForRadius)
+        {
+            var circle = new CircleEntity(_center, value);
+            sketch.AddEntity(circle);
+            _currentState = State.WaitingForCenter;
+        }
     }
 
     public IEnumerable<Entity> GetPreviewEntities()

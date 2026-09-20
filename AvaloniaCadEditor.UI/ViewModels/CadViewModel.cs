@@ -7,6 +7,7 @@ using AvaloniaCadEditor.Application.Services;
 using AvaloniaCadEditor.Domain.Entities;
 using AvaloniaCadEditor.Domain.Interfaces;
 using AvaloniaCadEditor.Domain.ValueObjects;
+using System.Globalization;
 
 namespace AvaloniaCadEditor.UI.ViewModels;
 
@@ -25,6 +26,7 @@ public class CadViewModel : INotifyPropertyChanged
         {
             _currentTool?.Cancel();
             _currentTool = value;
+            ClearVcb();
             OnPropertyChanged();
         }
     }
@@ -35,6 +37,15 @@ public class CadViewModel : INotifyPropertyChanged
         get => _statusText;
         set { _statusText = value; OnPropertyChanged(); }
     }
+
+    private string _vcbText = "";
+    public string VcbText
+    {
+        get => _vcbText;
+        set { _vcbText = value; OnPropertyChanged(); }
+    }
+    
+    private string _inputBuffer = "";
     
     private Point3D _currentSnappedPoint;
     public Point3D CurrentSnappedPoint
@@ -87,12 +98,43 @@ public class CadViewModel : INotifyPropertyChanged
         CurrentSnappedPoint = snapped;
         CurrentTool?.OnMouseMove(Sketch, snapped);
         
-        StatusText = $"X: {snapped.X:F2}, Y: {snapped.Y:F2}";
+        UpdateStatusText(snapped);
+    }
+
+    private void UpdateStatusText(Point3D snapped)
+    {
+        string vcbInfo = string.IsNullOrEmpty(_inputBuffer) ? "" : $" | VCB: {_inputBuffer}";
+        StatusText = $"X: {snapped.X:F2}, Y: {snapped.Y:F2}{vcbInfo}";
     }
 
     public void OnKeyDown(string keyName)
     {
-        switch (keyName.ToUpperInvariant())
+        string upperKey = keyName.ToUpperInvariant();
+
+        // Handle numeric input for VCB
+        if (IsNumericKey(upperKey, out char numChar))
+        {
+            _inputBuffer += numChar;
+            UpdateStatusText(CurrentSnappedPoint);
+            return;
+        }
+        else if (upperKey == "BACK" && _inputBuffer.Length > 0)
+        {
+            _inputBuffer = _inputBuffer.Substring(0, _inputBuffer.Length - 1);
+            UpdateStatusText(CurrentSnappedPoint);
+            return;
+        }
+        else if (upperKey == "RETURN" || upperKey == "ENTER")
+        {
+            if (double.TryParse(_inputBuffer, NumberStyles.Any, CultureInfo.InvariantCulture, out double value))
+            {
+                CurrentTool?.OnValueEntered(Sketch, value);
+            }
+            ClearVcb();
+            return;
+        }
+
+        switch (upperKey)
         {
             case "L":
                 SelectLineToolCommand.Execute(null);
@@ -110,29 +152,58 @@ public class CadViewModel : INotifyPropertyChanged
                 SelectMoveToolCommand.Execute(null);
                 break;
             case "SPACE":
+                ClearVcb();
                 SelectSelectToolCommand.Execute(null);
                 break;
             case "ESCAPE":
-                CurrentTool?.OnKeyDown(CadKey.Escape);
+                ClearVcb();
+                CurrentTool?.OnKeyDown(Sketch, CadKey.Escape);
                 CurrentTool?.Cancel();
                 break;
             case "UP":
-                CurrentTool?.OnKeyDown(CadKey.ArrowUp);
+                CurrentTool?.OnKeyDown(Sketch, CadKey.ArrowUp);
                 break;
             case "DOWN":
-                CurrentTool?.OnKeyDown(CadKey.ArrowDown);
+                CurrentTool?.OnKeyDown(Sketch, CadKey.ArrowDown);
                 break;
             case "LEFT":
-                CurrentTool?.OnKeyDown(CadKey.ArrowLeft);
+                CurrentTool?.OnKeyDown(Sketch, CadKey.ArrowLeft);
                 break;
             case "RIGHT":
-                CurrentTool?.OnKeyDown(CadKey.ArrowRight);
+                CurrentTool?.OnKeyDown(Sketch, CadKey.ArrowRight);
                 break;
             case "LEFTCTRL":
             case "RIGHTCTRL":
-                CurrentTool?.OnKeyDown(CadKey.Control);
+                CurrentTool?.OnKeyDown(Sketch, CadKey.Control);
                 break;
         }
+    }
+
+    private void ClearVcb()
+    {
+        _inputBuffer = "";
+        UpdateStatusText(CurrentSnappedPoint);
+    }
+
+    private bool IsNumericKey(string keyName, out char result)
+    {
+        result = '\0';
+        if (keyName.Length == 2 && keyName.StartsWith("D") && char.IsDigit(keyName[1]))
+        {
+            result = keyName[1];
+            return true;
+        }
+        if (keyName.StartsWith("NUMPAD") && keyName.Length == 7 && char.IsDigit(keyName[6]))
+        {
+            result = keyName[6];
+            return true;
+        }
+        if (keyName == "OEMPERIOD" || keyName == "DECIMAL" || keyName == "OEMCOMMA")
+        {
+            result = '.';
+            return true;
+        }
+        return false;
     }
 
     public void SetTool(ICommandTool tool)

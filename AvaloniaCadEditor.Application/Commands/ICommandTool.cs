@@ -30,5 +30,10 @@ public interface ICommandTool
     /// <summary>
     /// Called when the user presses a key while the tool is active.
     /// </summary>
-    void OnKeyDown(CadKey key);
+    void OnKeyDown(Sketch sketch, CadKey key);
+
+    /// <summary>
+    /// Called when the user types a numeric value and presses Enter.
+    /// </summary>
+    void OnValueEntered(Sketch sketch, double value);
 }

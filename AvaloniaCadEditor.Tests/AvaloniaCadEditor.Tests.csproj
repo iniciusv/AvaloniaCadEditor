@@ -23,6 +23,7 @@
   <ItemGroup>
     <ProjectReference Include="..\AvaloniaCadEditor.Application\AvaloniaCadEditor.Application.csproj" />
     <ProjectReference Include="..\AvaloniaCadEditor.Domain\AvaloniaCadEditor.Domain.csproj" />
+    <ProjectReference Include="..\AvaloniaCadEditor.UI\AvaloniaCadEditor.UI.csproj" />
   </ItemGroup>
 
 </Project>

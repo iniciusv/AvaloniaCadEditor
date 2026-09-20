@@ -13,6 +13,8 @@ public class DrawLineCommand : ICommandTool
     private enum AxisConstraint { None, X, Y, Z }
     private AxisConstraint _constraint = AxisConstraint.None;
 
+    private double? _lengthConstraint = null;
+
     private Point3D _startPoint;
     private Point3D _currentMousePosition;
 
@@ -22,7 +24,8 @@ public class DrawLineCommand : ICommandTool
         {
             _startPoint = point;
             _currentMousePosition = point;
-            _constraint = AxisConstraint.None; // Reset constraint
+            _constraint = AxisConstraint.None;
+            _lengthConstraint = null;
             _currentState = State.WaitingForEndPoint;
         }
         else if (_currentState == State.WaitingForEndPoint)
@@ -33,7 +36,8 @@ public class DrawLineCommand : ICommandTool
             
             // Loop back to start to draw contiguous lines
             _startPoint = finalPoint;
-            _constraint = AxisConstraint.None; // Reset for next line
+            _constraint = AxisConstraint.None;
+            _lengthConstraint = null;
         }
     }
 
@@ -53,9 +57,10 @@ public class DrawLineCommand : ICommandTool
     {
         _currentState = State.WaitingForStartPoint;
         _constraint = AxisConstraint.None;
+        _lengthConstraint = null;
     }
 
-    public void OnKeyDown(CadKey key)
+    public void OnKeyDown(Sketch sketch, CadKey key)
     {
         if (_currentState == State.WaitingForEndPoint)
         {
@@ -79,21 +84,54 @@ public class DrawLineCommand : ICommandTool
                 _constraint = AxisConstraint.None;
             else
                 _constraint = newConstraint;
+                
+            // Reapply constraint to mouse position
+            _currentMousePosition = ApplyConstraint(_currentMousePosition);
+        }
+    }
+
+    public void OnValueEntered(Sketch sketch, double value)
+    {
+        if (_currentState == State.WaitingForEndPoint)
+        {
+            _lengthConstraint = value;
+            
+            var finalPoint = ApplyConstraint(_currentMousePosition);
+            var line = new LineEntity(_startPoint, finalPoint);
+            sketch.AddEntity(line);
+            
+            _startPoint = finalPoint;
+            _constraint = AxisConstraint.None;
+            _lengthConstraint = null;
         }
     }
 
     private Point3D ApplyConstraint(Point3D point)
     {
-        if (_constraint == AxisConstraint.None)
-            return point;
+        Point3D axisConstrainedPoint = point;
 
-        return _constraint switch
+        if (_constraint != AxisConstraint.None)
         {
-            AxisConstraint.X => new Point3D(point.X, _startPoint.Y, _startPoint.Z),
-            AxisConstraint.Y => new Point3D(_startPoint.X, point.Y, _startPoint.Z),
-            AxisConstraint.Z => new Point3D(_startPoint.X, _startPoint.Y, point.Z),
-            _ => point
-        };
+            axisConstrainedPoint = _constraint switch
+            {
+                AxisConstraint.X => new Point3D(point.X, _startPoint.Y, _startPoint.Z),
+                AxisConstraint.Y => new Point3D(_startPoint.X, point.Y, _startPoint.Z),
+                AxisConstraint.Z => new Point3D(_startPoint.X, _startPoint.Y, point.Z),
+                _ => point
+            };
+        }
+
+        if (_lengthConstraint.HasValue)
+        {
+            var vector = axisConstrainedPoint - _startPoint;
+            if (vector.Length > 0)
+            {
+                var direction = vector.Normalize();
+                return _startPoint + (direction * _lengthConstraint.Value);
+            }
+        }
+
+        return axisConstrainedPoint;
     }
 
     public IEnumerable<Entity> GetPreviewEntities()

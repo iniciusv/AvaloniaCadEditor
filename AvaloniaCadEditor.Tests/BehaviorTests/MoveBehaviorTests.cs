@@ -49,7 +49,7 @@ public class MoveBehaviorTests
         // Act
         moveTool.OnMouseDown(sketch, new Point3D(0, 0)); // Base point
         
-        moveTool.OnKeyDown(CadKey.Control); // Ativa o modo cópia
+        moveTool.OnKeyDown(sketch, CadKey.Control); // Ativa o modo cópia
 
         moveTool.OnMouseDown(sketch, new Point3D(5, 5)); // Target point
 
@@ -62,5 +62,63 @@ public class MoveBehaviorTests
 
         // A nova linha deve ter sido criada na posição transladada
         entities[1].BeEquivalentToCadLine(new LineEntity(new Point3D(5, 5), new Point3D(15, 5)));
+    }
+
+    [Fact]
+    public void MoveTool_ComValorVCB_DeveMoverNaDistanciaExata()
+    {
+        // Arrange
+        var sketch = new Sketch();
+        var line = new LineEntity(new Point3D(0, 0), new Point3D(10, 0));
+        line.IsSelected = true;
+        sketch.AddEntity(line);
+
+        var moveTool = new MoveTool();
+
+        // Act
+        moveTool.OnMouseDown(sketch, new Point3D(0, 0)); // Base point
+        
+        moveTool.OnMouseMove(sketch, new Point3D(100, 100)); // Direction (diagonal)
+        
+        // Aplica um VCB de 50 (a linha deve mover exatos 50 na diagonal)
+        moveTool.OnValueEntered(sketch, 50.0);
+
+        // Assert
+        var entities = sketch.Entities.OfType<LineEntity>().ToList();
+        entities.Should().HaveCount(1);
+        
+        // The expected displacement is 50 in the direction of (1, 1, 0)
+        var direction = new Vector3D(100, 100, 0).Normalize();
+        var expectedTranslation = direction * 50.0;
+
+        entities[0].BeEquivalentToCadLine(new LineEntity(
+            new Point3D(0 + expectedTranslation.X, 0 + expectedTranslation.Y), 
+            new Point3D(10 + expectedTranslation.X, 0 + expectedTranslation.Y)));
+    }
+
+    [Fact]
+    public void MoveTool_Master_CopyMaisVCB_DeveCopiarNaDistanciaExata()
+    {
+        var sketch = new Sketch();
+        var line = new LineEntity(new Point3D(0, 0), new Point3D(10, 0)) { IsSelected = true };
+        sketch.AddEntity(line);
+
+        var moveTool = new MoveTool();
+
+        moveTool.OnMouseDown(sketch, new Point3D(0, 0)); // Base point
+        
+        moveTool.OnKeyDown(sketch, CadKey.Control); // MODO COPIA
+        
+        moveTool.OnMouseMove(sketch, new Point3D(0, 100)); // Direction (up)
+        
+        moveTool.OnValueEntered(sketch, 10.0); // Distância exata 10.0
+
+        var entities = sketch.Entities.OfType<LineEntity>().ToList();
+        entities.Should().HaveCount(2);
+        
+        // Original intocada
+        entities[0].BeEquivalentToCadLine(new LineEntity(new Point3D(0, 0), new Point3D(10, 0)));
+        // Cópia transladada 10 em Y
+        entities[1].BeEquivalentToCadLine(new LineEntity(new Point3D(0, 10), new Point3D(10, 10)));
     }
 }
