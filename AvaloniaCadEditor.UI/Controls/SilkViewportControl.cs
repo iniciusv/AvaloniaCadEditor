@@ -46,7 +46,8 @@ public class SilkViewportControl : OpenGlControlBase
         _gl = GL.GetApi(gl.GetProcAddress);
 
         _gl.ClearColor(0.15f, 0.15f, 0.15f, 1.0f);
-        _gl.Disable(EnableCap.DepthTest); // Disabled to prevent issues if Avalonia didn't create a depth buffer
+        _gl.Enable(EnableCap.DepthTest);
+        _gl.DepthFunc(DepthFunction.Lequal);
         _gl.Enable(EnableCap.Blend);
         _gl.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
 
@@ -59,17 +60,29 @@ public class SilkViewportControl : OpenGlControlBase
         string vertexShaderSource = @"
             attribute vec3 aPos;
             attribute vec3 aColor;
+            attribute vec3 aNormal;
             
             uniform mat4 uModel;
             uniform mat4 uView;
             uniform mat4 uProjection;
+            uniform int uUseLighting;
             
             varying vec3 vertexColor;
             
             void main()
             {
                 gl_Position = uProjection * uView * uModel * vec4(aPos, 1.0);
-                vertexColor = aColor;
+                
+                if (uUseLighting == 1) {
+                    vec3 lightDir = normalize(vec3(0.5, 0.8, 1.0));
+                    vec3 norm = normalize(mat3(uModel) * aNormal);
+                    float diff = max(dot(norm, lightDir), 0.0);
+                    float ambient = 0.40;
+                    float light = ambient + (1.0 - ambient) * diff;
+                    vertexColor = aColor * light;
+                } else {
+                    vertexColor = aColor;
+                }
             }";
 
         string fragmentShaderSource = @"
@@ -103,6 +116,7 @@ public class SilkViewportControl : OpenGlControlBase
         // Bind attribute locations BEFORE linking
         _gl.BindAttribLocation(_shaderProgram, 0, "aPos");
         _gl.BindAttribLocation(_shaderProgram, 1, "aColor");
+        _gl.BindAttribLocation(_shaderProgram, 2, "aNormal");
         
         _gl.LinkProgram(_shaderProgram);
         string pLog = _gl.GetProgramInfoLog(_shaderProgram);
@@ -250,7 +264,25 @@ public class SilkViewportControl : OpenGlControlBase
 
         unsafe
         {
-            // Attribute 0: Position (vec3), Attribute 1: Color/Normal (vec3) -> 6 floats stride
+            // Attribute 0: Position (vec3), Attribute 1: Color (vec3), Attribute 2: Normal (vec3) -> 9 floats stride
+            _gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 9 * sizeof(float), (void*)0);
+            _gl.EnableVertexAttribArray(0);
+            _gl.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, 9 * sizeof(float), (void*)(3 * sizeof(float)));
+            _gl.EnableVertexAttribArray(1);
+            _gl.VertexAttribPointer(2, 3, VertexAttribPointerType.Float, false, 9 * sizeof(float), (void*)(6 * sizeof(float)));
+            _gl.EnableVertexAttribArray(2);
+        }
+        _gl.BindVertexArray(0);
+
+        // --- Setup Solid Edges VAO / VBO ---
+        _solidEdgesVao = _gl.GenVertexArray();
+        _solidEdgesVbo = _gl.GenBuffer();
+
+        _gl.BindVertexArray(_solidEdgesVao);
+        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _solidEdgesVbo);
+
+        unsafe
+        {
             _gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)0);
             _gl.EnableVertexAttribArray(0);
             _gl.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)(3 * sizeof(float)));
@@ -259,13 +291,15 @@ public class SilkViewportControl : OpenGlControlBase
         _gl.BindVertexArray(0);
     }
 
-
     private uint _sketchVao;
     private uint _sketchVbo;
 
     private uint _solidVao;
     private uint _solidVbo;
     private uint _solidEbo;
+
+    private uint _solidEdgesVao;
+    private uint _solidEdgesVbo;
 
     protected override void OnOpenGlDeinit(GlInterface gl)
     {
@@ -278,6 +312,8 @@ public class SilkViewportControl : OpenGlControlBase
             _gl.DeleteVertexArray(_solidVao);
             _gl.DeleteBuffer(_solidVbo);
             _gl.DeleteBuffer(_solidEbo);
+            _gl.DeleteVertexArray(_solidEdgesVao);
+            _gl.DeleteBuffer(_solidEdgesVbo);
             _gl.DeleteProgram(_shaderProgram);
             _gl.Dispose();
         }
@@ -289,7 +325,7 @@ public class SilkViewportControl : OpenGlControlBase
         if (_gl == null || Bounds.Height == 0 || Bounds.Width == 0) return;
 
         _gl.Viewport(0, 0, (uint)Bounds.Width, (uint)Bounds.Height);
-        _gl.Clear((uint)ClearBufferMask.ColorBufferBit);
+        _gl.Clear((uint)(ClearBufferMask.ColorBufferBit | ClearBufferMask.DepthBufferBit));
 
         _camera.AspectRatio = (float)(Bounds.Width / Bounds.Height);
         var viewMatrix = _camera.GetViewMatrix();
@@ -297,10 +333,11 @@ public class SilkViewportControl : OpenGlControlBase
 
         _gl.UseProgram(_shaderProgram);
 
-        // Pass matrices to shader
+        // Pass matrices and uniforms to shader
         int viewLoc = _gl.GetUniformLocation(_shaderProgram, "uView");
         int projLoc = _gl.GetUniformLocation(_shaderProgram, "uProjection");
         int modelLoc = _gl.GetUniformLocation(_shaderProgram, "uModel");
+        int lightingLoc = _gl.GetUniformLocation(_shaderProgram, "uUseLighting");
         
         unsafe
         {
@@ -308,14 +345,15 @@ public class SilkViewportControl : OpenGlControlBase
             _gl.UniformMatrix4(projLoc, 1, false, (float*)&projMatrix);
         }
 
-        _gl.BindVertexArray(_vao);
-
-        // Draw Grid (Model matrix = Identity)
         var identity = Matrix4x4.Identity;
         unsafe
         {
             _gl.UniformMatrix4(modelLoc, 1, false, (float*)&identity);
+            _gl.Uniform1(lightingLoc, 0); // No lighting for grid and 2D lines
         }
+
+        // Draw Grid
+        _gl.BindVertexArray(_vao);
         _gl.DrawArrays(PrimitiveType.Lines, 0, (uint)_vertexCount);
 
         // --- Render Sketch Entities ---
@@ -400,33 +438,39 @@ public class SilkViewportControl : OpenGlControlBase
 
                 unsafe
                 {
-                    _gl.UniformMatrix4(modelLoc, 1, false, (float*)&identity); // Reset model to Identity
+                    _gl.UniformMatrix4(modelLoc, 1, false, (float*)&identity);
+                    _gl.Uniform1(lightingLoc, 0);
                 }
                 
                 _gl.DrawArrays(PrimitiveType.Lines, 0, (uint)(sketchVertices.Count / 6));
             }
 
-            // --- Render 3D Solid Mesh from OpenCASCADE ---
+            // --- Render 3D Solid Mesh with Directional Lighting & Crisp Edges ---
             var solidMesh = ViewModel.SolidMesh;
             if (solidMesh != null && solidMesh.TriangleCount > 0)
             {
                 int vertexCount = solidMesh.VertexCount;
-                float[] solidVertexData = new float[vertexCount * 6];
+                float[] solidVertexData = new float[vertexCount * 9];
 
-                // Interleave position + CAD metallic blue color
+                // Interleave position + CAD metallic steel blue color + Normal
                 for (int i = 0; i < vertexCount; i++)
                 {
                     int posIdx = i * 3;
-                    int outIdx = i * 6;
+                    int outIdx = i * 9;
 
                     solidVertexData[outIdx + 0] = solidMesh.Positions[posIdx + 0];
                     solidVertexData[outIdx + 1] = solidMesh.Positions[posIdx + 1];
                     solidVertexData[outIdx + 2] = solidMesh.Positions[posIdx + 2];
 
-                    // Subtle CAD solid color (light steel blue)
-                    solidVertexData[outIdx + 3] = 0.60f;
-                    solidVertexData[outIdx + 4] = 0.72f;
-                    solidVertexData[outIdx + 5] = 0.88f;
+                    // CAD solid base color (Cool Steel Blue)
+                    solidVertexData[outIdx + 3] = 0.55f;
+                    solidVertexData[outIdx + 4] = 0.70f;
+                    solidVertexData[outIdx + 5] = 0.90f;
+
+                    // Normal vector for real-time diffuse shading
+                    solidVertexData[outIdx + 6] = solidMesh.Normals[posIdx + 0];
+                    solidVertexData[outIdx + 7] = solidMesh.Normals[posIdx + 1];
+                    solidVertexData[outIdx + 8] = solidMesh.Normals[posIdx + 2];
                 }
 
                 _gl.BindVertexArray(_solidVao);
@@ -452,7 +496,59 @@ public class SilkViewportControl : OpenGlControlBase
                 unsafe
                 {
                     _gl.UniformMatrix4(modelLoc, 1, false, (float*)&identity);
+                    _gl.Uniform1(lightingLoc, 1); // Enable directional lighting for 3D faces!
                     _gl.DrawElements(PrimitiveType.Triangles, (uint)solidMesh.Indices.Length, DrawElementsType.UnsignedInt, (void*)0);
+                }
+
+                // --- Render Dark Edge Outlines (Arestas e Vértices Nítidos) ---
+                var edgeLines = new System.Collections.Generic.List<float>();
+                for (int i = 0; i < solidMesh.Indices.Length; i += 3)
+                {
+                    uint i0 = solidMesh.Indices[i + 0];
+                    uint i1 = solidMesh.Indices[i + 1];
+                    uint i2 = solidMesh.Indices[i + 2];
+
+                    void AddEdge(uint idxA, uint idxB)
+                    {
+                        int pA = (int)idxA * 3;
+                        int pB = (int)idxB * 3;
+
+                        // Point A
+                        edgeLines.Add(solidMesh.Positions[pA + 0]);
+                        edgeLines.Add(solidMesh.Positions[pA + 1]);
+                        edgeLines.Add(solidMesh.Positions[pA + 2]);
+                        // Dark Edge Color (Charcoal / Deep Slate)
+                        edgeLines.Add(0.12f); edgeLines.Add(0.16f); edgeLines.Add(0.22f);
+
+                        // Point B
+                        edgeLines.Add(solidMesh.Positions[pB + 0]);
+                        edgeLines.Add(solidMesh.Positions[pB + 1]);
+                        edgeLines.Add(solidMesh.Positions[pB + 2]);
+                        // Dark Edge Color
+                        edgeLines.Add(0.12f); edgeLines.Add(0.16f); edgeLines.Add(0.22f);
+                    }
+
+                    AddEdge(i0, i1);
+                    AddEdge(i1, i2);
+                    AddEdge(i2, i0);
+                }
+
+                if (edgeLines.Count > 0)
+                {
+                    _gl.BindVertexArray(_solidEdgesVao);
+                    _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _solidEdgesVbo);
+
+                    unsafe
+                    {
+                        var edgeArr = edgeLines.ToArray();
+                        fixed (float* ePtr = edgeArr)
+                        {
+                            _gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(edgeArr.Length * sizeof(float)), ePtr, BufferUsageARB.DynamicDraw);
+                        }
+
+                        _gl.Uniform1(lightingLoc, 0); // Solid color for edges
+                        _gl.DrawArrays(PrimitiveType.Lines, 0, (uint)(edgeLines.Count / 6));
+                    }
                 }
             }
         }
