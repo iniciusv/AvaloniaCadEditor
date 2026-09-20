@@ -69,7 +69,7 @@ public class CadViewModel : INotifyPropertyChanged
         SelectCircleToolCommand = new RelayCommand(() => CurrentTool = new DrawCircleCommand());
         SelectTrimToolCommand = new RelayCommand(() => CurrentTool = new TrimCommand(_geometryEngine));
         SelectFilletToolCommand = new RelayCommand(() => CurrentTool = new FilletCommand(_geometryEngine));
-        SelectSelectToolCommand = new RelayCommand(() => CurrentTool = new SelectTool());
+        SelectSelectToolCommand = new RelayCommand(() => CurrentTool = new SelectTool(_geometryEngine));
         SelectMoveToolCommand = new RelayCommand(() => CurrentTool = new MoveTool());
 
         CurrentTool = new DrawLineCommand();
@@ -127,6 +127,10 @@ public class CadViewModel : INotifyPropertyChanged
                 break;
             case "RIGHT":
                 CurrentTool?.OnKeyDown(CadKey.ArrowRight);
+                break;
+            case "LEFTCTRL":
+            case "RIGHTCTRL":
+                CurrentTool?.OnKeyDown(CadKey.Control);
                 break;
         }
     }

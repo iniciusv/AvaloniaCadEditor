@@ -14,4 +14,18 @@ public class LineEntity : Entity
     }
 
     public double Length => StartPoint.DistanceTo(EndPoint);
+
+    public override void Translate(Vector3D translation)
+    {
+        StartPoint = StartPoint + translation;
+        EndPoint = EndPoint + translation;
+    }
+
+    public override Entity Clone()
+    {
+        return new LineEntity(StartPoint, EndPoint)
+        {
+            IsSelected = this.IsSelected
+        };
+    }
 }

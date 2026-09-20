@@ -7,5 +7,6 @@ public enum CadKey
     ArrowDown,
     ArrowLeft,
     ArrowRight,
-    Escape
+    Escape,
+    Control
 }

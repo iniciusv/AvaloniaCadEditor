@@ -5,6 +5,7 @@ using Avalonia.Media;
 using AvaloniaCadEditor.Domain.Entities;
 using AvaloniaCadEditor.Domain.ValueObjects;
 using AvaloniaCadEditor.UI.ViewModels;
+using AvaloniaCadEditor.Application.Commands;
 
 namespace AvaloniaCadEditor.UI.Controls;
 
@@ -17,6 +18,7 @@ public class ViewportControl : Control
 	private bool _isPanning;
 
 	private readonly IPen _entityPen = new Pen(Brushes.White, 2.0);
+	private readonly IPen _selectedPen = new Pen(Brushes.Yellow, 2.0);
 	private readonly IPen _previewPen = new Pen(Brushes.LightSkyBlue, 2.0, new DashStyle(new double[] { 4, 4 }, 0));
 	private readonly IPen _gridPen = new Pen(new SolidColorBrush(Color.FromArgb(50, 255, 255, 255)), 1.0);
 
@@ -137,7 +139,8 @@ public class ViewportControl : Control
 		// Draw Sketch Entities
 		foreach (var entity in ViewModel.Sketch.Entities)
 		{
-			DrawEntity(context, entity, _entityPen);
+			var pen = entity.IsSelected ? _selectedPen : _entityPen;
+			DrawEntity(context, entity, pen);
 		}
 
 		// Draw Previews
@@ -153,6 +156,14 @@ public class ViewportControl : Control
 		// Draw Snapped Point Marker
 		var snapPt = WorldToScreen(ViewModel.CurrentSnappedPoint);
 		context.DrawRectangle(null, new Pen(Brushes.Yellow, 1.5), new Rect(snapPt.X - 5, snapPt.Y - 5, 10, 10));
+
+		// Draw Copy Mode Indicator (Plus sign next to cursor)
+		if (tool is MoveTool moveTool && moveTool.IsCopyMode)
+		{
+			var plusCenter = new Point(snapPt.X + 15, snapPt.Y + 15);
+			context.DrawLine(_entityPen, new Point(plusCenter.X - 4, plusCenter.Y), new Point(plusCenter.X + 4, plusCenter.Y));
+			context.DrawLine(_entityPen, new Point(plusCenter.X, plusCenter.Y - 4), new Point(plusCenter.X, plusCenter.Y + 4));
+		}
 	}
 
 	private void DrawEntity(DrawingContext context, Entity entity, IPen pen)
