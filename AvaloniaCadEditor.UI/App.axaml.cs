@@ -1,32 +1,33 @@
-using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
-using AvaloniaCadEditor.ViewModels;
+using AvaloniaCadEditor.Application.Services;
+using AvaloniaCadEditor.Infrastructure.Engines;
+using AvaloniaCadEditor.UI.ViewModels;
 using AvaloniaCadEditor.Views;
 
 namespace AvaloniaCadEditor;
 
 public partial class App : Avalonia.Application
 {
-    public override void Initialize()
-    {
-        AvaloniaXamlLoader.Load(this);
-    }
+	public override void Initialize()
+	{
+		AvaloniaXamlLoader.Load(this);
+	}
 
-    public override void OnFrameworkInitializationCompleted()
-    {
-        if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
-        {
-            var geometryEngine = new AvaloniaCadEditor.Infrastructure.Engines.MathGeometryEngine();
-            var osnapService = new AvaloniaCadEditor.Application.Services.OSnapService(geometryEngine);
-            var viewModel = new AvaloniaCadEditor.UI.ViewModels.CadViewModel(geometryEngine, osnapService);
+	public override void OnFrameworkInitializationCompleted()
+	{
+		if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
+		{
+			var geometryEngine = new MathGeometryEngine();
+			var osnapService = new OSnapService(geometryEngine);
+			var viewModel = new CadViewModel(geometryEngine, osnapService);
 
-            desktop.MainWindow = new MainWindow
-            {
-                DataContext = viewModel
-            };
-        }
+			desktop.MainWindow = new MainWindow
+			{
+				DataContext = viewModel
+			};
+		}
 
-        base.OnFrameworkInitializationCompleted();
-    }
+		base.OnFrameworkInitializationCompleted();
+	}
 }

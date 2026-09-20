@@ -68,5 +68,10 @@ public class TrimCommand : ICommandTool
     {
     }
 
-    public IEnumerable<Entity> GetPreviewEntities() => Enumerable.Empty<Entity>();
+    public IEnumerable<Entity> GetPreviewEntities()
+    {
+        return Enumerable.Empty<Entity>();
+    }
+
+    public void OnKeyDown(CadKey key) { }
 }

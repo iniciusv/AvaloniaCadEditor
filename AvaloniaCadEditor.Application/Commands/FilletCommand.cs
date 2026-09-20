@@ -72,5 +72,10 @@ public class FilletCommand : ICommandTool
         _firstEntity = null;
     }
 
-    public IEnumerable<Entity> GetPreviewEntities() => Enumerable.Empty<Entity>();
+    public IEnumerable<Entity> GetPreviewEntities()
+    {
+        return Enumerable.Empty<Entity>();
+    }
+
+    public void OnKeyDown(CadKey key) { }
 }

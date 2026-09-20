@@ -47,6 +47,10 @@ public class DrawCircleCommand : ICommandTool
         _currentState = State.WaitingForCenter;
     }
 
+    public void OnKeyDown(CadKey key)
+    {
+    }
+
     public IEnumerable<Entity> GetPreviewEntities()
     {
         if (_currentState == State.WaitingForRadius && _currentRadius > 0)

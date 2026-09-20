@@ -26,4 +26,9 @@ public interface ICommandTool
     /// Returns temporary entities to be drawn (e.g. a line being stretched).
     /// </summary>
     IEnumerable<Entity> GetPreviewEntities();
+
+    /// <summary>
+    /// Called when the user presses a key while the tool is active.
+    /// </summary>
+    void OnKeyDown(CadKey key);
 }

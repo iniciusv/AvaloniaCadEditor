@@ -47,6 +47,8 @@ public class CadViewModel : INotifyPropertyChanged
     public ICommand SelectCircleToolCommand { get; }
     public ICommand SelectTrimToolCommand { get; }
     public ICommand SelectFilletToolCommand { get; }
+    public ICommand SelectSelectToolCommand { get; }
+    public ICommand SelectMoveToolCommand { get; }
 
     public bool OsnapEnabled
     {
@@ -67,6 +69,8 @@ public class CadViewModel : INotifyPropertyChanged
         SelectCircleToolCommand = new RelayCommand(() => CurrentTool = new DrawCircleCommand());
         SelectTrimToolCommand = new RelayCommand(() => CurrentTool = new TrimCommand(_geometryEngine));
         SelectFilletToolCommand = new RelayCommand(() => CurrentTool = new FilletCommand(_geometryEngine));
+        SelectSelectToolCommand = new RelayCommand(() => CurrentTool = new SelectTool());
+        SelectMoveToolCommand = new RelayCommand(() => CurrentTool = new MoveTool());
 
         CurrentTool = new DrawLineCommand();
     }
@@ -84,6 +88,47 @@ public class CadViewModel : INotifyPropertyChanged
         CurrentTool?.OnMouseMove(Sketch, snapped);
         
         StatusText = $"X: {snapped.X:F2}, Y: {snapped.Y:F2}";
+    }
+
+    public void OnKeyDown(string keyName)
+    {
+        switch (keyName.ToUpperInvariant())
+        {
+            case "L":
+                SelectLineToolCommand.Execute(null);
+                break;
+            case "C":
+                SelectCircleToolCommand.Execute(null);
+                break;
+            case "T":
+                SelectTrimToolCommand.Execute(null);
+                break;
+            case "O": // Placeholder for Orbit
+                // SelectOrbitToolCommand.Execute(null);
+                break;
+            case "M":
+                SelectMoveToolCommand.Execute(null);
+                break;
+            case "SPACE":
+                SelectSelectToolCommand.Execute(null);
+                break;
+            case "ESCAPE":
+                CurrentTool?.OnKeyDown(CadKey.Escape);
+                CurrentTool?.Cancel();
+                break;
+            case "UP":
+                CurrentTool?.OnKeyDown(CadKey.ArrowUp);
+                break;
+            case "DOWN":
+                CurrentTool?.OnKeyDown(CadKey.ArrowDown);
+                break;
+            case "LEFT":
+                CurrentTool?.OnKeyDown(CadKey.ArrowLeft);
+                break;
+            case "RIGHT":
+                CurrentTool?.OnKeyDown(CadKey.ArrowRight);
+                break;
+        }
     }
 
     public void SetTool(ICommandTool tool)
