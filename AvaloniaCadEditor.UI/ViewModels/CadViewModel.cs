@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
@@ -6,6 +7,7 @@ using AvaloniaCadEditor.Application.Commands;
 using AvaloniaCadEditor.Application.Services;
 using AvaloniaCadEditor.Domain.Entities;
 using AvaloniaCadEditor.Domain.Interfaces;
+using AvaloniaCadEditor.Domain.Profiles;
 using AvaloniaCadEditor.Domain.ValueObjects;
 using System.Globalization;
 
@@ -15,9 +17,19 @@ public class CadViewModel : INotifyPropertyChanged
 {
     private readonly IGeometryEngine _geometryEngine;
     private readonly IOSnapService _osnapService;
+    private readonly IProfileRecognitionService _profileRecognitionService;
     
     public Sketch Sketch { get; } = new Sketch();
     
+    public IReadOnlyList<IProfile> Profiles => Sketch.Profiles;
+
+    private IProfile? _selectedProfile;
+    public IProfile? SelectedProfile
+    {
+        get => _selectedProfile;
+        set { _selectedProfile = value; OnPropertyChanged(); }
+    }
+
     private ICommandTool? _currentTool;
     public ICommandTool? CurrentTool
     {
@@ -85,10 +97,14 @@ public class CadViewModel : INotifyPropertyChanged
         }
     }
 
-    public CadViewModel(IGeometryEngine geometryEngine, IOSnapService osnapService)
+    public CadViewModel(
+        IGeometryEngine geometryEngine,
+        IOSnapService osnapService,
+        IProfileRecognitionService? profileRecognitionService = null)
     {
         _geometryEngine = geometryEngine;
         _osnapService = osnapService;
+        _profileRecognitionService = profileRecognitionService ?? new ProfileRecognitionService();
         
         SelectLineToolCommand = new RelayCommand(() => CurrentTool = new DrawLineCommand());
         SelectCircleToolCommand = new RelayCommand(() => CurrentTool = new DrawCircleCommand());
@@ -100,10 +116,18 @@ public class CadViewModel : INotifyPropertyChanged
         CurrentTool = new DrawLineCommand();
     }
 
+    public void RefreshProfiles()
+    {
+        var recognized = _profileRecognitionService.RecognizeProfiles(Sketch);
+        Sketch.SetProfiles(recognized);
+        OnPropertyChanged(nameof(Profiles));
+    }
+
     public void OnPointerPressed(Point3D worldPoint)
     {
         var snapped = _osnapService.GetSnappedPoint(Sketch, worldPoint, 5.0); // 5.0 world units tolerance
         CurrentTool?.OnMouseDown(Sketch, snapped);
+        RefreshProfiles();
     }
 
     public void OnPointerMoved(Point3D worldPoint)
@@ -151,6 +175,7 @@ public class CadViewModel : INotifyPropertyChanged
             if (double.TryParse(_inputBuffer, NumberStyles.Any, CultureInfo.InvariantCulture, out double value))
             {
                 CurrentTool?.OnValueEntered(Sketch, value);
+                RefreshProfiles();
             }
             ClearVcb();
             return;
