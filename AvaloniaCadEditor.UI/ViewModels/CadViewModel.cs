@@ -122,6 +122,14 @@ public class CadViewModel : INotifyPropertyChanged
     public ICommand SelectMoveToolCommand { get; }
     public ICommand SelectSetWorkPlaneCommand { get; }
     public ICommand DeleteSelectedCommand { get; }
+    public ICommand GenerateCodeCommand { get; }
+
+    private string _generatedCSharpCode = "// Pressione 'Atualizar Código' para gerar o C#.";
+    public string GeneratedCSharpCode
+    {
+        get => _generatedCSharpCode;
+        set { _generatedCSharpCode = value; OnPropertyChanged(); }
+    }
 
     public bool OsnapEnabled
     {
@@ -191,6 +199,13 @@ public class CadViewModel : INotifyPropertyChanged
         SelectMoveToolCommand = new RelayCommand(() => CurrentTool = new MoveTool());
         SelectSetWorkPlaneCommand = new RelayCommand(() => CurrentTool = new SetWorkPlaneCommand());
         DeleteSelectedCommand = new RelayCommand(DeleteSelected);
+        
+        GenerateCodeCommand = new RelayCommand(() => 
+        {
+            var generator = new CsCodeGenerator();
+            // We use the ActiveWorkPlane as the optional 'lens' to see coordinates from its perspective
+            GeneratedCSharpCode = generator.GenerateCode(Sketch, ActiveWorkPlane);
+        });
 
         CurrentTool = new SelectTool(_geometryEngine, _selectionService);
     }
