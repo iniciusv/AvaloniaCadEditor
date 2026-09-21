@@ -38,6 +38,9 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         var positions = new List<float>();
         var normals = new List<float>();
         var indices = new List<uint>();
+        var featureEdges = new List<uint>();
+        var internalEdges = new List<uint>();
+        
         uint vertexOffset = 0;
 
         foreach (var f in features)
@@ -52,10 +55,21 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             {
                 indices.Add(idx + vertexOffset);
             }
+            
+            foreach (var fe in mesh.FeatureEdges)
+            {
+                featureEdges.Add(fe + vertexOffset);
+            }
+            
+            foreach (var ie in mesh.InternalEdges)
+            {
+                internalEdges.Add(ie + vertexOffset);
+            }
+            
             vertexOffset += (uint)mesh.VertexCount;
         }
 
-        return new TriangleMesh(positions.ToArray(), normals.ToArray(), indices.ToArray());
+        return new TriangleMesh(positions.ToArray(), normals.ToArray(), indices.ToArray(), featureEdges.ToArray(), internalEdges.ToArray());
     }
 
     private OcctShape BuildShape(IFeature feature, TessellationSettings settings)
@@ -153,7 +167,6 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         var verts = occtMesh.Vertices;
         var triIndices = occtMesh.TriangleIndices;
 
-        // Initialize empty normal arrays
         var normalArrays = new float[verts.Count * 3];
 
         for (int i = 0; i < verts.Count; i++)
@@ -191,7 +204,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             var ny = (uz * vx) - (ux * vz);
             var nz = (ux * vy) - (uy * vx);
 
-            // Normalize
+            // Normalize face normal
             var len = Math.Sqrt(nx * nx + ny * ny + nz * nz);
             if (len > 0)
             {
@@ -200,7 +213,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
                 nz /= len;
             }
 
-            // Add flat normal to the vertices of this triangle
+            // Accumulate flat normals
             for (int j = 0; j < 3; j++)
             {
                 int idx = (int)(j == 0 ? i1 : (j == 1 ? i2 : i3)) * 3;
@@ -210,27 +223,86 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             }
         }
 
-        // Normalize accumulated normals
+        // Pre-normalize the accumulated normals so we have pure directions for comparison
         for (int i = 0; i < normalArrays.Length; i += 3)
         {
-            var nx = normalArrays[i];
-            var ny = normalArrays[i + 1];
-            var nz = normalArrays[i + 2];
-            var len = Math.Sqrt(nx * nx + ny * ny + nz * nz);
+            var len = (float)Math.Sqrt(normalArrays[i]*normalArrays[i] + normalArrays[i+1]*normalArrays[i+1] + normalArrays[i+2]*normalArrays[i+2]);
             if (len > 0)
             {
-                normals.Add((float)(nx / len));
-                normals.Add((float)(ny / len));
-                normals.Add((float)(nz / len));
-            }
-            else
-            {
-                normals.Add(0f);
-                normals.Add(0f);
-                normals.Add(1f);
+                normalArrays[i] /= len;
+                normalArrays[i+1] /= len;
+                normalArrays[i+2] /= len;
             }
         }
 
-        return new TriangleMesh(positions.ToArray(), normals.ToArray(), indices.ToArray());
+        // Group coincident vertices to average normals across faces
+        var posMap = new System.Collections.Generic.Dictionary<System.Numerics.Vector3, System.Collections.Generic.List<int>>();
+        for (int i = 0; i < verts.Count; i++)
+        {
+            var p = new System.Numerics.Vector3(
+                (float)Math.Round(positions[i * 3], 4),
+                (float)Math.Round(positions[i * 3 + 1], 4),
+                (float)Math.Round(positions[i * 3 + 2], 4));
+
+            if (!posMap.TryGetValue(p, out var list))
+            {
+                list = new System.Collections.Generic.List<int>();
+                posMap[p] = list;
+            }
+            list.Add(i);
+        }
+
+        float thresholdCos = (float)Math.Cos(settings.CreaseAngle * Math.PI / 180.0);
+        var smoothedNormals = new float[normalArrays.Length];
+
+        foreach (var group in posMap.Values)
+        {
+            foreach (var vIdx in group)
+            {
+                var vNx = normalArrays[vIdx * 3];
+                var vNy = normalArrays[vIdx * 3 + 1];
+                var vNz = normalArrays[vIdx * 3 + 2];
+
+                float sumNx = 0, sumNy = 0, sumNz = 0;
+
+                foreach (var uIdx in group)
+                {
+                    var uNx = normalArrays[uIdx * 3];
+                    var uNy = normalArrays[uIdx * 3 + 1];
+                    var uNz = normalArrays[uIdx * 3 + 2];
+
+                    float dot = vNx * uNx + vNy * uNy + vNz * uNz;
+                    if (dot > thresholdCos - 1e-4f) // Smooth if angle is less than crease angle
+                    {
+                        sumNx += uNx;
+                        sumNy += uNy;
+                        sumNz += uNz;
+                    }
+                }
+
+                // Normalize final smoothed normal
+                float len = (float)Math.Sqrt(sumNx * sumNx + sumNy * sumNy + sumNz * sumNz);
+                if (len > 0)
+                {
+                    smoothedNormals[vIdx * 3] = sumNx / len;
+                    smoothedNormals[vIdx * 3 + 1] = sumNy / len;
+                    smoothedNormals[vIdx * 3 + 2] = sumNz / len;
+                }
+                else
+                {
+                    smoothedNormals[vIdx * 3] = vNx;
+                    smoothedNormals[vIdx * 3 + 1] = vNy;
+                    smoothedNormals[vIdx * 3 + 2] = vNz;
+                }
+            }
+        }
+
+        normals.AddRange(smoothedNormals);
+
+        var posArr = positions.ToArray();
+        var idxArr = indices.ToArray();
+        var (featureEdges, internalEdges) = EdgeDetector.ClassifyEdges(posArr, idxArr, settings.CreaseAngle);
+
+        return new TriangleMesh(posArr, normals.ToArray(), idxArr, featureEdges, internalEdges);
     }
 }

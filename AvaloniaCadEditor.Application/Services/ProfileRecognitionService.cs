@@ -27,7 +27,7 @@ public class ProfileRecognitionService : IProfileRecognitionService
         var recognizedProfiles = new List<IProfile>();
 
         // 1. Recognize standalone circles
-        foreach (var circle in sketch.Entities.OfType<CircleEntity>())
+        foreach (var circle in sketch.Entities.OfType<CircleEntity>().Where(e => e.IsVisible))
         {
             var circleCandidate = new ProfileCandidate(
                 ProfileClassification.Circle,
@@ -52,7 +52,7 @@ public class ProfileRecognitionService : IProfileRecognitionService
         }
 
         // 2. Recognize closed loops from lines
-        var lineEntities = sketch.Entities.OfType<LineEntity>().ToList();
+        var lineEntities = sketch.Entities.OfType<LineEntity>().Where(e => e.IsVisible).ToList();
         if (lineEntities.Count >= 3)
         {
             var loops = FindClosedLoops(lineEntities);

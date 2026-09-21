@@ -25,6 +25,7 @@
 
             <Separator Width="1" Height="20" Background="#555" Margin="4,0" />
             <CheckBox IsChecked="{Binding OsnapEnabled}" Content="OSnap" Foreground="White"/>
+            <CheckBox IsChecked="{Binding ShowInternalEdges}" Content="Arestas Ocultas" Foreground="White"/>
         </StackPanel>
         
         <!-- Main Work Area (Viewport + Flexible Right Sidebar) -->

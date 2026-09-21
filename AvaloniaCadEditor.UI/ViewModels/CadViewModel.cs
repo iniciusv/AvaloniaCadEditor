@@ -129,6 +129,22 @@ public class CadViewModel : INotifyPropertyChanged
         }
     }
 
+    public bool ShowInternalEdges
+    {
+        get => _settingsProvider.GetSettings().ShowInternalEdges;
+        set
+        {
+            var settings = _settingsProvider.GetSettings();
+            if (settings.ShowInternalEdges != value)
+            {
+                settings.ShowInternalEdges = value;
+                _settingsProvider.SaveSettings(settings);
+                OnPropertyChanged();
+                RefreshSolidMesh();
+            }
+        }
+    }
+
     private readonly ITessellationSettingsProvider _settingsProvider;
 
     public CadViewModel(
@@ -147,7 +163,11 @@ public class CadViewModel : INotifyPropertyChanged
         _settingsProvider = settingsProvider ?? new AvaloniaCadEditor.Infrastructure.Settings.JsonTessellationSettingsProvider();
         
         ModelTree = new ModelTreeViewModel(_selectionService);
-        ModelTree.NodeVisibilityChanged += (s, e) => RefreshSolidMesh();
+        ModelTree.NodeVisibilityChanged += (s, e) => 
+        {
+            RefreshProfiles();
+            RefreshSolidMesh();
+        };
         PropertyInspector = new PropertyInspectorViewModel(_selectionService, () =>
         {
             RefreshSolidMesh();

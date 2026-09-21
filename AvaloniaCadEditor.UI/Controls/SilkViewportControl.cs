@@ -296,12 +296,28 @@ public class SilkViewportControl : OpenGlControlBase
         }
         _gl.BindVertexArray(0);
 
-        // --- Setup Solid Edges VAO / VBO ---
-        _solidEdgesVao = _gl.GenVertexArray();
-        _solidEdgesVbo = _gl.GenBuffer();
+        // --- Setup Feature Edges VAO / VBO ---
+        _featureEdgesVao = _gl.GenVertexArray();
+        _featureEdgesVbo = _gl.GenBuffer();
 
-        _gl.BindVertexArray(_solidEdgesVao);
-        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _solidEdgesVbo);
+        _gl.BindVertexArray(_featureEdgesVao);
+        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _featureEdgesVbo);
+
+        unsafe
+        {
+            _gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)0);
+            _gl.EnableVertexAttribArray(0);
+            _gl.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)(3 * sizeof(float)));
+            _gl.EnableVertexAttribArray(1);
+        }
+        _gl.BindVertexArray(0);
+
+        // --- Setup Internal Edges VAO / VBO ---
+        _internalEdgesVao = _gl.GenVertexArray();
+        _internalEdgesVbo = _gl.GenBuffer();
+
+        _gl.BindVertexArray(_internalEdgesVao);
+        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _internalEdgesVbo);
 
         unsafe
         {
@@ -340,8 +356,10 @@ public class SilkViewportControl : OpenGlControlBase
     private uint _solidVbo;
     private uint _solidEbo;
 
-    private uint _solidEdgesVao;
-    private uint _solidEdgesVbo;
+    private uint _featureEdgesVao;
+    private uint _featureEdgesVbo;
+    private uint _internalEdgesVao;
+    private uint _internalEdgesVbo;
 
     private uint _profileFaceVao;
     private uint _profileFaceVbo;
@@ -358,8 +376,10 @@ public class SilkViewportControl : OpenGlControlBase
             _gl.DeleteVertexArray(_solidVao);
             _gl.DeleteBuffer(_solidVbo);
             _gl.DeleteBuffer(_solidEbo);
-            _gl.DeleteVertexArray(_solidEdgesVao);
-            _gl.DeleteBuffer(_solidEdgesVbo);
+            _gl.DeleteVertexArray(_featureEdgesVao);
+            _gl.DeleteBuffer(_featureEdgesVbo);
+            _gl.DeleteVertexArray(_internalEdgesVao);
+            _gl.DeleteBuffer(_internalEdgesVbo);
             _gl.DeleteVertexArray(_profileFaceVao);
             _gl.DeleteBuffer(_profileFaceVbo);
             _gl.DeleteBuffer(_profileFaceEbo);
@@ -664,42 +684,38 @@ public class SilkViewportControl : OpenGlControlBase
                 }
 
                 // --- Render Edge Outlines (Arestas e Vértices Nítidos / Highlight se selecionado) ---
-                var edgeLines = new System.Collections.Generic.List<float>();
-                for (int i = 0; i < mesh.Indices.Length; i += 3)
+                var settings = new AvaloniaCadEditor.Infrastructure.Settings.JsonTessellationSettingsProvider().GetSettings();
+                
+                var featureColor = ParseHexColor(settings.FeatureEdgeColor, (edgeR, edgeG, edgeB, 1.0f));
+                var internalColor = ParseHexColor(settings.InternalEdgeColor, (0.5f, 0.5f, 0.5f, 0.5f));
+
+                if (feature.IsSelected || isPreview)
                 {
-                    uint i0 = mesh.Indices[i + 0];
-                    uint i1 = mesh.Indices[i + 1];
-                    uint i2 = mesh.Indices[i + 2];
-
-                    void AddEdge(uint idxA, uint idxB)
-                    {
-                        int pA = (int)idxA * 3;
-                        int pB = (int)idxB * 3;
-
-                        // Point A
-                        edgeLines.Add(mesh.Positions[pA + 0]);
-                        edgeLines.Add(mesh.Positions[pA + 1]);
-                        edgeLines.Add(mesh.Positions[pA + 2]);
-                        // Edge Color
-                        edgeLines.Add(edgeR); edgeLines.Add(edgeG); edgeLines.Add(edgeB);
-
-                        // Point B
-                        edgeLines.Add(mesh.Positions[pB + 0]);
-                        edgeLines.Add(mesh.Positions[pB + 1]);
-                        edgeLines.Add(mesh.Positions[pB + 2]);
-                        // Edge Color
-                        edgeLines.Add(edgeR); edgeLines.Add(edgeG); edgeLines.Add(edgeB);
-                    }
-
-                    AddEdge(i0, i1);
-                    AddEdge(i1, i2);
-                    AddEdge(i2, i0);
+                    featureColor = (edgeR, edgeG, edgeB, 1.0f);
+                    internalColor = (edgeR, edgeG, edgeB, 0.5f);
                 }
 
-                if (edgeLines.Count > 0)
+                void BuildEdgeBuffer(uint[] edgeIndices, (float R, float G, float B, float A) color, uint vao, uint vbo)
                 {
-                    _gl.BindVertexArray(_solidEdgesVao);
-                    _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _solidEdgesVbo);
+                    if (edgeIndices == null || edgeIndices.Length == 0) return;
+
+                    var edgeLines = new System.Collections.Generic.List<float>();
+                    for (int i = 0; i < edgeIndices.Length; i += 2)
+                    {
+                        int pA = (int)edgeIndices[i] * 3;
+                        int pB = (int)edgeIndices[i + 1] * 3;
+
+                        // Point A
+                        edgeLines.Add(mesh.Positions[pA + 0]); edgeLines.Add(mesh.Positions[pA + 1]); edgeLines.Add(mesh.Positions[pA + 2]);
+                        edgeLines.Add(color.R); edgeLines.Add(color.G); edgeLines.Add(color.B);
+
+                        // Point B
+                        edgeLines.Add(mesh.Positions[pB + 0]); edgeLines.Add(mesh.Positions[pB + 1]); edgeLines.Add(mesh.Positions[pB + 2]);
+                        edgeLines.Add(color.R); edgeLines.Add(color.G); edgeLines.Add(color.B);
+                    }
+
+                    _gl.BindVertexArray(vao);
+                    _gl.BindBuffer(BufferTargetARB.ArrayBuffer, vbo);
 
                     unsafe
                     {
@@ -710,12 +726,49 @@ public class SilkViewportControl : OpenGlControlBase
                         }
 
                         _gl.Uniform1(lightingLoc, 0); // Solid color for edges
+                        
+                        // Enable blending for transparent edges
+                        if (color.A < 1.0f) {
+                            _gl.Enable(EnableCap.Blend);
+                            _gl.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
+                        }
+                        
                         _gl.DrawArrays(PrimitiveType.Lines, 0, (uint)(edgeLines.Count / 6));
+                        
+                        if (color.A < 1.0f) {
+                            _gl.Disable(EnableCap.Blend);
+                        }
                     }
+                }
+
+                BuildEdgeBuffer(mesh.FeatureEdges, featureColor, _featureEdgesVao, _featureEdgesVbo);
+                if (settings.ShowInternalEdges)
+                {
+                    BuildEdgeBuffer(mesh.InternalEdges, internalColor, _internalEdgesVao, _internalEdgesVbo);
                 }
             }
         }
     }
+
+    private (float R, float G, float B, float A) ParseHexColor(string hex, (float, float, float, float) fallback)
+    {
+        if (string.IsNullOrWhiteSpace(hex) || !hex.StartsWith("#") || hex.Length != 9)
+            return fallback;
+            
+        try 
+        {
+            float a = Convert.ToInt32(hex.Substring(1, 2), 16) / 255f;
+            float r = Convert.ToInt32(hex.Substring(3, 2), 16) / 255f;
+            float g = Convert.ToInt32(hex.Substring(5, 2), 16) / 255f;
+            float b = Convert.ToInt32(hex.Substring(7, 2), 16) / 255f;
+            return (r, g, b, a);
+        }
+        catch 
+        {
+            return fallback;
+        }
+    }
+
 
     public void HandlePointerWheelChanged(PointerWheelEventArgs e)
     {

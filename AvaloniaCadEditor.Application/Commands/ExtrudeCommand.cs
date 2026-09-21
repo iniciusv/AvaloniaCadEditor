@@ -39,6 +39,7 @@ public class ExtrudeCommand : ICommandTool
                 double depth = Math.Abs(_currentDepth) < 1e-3 ? 20.0 : _currentDepth;
                 var feature = new ExtrudeFeature(_selectedProfile, depth);
                 sketch.AddFeature(feature);
+                HideProfileAndEntities(sketch, _selectedProfile);
             }
             Cancel();
         }
@@ -117,15 +118,29 @@ public class ExtrudeCommand : ICommandTool
     {
         if (_selectedProfile == null)
         {
-            _selectedProfile = sketch.Profiles.LastOrDefault();
+            _selectedProfile = sketch.Profiles.LastOrDefault(p => p.IsVisible);
         }
 
         if (_selectedProfile != null)
         {
             var feature = new ExtrudeFeature(_selectedProfile, value);
             sketch.AddFeature(feature);
+            HideProfileAndEntities(sketch, _selectedProfile);
         }
         Cancel();
+    }
+
+    private void HideProfileAndEntities(Sketch sketch, IProfile profile)
+    {
+        profile.IsVisible = false;
+        foreach (var entityId in profile.SourceEntityIds)
+        {
+            var entity = sketch.Entities.FirstOrDefault(e => e.Id == entityId);
+            if (entity != null)
+            {
+                entity.IsVisible = false;
+            }
+        }
     }
 
     public string GetMeasurementText()
@@ -141,6 +156,7 @@ public class ExtrudeCommand : ICommandTool
     {
         // Simple bounding check or distance to center
         return sketch.Profiles
+            .Where(p => p.IsVisible)
             .OrderBy(p => p.Center.DistanceTo(point))
             .FirstOrDefault();
     }
