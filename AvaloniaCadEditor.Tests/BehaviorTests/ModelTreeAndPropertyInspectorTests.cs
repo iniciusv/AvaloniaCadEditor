@@ -35,9 +35,9 @@ public class ModelTreeAndPropertyInspectorTests
         Assert.Equal(3, treeVm.RootNodes.Count);
         
         var featuresGroup = treeVm.RootNodes[0];
-        Assert.Single(featuresGroup.Children);
-        Assert.NotNull(featuresGroup.Children[0].Icon);
-        Assert.Equal(cylinderFeature.Id, featuresGroup.Children[0].Id);
+        Assert.Equal(2, featuresGroup.Children.Count); // Base plane + the new ExtrudeFeature
+        Assert.NotNull(featuresGroup.Children[1].Icon);
+        Assert.Equal(cylinderFeature.Id, featuresGroup.Children[1].Id);
 
         var profilesGroup = treeVm.RootNodes[1];
         Assert.Single(profilesGroup.Children);
@@ -97,7 +97,7 @@ public class ModelTreeAndPropertyInspectorTests
         treeVm.BindSketch(sketch);
 
         // Act 1: Select via Tree Node
-        var featureNode = treeVm.RootNodes[0].Children[0];
+        var featureNode = treeVm.RootNodes[0].Children[1];
         treeVm.SelectedNode = featureNode;
 
         // Assert 1
@@ -217,8 +217,8 @@ public class ModelTreeAndPropertyInspectorTests
     {
         var mockGeo = new Moq.Mock<AvaloniaCadEditor.Domain.Interfaces.IGeometryEngine>();
         var mockSnap = new Moq.Mock<AvaloniaCadEditor.Application.Services.IOSnapService>();
-        mockSnap.Setup(s => s.GetSnappedPoint(Moq.It.IsAny<Sketch>(), Moq.It.IsAny<Point3D>(), Moq.It.IsAny<double>()))
-                .Returns<Sketch, Point3D, double>((s, p, t) => p);
+        mockSnap.Setup(s => s.GetSnappedPoint(Moq.It.IsAny<Sketch>(), Moq.It.IsAny<Point3D>(), Moq.It.IsAny<double>(), Moq.It.IsAny<AvaloniaCadEditor.Domain.Mesh.TriangleMesh>()))
+                .Returns<Sketch, Point3D, double, AvaloniaCadEditor.Domain.Mesh.TriangleMesh>((s, p, t, m) => p);
 
         var selectionService = new SelectionService();
         var vm = new CadViewModel(mockGeo.Object, mockSnap.Object, null, null, selectionService);
@@ -246,8 +246,8 @@ public class ModelTreeAndPropertyInspectorTests
         var kernel = new PureMathGeometryKernel();
         var mockGeo = new Moq.Mock<AvaloniaCadEditor.Domain.Interfaces.IGeometryEngine>();
         var mockSnap = new Moq.Mock<AvaloniaCadEditor.Application.Services.IOSnapService>();
-        mockSnap.Setup(s => s.GetSnappedPoint(Moq.It.IsAny<Sketch>(), Moq.It.IsAny<Point3D>(), Moq.It.IsAny<double>()))
-                .Returns<Sketch, Point3D, double>((s, p, t) => p);
+        mockSnap.Setup(s => s.GetSnappedPoint(Moq.It.IsAny<Sketch>(), Moq.It.IsAny<Point3D>(), Moq.It.IsAny<double>(), Moq.It.IsAny<AvaloniaCadEditor.Domain.Mesh.TriangleMesh>()))
+                .Returns<Sketch, Point3D, double, AvaloniaCadEditor.Domain.Mesh.TriangleMesh>((s, p, t, m) => p);
 
         var selectionService = new SelectionService();
         var vm = new CadViewModel(mockGeo.Object, mockSnap.Object, null, kernel, selectionService);

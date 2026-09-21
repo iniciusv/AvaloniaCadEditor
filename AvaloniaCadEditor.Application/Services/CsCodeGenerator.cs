@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Globalization;
 using AvaloniaCadEditor.Domain.Entities;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.Profiles;
@@ -11,6 +12,9 @@ namespace AvaloniaCadEditor.Application.Services;
 
 public class CsCodeGenerator
 {
+    private static string Fmt(double val) => val.ToString("F2", CultureInfo.InvariantCulture);
+    private static string Fmt(double? val) => val?.ToString("F2", CultureInfo.InvariantCulture) ?? "";
+
     public string GenerateCode(Sketch sketch, WorkPlane? referenceLens = null)
     {
         var sb = new StringBuilder();
@@ -105,6 +109,21 @@ public class CsCodeGenerator
         {
             WriteBooleanFeature(boolean, sb, featureNames, ref booleanCount);
         }
+        else if (feature is WorkPlaneFeature wpf)
+        {
+            string varName = $"workPlane_{wpf.Id.ToString("N").Substring(0, 4)}";
+            featureNames[wpf.Id] = varName;
+            
+            if (wpf.IsBasePlane)
+            {
+                sb.AppendLine($"// Plano Base Padrão");
+                sb.AppendLine($"var {varName} = new WorkPlaneFeature(WorkPlane.XY, \"{wpf.Name}\", true);");
+            }
+            else
+            {
+                sb.AppendLine($"var {varName} = new WorkPlaneFeature(new WorkPlane(origin: new Point3D({wpf.Plane.Origin.X:F2}, {wpf.Plane.Origin.Y:F2}, {wpf.Plane.Origin.Z:F2}), normal: new Vector3D({wpf.Plane.Normal.X:F2}, {wpf.Plane.Normal.Y:F2}, {wpf.Plane.Normal.Z:F2})), \"{wpf.Name}\");");
+            }
+        }
         else
         {
             // Generic fallback
@@ -187,6 +206,6 @@ public class CsCodeGenerator
         }
         string toolsArray = tools.Count > 0 ? $"new IFeature[] {{ {string.Join(", ", tools)} }}" : "Array.Empty<IFeature>()";
 
-        sb.AppendLine($"var {varName} = new BooleanFeature(baseFeature: {baseVar}, toolFeatures: {toolsArray}, operation: BooleanOperationType.{boolean.Operation});");
+        sb.AppendLine($"var {varName} = new BooleanFeature(name: \"{boolean.Name}\", operation: BooleanOperationType.{boolean.Operation}, baseFeature: {baseVar}, toolFeatures: {toolsArray});");
     }
 }

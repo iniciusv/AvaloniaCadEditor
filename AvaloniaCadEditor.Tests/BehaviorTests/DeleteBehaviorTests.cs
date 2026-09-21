@@ -94,7 +94,8 @@ public class DeleteBehaviorTests
         vm.DeleteSelectedCommand.Execute(null);
 
         // Assert
-        vm.Sketch.Features.Should().BeEmpty();
+        vm.Sketch.Features.Should().HaveCount(1);
+        vm.Sketch.Features.First().Should().BeOfType<WorkPlaneFeature>();
         selectionService.SelectedId.Should().BeNull();
         vm.SolidMesh.TriangleCount.Should().Be(0);
     }
