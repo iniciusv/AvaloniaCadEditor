@@ -113,7 +113,8 @@ public class CadViewModel : INotifyPropertyChanged
     public ICommand SelectCircleToolCommand { get; }
     public ICommand SelectTrimToolCommand { get; }
     public ICommand SelectExtrudeToolCommand { get; }
-
+    public ICommand SelectBooleanCutCommand { get; }
+    public ICommand SelectBooleanFuseCommand { get; }
     public ICommand SelectSelectToolCommand { get; }
     public ICommand SelectMoveToolCommand { get; }
     public ICommand DeleteSelectedCommand { get; }
@@ -142,6 +143,7 @@ public class CadViewModel : INotifyPropertyChanged
         _selectionService = selectionService ?? new SelectionService();
         
         ModelTree = new ModelTreeViewModel(_selectionService);
+        ModelTree.NodeVisibilityChanged += (s, e) => RefreshSolidMesh();
         PropertyInspector = new PropertyInspectorViewModel(_selectionService, () =>
         {
             RefreshSolidMesh();
@@ -154,6 +156,8 @@ public class CadViewModel : INotifyPropertyChanged
         SelectCircleToolCommand = new RelayCommand(() => CurrentTool = new DrawCircleCommand());
         SelectTrimToolCommand = new RelayCommand(() => CurrentTool = new TrimCommand(_geometryEngine));
         SelectExtrudeToolCommand = new RelayCommand(() => CurrentTool = new ExtrudeCommand());
+        SelectBooleanCutCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Subtract, _selectionService));
+        SelectBooleanFuseCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Union, _selectionService));
 
         SelectSelectToolCommand = new RelayCommand(() => CurrentTool = new SelectTool(_geometryEngine, _selectionService));
         SelectMoveToolCommand = new RelayCommand(() => CurrentTool = new MoveTool());
@@ -203,7 +207,7 @@ public class CadViewModel : INotifyPropertyChanged
 
     public void RefreshSolidMesh()
     {
-        var featuresToRender = new List<IFeature>(Sketch.Features);
+        var featuresToRender = new List<IFeature>(Sketch.Features.Where(f => f.IsVisible));
         if (CurrentTool is ExtrudeCommand extCmd)
         {
             var preview = extCmd.GetPreviewFeature();

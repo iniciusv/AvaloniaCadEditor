@@ -32,6 +32,26 @@ public class SilkViewportControl : OpenGlControlBase
 
     public CadViewModel? ViewModel => DataContext as CadViewModel;
 
+    protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
+    {
+        base.OnPropertyChanged(change);
+        if (change.Property == DataContextProperty)
+        {
+            if (change.OldValue is CadViewModel oldVm)
+                oldVm.PropertyChanged -= ViewModel_PropertyChanged;
+            if (change.NewValue is CadViewModel newVm)
+                newVm.PropertyChanged += ViewModel_PropertyChanged;
+        }
+    }
+
+    private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(CadViewModel.SolidMesh) || e.PropertyName == nameof(CadViewModel.Profiles))
+        {
+            RequestNextFrameRendering();
+        }
+    }
+
     public SilkViewportControl()
     {
         _camera = new CameraState();
@@ -392,6 +412,7 @@ public class SilkViewportControl : OpenGlControlBase
         {
             foreach (var profile in ViewModel.Sketch.Profiles)
             {
+                if (!profile.IsVisible) continue;
                 var (faceVerts, faceIndices) = profile.GetTessellatedFace();
                 if (faceVerts.Count == 0 || faceIndices.Count == 0) continue;
 
@@ -474,6 +495,7 @@ public class SilkViewportControl : OpenGlControlBase
             // Draw finalized entities
             foreach (var entity in ViewModel.Sketch.Entities)
             {
+                if (!entity.IsVisible) continue;
                 float r = entity.IsSelected ? 1.0f : 1.0f;
                 float g = entity.IsSelected ? 0.5f : 1.0f;
                 float b = entity.IsSelected ? 0.0f : 1.0f; // Selected = Orange, Normal = White
@@ -553,7 +575,7 @@ public class SilkViewportControl : OpenGlControlBase
             {
                 foreach (var f in ViewModel.Sketch.Features)
                 {
-                    featuresToRender.Add((f, false));
+                    if (f.IsVisible) featuresToRender.Add((f, false));
                 }
 
                 if (ViewModel.CurrentTool is Application.Commands.ExtrudeCommand extCmd)

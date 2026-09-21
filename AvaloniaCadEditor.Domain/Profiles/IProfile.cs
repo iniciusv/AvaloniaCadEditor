@@ -14,6 +14,7 @@ public interface IProfile
     Vector3D Normal { get; }
     double Area { get; }
     bool IsSelected { get; set; }
+    bool IsVisible { get; set; }
 
     IReadOnlyList<Point3D> GetVertices();
     (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace();

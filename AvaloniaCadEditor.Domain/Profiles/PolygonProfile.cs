@@ -15,6 +15,7 @@ public class PolygonProfile : IProfile
     public List<Point3D> Vertices { get; set; }
     public Vector3D Normal { get; set; }
     public bool IsSelected { get; set; } = false;
+    public bool IsVisible { get; set; } = true;
 
     public Point3D Center
     {
@@ -128,3 +129,4 @@ public class PolygonProfile : IProfile
         return cross.Length > 1e-6 ? cross.Normalize() : new Vector3D(0, 0, 1);
     }
 }
+

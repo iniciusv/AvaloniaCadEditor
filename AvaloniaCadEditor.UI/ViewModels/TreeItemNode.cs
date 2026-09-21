@@ -51,6 +51,39 @@ public class TreeItemNode : INotifyPropertyChanged
         }
     }
 
+    private bool _isVisible = true;
+    public bool IsVisible
+    {
+        get => _isVisible;
+        set
+        {
+            if (_isVisible != value)
+            {
+                _isVisible = value;
+                OnPropertyChanged();
+                
+                // Sync with underlying domain object
+                if (Tag is AvaloniaCadEditor.Domain.Features.IFeature feature)
+                {
+                    feature.IsVisible = value;
+                    VisibilityChanged?.Invoke(this, EventArgs.Empty);
+                }
+                else if (Tag is AvaloniaCadEditor.Domain.Profiles.IProfile profile)
+                {
+                    profile.IsVisible = value;
+                    VisibilityChanged?.Invoke(this, EventArgs.Empty);
+                }
+                else if (Tag is AvaloniaCadEditor.Domain.Entities.Entity entity)
+                {
+                    entity.IsVisible = value;
+                    VisibilityChanged?.Invoke(this, EventArgs.Empty);
+                }
+            }
+        }
+    }
+    
+    public event EventHandler? VisibilityChanged;
+
     public ObservableCollection<TreeItemNode> Children { get; } = new();
 
     public TreeItemNode(string name, string icon, TreeItemCategory category, Guid? id = null, object? tag = null)

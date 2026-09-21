@@ -16,6 +16,7 @@ public class CircleProfile : IProfile
     public double Radius { get; set; }
     public Vector3D Normal { get; set; }
     public bool IsSelected { get; set; } = false;
+    public bool IsVisible { get; set; } = true;
 
     public double Area => Math.PI * Radius * Radius;
 
@@ -113,3 +114,4 @@ public class CircleProfile : IProfile
         return this;
     }
 }
+

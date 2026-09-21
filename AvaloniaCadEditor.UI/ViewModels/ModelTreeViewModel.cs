@@ -76,6 +76,8 @@ public class ModelTreeViewModel : INotifyPropertyChanged
             }
 
             var node = new TreeItemNode(name, icon, TreeItemCategory.FeatureItem, feature.Id, feature);
+            node.IsVisible = feature.IsVisible;
+            node.VisibilityChanged += (s, e) => OnNodeVisibilityChanged();
             featuresGroup.Children.Add(node);
         }
         RootNodes.Add(featuresGroup);
@@ -92,6 +94,8 @@ public class ModelTreeViewModel : INotifyPropertyChanged
             };
             string name = $"Perfil {profile.Classification} (Área: {profile.Area:F1})";
             var node = new TreeItemNode(name, icon, TreeItemCategory.ProfileItem, profile.Id, profile);
+            node.IsVisible = profile.IsVisible;
+            node.VisibilityChanged += (s, e) => OnNodeVisibilityChanged();
             profilesGroup.Children.Add(node);
         }
         RootNodes.Add(profilesGroup);
@@ -116,6 +120,8 @@ public class ModelTreeViewModel : INotifyPropertyChanged
             }
 
             var node = new TreeItemNode(name, icon, TreeItemCategory.EntityItem, entity.Id, entity);
+            node.IsVisible = entity.IsVisible;
+            node.VisibilityChanged += (s, e) => OnNodeVisibilityChanged();
             entitiesGroup.Children.Add(node);
         }
         RootNodes.Add(entitiesGroup);
@@ -164,9 +170,18 @@ public class ModelTreeViewModel : INotifyPropertyChanged
         }
     }
 
+    public event EventHandler? NodeVisibilityChanged;
+
+    private void OnNodeVisibilityChanged()
+    {
+        NodeVisibilityChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
     protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }
+
+

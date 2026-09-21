@@ -9,6 +9,7 @@ public class ExtrudeFeature : IFeature
     public Guid Id { get; } = Guid.NewGuid();
     public string Name { get; set; }
     public bool IsEnabled { get; set; } = true;
+    public bool IsVisible { get; set; } = true;
     public bool IsSelected { get; set; } = false;
 
     public IProfile Profile { get; set; }

@@ -94,7 +94,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         var face = new OcctFace(wire);
 
         var dir = extrude.Direction;
-        var vec = new OcctVector3d(dir.X * extrude.Depth, dir.Y * extrude.Depth, dir.Z * extrude.Depth);
+        var vec = new OcctVector3d(dir.X, dir.Y, dir.Z);
 
         if (Math.Abs(extrude.Depth) < 1e-6) return face;
 
