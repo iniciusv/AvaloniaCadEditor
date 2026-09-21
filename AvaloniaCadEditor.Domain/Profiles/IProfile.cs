@@ -16,8 +16,8 @@ public interface IProfile
     bool IsSelected { get; set; }
     bool IsVisible { get; set; }
 
-    IReadOnlyList<Point3D> GetVertices();
-    (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace();
+    IReadOnlyList<Point3D> GetVertices(int segments = 32);
+    (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace(int segments = 36);
     bool ContainsPoint(Point3D point);
     IProfile SwitchClassification(ProfileClassification targetClassification);
 }

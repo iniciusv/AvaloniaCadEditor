@@ -101,12 +101,15 @@ public class BooleanTool : ICommandTool
 
     public void OnValueEntered(Sketch sketch, double value) { }
 
-    public string GetMeasurementText()
+    public string GetMeasurementText() => "";
+
+    public string GetStatusText()
     {
+        string opName = _operationType == BooleanOperationType.Subtract ? "Subtrair (Corte)" : "Unir";
         return _currentState switch
         {
-            State.SelectingBase => $"Select Base Volume for {_operationType}",
-            State.SelectingTool => $"Select Tool Volume to {_operationType} from {_baseFeature?.Name}",
+            State.SelectingBase => $"Operação {opName}: 1/2 Selecione o Volume BASE",
+            State.SelectingTool => $"Operação {opName}: 2/2 Selecione o Volume FERRAMENTA para {_operationType} de {_baseFeature?.Name}",
             _ => ""
         };
     }

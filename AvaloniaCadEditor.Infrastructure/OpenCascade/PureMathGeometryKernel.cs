@@ -4,23 +4,26 @@ using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.Mesh;
 using AvaloniaCadEditor.Domain.Profiles;
+using AvaloniaCadEditor.Domain.Settings;
 using AvaloniaCadEditor.Domain.ValueObjects;
 
 namespace AvaloniaCadEditor.Infrastructure.OpenCascade;
 
 public class PureMathGeometryKernel : IGeometryKernel
 {
-    public TriangleMesh BuildFeatureMesh(IFeature feature)
+    public TriangleMesh BuildFeatureMesh(IFeature feature, TessellationSettings? settings = null)
     {
+        settings ??= new TessellationSettings();
         if (feature is ExtrudeFeature extrude && extrude.IsEnabled)
         {
-            return ExtrudeProfile(extrude.Profile, extrude.Direction);
+            return ExtrudeProfile(extrude.Profile, extrude.Direction, settings);
         }
         return TriangleMesh.Empty;
     }
 
-    public TriangleMesh BuildSolidMesh(IEnumerable<IFeature> features)
+    public TriangleMesh BuildSolidMesh(IEnumerable<IFeature> features, TessellationSettings? settings = null)
     {
+        settings ??= new TessellationSettings();
         var positions = new List<float>();
         var normals = new List<float>();
         var indices = new List<uint>();
@@ -29,7 +32,7 @@ public class PureMathGeometryKernel : IGeometryKernel
 
         foreach (var feature in features)
         {
-            var mesh = BuildFeatureMesh(feature);
+            var mesh = BuildFeatureMesh(feature, settings);
             if (mesh.VertexCount == 0) continue;
 
             positions.AddRange(mesh.Positions);
@@ -46,9 +49,9 @@ public class PureMathGeometryKernel : IGeometryKernel
         return new TriangleMesh(positions.ToArray(), normals.ToArray(), indices.ToArray());
     }
 
-    private static TriangleMesh ExtrudeProfile(IProfile profile, Vector3D direction)
+    private static TriangleMesh ExtrudeProfile(IProfile profile, Vector3D direction, TessellationSettings settings)
     {
-        var baseVertices = profile.GetVertices();
+        var baseVertices = profile.GetVertices(settings.ProfileSegments);
         int n = baseVertices.Count;
         if (n < 3) return TriangleMesh.Empty;
 

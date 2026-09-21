@@ -38,7 +38,7 @@ public class RectangleProfile : IProfile
         SourceEntityIds = sourceEntityIds?.ToList() ?? new List<Guid>();
     }
 
-    public IReadOnlyList<Point3D> GetVertices()
+    public IReadOnlyList<Point3D> GetVertices(int segments = 32)
     {
         double halfW = Width / 2.0;
         double halfH = Height / 2.0;
@@ -66,7 +66,7 @@ public class RectangleProfile : IProfile
         return vertices;
     }
 
-    public (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace()
+    public (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace(int segments = 36)
     {
         var verts = GetVertices();
         var indices = new uint[] { 0, 1, 2, 0, 2, 3 };

@@ -22,7 +22,7 @@ public class SelectTool : ICommandTool
     public void OnMouseDown(Sketch sketch, Point3D point)
     {
         // 1. Try 2D HitTest on entities
-        var hitEntity = _geometryEngine.HitTest(sketch.Entities, point, 5.0);
+        var hitEntity = _geometryEngine.HitTest(sketch.Entities.Where(e => e.IsVisible), point, 5.0);
 
         if (hitEntity != null)
         {
@@ -41,6 +41,7 @@ public class SelectTool : ICommandTool
         // 2. Try 3D Features (e.g. Cylinders / Extrusions) HitTest
         foreach (var feature in sketch.Features)
         {
+            if (!feature.IsVisible) continue; // Ignore hidden features
             if (feature is Domain.Features.ExtrudeFeature ef)
             {
                 // Check if point is inside profile boundary or near base

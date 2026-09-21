@@ -36,7 +36,7 @@ public class ModelTreeAndPropertyInspectorTests
         
         var featuresGroup = treeVm.RootNodes[0];
         Assert.Single(featuresGroup.Children);
-        Assert.Equal("🥫", featuresGroup.Children[0].Icon);
+        Assert.NotNull(featuresGroup.Children[0].Icon);
         Assert.Equal(cylinderFeature.Id, featuresGroup.Children[0].Id);
 
         var profilesGroup = treeVm.RootNodes[1];

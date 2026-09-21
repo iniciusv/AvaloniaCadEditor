@@ -41,4 +41,9 @@ public interface ICommandTool
     /// Returns the text to display in the Value Control Box (e.g. "Length: 50.0")
     /// </summary>
     string GetMeasurementText();
+
+    /// <summary>
+    /// Returns the instruction text to display in the status bar (e.g. "Select base volume")
+    /// </summary>
+    string GetStatusText() => "";
 }

@@ -4,21 +4,23 @@ using System.Linq;
 using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.Mesh;
+using AvaloniaCadEditor.Domain.Settings;
 using OcctNet.Wrapper;
 
 namespace AvaloniaCadEditor.Infrastructure.OpenCascade;
 
 public class OpenCascadeGeometryKernel : IGeometryKernel
 {
-    public TriangleMesh BuildFeatureMesh(IFeature feature)
+    public TriangleMesh BuildFeatureMesh(IFeature feature, TessellationSettings? settings = null)
     {
+        settings ??= new TessellationSettings();
         try 
         {
-            var shape = BuildShape(feature);
+            var shape = BuildShape(feature, settings);
             if (shape == null || shape.IsNull)
                 return TriangleMesh.Empty;
 
-            var mesh = TessellateShape(shape);
+            var mesh = TessellateShape(shape, settings);
             shape.Dispose();
             return mesh;
         }
@@ -29,8 +31,10 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         }
     }
 
-    public TriangleMesh BuildSolidMesh(IEnumerable<IFeature> features)
+    public TriangleMesh BuildSolidMesh(IEnumerable<IFeature> features, TessellationSettings? settings = null)
     {
+        settings ??= new TessellationSettings();
+        
         var positions = new List<float>();
         var normals = new List<float>();
         var indices = new List<uint>();
@@ -38,7 +42,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
 
         foreach (var f in features)
         {
-            var mesh = BuildFeatureMesh(f);
+            var mesh = BuildFeatureMesh(f, settings);
             if (mesh.VertexCount == 0) continue;
 
             positions.AddRange(mesh.Positions);
@@ -54,16 +58,16 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         return new TriangleMesh(positions.ToArray(), normals.ToArray(), indices.ToArray());
     }
 
-    private OcctShape BuildShape(IFeature feature)
+    private OcctShape BuildShape(IFeature feature, TessellationSettings settings)
     {
         try {
             if (feature is ExtrudeFeature extrude && extrude.IsEnabled)
             {
-                return BuildExtrude(extrude);
+                return BuildExtrude(extrude, settings);
             }
             else if (feature is BooleanFeature boolean && boolean.IsEnabled)
             {
-                return BuildBoolean(boolean);
+                return BuildBoolean(boolean, settings);
             }
         }
         catch (Exception ex)
@@ -73,9 +77,9 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         return null;
     }
 
-    private OcctShape BuildExtrude(ExtrudeFeature extrude)
+    private OcctShape BuildExtrude(ExtrudeFeature extrude, TessellationSettings settings)
     {
-        var vertices = extrude.Profile.GetVertices();
+        var vertices = extrude.Profile.GetVertices(settings.ProfileSegments);
         if (vertices == null || vertices.Count < 3) return null;
 
         var edges = new List<OcctEdge>();
@@ -101,13 +105,13 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         return face.Extrude(vec);
     }
     
-    private OcctShape BuildBoolean(BooleanFeature boolean)
+    private OcctShape BuildBoolean(BooleanFeature boolean, TessellationSettings settings)
     {
-        var baseShape = BuildShape(boolean.BaseFeature);
+        var baseShape = BuildShape(boolean.BaseFeature, settings);
         if (baseShape == null || baseShape.IsNull) return null;
 
         var toolShapes = boolean.ToolFeatures
-                               .Select(BuildShape)
+                               .Select(f => BuildShape(f, settings))
                                .Where(s => s != null && !s.IsNull)
                                .ToList();
 
@@ -136,9 +140,9 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         return currentShape;
     }
 
-    private TriangleMesh TessellateShape(OcctShape shape)
+    private TriangleMesh TessellateShape(OcctShape shape, TessellationSettings settings)
     {
-        var occtMesh = shape.Triangulate(0.1, 0.5);
+        var occtMesh = shape.Triangulate(settings.LinearDeflection, settings.AngularDeflection);
         if (occtMesh == null || occtMesh.TriangleCount == 0)
             return TriangleMesh.Empty;
 

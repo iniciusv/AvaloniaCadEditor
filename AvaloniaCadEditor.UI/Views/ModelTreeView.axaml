@@ -35,13 +35,17 @@
                                               Cursor="Hand"
                                               ToolTip.Tip="Toggle Visibility">
                                     <Panel>
-                                        <TextBlock Text="[ V ]" FontSize="10" Foreground="LightGreen" FontWeight="Bold" IsVisible="{Binding IsVisible}" VerticalAlignment="Center" HorizontalAlignment="Center"/>
-                                        <TextBlock Text="[ X ]" FontSize="10" Foreground="Gray" FontWeight="Bold" IsVisible="{Binding !IsVisible}" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                        <Path Data="M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17C9.24,17 7,14.76 7,12C7,9.24 9.24,7 12,7C14.76,7 17,9.24 17,12C17,14.76 14.76,17 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z"
+                                              Fill="#BBBBBB" Stretch="Uniform" Width="14" Height="14"
+                                              IsVisible="{Binding IsVisible}" VerticalAlignment="Center" HorizontalAlignment="Center"/>
+                                        <Path Data="M11.83,9L15,12.16C15,12.11 15,12.05 15,12A3,3 0 0,0 12,9C11.94,9 11.89,9 11.83,9M7.53,9.8L9.08,11.35C9.03,11.56 9,11.77 9,12A3,3 0 0,0 12,15C12.22,15 12.44,14.97 12.65,14.92L14.2,16.47C13.53,16.8 12.79,17 12,17C9.24,17 7,14.76 7,12C7,11.21 7.2,10.47 7.53,9.8M2,4.27L4.28,6.55L4.73,7C3.08,8.3 1.78,10 1,12C2.73,16.39 7,19.5 12,19.5C13.55,19.5 15.03,19.2 16.38,18.66L16.81,19.08L19.73,22L21,20.73L3.27,3L2,4.27M7.53,9.8L22.53,24.8L23.8,23.53L18.4,18.13C19.95,16.82 21.68,14.65 23,12C21.27,7.61 17,4.5 12,4.5C10.6,4.5 9.26,4.75 8,5.2L7.53,9.8Z"
+                                              Fill="#555555" Stretch="Uniform" Width="14" Height="14"
+                                              IsVisible="{Binding !IsVisible}" VerticalAlignment="Center" HorizontalAlignment="Center"/>
                                     </Panel>
                                 </ToggleButton>
 
-                                <TextBlock Grid.Column="1" Text="{Binding Icon}" FontSize="13" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                <TextBlock Grid.Column="2" Text="{Binding Name}" FontSize="12" VerticalAlignment="Center" />
+                                <Path Grid.Column="1" Data="{Binding Icon}" Fill="#999999" Stretch="Uniform" Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,6,0" />
+                                <TextBlock Grid.Column="2" Text="{Binding Name}" FontSize="12" Foreground="#DDDDDD" VerticalAlignment="Center" />
                             </Grid>
                         </Border>
                     </TreeDataTemplate>

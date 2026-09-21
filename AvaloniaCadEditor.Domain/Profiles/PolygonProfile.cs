@@ -55,9 +55,9 @@ public class PolygonProfile : IProfile
         Normal = normal ?? CalculateNormal(Vertices);
     }
 
-    public IReadOnlyList<Point3D> GetVertices() => Vertices.AsReadOnly();
+    public IReadOnlyList<Point3D> GetVertices(int segments = 32) => Vertices.AsReadOnly();
 
-    public (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace()
+    public (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace(int segments = 36)
     {
         if (Vertices == null || Vertices.Count < 3)
             return (Array.Empty<Point3D>(), Array.Empty<uint>());

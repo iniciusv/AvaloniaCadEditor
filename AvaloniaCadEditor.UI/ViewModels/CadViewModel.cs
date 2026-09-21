@@ -129,18 +129,22 @@ public class CadViewModel : INotifyPropertyChanged
         }
     }
 
+    private readonly ITessellationSettingsProvider _settingsProvider;
+
     public CadViewModel(
         IGeometryEngine geometryEngine,
         IOSnapService osnapService,
         IProfileRecognitionService? profileRecognitionService = null,
         IGeometryKernel? geometryKernel = null,
-        ISelectionService? selectionService = null)
+        ISelectionService? selectionService = null,
+        ITessellationSettingsProvider? settingsProvider = null)
     {
         _geometryEngine = geometryEngine;
         _osnapService = osnapService;
         _profileRecognitionService = profileRecognitionService ?? new ProfileRecognitionService();
         _geometryKernel = geometryKernel ?? new NullGeometryKernel();
         _selectionService = selectionService ?? new SelectionService();
+        _settingsProvider = settingsProvider ?? new AvaloniaCadEditor.Infrastructure.Settings.JsonTessellationSettingsProvider();
         
         ModelTree = new ModelTreeViewModel(_selectionService);
         ModelTree.NodeVisibilityChanged += (s, e) => RefreshSolidMesh();
@@ -175,7 +179,9 @@ public class CadViewModel : INotifyPropertyChanged
 
         foreach (var feature in Sketch.Features)
         {
-            var mesh = _geometryKernel.BuildSolidMesh(new[] { feature });
+            if (!feature.IsVisible) continue; // CRITICAL FIX: Ignore hidden features
+
+            var mesh = _geometryKernel.BuildSolidMesh(new[] { feature }, _settingsProvider.GetSettings());
             if (mesh != null && ray.IntersectMesh(mesh, out float dist))
             {
                 if (dist < bestDist)
@@ -217,7 +223,7 @@ public class CadViewModel : INotifyPropertyChanged
             }
         }
 
-        SolidMesh = _geometryKernel.BuildSolidMesh(featuresToRender);
+        SolidMesh = _geometryKernel.BuildSolidMesh(featuresToRender, _settingsProvider.GetSettings());
     }
 
     public void OnPointerPressed(Point3D worldPoint)
@@ -238,6 +244,7 @@ public class CadViewModel : INotifyPropertyChanged
         }
 
         CurrentTool?.OnMouseDown(Sketch, snapped);
+        UpdateStatusText(snapped);
         RefreshProfiles();
     }
 
@@ -261,7 +268,9 @@ public class CadViewModel : INotifyPropertyChanged
 
     private void UpdateStatusText(Point3D snapped)
     {
-        StatusText = $"X: {snapped.X:F2}, Y: {snapped.Y:F2}";
+        string toolInstruction = CurrentTool?.GetStatusText() ?? "";
+        string prefix = string.IsNullOrEmpty(toolInstruction) ? "" : $"{toolInstruction} | ";
+        StatusText = $"{prefix}X: {snapped.X:F2}, Y: {snapped.Y:F2}";
         
         if (!string.IsNullOrEmpty(_inputBuffer))
         {

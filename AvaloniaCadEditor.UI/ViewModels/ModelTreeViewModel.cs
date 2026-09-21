@@ -56,17 +56,25 @@ public class ModelTreeViewModel : INotifyPropertyChanged
 
         RootNodes.Clear();
 
+        string iconFolder = "M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z";
+        string iconCube = "M21,16.5C21,16.88 20.79,17.21 20.47,17.38L12.57,21.82C12.41,21.94 12.21,22 12,22C11.79,22 11.59,21.94 11.43,21.82L3.53,17.38C3.21,17.21 3,16.88 3,16.5V7.5C3,7.12 3.21,6.79 3.53,6.62L11.43,2.18C11.59,2.06 11.79,2 12,2C12.21,2 12.41,2.06 12.57,2.18L20.47,6.62C20.79,6.79 21,7.12 21,7.5V16.5M12,4.15L5,8.09L12,12.03L19,8.09L12,4.15M4.5,15.97L11.25,19.79V13.16L4.5,9.33V15.97M19.5,15.97V9.33L12.75,13.16V19.79L19.5,15.97Z";
+        string iconCylinder = "M12,2A7,3 0 0,0 5,5C5,6.66 8.13,8 12,8C15.87,8 19,6.66 19,5C19,3.34 15.87,2 12,2M5,5V19C5,20.66 8.13,22 12,22C15.87,22 19,20.66 19,19V5C19,5 19,5 19,5C19,6.66 15.87,8 12,8C8.13,8 5,6.66 5,5Z";
+        string iconCircle = "M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20Z";
+        string iconRect = "M4,6V19H20V6H4M18,17H6V8H18V17Z";
+        string iconPolygon = "M12,2L22,12L17,22H7L2,12L12,2M12,4.83L4.83,12L8.27,19.17H15.73L19.17,12L12,4.83Z";
+        string iconLine = "M21.71,20.29L20.29,21.71L2.29,3.71L3.71,2.29L21.71,20.29Z";
+
         // 1. Features 3D Group
-        var featuresGroup = new TreeItemNode($"Volumes 3D ({CurrentSketch.Features.Count})", "🧊", TreeItemCategory.FeatureGroup);
+        var featuresGroup = new TreeItemNode($"Volumes 3D ({CurrentSketch.Features.Count})", iconFolder, TreeItemCategory.FeatureGroup);
         foreach (var feature in CurrentSketch.Features)
         {
-            string icon = "🧊";
+            string icon = iconCube;
             string name = feature.Name;
             if (feature is ExtrudeFeature ef)
             {
                 if (ef.Profile is CircleProfile cp)
                 {
-                    icon = "🥫"; // Cylinder
+                    icon = iconCylinder;
                     name = $"Cilindro (R={cp.Radius:F1}, H={ef.Depth:F1})";
                 }
                 else
@@ -83,14 +91,14 @@ public class ModelTreeViewModel : INotifyPropertyChanged
         RootNodes.Add(featuresGroup);
 
         // 2. Profiles 2D Group
-        var profilesGroup = new TreeItemNode($"Perfis 2D ({CurrentSketch.Profiles.Count})", "📐", TreeItemCategory.ProfileGroup);
+        var profilesGroup = new TreeItemNode($"Perfis 2D ({CurrentSketch.Profiles.Count})", iconFolder, TreeItemCategory.ProfileGroup);
         foreach (var profile in CurrentSketch.Profiles)
         {
             string icon = profile.Classification switch
             {
-                ProfileClassification.Circle => "⭕",
-                ProfileClassification.Rectangle => "🔲",
-                _ => "📐"
+                ProfileClassification.Circle => iconCircle,
+                ProfileClassification.Rectangle => iconRect,
+                _ => iconPolygon
             };
             string name = $"Perfil {profile.Classification} (Área: {profile.Area:F1})";
             var node = new TreeItemNode(name, icon, TreeItemCategory.ProfileItem, profile.Id, profile);
@@ -101,21 +109,21 @@ public class ModelTreeViewModel : INotifyPropertyChanged
         RootNodes.Add(profilesGroup);
 
         // 3. Sketch Entities 2D Group
-        var entitiesGroup = new TreeItemNode($"Linhas e Entidades ({CurrentSketch.Entities.Count})", "✏️", TreeItemCategory.EntityGroup);
+        var entitiesGroup = new TreeItemNode($"Linhas e Entidades ({CurrentSketch.Entities.Count})", iconFolder, TreeItemCategory.EntityGroup);
         int lineCount = 1;
         int circleCount = 1;
         foreach (var entity in CurrentSketch.Entities)
         {
-            string icon = "📏";
+            string icon = iconPolygon;
             string name = "Entidade";
             if (entity is LineEntity l)
             {
-                icon = "📏";
+                icon = iconLine;
                 name = $"Linha {lineCount++} ({l.Length:F1}mm)";
             }
             else if (entity is CircleEntity c)
             {
-                icon = "⭕";
+                icon = iconCircle;
                 name = $"Círculo {circleCount++} (R={c.Radius:F1}mm)";
             }
 

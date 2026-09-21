@@ -45,10 +45,9 @@ public class CircleProfile : IProfile
         SourceEntityIds = sourceEntityIds?.ToList() ?? new List<Guid>();
     }
 
-    public IReadOnlyList<Point3D> GetVertices()
+    public IReadOnlyList<Point3D> GetVertices(int segments = 32)
     {
         // Tessellated approximation for polyline visualization
-        int segments = 32;
         var vertices = new List<Point3D>(segments);
         for (int i = 0; i < segments; i++)
         {
@@ -62,9 +61,8 @@ public class CircleProfile : IProfile
         return vertices;
     }
 
-    public (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace()
+    public (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace(int segments = 36)
     {
-        int segments = 36;
         var verts = new List<Point3D>(segments + 1);
         var indices = new List<uint>(segments * 3);
 
