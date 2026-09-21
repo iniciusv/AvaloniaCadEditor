@@ -10,6 +10,8 @@ public class WorkPlaneFeature : IFeature
     public bool IsEnabled { get; set; } = true;
     public bool IsVisible { get; set; } = true;
     public bool IsSelected { get; set; } = false;
+    public bool HasError => false;
+    public string? ErrorMessage => null;
     public bool IsBasePlane { get; set; } = false;
 
     public WorkPlane Plane { get; set; }

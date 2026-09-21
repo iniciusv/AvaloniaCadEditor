@@ -169,6 +169,8 @@ public class ModelTreeViewModel : INotifyPropertyChanged
 
         var node = new TreeItemNode(name, icon, TreeItemCategory.FeatureItem, feature.Id, feature);
         node.IsVisible = feature.IsVisible;
+        node.HasError = feature.HasError;
+        node.ErrorMessage = feature.ErrorMessage;
         node.VisibilityChanged += (s, e) => OnNodeVisibilityChanged();
 
         if (feature is BooleanFeature booleanFeature)
@@ -252,6 +254,32 @@ public class ModelTreeViewModel : INotifyPropertyChanged
             }
         }
         return false;
+    }
+
+    public void MoveFeatureUp(TreeItemNode node)
+    {
+        if (CurrentSketch == null || node.Tag is not IFeature feature) return;
+        
+        var featuresList = CurrentSketch.Features.ToList();
+        int currentIndex = featuresList.IndexOf(feature);
+        
+        if (currentIndex > 0)
+        {
+            CurrentSketch.ReorderFeature(feature, currentIndex - 1);
+        }
+    }
+
+    public void MoveFeatureDown(TreeItemNode node)
+    {
+        if (CurrentSketch == null || node.Tag is not IFeature feature) return;
+        
+        var featuresList = CurrentSketch.Features.ToList();
+        int currentIndex = featuresList.IndexOf(feature);
+        
+        if (currentIndex >= 0 && currentIndex < featuresList.Count - 1)
+        {
+            CurrentSketch.ReorderFeature(feature, currentIndex + 1);
+        }
     }
 
     public event EventHandler? NodeVisibilityChanged;

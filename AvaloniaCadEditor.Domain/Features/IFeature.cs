@@ -9,4 +9,6 @@ public interface IFeature
     bool IsEnabled { get; set; }
     bool IsVisible { get; set; }
     bool IsSelected { get; set; }
+    bool HasError { get; }
+    string? ErrorMessage { get; }
 }

@@ -29,6 +29,12 @@
                 <TreeView.ItemTemplate>
                     <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="vm:TreeItemNode">
                         <Border Classes.selectedNode="{Binding IsSelected}" CornerRadius="3" Padding="6,3" Margin="1">
+                            <Border.ContextMenu>
+                                <ContextMenu>
+                                    <MenuItem Header="Mover para cima" Command="{Binding $parent[UserControl].((vm:ModelTreeViewModel)DataContext).MoveFeatureUp}" CommandParameter="{Binding}" />
+                                    <MenuItem Header="Mover para baixo" Command="{Binding $parent[UserControl].((vm:ModelTreeViewModel)DataContext).MoveFeatureDown}" CommandParameter="{Binding}" />
+                                </ContextMenu>
+                            </Border.ContextMenu>
                             <Grid ColumnDefinitions="Auto, Auto, *">
                                 <!-- Eye Toggle for Visibility -->
                                 <ToggleButton Grid.Column="0" 
@@ -50,7 +56,8 @@
                                 </ToggleButton>
 
                                 <Path Grid.Column="1" Data="{Binding Icon}" Fill="#999999" Stretch="Uniform" Width="14" Height="14" VerticalAlignment="Center" Margin="0,0,6,0" />
-                                <TextBlock Grid.Column="2" Text="{Binding Name}" FontSize="12" Foreground="#DDDDDD" VerticalAlignment="Center" />
+                                <TextBlock Grid.Column="2" Text="{Binding Name}" FontSize="12" VerticalAlignment="Center" 
+                                           Classes.error="{Binding HasError}" ToolTip.Tip="{Binding ErrorMessage}" />
                             </Grid>
                         </Border>
                     </TreeDataTemplate>
@@ -70,6 +77,10 @@
                     </Style>
                     <Style Selector="Border:not(.selectedNode) TextBlock">
                         <Setter Property="Foreground" Value="#CCCCCC" />
+                    </Style>
+                    <Style Selector="TextBlock.error">
+                        <Setter Property="Foreground" Value="#FF5555" />
+                        <Setter Property="FontStyle" Value="Italic" />
                     </Style>
                 </TreeView.Styles>
             </TreeView>

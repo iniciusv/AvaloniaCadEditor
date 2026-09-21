@@ -166,6 +166,12 @@ public class CadViewModel : INotifyPropertyChanged
         _selectionService = selectionService ?? new SelectionService();
         _settingsProvider = settingsProvider ?? new AvaloniaCadEditor.Infrastructure.Settings.JsonTessellationSettingsProvider();
         
+        Sketch.FeaturesChanged += () =>
+        {
+            RefreshSolidMesh();
+            ModelTree.RebuildTree();
+        };
+
         ModelTree = new ModelTreeViewModel(_selectionService);
         ModelTree.NodeVisibilityChanged += (s, e) => 
         {

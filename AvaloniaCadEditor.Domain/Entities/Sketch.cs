@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.Profiles;
@@ -60,13 +61,30 @@ public class Sketch
         _profiles.Remove(profile);
     }
 
+    public event Action? FeaturesChanged;
+
     public void AddFeature(IFeature feature)
     {
         _features.Add(feature);
+        FeaturesChanged?.Invoke();
     }
 
     public void RemoveFeature(IFeature feature)
     {
         _features.Remove(feature);
+        FeaturesChanged?.Invoke();
+    }
+
+    public void InsertFeatureAt(int index, IFeature feature)
+    {
+        _features.Insert(index, feature);
+        FeaturesChanged?.Invoke();
+    }
+
+    public void ReorderFeature(IFeature feature, int newIndex)
+    {
+        _features.Remove(feature);
+        _features.Insert(Math.Min(newIndex, _features.Count), feature);
+        FeaturesChanged?.Invoke();
     }
 }

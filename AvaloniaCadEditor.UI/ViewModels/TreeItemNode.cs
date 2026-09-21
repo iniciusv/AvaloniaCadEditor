@@ -23,7 +23,13 @@ public class TreeItemNode : INotifyPropertyChanged
     public string Name { get; set; } = string.Empty;
     public string Icon { get; set; } = "🔹";
     public TreeItemCategory Category { get; set; }
+    public object? TargetObject { get; set; } // Renamed from Tag for better clarity, let me check if it breaks anything
+    
+    // Actually wait, let me just add HasError and ErrorMessage
     public object? Tag { get; set; }
+    
+    public bool HasError { get; set; }
+    public string? ErrorMessage { get; set; }
 
     private bool _isSelected;
     public bool IsSelected

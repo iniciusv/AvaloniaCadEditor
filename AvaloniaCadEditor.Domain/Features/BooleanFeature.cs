@@ -11,6 +11,9 @@ public class BooleanFeature : IFeature
     public bool IsVisible { get; set; } = true;
     public bool IsSelected { get; set; } = false;
 
+    public bool HasError => BaseFeature == null || ToolFeatures == null || ToolFeatures.Count == 0;
+    public string? ErrorMessage => HasError ? "Referência perdida: feature base ou ferramenta foi removida" : null;
+
     public BooleanOperationType Operation { get; set; }
     public IFeature BaseFeature { get; set; }
     public List<IFeature> ToolFeatures { get; set; }

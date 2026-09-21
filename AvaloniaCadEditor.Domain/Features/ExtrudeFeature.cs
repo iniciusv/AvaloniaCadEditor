@@ -12,6 +12,9 @@ public class ExtrudeFeature : IFeature
     public bool IsVisible { get; set; } = true;
     public bool IsSelected { get; set; } = false;
 
+    public bool HasError => Profile == null;
+    public string? ErrorMessage => HasError ? "Referência perdida: perfil de origem foi removido" : null;
+
     public IProfile Profile { get; set; }
     public double Depth { get; set; }
     public Vector3D Direction { get; set; }
