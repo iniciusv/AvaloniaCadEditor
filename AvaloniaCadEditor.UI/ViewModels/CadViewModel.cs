@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using AvaloniaCadEditor.Application.Commands;
@@ -13,7 +14,6 @@ using AvaloniaCadEditor.Domain.Mesh;
 using AvaloniaCadEditor.Domain.Profiles;
 using AvaloniaCadEditor.Domain.ValueObjects;
 using System.Globalization;
-using System.Linq;
 
 namespace AvaloniaCadEditor.UI.ViewModels;
 
@@ -78,6 +78,9 @@ public class CadViewModel : INotifyPropertyChanged
             }
 
             OnPropertyChanged();
+            
+            // Force status text update so user sees the new tool instructions immediately
+            UpdateStatusText(CurrentSnappedPoint);
         }
     }
 
@@ -117,6 +120,7 @@ public class CadViewModel : INotifyPropertyChanged
     public ICommand SelectBooleanFuseCommand { get; }
     public ICommand SelectSelectToolCommand { get; }
     public ICommand SelectMoveToolCommand { get; }
+    public ICommand SelectSetWorkPlaneCommand { get; }
     public ICommand DeleteSelectedCommand { get; }
 
     public bool OsnapEnabled
@@ -185,41 +189,40 @@ public class CadViewModel : INotifyPropertyChanged
 
         SelectSelectToolCommand = new RelayCommand(() => CurrentTool = new SelectTool(_geometryEngine, _selectionService));
         SelectMoveToolCommand = new RelayCommand(() => CurrentTool = new MoveTool());
+        SelectSetWorkPlaneCommand = new RelayCommand(() => CurrentTool = new SetWorkPlaneCommand());
         DeleteSelectedCommand = new RelayCommand(DeleteSelected);
 
         CurrentTool = new SelectTool(_geometryEngine, _selectionService);
     }
 
-    public bool TrySelect3DFeature(Ray ray)
+    public RaycastHit? Raycast3D(Ray ray)
     {
-        if (Sketch.Features.Count == 0) return false;
+        if (Sketch.Features.Count == 0) return null;
 
         float bestDist = float.MaxValue;
-        IFeature? hitFeature = null;
+        RaycastHit? bestHit = null;
 
         foreach (var feature in Sketch.Features)
         {
             if (!feature.IsVisible) continue; // CRITICAL FIX: Ignore hidden features
 
             var mesh = _geometryKernel.BuildSolidMesh(new[] { feature }, _settingsProvider.GetSettings());
-            if (mesh != null && ray.IntersectMesh(mesh, out float dist))
+            if (mesh != null)
             {
-                if (dist < bestDist)
+                var hit = ray.IntersectMesh(mesh);
+                if (hit.HasValue && hit.Value.Distance < bestDist)
                 {
-                    bestDist = dist;
-                    hitFeature = feature;
+                    bestDist = hit.Value.Distance;
+                    bestHit = new RaycastHit(
+                        hit.Value.Distance,
+                        hit.Value.Point,
+                        hit.Value.Normal,
+                        feature.Id);
                 }
             }
         }
 
-        if (hitFeature != null)
-        {
-            _selectionService.SelectById(Sketch, hitFeature.Id);
-            ModelTree.RebuildTree();
-            return true;
-        }
-
-        return false;
+        return bestHit;
     }
 
     public void RefreshProfiles()
@@ -252,35 +255,39 @@ public class CadViewModel : INotifyPropertyChanged
         set
         {
             Sketch.Plane = value;
+            var wpf = new Domain.Features.WorkPlaneFeature(value, $"Plano {Sketch.Features.Count(f => f is Domain.Features.WorkPlaneFeature)}");
+            Sketch.AddFeature(wpf);
+            ModelTree.RebuildTree();
             OnPropertyChanged();
             RefreshSolidMesh();
         }
     }
 
-    public void OnPointerPressed(Point3D worldPoint)
+    public bool OnPointerPressed(Point3D worldPoint)
     {
-        var localSnapped = ActiveWorkPlane.ToLocalSpace(_osnapService.GetSnappedPoint(Sketch, worldPoint, 5.0));
+        var localSnapped = ActiveWorkPlane.ToLocalSpace(_osnapService.GetSnappedPoint(Sketch, worldPoint, 5.0, SolidMesh));
 
         if (CurrentTool is SelectTool)
         {
-            var hitProfile = Sketch.Profiles.FirstOrDefault(p => p.ContainsPoint(localSnapped));
+            var hitProfile = Sketch.Profiles.FirstOrDefault(p => p.Plane.Equals(ActiveWorkPlane) && p.ContainsPoint(localSnapped));
             if (hitProfile != null)
             {
                 _selectionService.SelectById(Sketch, hitProfile.Id);
                 ModelTree.RebuildTree();
                 RefreshProfiles();
-                return;
+                return true; // Indicates we hit and selected a 2D Profile
             }
         }
 
         CurrentTool?.OnMouseDown(Sketch, localSnapped);
         UpdateStatusText(localSnapped);
         RefreshProfiles();
+        return false;
     }
 
     public void OnPointerMoved(Point3D worldPoint)
     {
-        var localSnapped = ActiveWorkPlane.ToLocalSpace(_osnapService.GetSnappedPoint(Sketch, worldPoint, 5.0));
+        var localSnapped = ActiveWorkPlane.ToLocalSpace(_osnapService.GetSnappedPoint(Sketch, worldPoint, 5.0, SolidMesh));
         CurrentSnappedPoint = localSnapped; // Note: UI will show local coordinates
         CurrentTool?.OnMouseMove(Sketch, localSnapped);
 
@@ -360,6 +367,9 @@ public class CadViewModel : INotifyPropertyChanged
             case "M":
                 SelectMoveToolCommand.Execute(null);
                 break;
+            case "W":
+                SelectSetWorkPlaneCommand.Execute(null);
+                break;
             case "SPACE":
                 ClearVcb();
                 SelectSelectToolCommand.Execute(null);
@@ -415,6 +425,10 @@ public class CadViewModel : INotifyPropertyChanged
             var targetFeature = Sketch.Features.FirstOrDefault(f => f.Id == id);
             if (targetFeature != null)
             {
+                if (targetFeature is Domain.Features.WorkPlaneFeature wpf && wpf.IsBasePlane)
+                {
+                    return; // Cannot delete base plane
+                }
                 Sketch.RemoveFeature(targetFeature);
                 ClearSelection();
                 RefreshProfiles();
@@ -456,6 +470,7 @@ public class CadViewModel : INotifyPropertyChanged
             {
                 foreach (var feature in selectedFeatures)
                 {
+                    if (feature is Domain.Features.WorkPlaneFeature wpf && wpf.IsBasePlane) continue;
                     Sketch.RemoveFeature(feature);
                 }
                 ClearSelection();

@@ -416,9 +416,22 @@ public class SilkViewportControl : OpenGlControlBase
         }
 
         var identity = Matrix4x4.Identity;
+        
+        var gridMatrix = identity;
+        if (ViewModel != null)
+        {
+            var wp = ViewModel.ActiveWorkPlane;
+            gridMatrix = new Matrix4x4(
+                (float)wp.XAxis.X, (float)wp.XAxis.Y, (float)wp.XAxis.Z, 0,
+                (float)wp.YAxis.X, (float)wp.YAxis.Y, (float)wp.YAxis.Z, 0,
+                (float)wp.Normal.X, (float)wp.Normal.Y, (float)wp.Normal.Z, 0,
+                (float)wp.Origin.X, (float)wp.Origin.Y, (float)wp.Origin.Z, 1
+            );
+        }
+
         unsafe
         {
-            _gl.UniformMatrix4(modelLoc, 1, false, (float*)&identity);
+            _gl.UniformMatrix4(modelLoc, 1, false, (float*)&gridMatrix);
             _gl.Uniform1(lightingLoc, 0); // No lighting for grid and 2D lines
             _gl.Uniform1(alphaLoc, 1.0f);
         }
@@ -504,11 +517,13 @@ public class SilkViewportControl : OpenGlControlBase
         {
             var sketchVertices = new System.Collections.Generic.List<float>();
 
-            void AddLine(Point3D p1, Point3D p2, float r, float g, float b)
+            void AddLine(Point3D p1, Point3D p2, AvaloniaCadEditor.Domain.ValueObjects.WorkPlane plane, float r, float g, float b)
             {
-                sketchVertices.Add((float)p1.X); sketchVertices.Add((float)p1.Y); sketchVertices.Add((float)p1.Z);
+                var w1 = plane.ToWorldSpace(p1);
+                var w2 = plane.ToWorldSpace(p2);
+                sketchVertices.Add((float)w1.X); sketchVertices.Add((float)w1.Y); sketchVertices.Add((float)w1.Z);
                 sketchVertices.Add(r); sketchVertices.Add(g); sketchVertices.Add(b);
-                sketchVertices.Add((float)p2.X); sketchVertices.Add((float)p2.Y); sketchVertices.Add((float)p2.Z);
+                sketchVertices.Add((float)w2.X); sketchVertices.Add((float)w2.Y); sketchVertices.Add((float)w2.Z);
                 sketchVertices.Add(r); sketchVertices.Add(g); sketchVertices.Add(b);
             }
 
@@ -522,7 +537,7 @@ public class SilkViewportControl : OpenGlControlBase
 
                 if (entity is LineEntity line)
                 {
-                    AddLine(line.StartPoint, line.EndPoint, r, g, b);
+                    AddLine(line.StartPoint, line.EndPoint, entity.Plane, r, g, b);
                 }
                 else if (entity is CircleEntity circle)
                 {
@@ -535,7 +550,7 @@ public class SilkViewportControl : OpenGlControlBase
                         Point3D p1 = new Point3D(circle.Center.X + circle.Radius * Math.Cos(theta1), circle.Center.Y + circle.Radius * Math.Sin(theta1), circle.Center.Z);
                         Point3D p2 = new Point3D(circle.Center.X + circle.Radius * Math.Cos(theta2), circle.Center.Y + circle.Radius * Math.Sin(theta2), circle.Center.Z);
                         
-                        AddLine(p1, p2, r, g, b);
+                        AddLine(p1, p2, entity.Plane, r, g, b);
                     }
                 }
             }
@@ -545,9 +560,10 @@ public class SilkViewportControl : OpenGlControlBase
             {
                 foreach (var entity in ViewModel.CurrentTool.GetPreviewEntities())
                 {
+                    // Preview entities always use the ActiveWorkPlane
                     if (entity is LineEntity line)
                     {
-                        AddLine(line.StartPoint, line.EndPoint, 1.0f, 1.0f, 0.0f); // Preview = Yellow
+                        AddLine(line.StartPoint, line.EndPoint, ViewModel.ActiveWorkPlane, 1.0f, 1.0f, 0.0f); // Preview = Yellow
                     }
                     else if (entity is CircleEntity circle)
                     {
@@ -560,7 +576,7 @@ public class SilkViewportControl : OpenGlControlBase
                             Point3D p1 = new Point3D(circle.Center.X + circle.Radius * Math.Cos(theta1), circle.Center.Y + circle.Radius * Math.Sin(theta1), circle.Center.Z);
                             Point3D p2 = new Point3D(circle.Center.X + circle.Radius * Math.Cos(theta2), circle.Center.Y + circle.Radius * Math.Sin(theta2), circle.Center.Z);
                             
-                            AddLine(p1, p2, 1.0f, 1.0f, 0.0f);
+                            AddLine(p1, p2, ViewModel.ActiveWorkPlane, 1.0f, 1.0f, 0.0f);
                         }
                     }
                 }
@@ -634,6 +650,13 @@ public class SilkViewportControl : OpenGlControlBase
                 {
                     faceR = 0.55f; faceG = 0.70f; faceB = 0.90f; // Metallic Steel Blue Unselected
                     edgeR = 0.12f; edgeG = 0.16f; edgeB = 0.22f;
+                    
+                    // Dim background objects if we are in a custom workplane
+                    if (!ViewModel.ActiveWorkPlane.Equals(AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.XY))
+                    {
+                        faceR *= 0.4f; faceG *= 0.4f; faceB *= 0.4f;
+                        edgeR *= 0.4f; edgeG *= 0.4f; edgeB *= 0.4f;
+                    }
                 }
 
                 // Interleave position + color + Normal
@@ -814,21 +837,9 @@ public class SilkViewportControl : OpenGlControlBase
                     new Vector2((float)Bounds.Width, (float)Bounds.Height)
                 );
 
-                // 1. Try 3D Solid Raycast Selection first
-                if (ViewModel != null && (ViewModel.CurrentTool is Application.Commands.SelectTool || 
-                    (ViewModel.CurrentTool is not Application.Commands.DrawLineCommand && 
-                     ViewModel.CurrentTool is not Application.Commands.DrawCircleCommand)))
-                {
-                    if (ViewModel.TrySelect3DFeature(ray))
-                    {
-                        RequestNextFrameRendering();
-                        return;
-                    }
-                }
-
                 if (ViewModel == null) return;
-                
-                // 2. Intersect Active WorkPlane for 2D entity selection and drawing tools
+
+                // 1. Always prioritize active WorkPlane 2D intersection (if a drawing tool is active, or if we hit a 2D profile)
                 var planeNormal = new Vector3(
                     (float)ViewModel.ActiveWorkPlane.Normal.X,
                     (float)ViewModel.ActiveWorkPlane.Normal.Y,
@@ -837,11 +848,39 @@ public class SilkViewportControl : OpenGlControlBase
                     (float)ViewModel.ActiveWorkPlane.Origin.X,
                     (float)ViewModel.ActiveWorkPlane.Origin.Y,
                     (float)ViewModel.ActiveWorkPlane.Origin.Z);
+                
                 var intersection = ray.IntersectPlane(planeNormal, planeOrigin);
+                bool handledBy2D = false;
+                
                 if (intersection.HasValue)
                 {
-                    ViewModel.OnPointerPressed(intersection.Value);
+                    handledBy2D = ViewModel.OnPointerPressed(intersection.Value);
                     RequestNextFrameRendering();
+                }
+
+                // 2. If not handled by 2D (meaning no 2D profile was clicked and no tool consumed it), fallback to 3D
+                if (!handledBy2D)
+                {
+                    if (ViewModel.CurrentTool is Application.Commands.SetWorkPlaneCommand)
+                    {
+                        var hit = ViewModel.Raycast3D(ray);
+                        if (hit.HasValue)
+                        {
+                            ViewModel.ActiveWorkPlane = new Domain.ValueObjects.WorkPlane(hit.Value.Normal, hit.Value.Point);
+                            ViewModel.SelectSelectToolCommand.Execute(null);
+                            RequestNextFrameRendering();
+                        }
+                    }
+                    else if (ViewModel.CurrentTool is Application.Commands.SelectTool)
+                    {
+                        var hit = ViewModel.Raycast3D(ray);
+                        if (hit.HasValue && hit.Value.FeatureId.HasValue)
+                        {
+                            ViewModel.SelectionService.SelectById(ViewModel.Sketch, hit.Value.FeatureId.Value);
+                            ViewModel.ModelTree.RebuildTree();
+                            RequestNextFrameRendering();
+                        }
+                    }
                 }
             }
         }

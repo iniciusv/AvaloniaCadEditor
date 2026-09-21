@@ -8,7 +8,7 @@ public class RectangleClassifier : IShapeClassifier
 {
     private const double Tolerance = 1e-3;
 
-    public ProfileCandidate? Classify(IReadOnlyList<Point3D> loopVertices, IReadOnlyList<Guid> sourceEntityIds)
+    public ProfileCandidate? Classify(IReadOnlyList<Point3D> loopVertices, IReadOnlyList<Guid> sourceEntityIds, WorkPlane plane)
     {
         if (loopVertices == null || loopVertices.Count != 4)
             return null;
@@ -59,7 +59,7 @@ public class RectangleClassifier : IShapeClassifier
             ProfileClassification.Rectangle,
             "Retângulo (Paramétrico)",
             specificityRank: 1, // Highest priority
-            factory: () => new RectangleProfile(center, width, height, rotationAngle, sourceEntityIds: sourceEntityIds)
+            factory: () => new RectangleProfile(center, width, height, rotationAngle, sourceEntityIds: sourceEntityIds, plane: plane)
         );
     }
 

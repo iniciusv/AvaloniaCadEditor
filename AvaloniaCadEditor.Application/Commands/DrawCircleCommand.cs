@@ -26,7 +26,7 @@ public class DrawCircleCommand : ICommandTool
             var radius = _center.DistanceTo(point);
             if (radius > 0)
             {
-                var circle = new CircleEntity(_center, radius);
+                var circle = new CircleEntity(_center, radius) { Plane = sketch.Plane };
                 sketch.AddEntity(circle);
             }
             
@@ -55,7 +55,7 @@ public class DrawCircleCommand : ICommandTool
     {
         if (_currentState == State.WaitingForRadius)
         {
-            var circle = new CircleEntity(_center, value);
+            var circle = new CircleEntity(_center, value) { Plane = sketch.Plane };
             sketch.AddEntity(circle);
             _currentState = State.WaitingForCenter;
         }

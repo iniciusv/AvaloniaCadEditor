@@ -15,7 +15,7 @@ public class CircleProfile : IProfile
 
     public Point3D Center { get; set; }
     public double Radius { get; set; }
-    public Vector3D Normal { get; set; }
+    public Vector3D Normal => Plane.Normal;
     public bool IsSelected { get; set; } = false;
     public bool IsVisible { get; set; } = true;
 
@@ -43,7 +43,6 @@ public class CircleProfile : IProfile
     {
         Center = center;
         Radius = radius;
-        Normal = normal ?? new Vector3D(0, 0, 1);
         SourceEntityIds = sourceEntityIds?.ToList() ?? new List<Guid>();
         Plane = plane ?? ValueObjects.WorkPlane.XY;
     }

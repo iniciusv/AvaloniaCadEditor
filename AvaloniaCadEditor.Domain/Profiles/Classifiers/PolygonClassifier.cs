@@ -5,7 +5,7 @@ namespace AvaloniaCadEditor.Domain.Profiles.Classifiers;
 
 public class PolygonClassifier : IShapeClassifier
 {
-    public ProfileCandidate? Classify(IReadOnlyList<Point3D> loopVertices, IReadOnlyList<Guid> sourceEntityIds)
+    public ProfileCandidate? Classify(IReadOnlyList<Point3D> loopVertices, IReadOnlyList<Guid> sourceEntityIds, WorkPlane plane)
     {
         if (loopVertices == null || loopVertices.Count < 3)
             return null;
@@ -14,7 +14,7 @@ public class PolygonClassifier : IShapeClassifier
             ProfileClassification.Polygon,
             "Polígono Geral (Vértices Livres)",
             specificityRank: 100, // Fallback
-            factory: () => new PolygonProfile(loopVertices, sourceEntityIds)
+            factory: () => new PolygonProfile(loopVertices, sourceEntityIds, plane: plane)
         );
     }
 }

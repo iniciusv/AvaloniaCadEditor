@@ -13,7 +13,7 @@ public class PolygonProfile : IProfile
     public IReadOnlyList<Guid> SourceEntityIds { get; }
 
     public List<Point3D> Vertices { get; set; }
-    public Vector3D Normal { get; set; }
+    public Vector3D Normal => Plane.Normal;
     public bool IsSelected { get; set; } = false;
     public bool IsVisible { get; set; } = true;
     public ValueObjects.WorkPlane Plane { get; set; } = ValueObjects.WorkPlane.XY;
@@ -53,7 +53,6 @@ public class PolygonProfile : IProfile
     {
         Vertices = vertices.ToList();
         SourceEntityIds = sourceEntityIds?.ToList() ?? new List<Guid>();
-        Normal = normal ?? CalculateNormal(Vertices);
         Plane = plane ?? ValueObjects.WorkPlane.XY;
     }
 

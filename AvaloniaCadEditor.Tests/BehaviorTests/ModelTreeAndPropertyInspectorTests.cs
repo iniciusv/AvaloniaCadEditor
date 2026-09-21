@@ -169,10 +169,15 @@ public class ModelTreeAndPropertyInspectorTests
         var ray = new Ray(new System.Numerics.Vector3(0, 0, 100), new System.Numerics.Vector3(0, 0, -1));
 
         // Act
-        bool hit = vm.TrySelect3DFeature(ray);
+        var hit = vm.Raycast3D(ray);
+        if (hit.HasValue && hit.Value.FeatureId.HasValue)
+        {
+            vm.SelectionService.SelectById(vm.Sketch, hit.Value.FeatureId.Value);
+            vm.ModelTree.RebuildTree();
+        }
 
         // Assert
-        Assert.True(hit);
+        Assert.True(hit.HasValue);
         Assert.True(cylinder.IsSelected);
         Assert.Equal(cylinder.Id, selectionService.SelectedId);
         Assert.True(vm.PropertyInspector.HasSelection);

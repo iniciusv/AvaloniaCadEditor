@@ -31,7 +31,7 @@ public class DrawLineCommand : ICommandTool
         else if (_currentState == State.WaitingForEndPoint)
         {
             var finalPoint = ApplyConstraint(point);
-            var line = new LineEntity(_startPoint, finalPoint);
+            var line = new LineEntity(_startPoint, finalPoint) { Plane = sketch.Plane };
             sketch.AddEntity(line);
             
             // Loop back to start to draw contiguous lines
@@ -97,7 +97,7 @@ public class DrawLineCommand : ICommandTool
             _lengthConstraint = value;
             
             var finalPoint = ApplyConstraint(_currentMousePosition);
-            var line = new LineEntity(_startPoint, finalPoint);
+            var line = new LineEntity(_startPoint, finalPoint) { Plane = sketch.Plane };
             sketch.AddEntity(line);
             
             _startPoint = finalPoint;

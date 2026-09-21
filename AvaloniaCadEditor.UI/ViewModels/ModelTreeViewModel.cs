@@ -160,6 +160,12 @@ public class ModelTreeViewModel : INotifyPropertyChanged
         {
             name = $"{bf.Operation} ({bf.Name})";
         }
+        else if (feature is WorkPlaneFeature wpf)
+        {
+            string iconRect = "M4,6V19H20V6H4M18,17H6V8H18V17Z";
+            icon = iconRect;
+            name = wpf.Name;
+        }
 
         var node = new TreeItemNode(name, icon, TreeItemCategory.FeatureItem, feature.Id, feature);
         node.IsVisible = feature.IsVisible;

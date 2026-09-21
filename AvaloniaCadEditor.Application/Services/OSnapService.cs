@@ -15,7 +15,7 @@ public class OSnapService : IOSnapService
         _geometryEngine = geometryEngine;
     }
 
-    public Point3D GetSnappedPoint(Sketch sketch, Point3D cursor, double snapTolerance)
+    public Point3D GetSnappedPoint(Sketch sketch, Point3D cursor, double snapTolerance, AvaloniaCadEditor.Domain.Mesh.TriangleMesh? solidMesh = null)
     {
         if (!IsEnabled) return cursor;
 
@@ -25,8 +25,28 @@ public class OSnapService : IOSnapService
         foreach (var entity in sketch.Entities)
         {
             var snapPoints = _geometryEngine.GetSnapPoints(entity);
-            foreach (var pt in snapPoints)
+            foreach (var localPt in snapPoints)
             {
+                var pt = entity.Plane.ToWorldSpace(localPt);
+                var dist = cursor.DistanceTo(pt);
+                if (dist < minDistance)
+                {
+                    minDistance = dist;
+                    bestSnap = pt;
+                }
+            }
+        }
+
+        if (solidMesh != null && solidMesh.Positions != null)
+        {
+            // Positions are in [x,y,z] flat array
+            for (int i = 0; i < solidMesh.Positions.Length; i += 3)
+            {
+                var pt = new Point3D(
+                    solidMesh.Positions[i],
+                    solidMesh.Positions[i+1],
+                    solidMesh.Positions[i+2]);
+                    
                 var dist = cursor.DistanceTo(pt);
                 if (dist < minDistance)
                 {

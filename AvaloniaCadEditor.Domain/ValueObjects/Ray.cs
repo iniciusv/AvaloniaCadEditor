@@ -68,14 +68,15 @@ public readonly struct Ray
     }
 
     /// <summary>
-    /// Tests ray intersection against a 3D TriangleMesh and returns the closest hit distance.
+    /// Tests ray intersection against a 3D TriangleMesh and returns hit data including normal and point.
     /// </summary>
-    public bool IntersectMesh(AvaloniaCadEditor.Domain.Mesh.TriangleMesh mesh, out float minDistance)
+    public RaycastHit? IntersectMesh(AvaloniaCadEditor.Domain.Mesh.TriangleMesh mesh)
     {
-        minDistance = float.MaxValue;
-        if (mesh == null || mesh.TriangleCount == 0) return false;
+        if (mesh == null || mesh.TriangleCount == 0) return null;
 
-        bool hit = false;
+        float minDistance = float.MaxValue;
+        RaycastHit? bestHit = null;
+
         for (int i = 0; i < mesh.Indices.Length; i += 3)
         {
             uint i0 = mesh.Indices[i];
@@ -88,13 +89,24 @@ public readonly struct Ray
 
             if (IntersectTriangle(v0, v1, v2, out float t))
             {
-                if (t < minDistance)
+                if (t > 0 && t < minDistance)
                 {
                     minDistance = t;
-                    hit = true;
+
+                    // Calculate Hit Point
+                    Vector3 hitPos = Origin + Direction * t;
+                    Point3D point = new Point3D(hitPos.X, hitPos.Y, hitPos.Z);
+
+                    // Calculate Flat Face Normal (Cross product of edges)
+                    Vector3 edge1 = v1 - v0;
+                    Vector3 edge2 = v2 - v0;
+                    Vector3 normalVec = Vector3.Normalize(Vector3.Cross(edge1, edge2));
+                    Vector3D normal = new Vector3D(normalVec.X, normalVec.Y, normalVec.Z);
+
+                    bestHit = new RaycastHit(t, point, normal);
                 }
             }
         }
-        return hit;
+        return bestHit;
     }
 }

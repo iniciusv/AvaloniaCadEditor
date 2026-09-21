@@ -15,6 +15,7 @@ public class Sketch
     public Sketch()
     {
         Plane = ValueObjects.WorkPlane.XY;
+        _features.Add(new WorkPlaneFeature(Plane, "Plano Base (XY)", true));
     }
 
     public Sketch(ValueObjects.WorkPlane plane)

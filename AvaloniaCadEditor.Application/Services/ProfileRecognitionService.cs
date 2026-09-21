@@ -33,17 +33,17 @@ public class ProfileRecognitionService : IProfileRecognitionService
                 ProfileClassification.Circle,
                 "Círculo (Paramétrico)",
                 specificityRank: 1,
-                factory: () => new CircleProfile(circle.Center, circle.Radius, sourceEntityIds: new[] { circle.Id })
+                factory: () => new CircleProfile(circle.Center, circle.Radius, sourceEntityIds: new[] { circle.Id }, plane: circle.Plane)
             );
 
             var polyCandidate = new ProfileCandidate(
                 ProfileClassification.Polygon,
                 "Polígono Aproximado",
                 specificityRank: 100,
-                factory: () => new PolygonProfile(new CircleProfile(circle.Center, circle.Radius).GetVertices(), new[] { circle.Id })
+                factory: () => new PolygonProfile(new CircleProfile(circle.Center, circle.Radius).GetVertices(), new[] { circle.Id }, plane: circle.Plane)
             );
 
-            var profile = new CircleProfile(circle.Center, circle.Radius, sourceEntityIds: new[] { circle.Id })
+            var profile = new CircleProfile(circle.Center, circle.Radius, sourceEntityIds: new[] { circle.Id }, plane: circle.Plane)
             {
                 AvailableCandidates = new List<ProfileCandidate> { circleCandidate, polyCandidate }
             };
@@ -53,17 +53,22 @@ public class ProfileRecognitionService : IProfileRecognitionService
 
         // 2. Recognize closed loops from lines
         var lineEntities = sketch.Entities.OfType<LineEntity>().Where(e => e.IsVisible).ToList();
-        if (lineEntities.Count >= 3)
+        var linesByPlane = lineEntities.GroupBy(e => e.Plane).ToList();
+        
+        foreach (var group in linesByPlane)
         {
-            var loops = FindClosedLoops(lineEntities);
+            var planeLines = group.ToList();
+            if (planeLines.Count >= 3)
+            {
+                var loops = FindClosedLoops(planeLines);
 
-            foreach (var loop in loops)
+                foreach (var loop in loops)
             {
                 var candidates = new List<ProfileCandidate>();
 
                 foreach (var classifier in _classifiers)
                 {
-                    var candidate = classifier.Classify(loop.Vertices, loop.SourceEntityIds);
+                    var candidate = classifier.Classify(loop.Vertices, loop.SourceEntityIds, loop.Plane);
                     if (candidate != null)
                     {
                         candidates.Add(candidate);
@@ -84,14 +89,16 @@ public class ProfileRecognitionService : IProfileRecognitionService
                 }
             }
         }
+    }
 
-        return recognizedProfiles;
+    return recognizedProfiles;
     }
 
     private class LoopData
     {
         public List<Point3D> Vertices { get; set; } = new();
         public List<Guid> SourceEntityIds { get; set; } = new();
+        public WorkPlane Plane { get; set; } = WorkPlane.XY;
     }
 
     private class GraphNode
@@ -189,10 +196,12 @@ public class ProfileRecognitionService : IProfileRecognitionService
             if (!seenCycleKeys.Contains(key))
             {
                 seenCycleKeys.Add(key);
+                var firstLine = lines.First(l => l.Id == edges.First());
                 uniqueLoops.Add(new LoopData
                 {
                     Vertices = cycle.Select(n => n.Point).ToList(),
-                    SourceEntityIds = edges.Distinct().ToList()
+                    SourceEntityIds = edges.Distinct().ToList(),
+                    Plane = firstLine.Plane
                 });
             }
         }
