@@ -3,14 +3,8 @@ using System.Collections.Generic;
 
 namespace AvaloniaCadEditor.Domain.Features;
 
-public class BooleanFeature : IFeature
+public class BooleanFeature : FeatureBase
 {
-    public Guid Id { get; } = Guid.NewGuid();
-    public string Name { get; set; }
-    public bool IsEnabled { get; set; } = true;
-    public bool IsVisible { get; set; } = true;
-    public bool IsSelected { get; set; } = false;
-
     public BooleanOperationType Operation { get; set; }
     public IFeature BaseFeature { get; set; }
     public List<IFeature> ToolFeatures { get; set; }
@@ -61,12 +55,15 @@ public class BooleanFeature : IFeature
         return oldBase;
     }
 
-    public IEnumerable<IFeature> GetDependencies()
+    public override IEnumerable<IFeature> Dependencies
     {
-        yield return BaseFeature;
-        foreach (var tool in ToolFeatures)
+        get
         {
-            yield return tool;
+            yield return BaseFeature;
+            foreach (var tool in ToolFeatures)
+            {
+                yield return tool;
+            }
         }
     }
 }

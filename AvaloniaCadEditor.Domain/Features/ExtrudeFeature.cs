@@ -1,16 +1,12 @@
 using System;
+using System.Collections.Generic;
 using AvaloniaCadEditor.Domain.Profiles;
 using AvaloniaCadEditor.Domain.ValueObjects;
 
 namespace AvaloniaCadEditor.Domain.Features;
 
-public class ExtrudeFeature : IFeature
+public class ExtrudeFeature : FeatureBase
 {
-    public Guid Id { get; } = Guid.NewGuid();
-    public string Name { get; set; }
-    public bool IsEnabled { get; set; } = true;
-    public bool IsVisible { get; set; } = true;
-    public bool IsSelected { get; set; } = false;
 
     public IProfile Profile { get; set; }
     public double Depth { get; set; }

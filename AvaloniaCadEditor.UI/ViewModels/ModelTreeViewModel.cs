@@ -71,7 +71,7 @@ public class ModelTreeViewModel : INotifyPropertyChanged
         {
             if (feature is BooleanFeature bf)
             {
-                foreach (var dep in bf.GetDependencies())
+                foreach (var dep in bf.Dependencies)
                 {
                     if (dep != null) consumedFeatures.Add(dep);
                 }
