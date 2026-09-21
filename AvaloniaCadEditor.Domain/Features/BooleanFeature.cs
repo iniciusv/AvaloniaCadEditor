@@ -29,4 +29,44 @@ public class BooleanFeature : IFeature
             tool.IsVisible = false;
         }
     }
+
+    public void AddToolFeature(IFeature feature)
+    {
+        if (!ToolFeatures.Contains(feature))
+        {
+            ToolFeatures.Add(feature);
+            feature.IsVisible = false;
+        }
+    }
+
+    public void RemoveToolFeature(IFeature feature)
+    {
+        if (ToolFeatures.Remove(feature))
+        {
+            feature.IsVisible = true;
+        }
+    }
+
+    public IFeature ChangeBaseFeature(IFeature newBase)
+    {
+        var oldBase = BaseFeature;
+        if (oldBase != null)
+        {
+            oldBase.IsVisible = true;
+        }
+        
+        BaseFeature = newBase ?? throw new ArgumentNullException(nameof(newBase));
+        BaseFeature.IsVisible = false;
+        
+        return oldBase;
+    }
+
+    public IEnumerable<IFeature> GetDependencies()
+    {
+        yield return BaseFeature;
+        foreach (var tool in ToolFeatures)
+        {
+            yield return tool;
+        }
+    }
 }

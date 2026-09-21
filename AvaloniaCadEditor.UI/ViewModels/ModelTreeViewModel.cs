@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
@@ -64,28 +65,26 @@ public class ModelTreeViewModel : INotifyPropertyChanged
         string iconPolygon = "M12,2L22,12L17,22H7L2,12L12,2M12,4.83L4.83,12L8.27,19.17H15.73L19.17,12L12,4.83Z";
         string iconLine = "M21.71,20.29L20.29,21.71L2.29,3.71L3.71,2.29L21.71,20.29Z";
 
-        // 1. Features 3D Group
-        var featuresGroup = new TreeItemNode($"Volumes 3D ({CurrentSketch.Features.Count})", iconFolder, TreeItemCategory.FeatureGroup);
+        // Find consumed features
+        var consumedFeatures = new HashSet<IFeature>();
         foreach (var feature in CurrentSketch.Features)
         {
-            string icon = iconCube;
-            string name = feature.Name;
-            if (feature is ExtrudeFeature ef)
+            if (feature is BooleanFeature bf)
             {
-                if (ef.Profile is CircleProfile cp)
+                foreach (var dep in bf.GetDependencies())
                 {
-                    icon = iconCylinder;
-                    name = $"Cilindro (R={cp.Radius:F1}, H={ef.Depth:F1})";
-                }
-                else
-                {
-                    name = $"Prisma (H={ef.Depth:F1})";
+                    if (dep != null) consumedFeatures.Add(dep);
                 }
             }
+        }
 
-            var node = new TreeItemNode(name, icon, TreeItemCategory.FeatureItem, feature.Id, feature);
-            node.IsVisible = feature.IsVisible;
-            node.VisibilityChanged += (s, e) => OnNodeVisibilityChanged();
+        var rootFeatures = CurrentSketch.Features.Where(f => !consumedFeatures.Contains(f)).ToList();
+
+        // 1. Features 3D Group
+        var featuresGroup = new TreeItemNode($"Volumes 3D ({CurrentSketch.Features.Count})", iconFolder, TreeItemCategory.FeatureGroup);
+        foreach (var feature in rootFeatures)
+        {
+            var node = BuildFeatureNode(feature);
             featuresGroup.Children.Add(node);
         }
         RootNodes.Add(featuresGroup);
@@ -137,6 +136,59 @@ public class ModelTreeViewModel : INotifyPropertyChanged
         SyncSelectionFromService();
     }
 
+    private TreeItemNode BuildFeatureNode(IFeature feature)
+    {
+        string iconCube = "M21,16.5C21,16.88 20.79,17.21 20.47,17.38L12.57,21.82C12.41,21.94 12.21,22 12,22C11.79,22 11.59,21.94 11.43,21.82L3.53,17.38C3.21,17.21 3,16.88 3,16.5V7.5C3,7.12 3.21,6.79 3.53,6.62L11.43,2.18C11.59,2.06 11.79,2 12,2C12.21,2 12.41,2.06 12.57,2.18L20.47,6.62C20.79,6.79 21,7.12 21,7.5V16.5M12,4.15L5,8.09L12,12.03L19,8.09L12,4.15M4.5,15.97L11.25,19.79V13.16L4.5,9.33V15.97M19.5,15.97V9.33L12.75,13.16V19.79L19.5,15.97Z";
+        string iconCylinder = "M12,2A7,3 0 0,0 5,5C5,6.66 8.13,8 12,8C15.87,8 19,6.66 19,5C19,3.34 15.87,2 12,2M5,5V19C5,20.66 8.13,22 12,22C15.87,22 19,20.66 19,19V5C19,5 19,5 19,5C19,6.66 15.87,8 12,8C8.13,8 5,6.66 5,5Z";
+        string iconFolder = "M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z";
+
+        string icon = iconCube;
+        string name = feature.Name;
+        if (feature is ExtrudeFeature ef)
+        {
+            if (ef.Profile is CircleProfile cp)
+            {
+                icon = iconCylinder;
+                name = $"Cilindro (R={cp.Radius:F1}, H={ef.Depth:F1})";
+            }
+            else
+            {
+                name = $"Prisma (H={ef.Depth:F1})";
+            }
+        }
+        else if (feature is BooleanFeature bf)
+        {
+            name = $"{bf.Operation} ({bf.Name})";
+        }
+
+        var node = new TreeItemNode(name, icon, TreeItemCategory.FeatureItem, feature.Id, feature);
+        node.IsVisible = feature.IsVisible;
+        node.VisibilityChanged += (s, e) => OnNodeVisibilityChanged();
+
+        if (feature is BooleanFeature booleanFeature)
+        {
+            // Base group
+            var baseGroup = new TreeItemNode($"Base", iconFolder, TreeItemCategory.BooleanBaseGroup, null, booleanFeature);
+            if (booleanFeature.BaseFeature != null)
+            {
+                baseGroup.Children.Add(BuildFeatureNode(booleanFeature.BaseFeature));
+            }
+            node.Children.Add(baseGroup);
+
+            // Tools group
+            string toolsName = booleanFeature.Operation == BooleanOperationType.Subtract ? "Ferramentas (Corte)" :
+                               booleanFeature.Operation == BooleanOperationType.Union ? "Ferramentas (União)" : "Ferramentas (Interseção)";
+            var toolsGroup = new TreeItemNode(toolsName, iconFolder, TreeItemCategory.BooleanToolGroup, null, booleanFeature);
+            foreach (var tool in booleanFeature.ToolFeatures)
+            {
+                toolsGroup.Children.Add(BuildFeatureNode(tool));
+            }
+            node.Children.Add(toolsGroup);
+        }
+
+        return node;
+    }
+
     private void OnGlobalSelectionChanged()
     {
         SyncSelectionFromService();
@@ -151,31 +203,49 @@ public class ModelTreeViewModel : INotifyPropertyChanged
             if (!selectedId.HasValue)
             {
                 SelectedNode = null;
+                ClearSelection(RootNodes);
                 return;
             }
 
-            // Find matching node in children
-            foreach (var group in RootNodes)
+            ClearSelection(RootNodes);
+            if (FindAndSelectNode(RootNodes, selectedId.Value, out var foundNode))
             {
-                foreach (var item in group.Children)
-                {
-                    if (item.Id == selectedId.Value)
-                    {
-                        item.IsSelected = true;
-                        group.IsExpanded = true;
-                        SelectedNode = item;
-                    }
-                    else
-                    {
-                        item.IsSelected = false;
-                    }
-                }
+                SelectedNode = foundNode;
             }
         }
         finally
         {
             _isUpdatingSelectionInternally = false;
         }
+    }
+
+    private void ClearSelection(IEnumerable<TreeItemNode> nodes)
+    {
+        foreach (var node in nodes)
+        {
+            node.IsSelected = false;
+            ClearSelection(node.Children);
+        }
+    }
+
+    private bool FindAndSelectNode(IEnumerable<TreeItemNode> nodes, Guid targetId, out TreeItemNode? foundNode)
+    {
+        foundNode = null;
+        foreach (var node in nodes)
+        {
+            if (node.Id == targetId)
+            {
+                node.IsSelected = true;
+                foundNode = node;
+                return true;
+            }
+            if (FindAndSelectNode(node.Children, targetId, out foundNode))
+            {
+                node.IsExpanded = true;
+                return true;
+            }
+        }
+        return false;
     }
 
     public event EventHandler? NodeVisibilityChanged;
@@ -191,5 +261,3 @@ public class ModelTreeViewModel : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }
-
-

@@ -12,7 +12,9 @@ public enum TreeItemCategory
     EntityGroup,
     FeatureItem,
     ProfileItem,
-    EntityItem
+    EntityItem,
+    BooleanBaseGroup,
+    BooleanToolGroup
 }
 
 public class TreeItemNode : INotifyPropertyChanged
