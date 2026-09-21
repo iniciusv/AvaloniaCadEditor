@@ -27,6 +27,15 @@ public readonly struct Vector3D : IEquatable<Vector3D>
         return X * other.X + Y * other.Y + Z * other.Z;
     }
 
+    public Vector3D CrossProduct(Vector3D other)
+    {
+        return new Vector3D(
+            Y * other.Z - Z * other.Y,
+            Z * other.X - X * other.Z,
+            X * other.Y - Y * other.X
+        );
+    }
+
     public static Vector3D operator +(Vector3D a, Vector3D b) => new Vector3D(a.X + b.X, a.Y + b.Y, a.Z + b.Z);
     public static Vector3D operator -(Vector3D a, Vector3D b) => new Vector3D(a.X - b.X, a.Y - b.Y, a.Z - b.Z);
     public static Vector3D operator *(Vector3D a, double scalar) => new Vector3D(a.X * scalar, a.Y * scalar, a.Z * scalar);

@@ -826,11 +826,21 @@ public class SilkViewportControl : OpenGlControlBase
                     }
                 }
 
-                // 2. Intersect 2D Ground Plane for 2D entity selection and drawing tools
-                var intersection = ray.IntersectPlane(Vector3.UnitZ, Vector3.Zero);
+                if (ViewModel == null) return;
+                
+                // 2. Intersect Active WorkPlane for 2D entity selection and drawing tools
+                var planeNormal = new Vector3(
+                    (float)ViewModel.ActiveWorkPlane.Normal.X,
+                    (float)ViewModel.ActiveWorkPlane.Normal.Y,
+                    (float)ViewModel.ActiveWorkPlane.Normal.Z);
+                var planeOrigin = new Vector3(
+                    (float)ViewModel.ActiveWorkPlane.Origin.X,
+                    (float)ViewModel.ActiveWorkPlane.Origin.Y,
+                    (float)ViewModel.ActiveWorkPlane.Origin.Z);
+                var intersection = ray.IntersectPlane(planeNormal, planeOrigin);
                 if (intersection.HasValue)
                 {
-                    ViewModel?.OnPointerPressed(intersection.Value);
+                    ViewModel.OnPointerPressed(intersection.Value);
                     RequestNextFrameRendering();
                 }
             }
@@ -860,19 +870,29 @@ public class SilkViewportControl : OpenGlControlBase
         }
         
         // --- Raycasting ---
-        if (Bounds.Width > 0 && Bounds.Height > 0)
+        if (Bounds.Width > 0 && Bounds.Height > 0 && ViewModel != null)
         {
             var ray = _camera.ScreenPointToRay(
                 new Vector2((float)point.Position.X, (float)point.Position.Y), 
                 new Vector2((float)Bounds.Width, (float)Bounds.Height)
             );
 
-            // Intersect with default XY plane (Z=0)
-            var intersection = ray.IntersectPlane(Vector3.UnitZ, Vector3.Zero);
+            // Intersect with active WorkPlane
+            var planeNormal = new Vector3(
+                (float)ViewModel.ActiveWorkPlane.Normal.X,
+                (float)ViewModel.ActiveWorkPlane.Normal.Y,
+                (float)ViewModel.ActiveWorkPlane.Normal.Z);
+            
+            var planeOrigin = new Vector3(
+                (float)ViewModel.ActiveWorkPlane.Origin.X,
+                (float)ViewModel.ActiveWorkPlane.Origin.Y,
+                (float)ViewModel.ActiveWorkPlane.Origin.Z);
+            
+            var intersection = ray.IntersectPlane(planeNormal, planeOrigin);
             if (intersection.HasValue)
             {
                 _cubePos = new Vector3((float)intersection.Value.X, (float)intersection.Value.Y, (float)intersection.Value.Z);
-                ViewModel?.OnPointerMoved(intersection.Value);
+                ViewModel.OnPointerMoved(intersection.Value);
             }
         }
 

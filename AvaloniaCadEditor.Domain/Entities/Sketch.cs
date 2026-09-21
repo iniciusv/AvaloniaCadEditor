@@ -10,6 +10,18 @@ public class Sketch
     private readonly List<IProfile> _profiles = new();
     private readonly List<IFeature> _features = new();
 
+    public ValueObjects.WorkPlane Plane { get; set; }
+
+    public Sketch()
+    {
+        Plane = ValueObjects.WorkPlane.XY;
+    }
+
+    public Sketch(ValueObjects.WorkPlane plane)
+    {
+        Plane = plane;
+    }
+
     public IReadOnlyList<Entity> Entities => _entities.AsReadOnly();
     public IReadOnlyList<IProfile> Profiles => _profiles.AsReadOnly();
     public IReadOnlyList<IFeature> Features => _features.AsReadOnly();

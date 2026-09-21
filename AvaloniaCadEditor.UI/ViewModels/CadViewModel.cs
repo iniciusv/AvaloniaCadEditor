@@ -246,14 +246,24 @@ public class CadViewModel : INotifyPropertyChanged
         SolidMesh = _geometryKernel.BuildSolidMesh(featuresToRender, _settingsProvider.GetSettings());
     }
 
+    public WorkPlane ActiveWorkPlane
+    {
+        get => Sketch.Plane;
+        set
+        {
+            Sketch.Plane = value;
+            OnPropertyChanged();
+            RefreshSolidMesh();
+        }
+    }
+
     public void OnPointerPressed(Point3D worldPoint)
     {
-        var snapped = _osnapService.GetSnappedPoint(Sketch, worldPoint, 5.0); // 5.0 world units tolerance
+        var localSnapped = ActiveWorkPlane.ToLocalSpace(_osnapService.GetSnappedPoint(Sketch, worldPoint, 5.0));
 
-        // If SelectTool is active and user clicked a 2D profile
         if (CurrentTool is SelectTool)
         {
-            var hitProfile = Sketch.Profiles.FirstOrDefault(p => p.ContainsPoint(snapped));
+            var hitProfile = Sketch.Profiles.FirstOrDefault(p => p.ContainsPoint(localSnapped));
             if (hitProfile != null)
             {
                 _selectionService.SelectById(Sketch, hitProfile.Id);
@@ -263,27 +273,26 @@ public class CadViewModel : INotifyPropertyChanged
             }
         }
 
-        CurrentTool?.OnMouseDown(Sketch, snapped);
-        UpdateStatusText(snapped);
+        CurrentTool?.OnMouseDown(Sketch, localSnapped);
+        UpdateStatusText(localSnapped);
         RefreshProfiles();
     }
 
     public void OnPointerMoved(Point3D worldPoint)
     {
-        var snapped = _osnapService.GetSnappedPoint(Sketch, worldPoint, 5.0);
-        CurrentSnappedPoint = snapped;
-        CurrentTool?.OnMouseMove(Sketch, snapped);
+        var localSnapped = ActiveWorkPlane.ToLocalSpace(_osnapService.GetSnappedPoint(Sketch, worldPoint, 5.0));
+        CurrentSnappedPoint = localSnapped; // Note: UI will show local coordinates
+        CurrentTool?.OnMouseMove(Sketch, localSnapped);
 
         if (CurrentTool is ExtrudeCommand)
         {
             RefreshSolidMesh();
         }
         
-        // Update 2D Profile Hover
-        var hitProfile = Sketch.Profiles.FirstOrDefault(p => p.ContainsPoint(snapped));
+        var hitProfile = Sketch.Profiles.FirstOrDefault(p => p.ContainsPoint(localSnapped));
         HoveredProfile = hitProfile;
 
-        UpdateStatusText(snapped);
+        UpdateStatusText(localSnapped);
     }
 
     private void UpdateStatusText(Point3D snapped)

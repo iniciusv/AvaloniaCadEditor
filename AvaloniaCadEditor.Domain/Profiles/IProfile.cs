@@ -10,6 +10,7 @@ public interface IProfile
     ProfileClassification Classification { get; }
     IReadOnlyList<ProfileCandidate> AvailableCandidates { get; set; }
     IReadOnlyList<Guid> SourceEntityIds { get; }
+    ValueObjects.WorkPlane Plane { get; set; }
     Point3D Center { get; }
     Vector3D Normal { get; }
     double Area { get; }

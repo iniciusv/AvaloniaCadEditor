@@ -12,6 +12,8 @@ public class RectangleProfile : IProfile
     public IReadOnlyList<ProfileCandidate> AvailableCandidates { get; set; } = Array.Empty<ProfileCandidate>();
     public IReadOnlyList<Guid> SourceEntityIds { get; }
 
+    public ValueObjects.WorkPlane Plane { get; set; } = ValueObjects.WorkPlane.XY;
+
     public Point3D Center { get; set; }
     public double Width { get; set; }
     public double Height { get; set; }
@@ -28,7 +30,8 @@ public class RectangleProfile : IProfile
         double height,
         double rotationAngle = 0.0,
         Vector3D? normal = null,
-        IEnumerable<Guid>? sourceEntityIds = null)
+        IEnumerable<Guid>? sourceEntityIds = null,
+        ValueObjects.WorkPlane? plane = null)
     {
         Center = center;
         Width = width;
@@ -36,6 +39,7 @@ public class RectangleProfile : IProfile
         RotationAngle = rotationAngle;
         Normal = normal ?? new Vector3D(0, 0, 1);
         SourceEntityIds = sourceEntityIds?.ToList() ?? new List<Guid>();
+        Plane = plane ?? ValueObjects.WorkPlane.XY;
     }
 
     public IReadOnlyList<Point3D> GetVertices(int segments = 32)
@@ -60,7 +64,8 @@ public class RectangleProfile : IProfile
         {
             double rotX = dx * cos - dy * sin;
             double rotY = dx * sin + dy * cos;
-            vertices.Add(new Point3D(Center.X + rotX, Center.Y + rotY, Center.Z));
+            var localPt = new Point3D(Center.X + rotX, Center.Y + rotY, Center.Z);
+            vertices.Add(Plane.ToWorldSpace(localPt));
         }
 
         return vertices;

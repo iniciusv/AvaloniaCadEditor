@@ -16,6 +16,7 @@ public class PolygonProfile : IProfile
     public Vector3D Normal { get; set; }
     public bool IsSelected { get; set; } = false;
     public bool IsVisible { get; set; } = true;
+    public ValueObjects.WorkPlane Plane { get; set; } = ValueObjects.WorkPlane.XY;
 
     public Point3D Center
     {
@@ -48,14 +49,18 @@ public class PolygonProfile : IProfile
         }
     }
 
-    public PolygonProfile(IEnumerable<Point3D> vertices, IEnumerable<Guid>? sourceEntityIds = null, Vector3D? normal = null)
+    public PolygonProfile(IEnumerable<Point3D> vertices, IEnumerable<Guid>? sourceEntityIds = null, Vector3D? normal = null, ValueObjects.WorkPlane? plane = null)
     {
         Vertices = vertices.ToList();
         SourceEntityIds = sourceEntityIds?.ToList() ?? new List<Guid>();
         Normal = normal ?? CalculateNormal(Vertices);
+        Plane = plane ?? ValueObjects.WorkPlane.XY;
     }
 
-    public IReadOnlyList<Point3D> GetVertices(int segments = 32) => Vertices.AsReadOnly();
+    public IReadOnlyList<Point3D> GetVertices(int segments = 32)
+    {
+        return Vertices.Select(v => Plane.ToWorldSpace(v)).ToList().AsReadOnly();
+    }
 
     public (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace(int segments = 36)
     {
@@ -65,8 +70,8 @@ public class PolygonProfile : IProfile
         var verts = new List<Point3D>(Vertices.Count + 1);
         var indices = new List<uint>(Vertices.Count * 3);
 
-        verts.Add(Center);
-        verts.AddRange(Vertices);
+        verts.Add(Plane.ToWorldSpace(Center));
+        verts.AddRange(Vertices.Select(v => Plane.ToWorldSpace(v)));
 
         for (int i = 0; i < Vertices.Count; i++)
         {

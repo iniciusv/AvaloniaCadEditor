@@ -11,6 +11,7 @@ public class CircleProfile : IProfile
     public ProfileClassification Classification => ProfileClassification.Circle;
     public IReadOnlyList<ProfileCandidate> AvailableCandidates { get; set; } = Array.Empty<ProfileCandidate>();
     public IReadOnlyList<Guid> SourceEntityIds { get; }
+    public ValueObjects.WorkPlane Plane { get; set; } = ValueObjects.WorkPlane.XY;
 
     public Point3D Center { get; set; }
     public double Radius { get; set; }
@@ -37,26 +38,28 @@ public class CircleProfile : IProfile
         Point3D center,
         double radius,
         Vector3D? normal = null,
-        IEnumerable<Guid>? sourceEntityIds = null)
+        IEnumerable<Guid>? sourceEntityIds = null,
+        ValueObjects.WorkPlane? plane = null)
     {
         Center = center;
         Radius = radius;
         Normal = normal ?? new Vector3D(0, 0, 1);
         SourceEntityIds = sourceEntityIds?.ToList() ?? new List<Guid>();
+        Plane = plane ?? ValueObjects.WorkPlane.XY;
     }
 
     public IReadOnlyList<Point3D> GetVertices(int segments = 32)
     {
-        // Tessellated approximation for polyline visualization
         var vertices = new List<Point3D>(segments);
         for (int i = 0; i < segments; i++)
         {
             double theta = 2.0 * Math.PI * i / segments;
-            vertices.Add(new Point3D(
+            var localPt = new Point3D(
                 Center.X + Radius * Math.Cos(theta),
                 Center.Y + Radius * Math.Sin(theta),
                 Center.Z
-            ));
+            );
+            vertices.Add(Plane.ToWorldSpace(localPt));
         }
         return vertices;
     }
@@ -66,18 +69,19 @@ public class CircleProfile : IProfile
         var verts = new List<Point3D>(segments + 1);
         var indices = new List<uint>(segments * 3);
 
-        // Center vertex (index 0)
-        verts.Add(Center);
+        // Center vertex
+        verts.Add(Plane.ToWorldSpace(Center));
 
-        // Perimeter vertices (indices 1 .. segments)
+        // Perimeter vertices
         for (int i = 0; i < segments; i++)
         {
             double theta = 2.0 * Math.PI * i / segments;
-            verts.Add(new Point3D(
+            var localPt = new Point3D(
                 Center.X + Radius * Math.Cos(theta),
                 Center.Y + Radius * Math.Sin(theta),
                 Center.Z
-            ));
+            );
+            verts.Add(Plane.ToWorldSpace(localPt));
         }
 
         // Fan triangles
