@@ -47,7 +47,7 @@ public class CircleProfile : IProfile
         Plane = plane ?? ValueObjects.WorkPlane.XY;
     }
 
-    public IReadOnlyList<Point3D> GetVertices(int segments = 32)
+    public IReadOnlyList<Point3D> GetVertices(int segments = 128)
     {
         var vertices = new List<Point3D>(segments);
         for (int i = 0; i < segments; i++)
@@ -63,7 +63,7 @@ public class CircleProfile : IProfile
         return vertices;
     }
 
-    public (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace(int segments = 36)
+    public (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace(int segments = 128)
     {
         var verts = new List<Point3D>(segments + 1);
         var indices = new List<uint>(segments * 3);

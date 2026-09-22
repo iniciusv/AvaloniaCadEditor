@@ -41,7 +41,7 @@ public class RectangleProfile : IProfile
         Plane = plane ?? ValueObjects.WorkPlane.XY;
     }
 
-    public IReadOnlyList<Point3D> GetVertices(int segments = 32)
+    public IReadOnlyList<Point3D> GetVertices(int segments = 128)
     {
         double halfW = Width / 2.0;
         double halfH = Height / 2.0;
@@ -70,7 +70,7 @@ public class RectangleProfile : IProfile
         return vertices;
     }
 
-    public (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace(int segments = 36)
+    public (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace(int segments = 128)
     {
         var verts = GetVertices();
         var indices = new uint[] { 0, 1, 2, 0, 2, 3 };

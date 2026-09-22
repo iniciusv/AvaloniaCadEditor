@@ -152,12 +152,12 @@ public class FaceProfile : IProfile
         return new Point3D(mesh.Positions[idx * 3], mesh.Positions[idx * 3 + 1], mesh.Positions[idx * 3 + 2]);
     }
 
-    public IReadOnlyList<Point3D> GetVertices(int segments = 32)
+    public IReadOnlyList<Point3D> GetVertices(int segments = 128)
     {
         return _vertices;
     }
 
-    public (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace(int segments = 36)
+    public (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace(int segments = 128)
     {
         return (_vertices, Array.Empty<uint>());
     }
