@@ -23,7 +23,8 @@ public partial class App : Avalonia.Application
 			var profileRecognitionService = new ProfileRecognitionService();
 			var geometryKernel = new AvaloniaCadEditor.Infrastructure.OpenCascade.OpenCascadeGeometryKernel();
 			var settingsProvider = new AvaloniaCadEditor.Infrastructure.Settings.JsonTessellationSettingsProvider();
-			var viewModel = new CadViewModel(geometryEngine, osnapService, profileRecognitionService, geometryKernel, null, settingsProvider);
+			var evaluator = new AvaloniaCadEditor.Infrastructure.Scripting.RoslynSceneEvaluator();
+			var viewModel = new CadViewModel(geometryEngine, osnapService, profileRecognitionService, geometryKernel, null, settingsProvider, evaluator);
 
 			desktop.MainWindow = new MainWindow
 			{

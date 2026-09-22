@@ -19,10 +19,6 @@ public class CsCodeGenerator
     {
         var sb = new StringBuilder();
         sb.AppendLine("// Avalonia CAD Editor - C# Scene Representation");
-        sb.AppendLine("using System;");
-        sb.AppendLine("using AvaloniaCadEditor.Domain.Features;");
-        sb.AppendLine("using AvaloniaCadEditor.Domain.ValueObjects;");
-        sb.AppendLine("using AvaloniaCadEditor.Domain.Profiles;");
         sb.AppendLine();
         
         if (referenceLens != null)
@@ -30,14 +26,14 @@ public class CsCodeGenerator
             sb.AppendLine("// --- Lente de Referência Ativa ---");
             var origin = referenceLens.Origin;
             var normal = referenceLens.Normal;
-            sb.AppendLine($"var lensPlane = new WorkPlane(origin: new Point3D({origin.X:F2}, {origin.Y:F2}, {origin.Z:F2}), normal: new Vector3D({normal.X:F2}, {normal.Y:F2}, {normal.Z:F2}));");
+            sb.AppendLine($"var lensPlane = new WorkPlane(origin: new Point3D({Fmt(origin.X)}, {Fmt(origin.Y)}, {Fmt(origin.Z)}), normal: new Vector3D({Fmt(normal.X)}, {Fmt(normal.Y)}, {Fmt(normal.Z)}));");
             sb.AppendLine();
         }
 
-        // We only care about features that actually form volumes.
-        // If they are boolean features, they consume other features.
         var allFeatures = new List<IFeature>();
-        allFeatures.AddRange(sketch.WorkPlanes);
+        // Ignore WorkPlanes as decided, except if we want to keep them. But for now they are not root features for Scene-as-Code.
+        // Wait, the decision says: "O plano base XY é criado automaticamente... O código gerado não emitirá WorkPlaneFeature"
+        // I will exclude WorkPlanes completely.
         allFeatures.AddRange(sketch.Features);
         
         var writtenFeatures = new HashSet<Guid>();
@@ -102,28 +98,14 @@ public class CsCodeGenerator
         Dictionary<Guid, string> featureNames,
         ref int cylinderCount, ref int boxCount, ref int extrudeCount, ref int booleanCount)
     {
+        string? createdVarName = null;
         if (feature is ExtrudeFeature extrude)
         {
-            WriteExtrudeFeature(extrude, sb, lens, featureNames, ref cylinderCount, ref boxCount, ref extrudeCount);
+            createdVarName = WriteExtrudeFeature(extrude, sb, lens, featureNames, ref cylinderCount, ref boxCount, ref extrudeCount);
         }
         else if (feature is BooleanFeature boolean)
         {
-            WriteBooleanFeature(boolean, sb, featureNames, ref booleanCount);
-        }
-        else if (feature is WorkPlaneFeature wpf)
-        {
-            string varName = $"workPlane_{wpf.Id.ToString("N").Substring(0, 4)}";
-            featureNames[wpf.Id] = varName;
-            
-            if (wpf.IsBasePlane)
-            {
-                sb.AppendLine($"// Plano Base Padrão");
-                sb.AppendLine($"var {varName} = new WorkPlaneFeature(WorkPlane.XY, \"{wpf.Name}\", true);");
-            }
-            else
-            {
-                sb.AppendLine($"var {varName} = new WorkPlaneFeature(new WorkPlane(origin: new Point3D({wpf.Plane.Origin.X:F2}, {wpf.Plane.Origin.Y:F2}, {wpf.Plane.Origin.Z:F2}), normal: new Vector3D({wpf.Plane.Normal.X:F2}, {wpf.Plane.Normal.Y:F2}, {wpf.Plane.Normal.Z:F2})), \"{wpf.Name}\");");
-            }
+            createdVarName = WriteBooleanFeature(boolean, sb, featureNames, ref booleanCount);
         }
         else
         {
@@ -132,18 +114,27 @@ public class CsCodeGenerator
             featureNames[feature.Id] = varName;
             sb.AppendLine($"// Note: Unknown feature type {feature.GetType().Name}");
             sb.AppendLine($"var {varName} = /* {feature.Name} */;");
+            createdVarName = varName;
+        }
+
+        if (createdVarName != null)
+        {
+            sb.AppendLine($"AddFeature({createdVarName});");
+            sb.AppendLine();
         }
     }
 
-    private void WriteExtrudeFeature(ExtrudeFeature extrude, StringBuilder sb, WorkPlane? lens, 
+    private string WriteExtrudeFeature(ExtrudeFeature extrude, StringBuilder sb, WorkPlane? lens, 
         Dictionary<Guid, string> featureNames,
         ref int cylinderCount, ref int boxCount, ref int extrudeCount)
     {
+        string? returnedVarName = null;
         // Pattern Matching for Intelligent Translation
         if (extrude.Profile is CircleProfile circle)
         {
             string varName = $"cylinder_{cylinderCount++}";
             featureNames[extrude.Id] = varName;
+            returnedVarName = varName;
             
             if (lens != null)
             {
@@ -153,17 +144,18 @@ public class CsCodeGenerator
                 var dy = circle.Center.Y - lens.Origin.Y;
                 var dz = circle.Center.Z - lens.Origin.Z;
                 
-                sb.AppendLine($"var {varName} = CylinderFeature.FromWorkPlane(lensPlane, localCenter: new Point3D({dx:F2}, {dy:F2}, {dz:F2}), radius: {circle.Radius:F2}, height: {extrude.Depth:F2});");
+                sb.AppendLine($"var {varName} = CylinderFeature.FromWorkPlane(lensPlane, localCenter: new Point3D({Fmt(dx)}, {Fmt(dy)}, {Fmt(dz)}), radius: {Fmt(circle.Radius)}, height: {Fmt(extrude.Depth)});");
             }
             else
             {
-                sb.AppendLine($"var {varName} = new CylinderFeature(globalBaseCenter: new Point3D({circle.Center.X:F2}, {circle.Center.Y:F2}, {circle.Center.Z:F2}), globalDirection: new Vector3D({extrude.Direction.X:F2}, {extrude.Direction.Y:F2}, {extrude.Direction.Z:F2}), radius: {circle.Radius:F2}, height: {extrude.Depth:F2});");
+                sb.AppendLine($"var {varName} = new CylinderFeature(globalBaseCenter: new Point3D({Fmt(circle.Center.X)}, {Fmt(circle.Center.Y)}, {Fmt(circle.Center.Z)}), globalDirection: new Vector3D({Fmt(extrude.Direction.X)}, {Fmt(extrude.Direction.Y)}, {Fmt(extrude.Direction.Z)}), radius: {Fmt(circle.Radius)}, height: {Fmt(extrude.Depth)});");
             }
         }
         else if (extrude.Profile is RectangleProfile rect)
         {
             string varName = $"box_{boxCount++}";
             featureNames[extrude.Id] = varName;
+            returnedVarName = varName;
             
             if (lens != null)
             {
@@ -171,11 +163,11 @@ public class CsCodeGenerator
                 var dy = rect.Center.Y - lens.Origin.Y;
                 var dz = rect.Center.Z - lens.Origin.Z;
                 sb.AppendLine($"// Mock box from workplane implementation");
-                sb.AppendLine($"var {varName} = BoxFeature.FromWorkPlane(lensPlane, localCenter: new Point3D({dx:F2}, {dy:F2}, {dz:F2}), width: {rect.Width:F2}, length: {rect.Height:F2}, height: {extrude.Depth:F2});");
+                sb.AppendLine($"var {varName} = BoxFeature.FromWorkPlane(lensPlane, localCenter: new Point3D({Fmt(dx)}, {Fmt(dy)}, {Fmt(dz)}), width: {Fmt(rect.Width)}, length: {Fmt(rect.Height)}, height: {Fmt(extrude.Depth)});");
             }
             else
             {
-                sb.AppendLine($"var {varName} = new BoxFeature(globalCenter: new Point3D({rect.Center.X:F2}, {rect.Center.Y:F2}, {rect.Center.Z:F2}), width: {rect.Width:F2}, length: {rect.Height:F2}, height: {extrude.Depth:F2});");
+                sb.AppendLine($"var {varName} = new BoxFeature(globalCenter: new Point3D({Fmt(rect.Center.X)}, {Fmt(rect.Center.Y)}, {Fmt(rect.Center.Z)}), width: {Fmt(rect.Width)}, length: {Fmt(rect.Height)}, height: {Fmt(extrude.Depth)});");
             }
         }
         else
@@ -184,13 +176,15 @@ public class CsCodeGenerator
             string profileVar = $"profile_{extrudeCount}";
             string extrudeVar = $"extrude_{extrudeCount++}";
             featureNames[extrude.Id] = extrudeVar;
+            returnedVarName = extrudeVar;
             
-            sb.AppendLine($"var {profileVar} = new PolygonProfile(/* Custom polygon with area {extrude.Profile?.Area:F2} */);");
-            sb.AppendLine($"var {extrudeVar} = new ExtrudeFeature({profileVar}, depth: {extrude.Depth:F2}, direction: new Vector3D({extrude.Direction.X:F2}, {extrude.Direction.Y:F2}, {extrude.Direction.Z:F2}));");
+            sb.AppendLine($"var {profileVar} = new PolygonProfile(/* Custom polygon with area {Fmt(extrude.Profile?.Area)} */);");
+            sb.AppendLine($"var {extrudeVar} = new ExtrudeFeature({profileVar}, depth: {Fmt(extrude.Depth)}, direction: new Vector3D({Fmt(extrude.Direction.X)}, {Fmt(extrude.Direction.Y)}, {Fmt(extrude.Direction.Z)}));");
         }
+        return returnedVarName!;
     }
 
-    private void WriteBooleanFeature(BooleanFeature boolean, StringBuilder sb, Dictionary<Guid, string> featureNames, ref int booleanCount)
+    private string WriteBooleanFeature(BooleanFeature boolean, StringBuilder sb, Dictionary<Guid, string> featureNames, ref int booleanCount)
     {
         string varName = $"boolOp_{booleanCount++}";
         featureNames[boolean.Id] = varName;
@@ -208,5 +202,6 @@ public class CsCodeGenerator
         string toolsArray = tools.Count > 0 ? $"new IFeature[] {{ {string.Join(", ", tools)} }}" : "Array.Empty<IFeature>()";
 
         sb.AppendLine($"var {varName} = new BooleanFeature(name: \"{boolean.Name}\", operation: BooleanOperationType.{boolean.Operation}, baseFeature: {baseVar}, toolFeatures: {toolsArray});");
+        return varName;
     }
 }

@@ -81,4 +81,19 @@ public static class MeshVolumeEstimator
         public double X, Y, Z;
         public Point3D(double x, double y, double z) { X = x; Y = y; Z = z; }
     }
+
+    public static (double Min, double Max) GetBoundsX(TriangleMesh mesh)
+    {
+        if (mesh == null || mesh.TriangleCount == 0) return (0, 0);
+
+        double minX = double.MaxValue;
+        double maxX = double.MinValue;
+        for (int i = 0; i < mesh.Positions.Length; i += 3)
+        {
+            double x = mesh.Positions[i];
+            if (x < minX) minX = x;
+            if (x > maxX) maxX = x;
+        }
+        return (minX, maxX);
+    }
 }

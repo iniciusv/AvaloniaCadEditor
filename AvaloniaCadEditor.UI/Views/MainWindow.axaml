@@ -53,10 +53,13 @@
                     </TabItem>
                     <TabItem Header="Código C#" Padding="10,5">
                         <Grid RowDefinitions="Auto,*">
-                            <Button Grid.Row="0" Content="Atualizar Código" Command="{Binding GenerateCodeCommand}" 
-                                    Margin="4" HorizontalAlignment="Right" />
-                            <TextBox Grid.Row="1" Text="{Binding GeneratedCSharpCode, Mode=OneWay}" 
-                                     IsReadOnly="True" 
+                            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" Margin="4" HorizontalAlignment="Right">
+                                <Button Content="Atualizar Código" Command="{Binding GenerateCodeCommand}" />
+                                <Button Content="▶ Run" Command="{Binding RunCodeCommand}"
+                                        Background="#27AE60" Foreground="White" FontWeight="Bold" />
+                            </StackPanel>
+                            <TextBox Grid.Row="1" Text="{Binding GeneratedCSharpCode, Mode=TwoWay}" 
+                                     IsReadOnly="False" 
                                      FontFamily="Consolas, Fira Code, Monospace" 
                                      Background="#1E1E1E" 
                                      Foreground="#D4D4D4"

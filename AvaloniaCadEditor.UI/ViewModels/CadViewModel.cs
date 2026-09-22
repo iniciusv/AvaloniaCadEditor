@@ -123,6 +123,7 @@ public class CadViewModel : INotifyPropertyChanged
     public ICommand SelectSetWorkPlaneCommand { get; }
     public ICommand DeleteSelectedCommand { get; }
     public ICommand GenerateCodeCommand { get; }
+    public ICommand RunCodeCommand { get; }
 
     private string _generatedCSharpCode = "// Pressione 'Atualizar Código' para gerar o C#.";
     public string GeneratedCSharpCode
@@ -158,6 +159,7 @@ public class CadViewModel : INotifyPropertyChanged
     }
 
     private readonly ITessellationSettingsProvider _settingsProvider;
+    private readonly ISceneEvaluator? _sceneEvaluator;
 
     public CadViewModel(
         IGeometryEngine geometryEngine,
@@ -165,7 +167,8 @@ public class CadViewModel : INotifyPropertyChanged
         IProfileRecognitionService? profileRecognitionService = null,
         IGeometryKernel? geometryKernel = null,
         ISelectionService? selectionService = null,
-        ITessellationSettingsProvider? settingsProvider = null)
+        ITessellationSettingsProvider? settingsProvider = null,
+        ISceneEvaluator? sceneEvaluator = null)
     {
         _geometryEngine = geometryEngine;
         _osnapService = osnapService;
@@ -173,6 +176,7 @@ public class CadViewModel : INotifyPropertyChanged
         _geometryKernel = geometryKernel ?? new NullGeometryKernel();
         _selectionService = selectionService ?? new SelectionService();
         _settingsProvider = settingsProvider ?? new AvaloniaCadEditor.Infrastructure.Settings.JsonTessellationSettingsProvider();
+        _sceneEvaluator = sceneEvaluator;
         
         ModelTree = new ModelTreeViewModel(_selectionService);
         ModelTree.NodeVisibilityChanged += (s, e) => 
@@ -205,6 +209,33 @@ public class CadViewModel : INotifyPropertyChanged
             var generator = new CsCodeGenerator();
             // We use the ActiveWorkPlane as the optional 'lens' to see coordinates from its perspective
             GeneratedCSharpCode = generator.GenerateCode(Sketch, ActiveWorkPlane);
+        });
+
+        RunCodeCommand = new RelayCommand(async () =>
+        {
+            if (_sceneEvaluator == null)
+            {
+                StatusText = "Aviso: Evaluator não configurado.";
+                return;
+            }
+            StatusText = "Avaliando código...";
+            var result = await _sceneEvaluator.EvaluateAsync(GeneratedCSharpCode);
+            if (result.Success)
+            {
+                Sketch.Clear();
+                foreach (var feature in result.Features)
+                {
+                    Sketch.AddFeature(feature);
+                }
+                RefreshProfiles();
+                StatusText = $"✓ Código executado: {result.Features.Count} feature(s)";
+            }
+            else
+            {
+                StatusText = $"✗ Erro de Compilação";
+                // Print to console to avoid huge UI status messages
+                System.Console.WriteLine("Evaluation Error:\n" + result.ErrorMessage);
+            }
         });
 
         CurrentTool = new SelectTool(_geometryEngine, _selectionService);

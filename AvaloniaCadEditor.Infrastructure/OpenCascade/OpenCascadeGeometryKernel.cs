@@ -79,6 +79,14 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             {
                 return BuildExtrude(extrude, settings);
             }
+            else if (feature is CylinderFeature cyl && cyl.IsEnabled)
+            {
+                return BuildCylinder(cyl, settings);
+            }
+            else if (feature is BoxFeature box && box.IsEnabled)
+            {
+                return BuildBox(box, settings);
+            }
             else if (feature is BooleanFeature boolean && boolean.IsEnabled)
             {
                 return BuildBoolean(boolean, settings);
@@ -89,6 +97,20 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             Console.WriteLine($"[BuildShape Error] {ex}");
         }
         return null;
+    }
+
+    private OcctShape BuildCylinder(CylinderFeature cyl, TessellationSettings settings)
+    {
+        var profile = new AvaloniaCadEditor.Domain.Profiles.CircleProfile(cyl.GlobalBaseCenter, cyl.Radius);
+        var extrude = new ExtrudeFeature(profile, cyl.Height, cyl.GlobalDirection * cyl.Height);
+        return BuildExtrude(extrude, settings);
+    }
+
+    private OcctShape BuildBox(BoxFeature box, TessellationSettings settings)
+    {
+        var profile = new AvaloniaCadEditor.Domain.Profiles.RectangleProfile(box.GlobalCenter, box.Width, box.Length);
+        var extrude = new ExtrudeFeature(profile, box.Height, box.DirectionZ * box.Height);
+        return BuildExtrude(extrude, settings);
     }
 
     private OcctShape BuildExtrude(ExtrudeFeature extrude, TessellationSettings settings)
