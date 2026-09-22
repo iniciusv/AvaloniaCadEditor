@@ -12,9 +12,10 @@ public interface IGeometryEngine
     IEnumerable<Point3D> GetIntersections(Entity a, Entity b);
 
     /// <summary>
-    /// Encontra pontos de snap em uma entidade (ex: Endpoints, Midpoint, Center).
+    /// Encontra pontos de snap em uma entidade (ex: Endpoints, Midpoint, Center, Tangent).
+    /// Opcionalmente, utiliza o referencePoint para calcular snaps contextuais, como tangência.
     /// </summary>
-    IEnumerable<Point3D> GetSnapPoints(Entity entity);
+    IEnumerable<(Point3D Point, SnapPointType Type)> GetSnapPoints(Entity entity, Point3D? referencePoint = null);
 
     /// <summary>
     /// Encontra a entidade que foi clicada (dentro de uma tolerância).

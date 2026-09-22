@@ -25,8 +25,43 @@
             <Button Content="Delete (Del)" Command="{Binding DeleteSelectedCommand}" Background="#A83232" Foreground="White" />
 
             <Separator Width="1" Height="20" Background="#555" Margin="4,0" />
-            <CheckBox IsChecked="{Binding OsnapEnabled}" Content="OSnap" Foreground="White"/>
-            <CheckBox IsChecked="{Binding ShowInternalEdges}" Content="Arestas Ocultas" Foreground="White"/>
+            <StackPanel Orientation="Horizontal" Spacing="2">
+                <CheckBox IsChecked="{Binding OsnapEnabled}" Content="OSnap" Foreground="White" VerticalAlignment="Center"/>
+                <Button Content="[⚙]" Background="Transparent" Foreground="LightGray" Padding="2" VerticalAlignment="Center">
+                    <Button.Flyout>
+                        <Flyout>
+                            <StackPanel Spacing="10" Width="260" Margin="5">
+                                <TextBlock Text="OSnap Settings" FontWeight="Bold" Margin="0,0,0,5"/>
+                                
+                                <CheckBox IsChecked="{Binding OsnapSettings.EndpointEnabled}" Content="Endpoint" />
+                                <CheckBox IsChecked="{Binding OsnapSettings.MidpointEnabled}" Content="Midpoint" />
+                                <CheckBox IsChecked="{Binding OsnapSettings.CenterEnabled}" Content="Center" />
+                                <CheckBox IsChecked="{Binding OsnapSettings.TangentEnabled}" Content="Tangent" />
+                                
+                                <StackPanel Orientation="Horizontal" Spacing="5">
+                                    <TextBlock Text="Tolerance:" VerticalAlignment="Center" Width="80"/>
+                                    <NumericUpDown Value="{Binding OsnapSettings.SnapTolerance}" Minimum="1" Maximum="100" Increment="1" Width="140"/>
+                                </StackPanel>
+
+                                <Separator Background="#444" Height="1" Margin="0,5"/>
+                                
+                                <CheckBox IsChecked="{Binding OsnapSettings.GridSnapEnabled}" Content="Distance Snap" />
+                                <StackPanel Orientation="Horizontal" Spacing="5" Margin="20,0,0,0">
+                                    <TextBlock Text="Increment:" VerticalAlignment="Center" Width="80"/>
+                                    <NumericUpDown Value="{Binding OsnapSettings.GridIncrement}" Minimum="0.1" Increment="0.1" Width="140"/>
+                                </StackPanel>
+
+                                <CheckBox IsChecked="{Binding OsnapSettings.PolarSnapEnabled}" Content="Polar Angle Snap" />
+                                <StackPanel Orientation="Horizontal" Spacing="5" Margin="20,0,0,0">
+                                    <TextBlock Text="Angle (º):" VerticalAlignment="Center" Width="80"/>
+                                    <NumericUpDown Value="{Binding OsnapSettings.PolarAngleIncrement}" Minimum="1" Maximum="360" Increment="5" Width="140"/>
+                                </StackPanel>
+                            </StackPanel>
+                        </Flyout>
+                    </Button.Flyout>
+                </Button>
+            </StackPanel>
+            <CheckBox IsChecked="{Binding ShowInternalEdges}" Content="Arestas Ocultas" Foreground="White" VerticalAlignment="Center"/>
         </StackPanel>
         
         <!-- Main Work Area (Viewport + Flexible Right Sidebar) -->

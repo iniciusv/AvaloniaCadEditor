@@ -46,4 +46,9 @@ public interface ICommandTool
     /// Returns the instruction text to display in the status bar (e.g. "Select base volume")
     /// </summary>
     string GetStatusText() => "";
+
+    /// <summary>
+    /// Returns the base point of the current operation, used for contextual snapping (e.g. polar, tangent).
+    /// </summary>
+    Point3D? GetReferencePoint() => null;
 }

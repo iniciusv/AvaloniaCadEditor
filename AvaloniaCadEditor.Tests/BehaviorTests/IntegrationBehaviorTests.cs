@@ -42,7 +42,7 @@ public class IntegrationBehaviorTests
 
         var mockEngine = new Mock<IGeometryEngine>();
         // Mocking snap points para a outraLinha (endpoints)
-        mockEngine.Setup(e => e.GetSnapPoints(outraLinha)).Returns(new System.Collections.Generic.List<Point3D> { outraLinha.StartPoint, outraLinha.EndPoint });
+        mockEngine.Setup(e => e.GetSnapPoints(outraLinha, Moq.It.IsAny<Point3D?>())).Returns(new System.Collections.Generic.List<(Point3D, SnapPointType)> { (outraLinha.StartPoint, SnapPointType.Endpoint), (outraLinha.EndPoint, SnapPointType.Endpoint) });
 
         var osnapService = new OSnapService(mockEngine.Object);
         osnapService.IsEnabled = true;
@@ -57,7 +57,7 @@ public class IntegrationBehaviorTests
         var cursorMouse = new Point3D(49.8, 50.1); 
         
         // O OSnap entra em ação
-        var snappedPoint = osnapService.GetSnappedPoint(sketch, cursorMouse, 2.0);
+        var snappedPoint = osnapService.GetSnappedPoint(sketch, cursorMouse, pontoBase);
         snappedPoint.Should().Be(new Point3D(50, 50)); // Magnetismo funcionou
 
         // Finaliza o Move clicando no ponto com snap

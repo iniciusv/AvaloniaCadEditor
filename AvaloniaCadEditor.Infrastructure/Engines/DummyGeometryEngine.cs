@@ -12,20 +12,20 @@ public class DummyGeometryEngine : IGeometryEngine
         return Enumerable.Empty<Point3D>();
     }
 
-    public IEnumerable<Point3D> GetSnapPoints(Entity entity)
+    public IEnumerable<(Point3D Point, SnapPointType Type)> GetSnapPoints(Entity entity, Point3D? referencePoint = null)
     {
         if (entity is LineEntity line)
         {
             // Endpoints
-            yield return line.StartPoint;
-            yield return line.EndPoint;
+            yield return (line.StartPoint, SnapPointType.Endpoint);
+            yield return (line.EndPoint, SnapPointType.Endpoint);
             // Midpoint
-            yield return new Point3D((line.StartPoint.X + line.EndPoint.X) / 2, (line.StartPoint.Y + line.EndPoint.Y) / 2);
+            yield return (new Point3D((line.StartPoint.X + line.EndPoint.X) / 2, (line.StartPoint.Y + line.EndPoint.Y) / 2), SnapPointType.Midpoint);
         }
         else if (entity is CircleEntity circle)
         {
             // Center
-            yield return circle.Center;
+            yield return (circle.Center, SnapPointType.Center);
         }
     }
 

@@ -6,10 +6,11 @@ namespace AvaloniaCadEditor.Application.Services;
 public interface IOSnapService
 {
     bool IsEnabled { get; set; }
+    OsnapSettings Settings { get; }
     
     /// <summary>
     /// Calcula a melhor coordenada de snap dado o cursor atual e as entidades presentes no sketch.
     /// Se nenhum snap for encontrado dentro da tolerância, retorna o próprio cursor.
     /// </summary>
-    Point3D GetSnappedPoint(Sketch sketch, Point3D cursor, double snapTolerance, AvaloniaCadEditor.Domain.Mesh.TriangleMesh? solidMesh = null);
+    Point3D GetSnappedPoint(Sketch sketch, Point3D cursor, Point3D? referencePoint, AvaloniaCadEditor.Domain.Mesh.TriangleMesh? solidMesh = null);
 }

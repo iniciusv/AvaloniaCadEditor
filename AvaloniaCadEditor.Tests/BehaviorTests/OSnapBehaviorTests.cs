@@ -19,8 +19,8 @@ public class OSnapBehaviorTests
 
         var mockEngine = new Mock<IGeometryEngine>();
         // Mock engine to say the snap points of the line are its endpoints
-        mockEngine.Setup(e => e.GetSnapPoints(line))
-                  .Returns(new List<Point3D> { line.StartPoint, line.EndPoint });
+        mockEngine.Setup(e => e.GetSnapPoints(line, Moq.It.IsAny<Point3D?>()))
+                  .Returns(new List<(Point3D, SnapPointType)> { (line.StartPoint, SnapPointType.Endpoint), (line.EndPoint, SnapPointType.Endpoint) });
 
         var osnapService = new OSnapService(mockEngine.Object);
 
@@ -28,8 +28,8 @@ public class OSnapBehaviorTests
         var cursorLonge = new Point3D(50, 50);
 
         // Act
-        var snappedPointPerto = osnapService.GetSnappedPoint(sketch, cursorPertoDoInicio, snapTolerance: 2.0);
-        var snappedPointLonge = osnapService.GetSnappedPoint(sketch, cursorLonge, snapTolerance: 2.0);
+        var snappedPointPerto = osnapService.GetSnappedPoint(sketch, cursorPertoDoInicio, null);
+        var snappedPointLonge = osnapService.GetSnappedPoint(sketch, cursorLonge, null);
 
         // Assert
         snappedPointPerto.Should().Be(new Point3D(10, 10)); // O cursor sofreu atração ("snap")

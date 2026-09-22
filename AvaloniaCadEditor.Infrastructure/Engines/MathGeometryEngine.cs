@@ -25,22 +25,42 @@ public class MathGeometryEngine : IGeometryEngine
         return null;
     }
 
-    public IEnumerable<Point3D> GetSnapPoints(Entity entity)
+    public IEnumerable<(Point3D Point, SnapPointType Type)> GetSnapPoints(Entity entity, Point3D? referencePoint = null)
     {
-        var snaps = new List<Point3D>();
+        var snaps = new List<(Point3D Point, SnapPointType Type)>();
         if (entity is LineEntity line)
         {
-            snaps.Add(line.StartPoint);
-            snaps.Add(line.EndPoint);
-            snaps.Add(new Point3D((line.StartPoint.X + line.EndPoint.X)/2, (line.StartPoint.Y + line.EndPoint.Y)/2, 0));
+            snaps.Add((line.StartPoint, SnapPointType.Endpoint));
+            snaps.Add((line.EndPoint, SnapPointType.Endpoint));
+            snaps.Add((new Point3D((line.StartPoint.X + line.EndPoint.X) / 2, (line.StartPoint.Y + line.EndPoint.Y) / 2, 0), SnapPointType.Midpoint));
         }
         else if (entity is CircleEntity circle)
         {
-            snaps.Add(circle.Center);
-            snaps.Add(new Point3D(circle.Center.X + circle.Radius, circle.Center.Y, 0));
-            snaps.Add(new Point3D(circle.Center.X - circle.Radius, circle.Center.Y, 0));
-            snaps.Add(new Point3D(circle.Center.X, circle.Center.Y + circle.Radius, 0));
-            snaps.Add(new Point3D(circle.Center.X, circle.Center.Y - circle.Radius, 0));
+            snaps.Add((circle.Center, SnapPointType.Center));
+            snaps.Add((new Point3D(circle.Center.X + circle.Radius, circle.Center.Y, 0), SnapPointType.Endpoint)); // Quadrants treated as endpoints for now
+            snaps.Add((new Point3D(circle.Center.X - circle.Radius, circle.Center.Y, 0), SnapPointType.Endpoint));
+            snaps.Add((new Point3D(circle.Center.X, circle.Center.Y + circle.Radius, 0), SnapPointType.Endpoint));
+            snaps.Add((new Point3D(circle.Center.X, circle.Center.Y - circle.Radius, 0), SnapPointType.Endpoint));
+
+            if (referencePoint.HasValue)
+            {
+                var p = referencePoint.Value;
+                var c = circle.Center;
+                var r = circle.Radius;
+                var d = Math.Sqrt(Math.Pow(p.X - c.X, 2) + Math.Pow(p.Y - c.Y, 2));
+
+                if (d > r)
+                {
+                    var phi = Math.Atan2(p.Y - c.Y, p.X - c.X);
+                    var beta = Math.Acos(r / d);
+
+                    var t1 = new Point3D(c.X + r * Math.Cos(phi + beta), c.Y + r * Math.Sin(phi + beta), 0);
+                    var t2 = new Point3D(c.X + r * Math.Cos(phi - beta), c.Y + r * Math.Sin(phi - beta), 0);
+
+                    snaps.Add((t1, SnapPointType.Tangent));
+                    snaps.Add((t2, SnapPointType.Tangent));
+                }
+            }
         }
         return snaps;
     }

@@ -154,4 +154,13 @@ public class DrawLineCommand : ICommandTool
         }
         return "";
     }
+
+    public Point3D? GetReferencePoint()
+    {
+        if (_currentState == State.WaitingForEndPoint)
+        {
+            return _startPoint;
+        }
+        return null;
+    }
 }
