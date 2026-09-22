@@ -262,6 +262,11 @@ public class CadViewModel : INotifyPropertyChanged
         }
 
         SolidMesh = _geometryKernel.BuildSolidMesh(featuresToRender, _settingsProvider.GetSettings());
+        
+        if (GenerateCodeCommand != null && GenerateCodeCommand.CanExecute(null))
+        {
+            GenerateCodeCommand.Execute(null);
+        }
     }
 
     public WorkPlane ActiveWorkPlane
