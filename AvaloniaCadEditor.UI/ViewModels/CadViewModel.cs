@@ -341,9 +341,21 @@ public class CadViewModel : INotifyPropertyChanged
         ModelTree.RebuildTree();
     }
 
-    public void RefreshSolidMesh()
+    public void RefreshSolidMesh(bool skipCodeGeneration = false)
     {
-        _featureMeshCache.Clear(); // Clear raycast cache so it rebuilds on next hover/click
+        // Limpa o cache apenas das features que não existem mais no sketch
+        var currentIds = new HashSet<Guid>(Sketch.Features.Select(f => f.Id));
+        if (CurrentTool is ExtrudeCommand ext && ext.GetPreviewFeature() is IFeature prev)
+        {
+            currentIds.Add(prev.Id);
+        }
+        
+        var keysToRemove = _featureMeshCache.Keys.Where(k => !currentIds.Contains(k)).ToList();
+        foreach(var key in keysToRemove)
+        {
+            _featureMeshCache.Remove(key);
+        }
+
         var featuresToRender = new List<IFeature>(Sketch.Features.Where(f => f.IsVisible));
         if (CurrentTool is ExtrudeCommand extCmd)
         {
@@ -354,9 +366,40 @@ public class CadViewModel : INotifyPropertyChanged
             }
         }
 
-        SolidMesh = _geometryKernel.BuildSolidMesh(featuresToRender, _settingsProvider.GetSettings());
+        // Combine meshes directly in C# using cache to bypass OpenCascade rebuilding
+        var positions = new List<float>();
+        var normals = new List<float>();
+        var indices = new List<uint>();
+        var featureEdges = new List<uint>();
+        var internalEdges = new List<uint>();
+        uint vertexOffset = 0;
+
+        foreach (var f in featuresToRender)
+        {
+            if (!_featureMeshCache.TryGetValue(f.Id, out var mesh))
+            {
+                mesh = _geometryKernel.BuildSolidMesh(new[] { f }, _settingsProvider.GetSettings());
+                if (mesh != null)
+                {
+                    _featureMeshCache[f.Id] = mesh;
+                }
+            }
+
+            if (mesh == null || mesh.VertexCount == 0) continue;
+
+            positions.AddRange(mesh.Positions);
+            normals.AddRange(mesh.Normals);
+
+            foreach (var idx in mesh.Indices) indices.Add(idx + vertexOffset);
+            foreach (var fe in mesh.FeatureEdges) featureEdges.Add(fe + vertexOffset);
+            foreach (var ie in mesh.InternalEdges) internalEdges.Add(ie + vertexOffset);
+
+            vertexOffset += (uint)mesh.VertexCount;
+        }
+
+        SolidMesh = new TriangleMesh(positions.ToArray(), normals.ToArray(), indices.ToArray(), featureEdges.ToArray(), internalEdges.ToArray());
         
-        if (GenerateCodeCommand != null && GenerateCodeCommand.CanExecute(null))
+        if (!skipCodeGeneration && GenerateCodeCommand != null && GenerateCodeCommand.CanExecute(null))
         {
             GenerateCodeCommand.Execute(null);
         }
@@ -409,7 +452,7 @@ public class CadViewModel : INotifyPropertyChanged
 
         if (CurrentTool is ExtrudeCommand)
         {
-            RefreshSolidMesh();
+            RefreshSolidMesh(skipCodeGeneration: true);
         }
         
         var hitProfile = Sketch.Profiles.FirstOrDefault(p => p.ContainsPoint(localSnapped));
