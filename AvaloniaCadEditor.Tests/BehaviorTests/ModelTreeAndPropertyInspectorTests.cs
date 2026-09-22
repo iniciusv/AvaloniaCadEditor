@@ -32,19 +32,26 @@ public class ModelTreeAndPropertyInspectorTests
         treeVm.BindSketch(sketch);
 
         // Assert
-        Assert.Equal(3, treeVm.RootNodes.Count);
+        Assert.Equal(2, treeVm.RootNodes.Count);
         
-        var featuresGroup = treeVm.RootNodes[0];
-        Assert.Equal(2, featuresGroup.Children.Count); // Base plane + the new ExtrudeFeature
-        Assert.NotNull(featuresGroup.Children[1].Icon);
-        Assert.Equal(cylinderFeature.Id, featuresGroup.Children[1].Id);
+        var refGroup = treeVm.RootNodes[0];
+        Assert.Single(refGroup.Children); // Plano Base
+        var wpNode = refGroup.Children[0];
+        Assert.Single(wpNode.Children); // Esboço
+        var sketchNode = wpNode.Children[0];
+        Assert.Equal(2, sketchNode.Children.Count); // Perfis e Entidades
 
-        var profilesGroup = treeVm.RootNodes[1];
+        var profilesGroup = sketchNode.Children[0];
         Assert.Single(profilesGroup.Children);
         Assert.Equal(circleProfile.Id, profilesGroup.Children[0].Id);
 
-        var entitiesGroup = treeVm.RootNodes[2];
+        var entitiesGroup = sketchNode.Children[1];
         Assert.Single(entitiesGroup.Children);
+
+        var featuresGroup = treeVm.RootNodes[1];
+        Assert.Single(featuresGroup.Children); // The new ExtrudeFeature
+        Assert.NotNull(featuresGroup.Children[0].Icon);
+        Assert.Equal(cylinderFeature.Id, featuresGroup.Children[0].Id);
     }
 
     [Fact]
@@ -97,7 +104,7 @@ public class ModelTreeAndPropertyInspectorTests
         treeVm.BindSketch(sketch);
 
         // Act 1: Select via Tree Node
-        var featureNode = treeVm.RootNodes[0].Children[1];
+        var featureNode = treeVm.RootNodes[1].Children[0];
         treeVm.SelectedNode = featureNode;
 
         // Assert 1
