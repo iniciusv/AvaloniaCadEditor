@@ -15,6 +15,7 @@ using AvaloniaCadEditor.Domain.Mesh;
 using AvaloniaCadEditor.Domain.Profiles;
 using AvaloniaCadEditor.Domain.ValueObjects;
 using System.Globalization;
+using System.IO;
 
 namespace AvaloniaCadEditor.UI.ViewModels;
 
@@ -179,6 +180,8 @@ public class CadViewModel : INotifyPropertyChanged
     public ICommand DeleteSelectedCommand { get; }
     public ICommand GenerateCodeCommand { get; }
     public ICommand RunCodeCommand { get; }
+    public ICommand LoadCodeFromFileCommand { get; }
+    public ICommand SaveCodeToFileCommand { get; }
 
     private string _generatedCSharpCode = "// Pressione 'Atualizar Código' para gerar o C#.";
     public string GeneratedCSharpCode
@@ -217,6 +220,7 @@ public class CadViewModel : INotifyPropertyChanged
 
     private readonly ITessellationSettingsProvider _settingsProvider;
     private readonly ISceneEvaluator? _sceneEvaluator;
+    private readonly IFilePickerService? _filePickerService;
 
     public CadViewModel(
         IGeometryEngine geometryEngine,
@@ -225,7 +229,8 @@ public class CadViewModel : INotifyPropertyChanged
         IGeometryKernel? geometryKernel = null,
         ISelectionService? selectionService = null,
         ITessellationSettingsProvider? settingsProvider = null,
-        ISceneEvaluator? sceneEvaluator = null)
+        ISceneEvaluator? sceneEvaluator = null,
+        IFilePickerService? filePickerService = null)
     {
         _geometryEngine = geometryEngine;
         _osnapService = osnapService;
@@ -234,6 +239,7 @@ public class CadViewModel : INotifyPropertyChanged
         _selectionService = selectionService ?? new SelectionService();
         _settingsProvider = settingsProvider ?? new AvaloniaCadEditor.Infrastructure.Settings.JsonTessellationSettingsProvider();
         _sceneEvaluator = sceneEvaluator;
+        _filePickerService = filePickerService;
         
         // Base XY Plane is already added by Sketch constructor.
         
@@ -309,6 +315,33 @@ public class CadViewModel : INotifyPropertyChanged
                 StatusText = $"✗ Erro de Compilação";
                 // Print to console to avoid huge UI status messages
                 System.Console.WriteLine("Evaluation Error:\n" + result.ErrorMessage);
+            }
+        });
+
+        LoadCodeFromFileCommand = new RelayCommand(async () =>
+        {
+            if (_filePickerService == null) return;
+            var path = await _filePickerService.OpenFileAsync("Carregar Código C#", new[] { "*.cs" });
+            if (!string.IsNullOrEmpty(path))
+            {
+                GeneratedCSharpCode = File.ReadAllText(path);
+                RunCodeCommand.Execute(null);
+                StatusText = $"✓ Modelo carregado de: {Path.GetFileName(path)}";
+            }
+        });
+
+        SaveCodeToFileCommand = new RelayCommand(async () =>
+        {
+            if (_filePickerService == null) return;
+            if (GenerateCodeCommand != null && GenerateCodeCommand.CanExecute(null))
+            {
+                GenerateCodeCommand.Execute(null);
+            }
+            var path = await _filePickerService.SaveFileAsync("Salvar Modelo como C#", ".cs", "Model.cs");
+            if (!string.IsNullOrEmpty(path))
+            {
+                File.WriteAllText(path, GeneratedCSharpCode);
+                StatusText = $"✓ Modelo salvo em: {Path.GetFileName(path)}";
             }
         });
 

@@ -24,12 +24,13 @@ public partial class App : Avalonia.Application
 			var geometryKernel = new AvaloniaCadEditor.Infrastructure.OpenCascade.OpenCascadeGeometryKernel();
 			var settingsProvider = new AvaloniaCadEditor.Infrastructure.Settings.JsonTessellationSettingsProvider();
 			var evaluator = new AvaloniaCadEditor.Infrastructure.Scripting.RoslynSceneEvaluator();
-			var viewModel = new CadViewModel(geometryEngine, osnapService, profileRecognitionService, geometryKernel, null, settingsProvider, evaluator);
+			desktop.MainWindow = new MainWindow();
+			
+			var filePicker = new AvaloniaCadEditor.UI.Services.AvaloniaFilePickerService(desktop.MainWindow);
+			
+			var viewModel = new CadViewModel(geometryEngine, osnapService, profileRecognitionService, geometryKernel, null, settingsProvider, evaluator, filePicker);
 
-			desktop.MainWindow = new MainWindow
-			{
-				DataContext = viewModel
-			};
+			desktop.MainWindow.DataContext = viewModel;
 		}
 
 		base.OnFrameworkInitializationCompleted();
