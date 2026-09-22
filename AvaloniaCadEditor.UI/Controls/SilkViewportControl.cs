@@ -38,15 +38,34 @@ public class SilkViewportControl : OpenGlControlBase
         if (change.Property == DataContextProperty)
         {
             if (change.OldValue is CadViewModel oldVm)
+            {
                 oldVm.PropertyChanged -= ViewModel_PropertyChanged;
+                if (oldVm.SelectionService != null)
+                {
+                    oldVm.SelectionService.SelectionChanged -= ViewModel_SelectionChanged;
+                }
+            }
             if (change.NewValue is CadViewModel newVm)
+            {
                 newVm.PropertyChanged += ViewModel_PropertyChanged;
+                if (newVm.SelectionService != null)
+                {
+                    newVm.SelectionService.SelectionChanged += ViewModel_SelectionChanged;
+                }
+            }
         }
+    }
+
+    private void ViewModel_SelectionChanged()
+    {
+        RequestNextFrameRendering();
     }
 
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(CadViewModel.SolidMesh) || e.PropertyName == nameof(CadViewModel.Profiles))
+        if (e.PropertyName == nameof(CadViewModel.SolidMesh) || 
+            e.PropertyName == nameof(CadViewModel.Profiles) || 
+            e.PropertyName == nameof(CadViewModel.HoveredProfile))
         {
             RequestNextFrameRendering();
         }
@@ -877,7 +896,6 @@ public class SilkViewportControl : OpenGlControlBase
                         if (hit.HasValue && hit.Value.FeatureId.HasValue)
                         {
                             ViewModel.SelectionService.SelectById(ViewModel.Sketch, hit.Value.FeatureId.Value);
-                            ViewModel.ModelTree.RebuildTree();
                             RequestNextFrameRendering();
                         }
                     }

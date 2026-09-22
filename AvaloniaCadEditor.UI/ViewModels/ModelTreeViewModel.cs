@@ -29,9 +29,12 @@ public class ModelTreeViewModel : INotifyPropertyChanged
                 _selectedNode = value;
                 OnPropertyChanged();
 
-                if (!_isUpdatingSelectionInternally && value != null && value.Id.HasValue && CurrentSketch != null)
+                if (!_isUpdatingSelectionInternally && value != null && CurrentSketch != null)
                 {
-                    _selectionService.SelectById(CurrentSketch, value.Id.Value);
+                    if (value.Id.HasValue)
+                        _selectionService.SelectById(CurrentSketch, value.Id.Value);
+                    else
+                        _selectionService.ClearSelection(CurrentSketch);
                 }
             }
         }
@@ -54,6 +57,11 @@ public class ModelTreeViewModel : INotifyPropertyChanged
     public void RebuildTree()
     {
         if (CurrentSketch == null) return;
+
+        // 1. Save expansion states before clearing
+        var expandedIds = new HashSet<Guid>();
+        var expandedCategories = new HashSet<string>();
+        SaveExpansionState(RootNodes, expandedIds, expandedCategories);
 
         RootNodes.Clear();
 
@@ -82,6 +90,7 @@ public class ModelTreeViewModel : INotifyPropertyChanged
 
         // 1. Features 3D Group
         var featuresGroup = new TreeItemNode($"Volumes 3D ({CurrentSketch.Features.Count})", iconFolder, TreeItemCategory.FeatureGroup);
+        featuresGroup.PropertyChanged += OnNodePropertyChanged;
         foreach (var feature in rootFeatures)
         {
             var node = BuildFeatureNode(feature);
@@ -91,6 +100,7 @@ public class ModelTreeViewModel : INotifyPropertyChanged
 
         // 2. Profiles 2D Group
         var profilesGroup = new TreeItemNode($"Perfis 2D ({CurrentSketch.Profiles.Count})", iconFolder, TreeItemCategory.ProfileGroup);
+        profilesGroup.PropertyChanged += OnNodePropertyChanged;
         foreach (var profile in CurrentSketch.Profiles)
         {
             string icon = profile.Classification switch
@@ -100,15 +110,28 @@ public class ModelTreeViewModel : INotifyPropertyChanged
                 _ => iconPolygon
             };
             string name = $"Perfil {profile.Classification} (Área: {profile.Area:F1})";
+
             var node = new TreeItemNode(name, icon, TreeItemCategory.ProfileItem, profile.Id, profile);
             node.IsVisible = profile.IsVisible;
-            node.VisibilityChanged += (s, e) => OnNodeVisibilityChanged();
+            
+            // Re-sync visibility changes
+            node.PropertyChanged += (s, e) =>
+            {
+                if (e.PropertyName == nameof(TreeItemNode.IsVisible))
+                {
+                    profile.IsVisible = node.IsVisible;
+                    OnNodeVisibilityChanged();
+                }
+            };
+            node.PropertyChanged += OnNodePropertyChanged;
+            
             profilesGroup.Children.Add(node);
         }
         RootNodes.Add(profilesGroup);
 
         // 3. Sketch Entities 2D Group
         var entitiesGroup = new TreeItemNode($"Linhas e Entidades ({CurrentSketch.Entities.Count})", iconFolder, TreeItemCategory.EntityGroup);
+        entitiesGroup.PropertyChanged += OnNodePropertyChanged;
         int lineCount = 1;
         int circleCount = 1;
         foreach (var entity in CurrentSketch.Entities)
@@ -129,11 +152,48 @@ public class ModelTreeViewModel : INotifyPropertyChanged
             var node = new TreeItemNode(name, icon, TreeItemCategory.EntityItem, entity.Id, entity);
             node.IsVisible = entity.IsVisible;
             node.VisibilityChanged += (s, e) => OnNodeVisibilityChanged();
+            node.PropertyChanged += OnNodePropertyChanged;
             entitiesGroup.Children.Add(node);
         }
         RootNodes.Add(entitiesGroup);
 
+        // 2. Restore expansion states
+        RestoreExpansionState(RootNodes, expandedIds, expandedCategories);
+
         SyncSelectionFromService();
+    }
+
+    private void SaveExpansionState(IEnumerable<TreeItemNode> nodes, HashSet<Guid> expandedIds, HashSet<string> expandedCategories)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.IsExpanded)
+            {
+                if (node.Id.HasValue) expandedIds.Add(node.Id.Value);
+                else expandedCategories.Add(node.Name);
+            }
+            SaveExpansionState(node.Children, expandedIds, expandedCategories);
+        }
+    }
+
+    private void RestoreExpansionState(IEnumerable<TreeItemNode> nodes, HashSet<Guid> expandedIds, HashSet<string> expandedCategories)
+    {
+        foreach (var node in nodes)
+        {
+            if (node.Id.HasValue && expandedIds.Contains(node.Id.Value))
+            {
+                node.IsExpanded = true;
+            }
+            else if (!node.Id.HasValue && expandedCategories.Contains(node.Name))
+            {
+                node.IsExpanded = true;
+            }
+            else
+            {
+                node.IsExpanded = false; // Collapse by default if not previously expanded
+            }
+            RestoreExpansionState(node.Children, expandedIds, expandedCategories);
+        }
     }
 
     private TreeItemNode BuildFeatureNode(IFeature feature)
@@ -170,11 +230,13 @@ public class ModelTreeViewModel : INotifyPropertyChanged
         var node = new TreeItemNode(name, icon, TreeItemCategory.FeatureItem, feature.Id, feature);
         node.IsVisible = feature.IsVisible;
         node.VisibilityChanged += (s, e) => OnNodeVisibilityChanged();
+        node.PropertyChanged += OnNodePropertyChanged;
 
         if (feature is BooleanFeature booleanFeature)
         {
             // Base group
             var baseGroup = new TreeItemNode($"Base", iconFolder, TreeItemCategory.BooleanBaseGroup, null, booleanFeature);
+            baseGroup.PropertyChanged += OnNodePropertyChanged;
             if (booleanFeature.BaseFeature != null)
             {
                 baseGroup.Children.Add(BuildFeatureNode(booleanFeature.BaseFeature));
@@ -185,6 +247,7 @@ public class ModelTreeViewModel : INotifyPropertyChanged
             string toolsName = booleanFeature.Operation == BooleanOperationType.Subtract ? "Ferramentas (Corte)" :
                                booleanFeature.Operation == BooleanOperationType.Union ? "Ferramentas (União)" : "Ferramentas (Interseção)";
             var toolsGroup = new TreeItemNode(toolsName, iconFolder, TreeItemCategory.BooleanToolGroup, null, booleanFeature);
+            toolsGroup.PropertyChanged += OnNodePropertyChanged;
             foreach (var tool in booleanFeature.ToolFeatures)
             {
                 toolsGroup.Children.Add(BuildFeatureNode(tool));
@@ -254,11 +317,42 @@ public class ModelTreeViewModel : INotifyPropertyChanged
         return false;
     }
 
+    private bool IsDescendant(TreeItemNode parent, TreeItemNode potentialDescendant)
+    {
+        foreach (var child in parent.Children)
+        {
+            if (child == potentialDescendant || IsDescendant(child, potentialDescendant))
+                return true;
+        }
+        return false;
+    }
+
     public event EventHandler? NodeVisibilityChanged;
 
     private void OnNodeVisibilityChanged()
     {
         NodeVisibilityChanged?.Invoke(this, EventArgs.Empty);
+    }
+
+    private void OnNodePropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(TreeItemNode.IsExpanded))
+        {
+            if (sender is TreeItemNode node && !node.IsExpanded)
+            {
+                if (SelectedNode != null && IsDescendant(node, SelectedNode))
+                {
+                    SelectedNode = node;
+                }
+            }
+        }
+        else if (e.PropertyName == nameof(TreeItemNode.IsSelected))
+        {
+            if (sender is TreeItemNode node && node.IsSelected)
+            {
+                SelectedNode = node;
+            }
+        }
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;

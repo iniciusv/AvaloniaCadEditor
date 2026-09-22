@@ -11,7 +11,7 @@
         Title="Avalonia CAD Editor - 3D Parametric"
         Background="#1A1A1A">
 
-    <Grid RowDefinitions="Auto,*,Auto">
+    <Grid RowDefinitions="Auto,*,30">
         <!-- Toolbar -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Background="#2D2D2D" Margin="4" Spacing="6">
             <Button Content="Select (Space)" Command="{Binding SelectSelectToolCommand}" />

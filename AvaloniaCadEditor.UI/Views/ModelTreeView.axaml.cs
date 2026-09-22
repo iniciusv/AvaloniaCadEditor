@@ -18,6 +18,7 @@ public partial class ModelTreeView : UserControl
     public ModelTreeView()
     {
         InitializeComponent();
+        AddHandler(PointerReleasedEvent, OnPointerReleasedAnywhere, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
     }
 
     private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
@@ -29,6 +30,10 @@ public partial class ModelTreeView : UserControl
         if (pointerUpdateKind == PointerUpdateKind.LeftButtonPressed)
         {
             var control = e.Source as Control;
+            
+            // Do not start drag if they clicked a button (like the expand/collapse arrow or visibility eye)
+            if (control is Avalonia.Controls.Primitives.ToggleButton) return;
+
             var dataContext = control?.DataContext as TreeItemNode;
             
             if (dataContext != null && dataContext.Category == TreeItemCategory.FeatureItem)
@@ -59,6 +64,13 @@ public partial class ModelTreeView : UserControl
             _draggedNode = null;
             _dragStartEvent = null;
         }
+    }
+
+    private void OnPointerReleasedAnywhere(object? sender, PointerReleasedEventArgs e)
+    {
+        _isDragging = false;
+        _draggedNode = null;
+        _dragStartEvent = null;
     }
 
     private void OnDragOver(object? sender, DragEventArgs e)

@@ -296,7 +296,10 @@ public class CadViewModel : INotifyPropertyChanged
 
         CurrentTool?.OnMouseDown(Sketch, localSnapped);
         UpdateStatusText(localSnapped);
-        RefreshProfiles();
+        if (!(CurrentTool is SelectTool))
+        {
+            RefreshProfiles();
+        }
         return false;
     }
 
