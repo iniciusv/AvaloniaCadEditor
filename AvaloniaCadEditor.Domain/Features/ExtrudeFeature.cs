@@ -12,6 +12,7 @@ public class ExtrudeFeature : FeatureBase
     public double Depth { get; set; }
     public Vector3D Direction { get; set; }
 
+
     public double BaseArea => Profile?.Area ?? 0.0;
     public double Volume => BaseArea * Math.Abs(Depth);
 

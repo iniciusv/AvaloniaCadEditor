@@ -14,10 +14,14 @@ public class ExtrudeCommand : ICommandTool
 
     private enum State { SelectingProfile, DefiningDepth }
     private State _currentState = State.SelectingProfile;
+    public bool IsDefiningDepth => _currentState == State.DefiningDepth;
 
     private IProfile? _selectedProfile;
-    private double _currentDepth = 20.0;
+    public IProfile? SelectedProfile => _selectedProfile;
+    public double CurrentDepth { get; private set; } = 20.0;
     private Point3D _startPoint;
+    public Point3D StartPointWorld { get; private set; }
+    public bool IsFinished { get; private set; }
 
     public void OnMouseDown(Sketch sketch, Point3D point)
     {
@@ -36,22 +40,57 @@ public class ExtrudeCommand : ICommandTool
         {
             if (_selectedProfile != null)
             {
-                double depth = Math.Abs(_currentDepth) < 1e-3 ? 20.0 : _currentDepth;
+                double depth = Math.Abs(CurrentDepth) < 1e-3 ? 20.0 : CurrentDepth;
                 var feature = new ExtrudeFeature(_selectedProfile, depth);
                 sketch.AddFeature(feature);
+                
+                if (_selectedProfile is FaceProfile faceProfile)
+                {
+                    var booleanFeature = new BooleanFeature(
+                        $"Push/Pull ({depth:F1}mm)",
+                        CurrentDepth < 0 ? BooleanOperationType.Subtract : BooleanOperationType.Union,
+                        faceProfile.BaseFeature,
+                        new[] { feature }
+                    );
+                    sketch.AddFeature(booleanFeature);
+                }
+                
                 HideProfileAndEntities(sketch, _selectedProfile);
+                IsFinished = true;
             }
             Cancel();
         }
+    }
+
+    public void StartDirectExtrusion(Sketch sketch, IProfile profile, Point3D startPoint)
+    {
+        _selectedProfile = profile;
+        _startPoint = startPoint; // Actually, for FaceProfile, we can just use the world point.
+        StartPointWorld = startPoint;
+        CurrentDepth = 20.0;
+        _currentState = State.DefiningDepth;
     }
 
     public void OnMouseMove(Sketch sketch, Point3D point)
     {
         if (_currentState == State.DefiningDepth && _selectedProfile != null)
         {
-            // Calculate depth based on distance from click point
-            double distance = point.DistanceTo(_startPoint);
-            _currentDepth = distance > 0.1 ? distance : 20.0;
+            // Fallback for 2D extrusion drag
+            double dx = point.X - _startPoint.X;
+            double dy = point.Y - _startPoint.Y;
+            double distance = Math.Sqrt(dx * dx + dy * dy);
+            
+            // Determine sign based on general drag direction
+            double sign = (dx + dy) >= 0 ? 1.0 : -1.0;
+            CurrentDepth = distance > 0.1 ? distance * sign : 20.0;
+        }
+    }
+
+    public void UpdateDepth(double depth)
+    {
+        if (_currentState == State.DefiningDepth)
+        {
+            CurrentDepth = depth;
         }
     }
 
@@ -59,14 +98,14 @@ public class ExtrudeCommand : ICommandTool
     {
         _currentState = State.SelectingProfile;
         _selectedProfile = null;
-        _currentDepth = 20.0;
+        CurrentDepth = 20.0;
     }
 
     public IFeature? GetPreviewFeature()
     {
         if (_currentState == State.DefiningDepth && _selectedProfile != null)
         {
-            return new ExtrudeFeature(_selectedProfile, _currentDepth);
+            return new ExtrudeFeature(_selectedProfile, CurrentDepth);
         }
         return null;
     }
@@ -77,7 +116,9 @@ public class ExtrudeCommand : ICommandTool
         {
             var previewLines = new List<Entity>();
             var baseVerts = _selectedProfile.GetVertices();
-            var dir = _selectedProfile.Normal * _currentDepth;
+            if (baseVerts.Count == 0) return previewLines; // FaceProfile might not have simple vertices for preview
+
+            var dir = _selectedProfile.Normal * CurrentDepth;
             var plane = _selectedProfile.Plane;
 
             for (int i = 0; i < baseVerts.Count; i++)
@@ -127,7 +168,20 @@ public class ExtrudeCommand : ICommandTool
         {
             var feature = new ExtrudeFeature(_selectedProfile, value);
             sketch.AddFeature(feature);
+            
+            if (_selectedProfile is FaceProfile faceProfile)
+            {
+                var booleanFeature = new BooleanFeature(
+                    $"Push/Pull ({value:F1}mm)",
+                    value < 0 ? BooleanOperationType.Subtract : BooleanOperationType.Union,
+                    faceProfile.BaseFeature,
+                    new[] { feature }
+                );
+                sketch.AddFeature(booleanFeature);
+            }
+
             HideProfileAndEntities(sketch, _selectedProfile);
+            IsFinished = true;
         }
         Cancel();
     }
@@ -135,6 +189,8 @@ public class ExtrudeCommand : ICommandTool
     private void HideProfileAndEntities(Sketch sketch, IProfile profile)
     {
         profile.IsVisible = false;
+        if (profile is FaceProfile) return;
+
         foreach (var entityId in profile.SourceEntityIds)
         {
             var entity = sketch.Entities.FirstOrDefault(e => e.Id == entityId);
@@ -149,16 +205,16 @@ public class ExtrudeCommand : ICommandTool
     {
         if (_currentState == State.DefiningDepth)
         {
-            return $"Height: {_currentDepth:F2}";
+            return $"Height: {CurrentDepth:F2}";
         }
-        return "Click a Profile or enter Height";
+        return "Click a Profile/Face or enter Height";
     }
 
     private static IProfile? FindProfileAtPoint(Sketch sketch, Point3D point)
     {
         // Simple bounding check or distance to center
         return sketch.Profiles
-            .Where(p => p.IsVisible)
+            .Where(p => p.IsVisible && !(p is FaceProfile))
             .OrderBy(p => p.Center.DistanceTo(point))
             .FirstOrDefault();
     }

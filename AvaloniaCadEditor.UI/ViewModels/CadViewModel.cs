@@ -480,6 +480,12 @@ public class CadViewModel : INotifyPropertyChanged
         {
             RefreshProfiles();
         }
+        
+        if (CurrentTool is ExtrudeCommand extCmd && extCmd.IsFinished)
+        {
+            SelectSelectToolCommand.Execute(null);
+        }
+        
         return false;
     }
 
@@ -543,6 +549,12 @@ public class CadViewModel : INotifyPropertyChanged
                 RefreshProfiles();
             }
             ClearVcb();
+            
+            if (CurrentTool is ExtrudeCommand extCmd && extCmd.IsFinished)
+            {
+                SelectSelectToolCommand.Execute(null);
+            }
+            
             return;
         }
 

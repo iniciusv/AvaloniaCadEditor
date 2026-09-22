@@ -512,8 +512,8 @@ public class SilkViewportControl : OpenGlControlBase
                 }
                 else if (ViewModel.HoveredFeatureId == feature.Id)
                 {
-                    faceR = 1.00f; faceG = 1.00f; faceB = 1.00f; // Pure white for Hover Delay feedback
-                    edgeR = 0.80f; edgeG = 0.80f; edgeB = 0.80f;
+                    faceR = 1.00f; faceG = 0.65f; faceB = 0.15f; // Strong Amber/Gold for Hover 3D face
+                    edgeR = 1.00f; edgeG = 0.80f; edgeB = 0.20f;
                 }
                 else
                 {
@@ -795,7 +795,19 @@ public class SilkViewportControl : OpenGlControlBase
                     
                     if (entity is LineEntity line)
                     {
-                        AddLine(line.StartPoint, line.EndPoint, entityPlane, 1.0f, 1.0f, 0.0f); // Preview = Yellow
+                        float pr = 1.0f, pg = 1.0f, pb = 0.0f;
+                        if (ViewModel.CurrentTool is Application.Commands.ExtrudeCommand extCmd)
+                        {
+                            if (extCmd.CurrentDepth < 0)
+                            {
+                                pr = 1.0f; pg = 0.2f; pb = 0.2f; // Red for subtract
+                            }
+                            else
+                            {
+                                pr = 0.2f; pg = 1.0f; pb = 0.2f; // Green for union
+                            }
+                        }
+                        AddLine(line.StartPoint, line.EndPoint, entityPlane, pr, pg, pb);
                     }
                     else if (entity is CircleEntity circle)
                     {
@@ -1009,6 +1021,30 @@ public class SilkViewportControl : OpenGlControlBase
                             RequestNextFrameRendering();
                         }
                     }
+                    else if (ViewModel.CurrentTool is Application.Commands.ExtrudeCommand extCmd)
+                    {
+                        if (!extCmd.IsDefiningDepth)
+                        {
+                            var hit = ViewModel.Raycast3D(ray);
+                            if (hit.HasValue && hit.Value.FeatureId.HasValue)
+                            {
+                                var normal = hit.Value.Normal;
+                                var origin = hit.Value.Point;
+                                var plane = new AvaloniaCadEditor.Domain.ValueObjects.WorkPlane(normal, origin);
+                                var baseFeature = ViewModel.Sketch.Features.FirstOrDefault(f => f.Id == hit.Value.FeatureId.Value);
+                                if (baseFeature != null) 
+                                {
+                                    var mesh = ViewModel.GetFeatureMesh(hit.Value.FeatureId.Value);
+                                    if (mesh != null)
+                                    {
+                                        var faceProfile = new AvaloniaCadEditor.Domain.Profiles.FaceProfile(baseFeature, plane, mesh);
+                                        extCmd.StartDirectExtrusion(ViewModel.Sketch, faceProfile, hit.Value.Point);
+                                        RequestNextFrameRendering();
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1055,14 +1091,53 @@ public class SilkViewportControl : OpenGlControlBase
                 (float)ViewModel.ActiveWorkPlane.Origin.Y,
                 (float)ViewModel.ActiveWorkPlane.Origin.Z);
             
-            var intersection = ray.IntersectPlane(planeNormal, planeOrigin);
-            if (intersection.HasValue)
+            if (ViewModel.CurrentTool is Application.Commands.ExtrudeCommand extCmd && extCmd.IsDefiningDepth && extCmd.SelectedProfile != null)
             {
-                _cubePos = new Vector3((float)intersection.Value.X, (float)intersection.Value.Y, (float)intersection.Value.Z);
-                ViewModel.OnPointerMoved(intersection.Value);
+                if (_lastMousePos.HasValue)
+                {
+                    float deltaX = (float)(point.Position.X - _lastMousePos.Value.X);
+                    float deltaY = (float)(point.Position.Y - _lastMousePos.Value.Y);
+                    
+                    var n = extCmd.SelectedProfile.Normal;
+                    var o = extCmd.StartPointWorld;
+                    
+                    var viewMat = _camera.GetViewMatrix();
+                    var projMat = _camera.GetProjectionMatrix();
+                    var viewProj = viewMat * projMat;
+                    
+                    var oVec = new System.Numerics.Vector4((float)o.X, (float)o.Y, (float)o.Z, 1.0f);
+                    var nVec = new System.Numerics.Vector4((float)(o.X + n.X), (float)(o.Y + n.Y), (float)(o.Z + n.Z), 1.0f);
+                    
+                    var oScreen = System.Numerics.Vector4.Transform(oVec, viewProj);
+                    var nScreen = System.Numerics.Vector4.Transform(nVec, viewProj);
+                    
+                    if (oScreen.W != 0) oScreen /= oScreen.W;
+                    if (nScreen.W != 0) nScreen /= nScreen.W;
+                    
+                    // Note: Inverting Y because screen Y goes down, but NDC Y goes up
+                    var screenNormal = new System.Numerics.Vector2(nScreen.X - oScreen.X, -(nScreen.Y - oScreen.Y));
+                    
+                    if (screenNormal.LengthSquared() > 1e-5f)
+                    {
+                        screenNormal = System.Numerics.Vector2.Normalize(screenNormal);
+                        float mouseProj = deltaX * screenNormal.X + deltaY * screenNormal.Y;
+                        float sensitivity = 0.5f; // Screen pixels to depth units
+                        extCmd.UpdateDepth(extCmd.CurrentDepth + mouseProj * sensitivity);
+                        RequestNextFrameRendering();
+                    }
+                }
+            }
+            else
+            {
+                var intersection = ray.IntersectPlane(planeNormal, planeOrigin);
+                if (intersection.HasValue)
+                {
+                    _cubePos = new System.Numerics.Vector3((float)intersection.Value.X, (float)intersection.Value.Y, (float)intersection.Value.Z);
+                    ViewModel.OnPointerMoved(intersection.Value);
+                }
             }
             
-            if (ViewModel.CurrentTool is Application.Commands.BooleanTool)
+            if (ViewModel.CurrentTool is Application.Commands.BooleanTool || ViewModel.CurrentTool is Application.Commands.ExtrudeCommand)
             {
                 ViewModel.ProcessHover(ray);
             }
