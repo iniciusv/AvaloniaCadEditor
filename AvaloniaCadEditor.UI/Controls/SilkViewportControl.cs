@@ -940,7 +940,54 @@ public class SilkViewportControl : OpenGlControlBase
                         var hit = ViewModel.Raycast3D(ray);
                         if (hit.HasValue)
                         {
-                            ViewModel.ActiveWorkPlane = new Domain.ValueObjects.WorkPlane(hit.Value.Normal, hit.Value.Point);
+                            var normal = hit.Value.Normal;
+                            var origin = hit.Value.Point;
+                            
+                            if (hit.Value.FeatureId.HasValue)
+                            {
+                                var featureId = hit.Value.FeatureId.Value;
+                                var mesh = ViewModel.GetFeatureMesh(featureId);
+                                if (mesh != null)
+                                {
+                                    var tempPlane = new AvaloniaCadEditor.Domain.ValueObjects.WorkPlane(normal, origin);
+                                    double minX = double.MaxValue;
+                                    double minY = double.MaxValue;
+                                    bool foundAny = false;
+                                    
+                                    for (int i = 0; i < mesh.Indices.Length; i += 3)
+                                    {
+                                        uint i0 = mesh.Indices[i]; uint i1 = mesh.Indices[i + 1]; uint i2 = mesh.Indices[i + 2];
+                                        var v0 = new AvaloniaCadEditor.Domain.ValueObjects.Point3D(mesh.Positions[i0*3], mesh.Positions[i0*3+1], mesh.Positions[i0*3+2]);
+                                        var v1 = new AvaloniaCadEditor.Domain.ValueObjects.Point3D(mesh.Positions[i1*3], mesh.Positions[i1*3+1], mesh.Positions[i1*3+2]);
+                                        var v2 = new AvaloniaCadEditor.Domain.ValueObjects.Point3D(mesh.Positions[i2*3], mesh.Positions[i2*3+1], mesh.Positions[i2*3+2]);
+                                        
+                                        var d1 = new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(v1.X - v0.X, v1.Y - v0.Y, v1.Z - v0.Z);
+                                        var d2 = new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(v2.X - v0.X, v2.Y - v0.Y, v2.Z - v0.Z);
+                                        var cross = d1.CrossProduct(d2);
+                                        if (cross.Length > 1e-6)
+                                        {
+                                            var tNormal = cross.Normalize();
+                                            if (tNormal.DotProduct(normal) > 0.99)
+                                            {
+                                                var p0 = tempPlane.ToLocalSpace(v0);
+                                                var p1 = tempPlane.ToLocalSpace(v1);
+                                                var p2 = tempPlane.ToLocalSpace(v2);
+                                                
+                                                minX = System.Math.Min(minX, System.Math.Min(p0.X, System.Math.Min(p1.X, p2.X)));
+                                                minY = System.Math.Min(minY, System.Math.Min(p0.Y, System.Math.Min(p1.Y, p2.Y)));
+                                                foundAny = true;
+                                            }
+                                        }
+                                    }
+                                    
+                                    if (foundAny)
+                                    {
+                                        origin = tempPlane.ToWorldSpace(new AvaloniaCadEditor.Domain.ValueObjects.Point3D(minX, minY, 0));
+                                    }
+                                }
+                            }
+
+                            ViewModel.ActiveWorkPlane = new AvaloniaCadEditor.Domain.ValueObjects.WorkPlane(normal, origin);
                             ViewModel.SelectSelectToolCommand.Execute(null);
                             RequestNextFrameRendering();
                         }

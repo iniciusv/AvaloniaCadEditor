@@ -296,6 +296,15 @@ public class CadViewModel : INotifyPropertyChanged
 
     private Dictionary<Guid, TriangleMesh> _featureMeshCache = new();
 
+        public AvaloniaCadEditor.Domain.Mesh.TriangleMesh? GetFeatureMesh(Guid featureId)
+    {
+        if (_featureMeshCache.TryGetValue(featureId, out var mesh))
+        {
+            return mesh;
+        }
+        return null;
+    }
+
     public RaycastHit? Raycast3D(Ray ray)
     {
         if (Sketch.Features.Count == 0) return null;
