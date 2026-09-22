@@ -1,36 +1,48 @@
-using System;
-using System.Diagnostics;
-using System.Runtime.InteropServices;
+using System.Collections.Generic;
+using System.Numerics;
 using Avalonia;
 using Avalonia.Input;
 using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
 using AvaloniaCadEditor.Domain.Entities;
-using AvaloniaCadEditor.Domain.ValueObjects;
+using AvaloniaCadEditor.UI.Controls.Input;
+using AvaloniaCadEditor.UI.Controls.Rendering;
 using AvaloniaCadEditor.UI.ViewModels;
 using Silk.NET.OpenGL;
-using System.Numerics;
-using System.Linq;
 
 namespace AvaloniaCadEditor.UI.Controls;
 
 public class SilkViewportControl : OpenGlControlBase
 {
     private GL? _gl;
-    private CameraState _camera;
-
-    private Point? _lastMousePos;
-    private bool _isPanning = false;
-    private bool _isOrbiting = false;
-    
-    private Vector3 _cubePos = Vector3.Zero;
-
-    private uint _shaderProgram;
-    private uint _vao;
-    private uint _vbo;
-    private int _vertexCount;
+    private readonly CameraState _camera;
+    private readonly ViewportShaderManager _shaderManager;
+    private readonly ViewportInputHandler _inputHandler;
+    private readonly List<IRenderPass> _renderPasses;
 
     public CadViewModel? ViewModel => DataContext as CadViewModel;
+
+    public SilkViewportControl()
+    {
+        _camera = new CameraState();
+        _shaderManager = new ViewportShaderManager();
+        _inputHandler = new ViewportInputHandler();
+
+        // Exact rendering order preserved:
+        // 1. Solid features (3D)
+        // 2. WorkPlane grid & axes
+        // 3. 2D profile faces
+        // 4. Sketch wireframe & preview entities
+        _renderPasses = new List<IRenderPass>
+        {
+            new SolidFeatureRenderPass(),
+            new GridRenderPass(),
+            new ProfileFaceRenderPass(),
+            new SketchEntityRenderPass()
+        };
+
+        Focusable = true;
+    }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
     {
@@ -72,14 +84,6 @@ public class SilkViewportControl : OpenGlControlBase
         }
     }
 
-    public SilkViewportControl()
-    {
-        _camera = new CameraState();
-        Focusable = true;
-    }
-
-
-
     protected override void OnOpenGlInit(GlInterface gl)
     {
         base.OnOpenGlInit(gl);
@@ -92,328 +96,28 @@ public class SilkViewportControl : OpenGlControlBase
         _gl.Enable(EnableCap.Blend);
         _gl.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
 
-        InitShaders();
-        InitScene();
+        _shaderManager.Init(_gl);
+
+        foreach (var pass in _renderPasses)
+        {
+            pass.Init(_gl);
+        }
     }
-
-    private void InitShaders()
-    {
-        string vertexShaderSource = @"
-            attribute vec3 aPos;
-            attribute vec3 aColor;
-            attribute vec3 aNormal;
-            
-            uniform mat4 uModel;
-            uniform mat4 uView;
-            uniform mat4 uProjection;
-            uniform int uUseLighting;
-            
-            varying vec3 vertexColor;
-            
-            void main()
-            {
-                gl_Position = uProjection * uView * uModel * vec4(aPos, 1.0);
-                
-                if (uUseLighting == 1) {
-                    // Convert normal to view space
-                    vec3 viewNormal = normalize(mat3(uView * uModel) * aNormal);
-                    // Light comes from slightly above and right of the camera
-                    vec3 lightDir = normalize(vec3(0.3, 0.5, 1.0));
-                    float diff = max(dot(viewNormal, lightDir), 0.0);
-                    
-                    // Double sided lighting for faces looking away but still visible
-                    if (diff == 0.0) {
-                        diff = max(dot(-viewNormal, lightDir), 0.0) * 0.5; // Dimmer on the back
-                    }
-                    
-                    float ambient = 0.40;
-                    float light = ambient + (1.0 - ambient) * diff;
-                    vertexColor = aColor * light;
-                } else {
-                    vertexColor = aColor;
-                }
-            }";
-
-        string fragmentShaderSource = @"
-            #ifdef GL_ES
-            precision mediump float;
-            #endif
-            
-            uniform float uAlpha;
-            varying vec3 vertexColor;
-            
-            void main()
-            {
-                gl_FragColor = vec4(vertexColor, uAlpha);
-            }";
-
-        uint vertexShader = _gl!.CreateShader(ShaderType.VertexShader);
-        _gl.ShaderSource(vertexShader, vertexShaderSource);
-        _gl.CompileShader(vertexShader);
-        string vLog = _gl.GetShaderInfoLog(vertexShader);
-        if (!string.IsNullOrEmpty(vLog)) Debug.WriteLine("VERTEX SHADER ERROR: " + vLog);
-
-        uint fragmentShader = _gl.CreateShader(ShaderType.FragmentShader);
-        _gl.ShaderSource(fragmentShader, fragmentShaderSource);
-        _gl.CompileShader(fragmentShader);
-        string fLog = _gl.GetShaderInfoLog(fragmentShader);
-        if (!string.IsNullOrEmpty(fLog)) Debug.WriteLine("FRAGMENT SHADER ERROR: " + fLog);
-
-        _shaderProgram = _gl.CreateProgram();
-        _gl.AttachShader(_shaderProgram, vertexShader);
-        _gl.AttachShader(_shaderProgram, fragmentShader);
-        
-        // Bind attribute locations BEFORE linking
-        _gl.BindAttribLocation(_shaderProgram, 0, "aPos");
-        _gl.BindAttribLocation(_shaderProgram, 1, "aColor");
-        _gl.BindAttribLocation(_shaderProgram, 2, "aNormal");
-        
-        _gl.LinkProgram(_shaderProgram);
-        string pLog = _gl.GetProgramInfoLog(_shaderProgram);
-        if (!string.IsNullOrEmpty(pLog)) Debug.WriteLine("PROGRAM LINK ERROR: " + pLog);
-
-        _gl.DeleteShader(vertexShader);
-        _gl.DeleteShader(fragmentShader);
-    }
-
-    private void InitScene()
-    {
-        // 1. Setup Grid
-        int lines = 40;
-        float size = 200.0f;
-        float step = size / lines;
-
-        float[] vertices = new float[(lines * 4 + 4 + 6) * 6 + 8 * 6]; // grid + axes + cube
-        int index = 0;
-        
-        // Grid lines (Gray)
-        for (int i = -lines / 2; i <= lines / 2; i++)
-        {
-            float pos = i * step;
-            // X-parallel
-            vertices[index++] = -size / 2; vertices[index++] = pos; vertices[index++] = 0;
-            vertices[index++] = 0.3f; vertices[index++] = 0.3f; vertices[index++] = 0.3f;
-            vertices[index++] = size / 2; vertices[index++] = pos; vertices[index++] = 0;
-            vertices[index++] = 0.3f; vertices[index++] = 0.3f; vertices[index++] = 0.3f;
-            
-            // Y-parallel
-            vertices[index++] = pos; vertices[index++] = -size / 2; vertices[index++] = 0;
-            vertices[index++] = 0.3f; vertices[index++] = 0.3f; vertices[index++] = 0.3f;
-            vertices[index++] = pos; vertices[index++] = size / 2; vertices[index++] = 0;
-            vertices[index++] = 0.3f; vertices[index++] = 0.3f; vertices[index++] = 0.3f;
-        }
-
-        // Axes (Red, Green, Blue)
-        vertices[index++] = 0; vertices[index++] = 0; vertices[index++] = 0;
-        vertices[index++] = 1; vertices[index++] = 0; vertices[index++] = 0;
-        vertices[index++] = size/2; vertices[index++] = 0; vertices[index++] = 0;
-        vertices[index++] = 1; vertices[index++] = 0; vertices[index++] = 0;
-
-        vertices[index++] = 0; vertices[index++] = 0; vertices[index++] = 0;
-        vertices[index++] = 0; vertices[index++] = 1; vertices[index++] = 0;
-        vertices[index++] = 0; vertices[index++] = size/2; vertices[index++] = 0;
-        vertices[index++] = 0; vertices[index++] = 1; vertices[index++] = 0;
-
-        vertices[index++] = 0; vertices[index++] = 0; vertices[index++] = 0;
-        vertices[index++] = 0; vertices[index++] = 0; vertices[index++] = 1;
-        vertices[index++] = 0; vertices[index++] = 0; vertices[index++] = size/2;
-        vertices[index++] = 0; vertices[index++] = 0; vertices[index++] = 1;
-
-        int gridVertexCount = index / 6;
-
-        // Cube vertices
-        float s = 10.0f;
-        int cubeStartIndex = index / 6;
-        float[] cubeVerts = {
-            -s, -s, -s,   1.0f, 0.0f, 0.0f,
-             s, -s, -s,   0.0f, 1.0f, 0.0f,
-             s,  s, -s,   0.0f, 0.0f, 1.0f,
-            -s,  s, -s,   1.0f, 1.0f, 0.0f,
-            -s, -s,  s,   1.0f, 0.0f, 1.0f,
-             s, -s,  s,   0.0f, 1.0f, 1.0f,
-             s,  s,  s,   1.0f, 1.0f, 1.0f,
-            -s,  s,  s,   0.5f, 0.5f, 0.5f
-        };
-        for (int i = 0; i < cubeVerts.Length; i++) vertices[index++] = cubeVerts[i];
-
-        // Cube lines
-        uint baseIdx = (uint)cubeStartIndex;
-        uint[] indices = {
-            baseIdx+0, baseIdx+1, baseIdx+1, baseIdx+2, baseIdx+2, baseIdx+3, baseIdx+3, baseIdx+0,
-            baseIdx+4, baseIdx+5, baseIdx+5, baseIdx+6, baseIdx+6, baseIdx+7, baseIdx+7, baseIdx+4,
-            baseIdx+0, baseIdx+4, baseIdx+1, baseIdx+5, baseIdx+2, baseIdx+6, baseIdx+3, baseIdx+7
-        };
-
-        _vao = _gl!.GenVertexArray();
-        _vbo = _gl.GenBuffer();
-        uint ebo = _gl.GenBuffer();
-
-        _gl.BindVertexArray(_vao);
-
-        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _vbo);
-        unsafe
-        {
-            fixed (float* v = vertices)
-            {
-                _gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(vertices.Length * sizeof(float)), v, BufferUsageARB.StaticDraw);
-            }
-        }
-
-        _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, ebo);
-        unsafe
-        {
-            fixed (uint* idx = indices)
-            {
-                _gl.BufferData(BufferTargetARB.ElementArrayBuffer, (nuint)(indices.Length * sizeof(uint)), idx, BufferUsageARB.StaticDraw);
-            }
-        }
-
-        // Position attribute
-        unsafe
-        {
-            _gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)0);
-            _gl.EnableVertexAttribArray(0);
-        }
-
-        // Color attribute
-        unsafe
-        {
-            _gl.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-            _gl.EnableVertexAttribArray(1);
-        }
-        
-        _gl.BindVertexArray(0);
-        
-        _vertexCount = gridVertexCount; // We will use _vertexCount for DrawArrays for grid
-        // Cube uses DrawElements
-        
-        // --- Setup Sketch VAO / VBO ---
-        _sketchVao = _gl.GenVertexArray();
-        _sketchVbo = _gl.GenBuffer();
-        
-        _gl.BindVertexArray(_sketchVao);
-        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _sketchVbo);
-        
-        unsafe
-        {
-            _gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)0);
-            _gl.EnableVertexAttribArray(0);
-            _gl.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-            _gl.EnableVertexAttribArray(1);
-        }
-        _gl.BindVertexArray(0);
-
-        // --- Setup Solid Mesh VAO / VBO / EBO ---
-        _solidVao = _gl.GenVertexArray();
-        _solidVbo = _gl.GenBuffer();
-        _solidEbo = _gl.GenBuffer();
-
-        _gl.BindVertexArray(_solidVao);
-        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _solidVbo);
-        _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, _solidEbo);
-
-        unsafe
-        {
-            // Attribute 0: Position (vec3), Attribute 1: Color (vec3), Attribute 2: Normal (vec3) -> 9 floats stride
-            _gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 9 * sizeof(float), (void*)0);
-            _gl.EnableVertexAttribArray(0);
-            _gl.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, 9 * sizeof(float), (void*)(3 * sizeof(float)));
-            _gl.EnableVertexAttribArray(1);
-            _gl.VertexAttribPointer(2, 3, VertexAttribPointerType.Float, false, 9 * sizeof(float), (void*)(6 * sizeof(float)));
-            _gl.EnableVertexAttribArray(2);
-        }
-        _gl.BindVertexArray(0);
-
-        // --- Setup Feature Edges VAO / VBO ---
-        _featureEdgesVao = _gl.GenVertexArray();
-        _featureEdgesVbo = _gl.GenBuffer();
-
-        _gl.BindVertexArray(_featureEdgesVao);
-        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _featureEdgesVbo);
-
-        unsafe
-        {
-            _gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)0);
-            _gl.EnableVertexAttribArray(0);
-            _gl.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-            _gl.EnableVertexAttribArray(1);
-        }
-        _gl.BindVertexArray(0);
-
-        // --- Setup Internal Edges VAO / VBO ---
-        _internalEdgesVao = _gl.GenVertexArray();
-        _internalEdgesVbo = _gl.GenBuffer();
-
-        _gl.BindVertexArray(_internalEdgesVao);
-        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _internalEdgesVbo);
-
-        unsafe
-        {
-            _gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)0);
-            _gl.EnableVertexAttribArray(0);
-            _gl.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)(3 * sizeof(float)));
-            _gl.EnableVertexAttribArray(1);
-        }
-        _gl.BindVertexArray(0);
-
-        // --- Setup 2D Profile Face Shading VAO / VBO / EBO ---
-        _profileFaceVao = _gl.GenVertexArray();
-        _profileFaceVbo = _gl.GenBuffer();
-        _profileFaceEbo = _gl.GenBuffer();
-
-        _gl.BindVertexArray(_profileFaceVao);
-        _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _profileFaceVbo);
-        _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, _profileFaceEbo);
-
-        unsafe
-        {
-            _gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 9 * sizeof(float), (void*)0);
-            _gl.EnableVertexAttribArray(0);
-            _gl.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, 9 * sizeof(float), (void*)(3 * sizeof(float)));
-            _gl.EnableVertexAttribArray(1);
-            _gl.VertexAttribPointer(2, 3, VertexAttribPointerType.Float, false, 9 * sizeof(float), (void*)(6 * sizeof(float)));
-            _gl.EnableVertexAttribArray(2);
-        }
-        _gl.BindVertexArray(0);
-    }
-
-    private uint _sketchVao;
-    private uint _sketchVbo;
-
-    private uint _solidVao;
-    private uint _solidVbo;
-    private uint _solidEbo;
-
-    private uint _featureEdgesVao;
-    private uint _featureEdgesVbo;
-    private uint _internalEdgesVao;
-    private uint _internalEdgesVbo;
-
-    private uint _profileFaceVao;
-    private uint _profileFaceVbo;
-    private uint _profileFaceEbo;
 
     protected override void OnOpenGlDeinit(GlInterface gl)
     {
         if (_gl != null)
         {
-            _gl.DeleteVertexArray(_vao);
-            _gl.DeleteBuffer(_vbo);
-            _gl.DeleteVertexArray(_sketchVao);
-            _gl.DeleteBuffer(_sketchVbo);
-            _gl.DeleteVertexArray(_solidVao);
-            _gl.DeleteBuffer(_solidVbo);
-            _gl.DeleteBuffer(_solidEbo);
-            _gl.DeleteVertexArray(_featureEdgesVao);
-            _gl.DeleteBuffer(_featureEdgesVbo);
-            _gl.DeleteVertexArray(_internalEdgesVao);
-            _gl.DeleteBuffer(_internalEdgesVbo);
-            _gl.DeleteVertexArray(_profileFaceVao);
-            _gl.DeleteBuffer(_profileFaceVbo);
-            _gl.DeleteBuffer(_profileFaceEbo);
-            _gl.DeleteProgram(_shaderProgram);
+            foreach (var pass in _renderPasses)
+            {
+                pass.Dispose(_gl);
+            }
+
+            _shaderManager.Dispose(_gl);
             _gl.Dispose();
+            _gl = null;
         }
+
         base.OnOpenGlDeinit(gl);
     }
 
@@ -428,733 +132,50 @@ public class SilkViewportControl : OpenGlControlBase
         var viewMatrix = _camera.GetViewMatrix();
         var projMatrix = _camera.GetProjectionMatrix();
 
-        _gl.UseProgram(_shaderProgram);
-
-        // Pass matrices and uniforms to shader
-        int viewLoc = _gl.GetUniformLocation(_shaderProgram, "uView");
-        int projLoc = _gl.GetUniformLocation(_shaderProgram, "uProjection");
-        int modelLoc = _gl.GetUniformLocation(_shaderProgram, "uModel");
-        int lightingLoc = _gl.GetUniformLocation(_shaderProgram, "uUseLighting");
-        int alphaLoc = _gl.GetUniformLocation(_shaderProgram, "uAlpha");
-        
-        unsafe
-        {
-            _gl.UniformMatrix4(viewLoc, 1, false, (float*)&viewMatrix);
-            _gl.UniformMatrix4(projLoc, 1, false, (float*)&projMatrix);
-        }
-
-        var identity = Matrix4x4.Identity;
-        
-        var gridMatrix = identity;
-        if (ViewModel != null)
-        {
-            var wp = ViewModel.ActiveWorkPlane;
-            gridMatrix = new Matrix4x4(
-                (float)wp.XAxis.X, (float)wp.XAxis.Y, (float)wp.XAxis.Z, 0,
-                (float)wp.YAxis.X, (float)wp.YAxis.Y, (float)wp.YAxis.Z, 0,
-                (float)wp.Normal.X, (float)wp.Normal.Y, (float)wp.Normal.Z, 0,
-                (float)wp.Origin.X, (float)wp.Origin.Y, (float)wp.Origin.Z, 1
-            );
-        }
+        _gl.UseProgram(_shaderManager.ShaderProgram);
 
         unsafe
         {
-            _gl.UniformMatrix4(modelLoc, 1, false, (float*)&gridMatrix);
-            _gl.Uniform1(lightingLoc, 0); // No lighting for grid and 2D lines
-            _gl.Uniform1(alphaLoc, 1.0f);
+            _gl.UniformMatrix4(_shaderManager.Uniforms.ViewLoc, 1, false, (float*)&viewMatrix);
+            _gl.UniformMatrix4(_shaderManager.Uniforms.ProjLoc, 1, false, (float*)&projMatrix);
         }
 
-        if (ViewModel != null)
+        var context = new RenderContext
         {
-            _gl.Enable(EnableCap.PolygonOffsetFill);
-            _gl.Enable(EnableCap.PolygonOffsetLine);
-            _gl.PolygonOffset(1.0f, 1.0f);
-            // --- Render 3D Solid Features with Individual Lighting & Crisp Edges ---
-            var featuresToRender = new System.Collections.Generic.List<(AvaloniaCadEditor.Domain.Features.IFeature Feature, bool IsPreview)>();
-            if (ViewModel != null)
-            {
-                foreach (var f in ViewModel.Sketch.Features)
-                {
-                    if (f.IsVisible) featuresToRender.Add((f, false));
-                }
+            ViewMatrix = viewMatrix,
+            ProjMatrix = projMatrix,
+            IdentityMatrix = Matrix4x4.Identity,
+            ShaderProgram = _shaderManager.ShaderProgram,
+            Uniforms = _shaderManager.Uniforms,
+            Camera = _camera,
+            ViewModel = ViewModel,
+            Bounds = Bounds.Size
+        };
 
-                if (ViewModel.CurrentTool is Application.Commands.ExtrudeCommand extCmd)
-                {
-                    var preview = extCmd.GetPreviewFeature();
-                    if (preview != null)
-                    {
-                        featuresToRender.Add((preview, true));
-                    }
-                }
-            }
-
-            foreach (var (feature, isPreview) in featuresToRender)
-            {
-                var mesh = ViewModel!.GeometryKernel.BuildSolidMesh(new[] { feature });
-                if (mesh == null || mesh.TriangleCount == 0) continue;
-
-                int vertexCount = mesh.VertexCount;
-                float[] solidVertexData = new float[vertexCount * 9];
-
-                // Base Face Color: Emerald when previewing, Warm Amber if selected, Cool Steel Blue default
-                float faceR, faceG, faceB;
-                float edgeR, edgeG, edgeB;
-
-                if (isPreview)
-                {
-                    faceR = 0.20f; faceG = 0.85f; faceB = 0.60f; // Vibrant Emerald Creation Feedback
-                    edgeR = 0.05f; edgeG = 0.95f; edgeB = 0.65f;
-                }
-                else if (feature.IsSelected)
-                {
-                    faceR = 0.10f; faceG = 0.40f; faceB = 1.00f; // Strong Vivid Blue Selection Highlight
-                    edgeR = 0.00f; edgeG = 0.20f; edgeB = 0.80f;
-                }
-                else if (ViewModel.HoveredFeatureId == feature.Id)
-                {
-                    faceR = 1.00f; faceG = 0.65f; faceB = 0.15f; // Strong Amber/Gold for Hover 3D face
-                    edgeR = 1.00f; edgeG = 0.80f; edgeB = 0.20f;
-                }
-                else
-                {
-                    faceR = 0.92f; faceG = 0.92f; faceB = 0.95f; // Near white / light grey Base Color
-                    edgeR = 0.60f; edgeG = 0.60f; edgeB = 0.65f;
-                    
-                    // Dim background objects if we are in a custom workplane
-                    if (!ViewModel.ActiveWorkPlane.Equals(AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.XY))
-                    {
-                        faceR *= 0.6f; faceG *= 0.6f; faceB *= 0.6f;
-                        edgeR *= 0.6f; edgeG *= 0.6f; edgeB *= 0.6f;
-                    }
-                }
-
-                // Interleave position + color + Normal
-                for (int i = 0; i < vertexCount; i++)
-                {
-                    int posIdx = i * 3;
-                    int outIdx = i * 9;
-
-                    solidVertexData[outIdx + 0] = mesh.Positions[posIdx + 0];
-                    solidVertexData[outIdx + 1] = mesh.Positions[posIdx + 1];
-                    solidVertexData[outIdx + 2] = mesh.Positions[posIdx + 2];
-
-                    solidVertexData[outIdx + 3] = faceR;
-                    solidVertexData[outIdx + 4] = faceG;
-                    solidVertexData[outIdx + 5] = faceB;
-
-                    // Normal vector for real-time diffuse shading
-                    solidVertexData[outIdx + 6] = mesh.Normals[posIdx + 0];
-                    solidVertexData[outIdx + 7] = mesh.Normals[posIdx + 1];
-                    solidVertexData[outIdx + 8] = mesh.Normals[posIdx + 2];
-                }
-
-                _gl.BindVertexArray(_solidVao);
-
-                _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _solidVbo);
-                unsafe
-                {
-                    fixed (float* vPtr = solidVertexData)
-                    {
-                        _gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(solidVertexData.Length * sizeof(float)), vPtr, BufferUsageARB.DynamicDraw);
-                    }
-                }
-
-                _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, _solidEbo);
-                unsafe
-                {
-                    fixed (uint* iPtr = mesh.Indices)
-                    {
-                        _gl.BufferData(BufferTargetARB.ElementArrayBuffer, (nuint)(mesh.Indices.Length * sizeof(uint)), iPtr, BufferUsageARB.DynamicDraw);
-                    }
-                }
-
-                unsafe
-                {
-                    _gl.UniformMatrix4(modelLoc, 1, false, (float*)&identity);
-                    _gl.Uniform1(lightingLoc, 1); // Enable directional lighting for 3D faces!
-                    _gl.DrawElements(PrimitiveType.Triangles, (uint)mesh.Indices.Length, DrawElementsType.UnsignedInt, (void*)0);
-                }
-
-                // --- Render Edge Outlines (Arestas e Vértices Nítidos / Highlight se selecionado) ---
-                var settings = new AvaloniaCadEditor.Infrastructure.Settings.JsonTessellationSettingsProvider().GetSettings();
-                
-                var featureColor = ParseHexColor(settings.FeatureEdgeColor, (edgeR, edgeG, edgeB, 1.0f));
-                var internalColor = ParseHexColor(settings.InternalEdgeColor, (0.5f, 0.5f, 0.5f, 0.5f));
-
-                if (feature.IsSelected || isPreview)
-                {
-                    featureColor = (edgeR, edgeG, edgeB, 1.0f);
-                    internalColor = (edgeR, edgeG, edgeB, 0.5f);
-                }
-
-                void BuildEdgeBuffer(uint[] edgeIndices, (float R, float G, float B, float A) color, uint vao, uint vbo)
-                {
-                    if (edgeIndices == null || edgeIndices.Length == 0) return;
-
-                    var edgeLines = new System.Collections.Generic.List<float>();
-                    for (int i = 0; i < edgeIndices.Length; i += 2)
-                    {
-                        int pA = (int)edgeIndices[i] * 3;
-                        int pB = (int)edgeIndices[i + 1] * 3;
-
-                        // Point A
-                        edgeLines.Add(mesh.Positions[pA + 0]); edgeLines.Add(mesh.Positions[pA + 1]); edgeLines.Add(mesh.Positions[pA + 2]);
-                        edgeLines.Add(color.R); edgeLines.Add(color.G); edgeLines.Add(color.B);
-
-                        // Point B
-                        edgeLines.Add(mesh.Positions[pB + 0]); edgeLines.Add(mesh.Positions[pB + 1]); edgeLines.Add(mesh.Positions[pB + 2]);
-                        edgeLines.Add(color.R); edgeLines.Add(color.G); edgeLines.Add(color.B);
-                    }
-
-                    _gl.BindVertexArray(vao);
-                    _gl.BindBuffer(BufferTargetARB.ArrayBuffer, vbo);
-
-                    unsafe
-                    {
-                        var edgeArr = edgeLines.ToArray();
-                        fixed (float* ePtr = edgeArr)
-                        {
-                            _gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(edgeArr.Length * sizeof(float)), ePtr, BufferUsageARB.DynamicDraw);
-                        }
-
-                        _gl.Uniform1(lightingLoc, 0); // Solid color for edges
-                        
-                        // Enable blending for transparent edges
-                        if (color.A < 1.0f) {
-                            _gl.Enable(EnableCap.Blend);
-                            _gl.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
-                        }
-                        
-                        _gl.DrawArrays(PrimitiveType.Lines, 0, (uint)(edgeLines.Count / 6));
-                        
-                        if (color.A < 1.0f) {
-                            _gl.Disable(EnableCap.Blend);
-                        }
-                    }
-                }
-
-                BuildEdgeBuffer(mesh.FeatureEdges, featureColor, _featureEdgesVao, _featureEdgesVbo);
-                if (settings.ShowInternalEdges)
-                {
-                    BuildEdgeBuffer(mesh.InternalEdges, internalColor, _internalEdgesVao, _internalEdgesVbo);
-                }
-            }
-            _gl.Disable(EnableCap.PolygonOffsetFill);
-            _gl.Disable(EnableCap.PolygonOffsetLine);
-        }
-
-        // --- Draw WorkPlane Highlight and Grid ---
-        if (ViewModel != null)
+        foreach (var pass in _renderPasses)
         {
-            var wp = ViewModel.ActiveWorkPlane;
-            gridMatrix = new Matrix4x4(
-                (float)wp.XAxis.X, (float)wp.XAxis.Y, (float)wp.XAxis.Z, 0,
-                (float)wp.YAxis.X, (float)wp.YAxis.Y, (float)wp.YAxis.Z, 0,
-                (float)wp.Normal.X, (float)wp.Normal.Y, (float)wp.Normal.Z, 0,
-                (float)wp.Origin.X, (float)wp.Origin.Y, (float)wp.Origin.Z, 1
-            );
-            
-            unsafe
-            {
-                _gl.UniformMatrix4(modelLoc, 1, false, (float*)&gridMatrix);
-                _gl.Uniform1(lightingLoc, 0); 
-                _gl.Uniform1(alphaLoc, 1.0f);
-            }
-        }
-
-        // Draw Grid
-        _gl.BindVertexArray(_vao);
-        _gl.DrawArrays(PrimitiveType.Lines, 0, (uint)_vertexCount);
-
-
-        _gl.DepthMask(false);
-        // --- Render 2D Profiles Face Shading (Subtle Shading, Hover Pre-highlight, Selection) ---
-        if (ViewModel != null && ViewModel.Sketch.Profiles.Count > 0)
-        {
-            foreach (var profile in ViewModel.Sketch.Profiles)
-            {
-                if (!profile.IsVisible) continue;
-                var (faceVerts, faceIndices) = profile.GetTessellatedFace();
-                if (faceVerts.Count == 0 || faceIndices.Count == 0) continue;
-
-                float r = 0.38f, g = 0.55f, b = 0.80f, a = 0.22f; // Default subtle translucent fill
-                if (profile.IsSelected)
-                {
-                    r = 1.00f; g = 0.65f; b = 0.15f; a = 0.50f; // Selected = Amber Gold
-                }
-                else if (profile == ViewModel.HoveredProfile)
-                {
-                    r = 0.20f; g = 0.80f; b = 1.00f; a = 0.42f; // Hover = Luminous Cyan
-                }
-
-                float[] vData = new float[faceVerts.Count * 9];
-                for (int i = 0; i < faceVerts.Count; i++)
-                {
-                    int outIdx = i * 9;
-                    vData[outIdx + 0] = (float)faceVerts[i].X;
-                    vData[outIdx + 1] = (float)faceVerts[i].Y;
-                    vData[outIdx + 2] = (float)faceVerts[i].Z;
-
-                    vData[outIdx + 3] = r;
-                    vData[outIdx + 4] = g;
-                    vData[outIdx + 5] = b;
-
-                    vData[outIdx + 6] = 0.0f;
-                    vData[outIdx + 7] = 0.0f;
-                    vData[outIdx + 8] = 1.0f;
-                }
-
-                _gl.BindVertexArray(_profileFaceVao);
-                _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _profileFaceVbo);
-                unsafe
-                {
-                    fixed (float* vPtr = vData)
-                    {
-                        _gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(vData.Length * sizeof(float)), vPtr, BufferUsageARB.DynamicDraw);
-                    }
-                }
-
-                _gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, _profileFaceEbo);
-                uint[] iData = faceIndices.ToArray();
-                unsafe
-                {
-                    fixed (uint* iPtr = iData)
-                    {
-                        _gl.BufferData(BufferTargetARB.ElementArrayBuffer, (nuint)(iData.Length * sizeof(uint)), iPtr, BufferUsageARB.DynamicDraw);
-                    }
-                }
-
-                unsafe
-                {
-                    _gl.UniformMatrix4(modelLoc, 1, false, (float*)&identity);
-                    _gl.Uniform1(lightingLoc, 0);
-                    _gl.Uniform1(alphaLoc, a);
-                    _gl.DrawElements(PrimitiveType.Triangles, (uint)iData.Length, DrawElementsType.UnsignedInt, (void*)0);
-                }
-            }
-        }
-
-        _gl.DepthMask(true);
-
-        // Reset alpha to 1.0 for lines and solids
-        unsafe
-        {
-            _gl.Uniform1(alphaLoc, 1.0f);
-        }
-
-        // --- Render Sketch Entities ---
-        if (ViewModel != null)
-        {
-            var sketchVertices = new System.Collections.Generic.List<float>();
-
-            void AddLine(Point3D p1, Point3D p2, AvaloniaCadEditor.Domain.ValueObjects.WorkPlane plane, float r, float g, float b)
-            {
-                var w1 = plane.ToWorldSpace(p1);
-                var w2 = plane.ToWorldSpace(p2);
-                sketchVertices.Add((float)w1.X); sketchVertices.Add((float)w1.Y); sketchVertices.Add((float)w1.Z);
-                sketchVertices.Add(r); sketchVertices.Add(g); sketchVertices.Add(b);
-                sketchVertices.Add((float)w2.X); sketchVertices.Add((float)w2.Y); sketchVertices.Add((float)w2.Z);
-                sketchVertices.Add(r); sketchVertices.Add(g); sketchVertices.Add(b);
-            }
-
-            // Draw finalized entities
-            foreach (var entity in ViewModel.Sketch.Entities)
-            {
-                if (!entity.IsVisible) continue;
-                float r = entity.IsSelected ? 1.0f : 1.0f;
-                float g = entity.IsSelected ? 0.5f : 1.0f;
-                float b = entity.IsSelected ? 0.0f : 1.0f; // Selected = Orange, Normal = White
-
-                if (entity is LineEntity line)
-                {
-                    AddLine(line.StartPoint, line.EndPoint, entity.Plane, r, g, b);
-                }
-                else if (entity is CircleEntity circle)
-                {
-                    int segments = 32;
-                    for (int i = 0; i < segments; i++)
-                    {
-                        double theta1 = 2.0 * Math.PI * i / segments;
-                        double theta2 = 2.0 * Math.PI * (i + 1) / segments;
-                        
-                        Point3D p1 = new Point3D(circle.Center.X + circle.Radius * Math.Cos(theta1), circle.Center.Y + circle.Radius * Math.Sin(theta1), circle.Center.Z);
-                        Point3D p2 = new Point3D(circle.Center.X + circle.Radius * Math.Cos(theta2), circle.Center.Y + circle.Radius * Math.Sin(theta2), circle.Center.Z);
-                        
-                        AddLine(p1, p2, entity.Plane, r, g, b);
-                    }
-                }
-            }
-
-            // Draw preview entities (ghost lines)
-            if (ViewModel.CurrentTool != null)
-            {
-                foreach (var entity in ViewModel.CurrentTool.GetPreviewEntities())
-                {
-                    // Preview entities should respect their own Plane, fallback to ActiveWorkPlane
-                    var entityPlane = entity.Plane ?? ViewModel.ActiveWorkPlane;
-                    
-                    if (entity is LineEntity line)
-                    {
-                        float pr = 1.0f, pg = 1.0f, pb = 0.0f;
-                        if (ViewModel.CurrentTool is Application.Commands.ExtrudeCommand extCmd)
-                        {
-                            if (extCmd.CurrentDepth < 0)
-                            {
-                                pr = 1.0f; pg = 0.2f; pb = 0.2f; // Red for subtract
-                            }
-                            else
-                            {
-                                pr = 0.2f; pg = 1.0f; pb = 0.2f; // Green for union
-                            }
-                        }
-                        AddLine(line.StartPoint, line.EndPoint, entityPlane, pr, pg, pb);
-                    }
-                    else if (entity is CircleEntity circle)
-                    {
-                        int segments = 32;
-                        for (int i = 0; i < segments; i++)
-                        {
-                            double theta1 = 2.0 * Math.PI * i / segments;
-                            double theta2 = 2.0 * Math.PI * (i + 1) / segments;
-                            
-                            Point3D p1 = new Point3D(circle.Center.X + circle.Radius * Math.Cos(theta1), circle.Center.Y + circle.Radius * Math.Sin(theta1), circle.Center.Z);
-                            Point3D p2 = new Point3D(circle.Center.X + circle.Radius * Math.Cos(theta2), circle.Center.Y + circle.Radius * Math.Sin(theta2), circle.Center.Z);
-                            
-                            AddLine(p1, p2, entityPlane, 1.0f, 1.0f, 0.0f);
-                        }
-                    }
-                }
-            }
-
-            if (sketchVertices.Count > 0)
-            {
-                _gl.BindVertexArray(_sketchVao);
-                _gl.BindBuffer(BufferTargetARB.ArrayBuffer, _sketchVbo);
-
-                unsafe
-                {
-                    var arr = sketchVertices.ToArray();
-                    fixed (float* ptr = arr)
-                    {
-                        _gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(arr.Length * sizeof(float)), ptr, BufferUsageARB.DynamicDraw);
-                    }
-                }
-
-                unsafe
-                {
-                    _gl.UniformMatrix4(modelLoc, 1, false, (float*)&identity);
-                    _gl.Uniform1(lightingLoc, 0);
-                }
-                
-                _gl.DrawArrays(PrimitiveType.Lines, 0, (uint)(sketchVertices.Count / 6));
-            }
-
-        } // closing brace for sketch ViewModel if block
-    }
-    private (float R, float G, float B, float A) ParseHexColor(string hex, (float, float, float, float) fallback)
-    {
-        if (string.IsNullOrWhiteSpace(hex) || !hex.StartsWith("#") || hex.Length != 9)
-            return fallback;
-            
-        try 
-        {
-            float a = Convert.ToInt32(hex.Substring(1, 2), 16) / 255f;
-            float r = Convert.ToInt32(hex.Substring(3, 2), 16) / 255f;
-            float g = Convert.ToInt32(hex.Substring(5, 2), 16) / 255f;
-            float b = Convert.ToInt32(hex.Substring(7, 2), 16) / 255f;
-            return (r, g, b, a);
-        }
-        catch 
-        {
-            return fallback;
+            pass.Render(_gl, context);
         }
     }
-
 
     public void HandlePointerWheelChanged(PointerWheelEventArgs e)
     {
-        Debug.WriteLine($"[DEBUG] Mouse Wheel: {e.Delta.Y}");
-        
-        float zoomFactor = 1.1f;
-        if (e.Delta.Y > 0)
-            _camera.Zoom(1.0f / zoomFactor);
-        else
-            _camera.Zoom(zoomFactor);
-
-        RequestNextFrameRendering();
+        _inputHandler.HandlePointerWheelChanged(e, _camera, RequestNextFrameRendering);
     }
 
     public void HandlePointerPressed(PointerPressedEventArgs e)
     {
-        this.Focus();
-        var point = e.GetCurrentPoint(this);
-        
-        Debug.WriteLine($"[DEBUG] Mouse Pressed: {point.Properties.PointerUpdateKind}");
-
-        if (point.Properties.IsMiddleButtonPressed || point.Properties.IsRightButtonPressed)
-        {
-            if (e.KeyModifiers.HasFlag(KeyModifiers.Shift))
-            {
-                _isPanning = true;
-                Debug.WriteLine("[DEBUG] Started Panning");
-            }
-            else
-            {
-                _isOrbiting = true;
-                Debug.WriteLine("[DEBUG] Started Orbiting");
-            }
-            _lastMousePos = point.Position;
-        }
-        else if (point.Properties.IsLeftButtonPressed)
-        {
-            Debug.WriteLine("[DEBUG] Left Click");
-            if (Bounds.Width > 0 && Bounds.Height > 0)
-            {
-                var ray = _camera.ScreenPointToRay(
-                    new Vector2((float)point.Position.X, (float)point.Position.Y), 
-                    new Vector2((float)Bounds.Width, (float)Bounds.Height)
-                );
-
-                if (ViewModel == null) return;
-
-                // --- NOVA LÓGICA: Despacho por tipo de tool ---
-                
-                // Tools 3D: BooleanTool opera por seleção de feature via 3D raycast
-                if (ViewModel.CurrentTool is Application.Commands.BooleanTool)
-                {
-                    var hit = ViewModel.Raycast3D(ray);
-                    if (hit.HasValue && hit.Value.FeatureId.HasValue)
-                    {
-                        // Explicitly give the tool the sketch before triggering selection events
-                        ViewModel.CurrentTool.OnMouseDown(ViewModel.Sketch, new AvaloniaCadEditor.Domain.ValueObjects.Point3D(0, 0, 0));
-                        ViewModel.SelectionService.SelectById(ViewModel.Sketch, hit.Value.FeatureId.Value);
-                        RequestNextFrameRendering();
-                    }
-                    return; // Pula o fluxo 2D
-                }
-
-                // 1. Tools 2D: Prioritize active WorkPlane 2D intersection
-                var planeNormal = new Vector3(
-                    (float)ViewModel.ActiveWorkPlane.Normal.X,
-                    (float)ViewModel.ActiveWorkPlane.Normal.Y,
-                    (float)ViewModel.ActiveWorkPlane.Normal.Z);
-                var planeOrigin = new Vector3(
-                    (float)ViewModel.ActiveWorkPlane.Origin.X,
-                    (float)ViewModel.ActiveWorkPlane.Origin.Y,
-                    (float)ViewModel.ActiveWorkPlane.Origin.Z);
-                
-                var intersection = ray.IntersectPlane(planeNormal, planeOrigin);
-                bool handledBy2D = false;
-                
-                if (intersection.HasValue)
-                {
-                    handledBy2D = ViewModel.OnPointerPressed(intersection.Value);
-                    RequestNextFrameRendering();
-                }
-
-                // 2. Fallback 3D para SetWorkPlane e SelectTool
-                if (!handledBy2D)
-                {
-                    if (ViewModel.CurrentTool is Application.Commands.SetWorkPlaneCommand)
-                    {
-                        var hit = ViewModel.Raycast3D(ray);
-                        if (hit.HasValue)
-                        {
-                            var normal = hit.Value.Normal;
-                            var origin = hit.Value.Point;
-                            
-                            if (hit.Value.FeatureId.HasValue)
-                            {
-                                var featureId = hit.Value.FeatureId.Value;
-                                var mesh = ViewModel.GetFeatureMesh(featureId);
-                                if (mesh != null)
-                                {
-                                    var tempPlane = new AvaloniaCadEditor.Domain.ValueObjects.WorkPlane(normal, origin);
-                                    double minX = double.MaxValue;
-                                    double minY = double.MaxValue;
-                                    bool foundAny = false;
-                                    
-                                    for (int i = 0; i < mesh.Indices.Length; i += 3)
-                                    {
-                                        uint i0 = mesh.Indices[i]; uint i1 = mesh.Indices[i + 1]; uint i2 = mesh.Indices[i + 2];
-                                        var v0 = new AvaloniaCadEditor.Domain.ValueObjects.Point3D(mesh.Positions[i0*3], mesh.Positions[i0*3+1], mesh.Positions[i0*3+2]);
-                                        var v1 = new AvaloniaCadEditor.Domain.ValueObjects.Point3D(mesh.Positions[i1*3], mesh.Positions[i1*3+1], mesh.Positions[i1*3+2]);
-                                        var v2 = new AvaloniaCadEditor.Domain.ValueObjects.Point3D(mesh.Positions[i2*3], mesh.Positions[i2*3+1], mesh.Positions[i2*3+2]);
-                                        
-                                        var d1 = new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(v1.X - v0.X, v1.Y - v0.Y, v1.Z - v0.Z);
-                                        var d2 = new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(v2.X - v0.X, v2.Y - v0.Y, v2.Z - v0.Z);
-                                        var cross = d1.CrossProduct(d2);
-                                        if (cross.Length > 1e-6)
-                                        {
-                                            var tNormal = cross.Normalize();
-                                            if (tNormal.DotProduct(normal) > 0.99)
-                                            {
-                                                var p0 = tempPlane.ToLocalSpace(v0);
-                                                var p1 = tempPlane.ToLocalSpace(v1);
-                                                var p2 = tempPlane.ToLocalSpace(v2);
-                                                
-                                                minX = System.Math.Min(minX, System.Math.Min(p0.X, System.Math.Min(p1.X, p2.X)));
-                                                minY = System.Math.Min(minY, System.Math.Min(p0.Y, System.Math.Min(p1.Y, p2.Y)));
-                                                foundAny = true;
-                                            }
-                                        }
-                                    }
-                                    
-                                    if (foundAny)
-                                    {
-                                        origin = tempPlane.ToWorldSpace(new AvaloniaCadEditor.Domain.ValueObjects.Point3D(minX, minY, 0));
-                                    }
-                                }
-                            }
-
-                            ViewModel.ActiveWorkPlane = new AvaloniaCadEditor.Domain.ValueObjects.WorkPlane(normal, origin);
-                            ViewModel.SelectSelectToolCommand.Execute(null);
-                            RequestNextFrameRendering();
-                        }
-                    }
-                    else if (ViewModel.CurrentTool is Application.Commands.SelectTool)
-                    {
-                        var hit = ViewModel.Raycast3D(ray);
-                        if (hit.HasValue && hit.Value.FeatureId.HasValue)
-                        {
-                            ViewModel.SelectionService.SelectById(ViewModel.Sketch, hit.Value.FeatureId.Value);
-                            RequestNextFrameRendering();
-                        }
-                    }
-                    else if (ViewModel.CurrentTool is Application.Commands.ExtrudeCommand extCmd)
-                    {
-                        if (!extCmd.IsDefiningDepth)
-                        {
-                            var hit = ViewModel.Raycast3D(ray);
-                            if (hit.HasValue && hit.Value.FeatureId.HasValue)
-                            {
-                                var normal = hit.Value.Normal;
-                                var origin = hit.Value.Point;
-                                var plane = new AvaloniaCadEditor.Domain.ValueObjects.WorkPlane(normal, origin);
-                                var baseFeature = ViewModel.Sketch.Features.FirstOrDefault(f => f.Id == hit.Value.FeatureId.Value);
-                                if (baseFeature != null) 
-                                {
-                                    var mesh = ViewModel.GetFeatureMesh(hit.Value.FeatureId.Value);
-                                    if (mesh != null)
-                                    {
-                                        var faceProfile = new AvaloniaCadEditor.Domain.Profiles.FaceProfile(baseFeature, plane, mesh);
-                                        extCmd.StartDirectExtrusion(ViewModel.Sketch, faceProfile, hit.Value.Point);
-                                        RequestNextFrameRendering();
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        Focus();
+        _inputHandler.HandlePointerPressed(e, this, Bounds.Size, _camera, ViewModel, RequestNextFrameRendering);
     }
 
     public void HandlePointerMoved(PointerEventArgs e)
     {
-        var point = e.GetCurrentPoint(this);
-
-        if (_lastMousePos.HasValue)
-        {
-            float deltaX = (float)(point.Position.X - _lastMousePos.Value.X);
-            float deltaY = (float)(point.Position.Y - _lastMousePos.Value.Y);
-
-            if (_isOrbiting)
-            {
-                Debug.WriteLine($"[DEBUG] Orbiting delta: {deltaX}, {deltaY}");
-                float sens = 0.01f;
-                _camera.Orbit(deltaX * sens, deltaY * sens);
-            }
-            else if (_isPanning)
-            {
-                Debug.WriteLine($"[DEBUG] Panning delta: {deltaX}, {deltaY}");
-                _camera.Pan(deltaX, deltaY);
-            }
-        }
-        
-        // --- Raycasting ---
-        if (Bounds.Width > 0 && Bounds.Height > 0 && ViewModel != null)
-        {
-            var ray = _camera.ScreenPointToRay(
-                new Vector2((float)point.Position.X, (float)point.Position.Y), 
-                new Vector2((float)Bounds.Width, (float)Bounds.Height)
-            );
-
-            // Intersect with active WorkPlane
-            var planeNormal = new Vector3(
-                (float)ViewModel.ActiveWorkPlane.Normal.X,
-                (float)ViewModel.ActiveWorkPlane.Normal.Y,
-                (float)ViewModel.ActiveWorkPlane.Normal.Z);
-            
-            var planeOrigin = new Vector3(
-                (float)ViewModel.ActiveWorkPlane.Origin.X,
-                (float)ViewModel.ActiveWorkPlane.Origin.Y,
-                (float)ViewModel.ActiveWorkPlane.Origin.Z);
-            
-            if (ViewModel.CurrentTool is Application.Commands.ExtrudeCommand extCmd && extCmd.IsDefiningDepth && extCmd.SelectedProfile != null)
-            {
-                if (_lastMousePos.HasValue)
-                {
-                    float deltaX = (float)(point.Position.X - _lastMousePos.Value.X);
-                    float deltaY = (float)(point.Position.Y - _lastMousePos.Value.Y);
-                    
-                    var n = extCmd.SelectedProfile.Normal;
-                    var o = extCmd.StartPointWorld;
-                    
-                    var viewMat = _camera.GetViewMatrix();
-                    var projMat = _camera.GetProjectionMatrix();
-                    var viewProj = viewMat * projMat;
-                    
-                    var oVec = new System.Numerics.Vector4((float)o.X, (float)o.Y, (float)o.Z, 1.0f);
-                    var nVec = new System.Numerics.Vector4((float)(o.X + n.X), (float)(o.Y + n.Y), (float)(o.Z + n.Z), 1.0f);
-                    
-                    var oScreen = System.Numerics.Vector4.Transform(oVec, viewProj);
-                    var nScreen = System.Numerics.Vector4.Transform(nVec, viewProj);
-                    
-                    if (oScreen.W != 0) oScreen /= oScreen.W;
-                    if (nScreen.W != 0) nScreen /= nScreen.W;
-                    
-                    // Note: Inverting Y because screen Y goes down, but NDC Y goes up
-                    var screenNormal = new System.Numerics.Vector2(nScreen.X - oScreen.X, -(nScreen.Y - oScreen.Y));
-                    
-                    if (screenNormal.LengthSquared() > 1e-5f)
-                    {
-                        screenNormal = System.Numerics.Vector2.Normalize(screenNormal);
-                        float mouseProj = deltaX * screenNormal.X + deltaY * screenNormal.Y;
-                        float sensitivity = 0.5f; // Screen pixels to depth units
-                        extCmd.UpdateDepth(extCmd.CurrentDepth + mouseProj * sensitivity);
-                        RequestNextFrameRendering();
-                    }
-                }
-            }
-            else
-            {
-                var intersection = ray.IntersectPlane(planeNormal, planeOrigin);
-                if (intersection.HasValue)
-                {
-                    _cubePos = new System.Numerics.Vector3((float)intersection.Value.X, (float)intersection.Value.Y, (float)intersection.Value.Z);
-                    ViewModel.OnPointerMoved(intersection.Value);
-                }
-            }
-            
-            if (ViewModel.CurrentTool is Application.Commands.BooleanTool || ViewModel.CurrentTool is Application.Commands.ExtrudeCommand)
-            {
-                ViewModel.ProcessHover(ray);
-            }
-        }
-
-        RequestNextFrameRendering();
-        _lastMousePos = point.Position;
+        _inputHandler.HandlePointerMoved(e, this, Bounds.Size, _camera, ViewModel, RequestNextFrameRendering);
     }
 
     public void HandlePointerReleased(PointerReleasedEventArgs e)
     {
-        Debug.WriteLine($"[DEBUG] Mouse Released: {e.InitialPressMouseButton}");
-        if (e.InitialPressMouseButton == MouseButton.Middle || e.InitialPressMouseButton == MouseButton.Right)
-        {
-            _isPanning = false;
-            _isOrbiting = false;
-            _lastMousePos = null;
-        }
+        _inputHandler.HandlePointerReleased(e);
     }
 }
