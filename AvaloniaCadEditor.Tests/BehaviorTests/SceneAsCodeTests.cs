@@ -53,12 +53,12 @@ public class SceneAsCodeTests
         // 4. Assert: equivalência geométrica
         System.Console.WriteLine($"Erro do Evaluator: {result.ErrorMessage}");
         result.Success.Should().BeTrue($"O evaluator deveria ter compilado o código gerado. Erro: {result.ErrorMessage}");
-        result.Features.Should().HaveCount(1);
-        result.Features[0].Should().BeOfType<CylinderFeature>();
+        result.Features.Should().HaveCount(2); // WorkPlane (XY base) and the Cylinder
+        result.Features[1].Should().BeOfType<CylinderFeature>();
 
         var kernel = new OpenCascadeGeometryKernel();
         var originalMesh = kernel.BuildFeatureMesh(extrude);
-        var rebuiltMesh = kernel.BuildFeatureMesh(result.Features[0]);
+        var rebuiltMesh = kernel.BuildFeatureMesh(result.Features[1]);
 
         var origBounds = MeshVolumeEstimator.GetBoundsX(originalMesh);
         var newBounds = MeshVolumeEstimator.GetBoundsX(rebuiltMesh);

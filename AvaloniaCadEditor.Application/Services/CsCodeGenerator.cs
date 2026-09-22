@@ -31,9 +31,7 @@ public class CsCodeGenerator
         }
 
         var allFeatures = new List<IFeature>();
-        // Ignore WorkPlanes as decided, except if we want to keep them. But for now they are not root features for Scene-as-Code.
-        // Wait, the decision says: "O plano base XY é criado automaticamente... O código gerado não emitirá WorkPlaneFeature"
-        // I will exclude WorkPlanes completely.
+        allFeatures.AddRange(sketch.WorkPlanes);
         allFeatures.AddRange(sketch.Features);
         
         var writtenFeatures = new HashSet<Guid>();
@@ -106,6 +104,10 @@ public class CsCodeGenerator
         else if (feature is BooleanFeature boolean)
         {
             createdVarName = WriteBooleanFeature(boolean, sb, featureNames, ref booleanCount);
+        }
+        else if (feature is WorkPlaneFeature wpf)
+        {
+            createdVarName = WriteWorkPlaneFeature(wpf, sb, featureNames);
         }
         else
         {
@@ -202,6 +204,24 @@ public class CsCodeGenerator
         string toolsArray = tools.Count > 0 ? $"new IFeature[] {{ {string.Join(", ", tools)} }}" : "Array.Empty<IFeature>()";
 
         sb.AppendLine($"var {varName} = new BooleanFeature(name: \"{boolean.Name}\", operation: BooleanOperationType.{boolean.Operation}, baseFeature: {baseVar}, toolFeatures: {toolsArray});");
+        return varName;
+    }
+
+    private string WriteWorkPlaneFeature(WorkPlaneFeature wpf, StringBuilder sb, Dictionary<Guid, string> featureNames)
+    {
+        string varName = $"workPlane_{wpf.Id.ToString("N").Substring(0, 4)}";
+        featureNames[wpf.Id] = varName;
+        
+        if (wpf.IsBasePlane && Math.Abs(wpf.Plane.Origin.X) < 1e-5 && Math.Abs(wpf.Plane.Origin.Y) < 1e-5 && Math.Abs(wpf.Plane.Origin.Z) < 1e-5 && 
+            Math.Abs(wpf.Plane.Normal.X) < 1e-5 && Math.Abs(wpf.Plane.Normal.Y) < 1e-5 && Math.Abs(wpf.Plane.Normal.Z - 1.0) < 1e-5)
+        {
+            sb.AppendLine($"// Plano Base Padrão");
+            sb.AppendLine($"var {varName} = new WorkPlaneFeature(WorkPlane.XY, \"{wpf.Name}\", true);");
+        }
+        else
+        {
+            sb.AppendLine($"var {varName} = new WorkPlaneFeature(new WorkPlane(origin: new Point3D({Fmt(wpf.Plane.Origin.X)}, {Fmt(wpf.Plane.Origin.Y)}, {Fmt(wpf.Plane.Origin.Z)}), normal: new Vector3D({Fmt(wpf.Plane.Normal.X)}, {Fmt(wpf.Plane.Normal.Y)}, {Fmt(wpf.Plane.Normal.Z)})), \"{wpf.Name}\"{ (wpf.IsBasePlane ? ", true" : "") });");
+        }
         return varName;
     }
 }
