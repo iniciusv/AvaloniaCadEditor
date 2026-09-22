@@ -63,9 +63,29 @@ public class PureMathGeometryKernel : IGeometryKernel
 
     private static TriangleMesh ExtrudeProfile(IProfile profile, Vector3D direction, TessellationSettings settings)
     {
-        var baseVertices = profile.GetVertices(settings.ProfileSegments);
-        int n = baseVertices.Count;
+        var baseVerticesReadOnly = profile.GetVertices(settings.ProfileSegments);
+        int n = baseVerticesReadOnly.Count;
         if (n < 3) return TriangleMesh.Empty;
+
+        var baseVertices = new List<Point3D>(baseVerticesReadOnly);
+
+        // Calculate polygon normal using Newell's method to check winding order
+        double nx = 0, ny = 0, nz = 0;
+        for (int i = 0; i < n; i++)
+        {
+            var p1 = baseVertices[i];
+            var p2 = baseVertices[(i + 1) % n];
+            nx += (p1.Y - p2.Y) * (p1.Z + p2.Z);
+            ny += (p1.Z - p2.Z) * (p1.X + p2.X);
+            nz += (p1.X - p2.X) * (p1.Y + p2.Y);
+        }
+        
+        // If Dot(polygonNormal, direction) < 0, vertices are clockwise relative to direction.
+        // Reverse them so they become counter-clockwise, ensuring outward-facing side normals.
+        if (nx * direction.X + ny * direction.Y + nz * direction.Z < 0)
+        {
+            baseVertices.Reverse();
+        }
 
         var positions = new List<float>();
         var normals = new List<float>();

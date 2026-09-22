@@ -115,8 +115,31 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
 
     private OcctShape BuildExtrude(ExtrudeFeature extrude, TessellationSettings settings)
     {
-        var vertices = extrude.Profile.GetVertices(settings.ProfileSegments);
-        if (vertices == null || vertices.Count < 3) return null;
+        var verticesReadOnly = extrude.Profile.GetVertices(settings.ProfileSegments);
+        if (verticesReadOnly == null || verticesReadOnly.Count < 3) return null;
+
+        var vertices = new List<Point3D>(verticesReadOnly);
+
+        var dir = extrude.Direction;
+        var vec = new OcctVector3d(dir.X, dir.Y, dir.Z);
+
+        // Calculate polygon normal using Newell's method to check winding order
+        double nx = 0, ny = 0, nz = 0;
+        int n = vertices.Count;
+        for (int i = 0; i < n; i++)
+        {
+            var p1 = vertices[i];
+            var p2 = vertices[(i + 1) % n];
+            nx += (p1.Y - p2.Y) * (p1.Z + p2.Z);
+            ny += (p1.Z - p2.Z) * (p1.X + p2.X);
+            nz += (p1.X - p2.X) * (p1.Y + p2.Y);
+        }
+        
+        // If Dot(polygonNormal, direction) < 0, vertices are clockwise relative to direction.
+        if (nx * dir.X + ny * dir.Y + nz * dir.Z < 0)
+        {
+            vertices.Reverse();
+        }
 
         var edges = new List<OcctEdge>();
         for (int i = 0; i < vertices.Count; i++)
@@ -132,9 +155,6 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
 
         var wire = new OcctWire(edges.ToArray());
         var face = new OcctFace(wire);
-
-        var dir = extrude.Direction;
-        var vec = new OcctVector3d(dir.X, dir.Y, dir.Z);
 
         if (Math.Abs(extrude.Depth) < 1e-6) return face;
 
