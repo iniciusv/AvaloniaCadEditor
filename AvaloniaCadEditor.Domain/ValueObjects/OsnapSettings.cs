@@ -14,4 +14,7 @@ public class OsnapSettings
 
     public bool PolarSnapEnabled { get; set; } = false;
     public double PolarAngleIncrement { get; set; } = 15.0;
+
+    public bool ColorFacesByNormal { get; set; } = false;
+    public bool ColorEdgesByAxis { get; set; } = false;
 }

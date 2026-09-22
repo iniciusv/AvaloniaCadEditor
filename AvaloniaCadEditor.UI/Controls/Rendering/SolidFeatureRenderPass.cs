@@ -182,7 +182,9 @@ public sealed class SolidFeatureRenderPass : IRenderPass
             {
                 gl.UniformMatrix4(context.Uniforms.ModelLoc, 1, false, (float*)&identity);
                 gl.Uniform1(context.Uniforms.LightingLoc, 1); // Enable directional lighting for 3D faces!
+                gl.Uniform1(context.Uniforms.ColorFacesByNormalLoc, vm.OsnapSettings.ColorFacesByNormal ? 1 : 0);
                 gl.DrawElements(PrimitiveType.Triangles, (uint)mesh.Indices.Length, DrawElementsType.UnsignedInt, (void*)0);
+                gl.Uniform1(context.Uniforms.ColorFacesByNormalLoc, 0); // Restore to 0 for other passes just in case
             }
 
             // Render Edge Outlines
@@ -202,18 +204,38 @@ public sealed class SolidFeatureRenderPass : IRenderPass
                 if (edgeIndices == null || edgeIndices.Length == 0) return;
 
                 var edgeLines = new List<float>();
+                bool colorByAxis = vm.OsnapSettings.ColorEdgesByAxis;
+
                 for (int i = 0; i < edgeIndices.Length; i += 2)
                 {
                     int pA = (int)edgeIndices[i] * 3;
                     int pB = (int)edgeIndices[i + 1] * 3;
 
+                    float ax = mesh.Positions[pA + 0]; float ay = mesh.Positions[pA + 1]; float az = mesh.Positions[pA + 2];
+                    float bx = mesh.Positions[pB + 0]; float by = mesh.Positions[pB + 1]; float bz = mesh.Positions[pB + 2];
+                    
+                    float r = color.R; float g = color.G; float b = color.B;
+
+                    if (colorByAxis)
+                    {
+                        float dx = bx - ax; float dy = by - ay; float dz = bz - az;
+                        float len = (float)System.Math.Sqrt(dx * dx + dy * dy + dz * dz);
+                        if (len > 1e-5f)
+                        {
+                            dx /= len; dy /= len; dz /= len;
+                            if (System.Math.Abs(dx) > 0.999f) { r = 1.0f; g = 0.0f; b = 0.0f; }
+                            else if (System.Math.Abs(dy) > 0.999f) { r = 0.0f; g = 1.0f; b = 0.0f; }
+                            else if (System.Math.Abs(dz) > 0.999f) { r = 0.0f; g = 0.0f; b = 1.0f; }
+                        }
+                    }
+
                     // Point A
-                    edgeLines.Add(mesh.Positions[pA + 0]); edgeLines.Add(mesh.Positions[pA + 1]); edgeLines.Add(mesh.Positions[pA + 2]);
-                    edgeLines.Add(color.R); edgeLines.Add(color.G); edgeLines.Add(color.B);
+                    edgeLines.Add(ax); edgeLines.Add(ay); edgeLines.Add(az);
+                    edgeLines.Add(r); edgeLines.Add(g); edgeLines.Add(b);
 
                     // Point B
-                    edgeLines.Add(mesh.Positions[pB + 0]); edgeLines.Add(mesh.Positions[pB + 1]); edgeLines.Add(mesh.Positions[pB + 2]);
-                    edgeLines.Add(color.R); edgeLines.Add(color.G); edgeLines.Add(color.B);
+                    edgeLines.Add(bx); edgeLines.Add(by); edgeLines.Add(bz);
+                    edgeLines.Add(r); edgeLines.Add(g); edgeLines.Add(b);
                 }
 
                 gl.BindVertexArray(vao);

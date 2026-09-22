@@ -5,5 +5,6 @@ public readonly record struct ShaderUniforms(
     int ProjLoc,
     int ModelLoc,
     int LightingLoc,
-    int AlphaLoc
+    int AlphaLoc,
+    int ColorFacesByNormalLoc
 );

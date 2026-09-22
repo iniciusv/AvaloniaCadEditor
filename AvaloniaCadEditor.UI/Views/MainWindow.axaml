@@ -56,6 +56,11 @@
                                     <TextBlock Text="Angle (º):" VerticalAlignment="Center" Width="80"/>
                                     <NumericUpDown Value="{Binding OsnapSettings.PolarAngleIncrement}" Minimum="1" Maximum="360" Increment="5" Width="140"/>
                                 </StackPanel>
+
+                                <Separator Background="#444" Height="1" Margin="0,5"/>
+                                <TextBlock Text="View Settings" FontWeight="Bold" Margin="0,0,0,5"/>
+                                <CheckBox IsChecked="{Binding OsnapSettings.ColorFacesByNormal}" Content="Face Color By Normal" />
+                                <CheckBox IsChecked="{Binding OsnapSettings.ColorEdgesByAxis}" Content="Edge Color By Axis" />
                             </StackPanel>
                         </Flyout>
                     </Button.Flyout>

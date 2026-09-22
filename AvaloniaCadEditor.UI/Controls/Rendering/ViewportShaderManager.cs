@@ -15,6 +15,7 @@ public sealed class ViewportShaderManager
         uniform mat4 uView;
         uniform mat4 uProjection;
         uniform int uUseLighting;
+        uniform int uColorFacesByNormal;
         
         varying vec3 vertexColor;
         
@@ -22,9 +23,18 @@ public sealed class ViewportShaderManager
         {
             gl_Position = uProjection * uView * uModel * vec4(aPos, 1.0);
             
+            vec3 currentColor = aColor;
+            vec3 viewNormal = normalize(mat3(uView * uModel) * aNormal);
+            
+            if (uColorFacesByNormal == 1) {
+                if (viewNormal.z > 0.0) {
+                    currentColor = vec3(0.2, 0.6, 1.0); // Facing camera (azulzinho)
+                } else {
+                    currentColor = vec3(1.0, 0.4, 0.4); // Facing away (vermelhinho)
+                }
+            }
+
             if (uUseLighting == 1) {
-                // Convert normal to view space
-                vec3 viewNormal = normalize(mat3(uView * uModel) * aNormal);
                 // Light comes from slightly above and right of the camera
                 vec3 lightDir = normalize(vec3(0.3, 0.5, 1.0));
                 float diff = max(dot(viewNormal, lightDir), 0.0);
@@ -36,9 +46,9 @@ public sealed class ViewportShaderManager
                 
                 float ambient = 0.40;
                 float light = ambient + (1.0 - ambient) * diff;
-                vertexColor = aColor * light;
+                vertexColor = currentColor * light;
             } else {
-                vertexColor = aColor;
+                vertexColor = currentColor;
             }
         }";
 
@@ -93,7 +103,8 @@ public sealed class ViewportShaderManager
             ProjLoc: gl.GetUniformLocation(ShaderProgram, "uProjection"),
             ModelLoc: gl.GetUniformLocation(ShaderProgram, "uModel"),
             LightingLoc: gl.GetUniformLocation(ShaderProgram, "uUseLighting"),
-            AlphaLoc: gl.GetUniformLocation(ShaderProgram, "uAlpha")
+            AlphaLoc: gl.GetUniformLocation(ShaderProgram, "uAlpha"),
+            ColorFacesByNormalLoc: gl.GetUniformLocation(ShaderProgram, "uColorFacesByNormal")
         );
     }
 
