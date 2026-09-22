@@ -8,6 +8,7 @@ public class DrawLineCommand : ICommandTool
     public string Name => "Line";
 
     private enum State { WaitingForStartPoint, WaitingForEndPoint }
+    private AvaloniaCadEditor.Domain.ValueObjects.WorkPlane? _currentPlane;
     private State _currentState = State.WaitingForStartPoint;
 
     private enum AxisConstraint { None, X, Y, Z }
@@ -20,6 +21,7 @@ public class DrawLineCommand : ICommandTool
 
     public void OnMouseDown(Sketch sketch, Point3D point)
     {
+        _currentPlane = sketch.Plane;
         if (_currentState == State.WaitingForStartPoint)
         {
             _startPoint = point;
@@ -43,6 +45,7 @@ public class DrawLineCommand : ICommandTool
 
     public void OnMouseMove(Sketch sketch, Point3D point)
     {
+        _currentPlane = sketch.Plane;
         if (_currentState == State.WaitingForEndPoint)
         {
             _currentMousePosition = ApplyConstraint(point);
@@ -138,7 +141,7 @@ public class DrawLineCommand : ICommandTool
     {
         if (_currentState == State.WaitingForEndPoint)
         {
-            yield return new LineEntity(_startPoint, _currentMousePosition);
+            yield return new LineEntity(_startPoint, _currentMousePosition) { Plane = _currentPlane ?? AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.XY };
         }
     }
 

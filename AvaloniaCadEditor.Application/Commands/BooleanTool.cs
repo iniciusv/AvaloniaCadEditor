@@ -8,10 +8,11 @@ using AvaloniaCadEditor.Domain.ValueObjects;
 
 namespace AvaloniaCadEditor.Application.Commands;
 
-public class BooleanTool : ICommandTool
+public class BooleanTool : ICommandTool, IDisposable
 {
     private readonly BooleanOperationType _operationType;
     private readonly ISelectionService _selectionService;
+    private Sketch? _sketch;
 
     public string Name => $"{_operationType}";
 
@@ -28,46 +29,32 @@ public class BooleanTool : ICommandTool
         _selectionService.SelectionChanged += OnSelectionChanged;
     }
 
-    private void OnSelectionChanged()
+    public void OnMouseDown(Sketch sketch, Point3D point)
     {
-        // Allow the user to select via the ModelTree if the 3D hit test misses
-        if (_selectionService.CurrentSelectionType == SelectionType.Feature && _selectionService.SelectedObject is IFeature feature)
+        _sketch = sketch;
+        if (_currentState == State.SelectingTool && _baseFeature != null && _toolFeature != null)
         {
-            if (feature is WorkPlaneFeature) return;
-
-            if (_currentState == State.SelectingBase)
-            {
-                _baseFeature = feature;
-                _currentState = State.SelectingTool;
-            }
-            else if (_currentState == State.SelectingTool && feature != _baseFeature)
-            {
-                _toolFeature = feature;
-            }
+            Execute(_sketch);
         }
     }
 
-    public void OnMouseDown(Sketch sketch, Point3D point)
+    private void OnSelectionChanged()
     {
-        var hitFeature = FindFeatureNear(sketch, point);
-        if (hitFeature is WorkPlaneFeature) return;
+        if (_selectionService.CurrentSelectionType != SelectionType.Feature) return;
+        if (_selectionService.SelectedObject is not IFeature feature) return;
+        if (feature is WorkPlaneFeature) return;
 
         if (_currentState == State.SelectingBase)
         {
-            if (hitFeature != null)
-            {
-                _baseFeature = hitFeature;
-                _selectionService.SelectFeature(_baseFeature);
-                _currentState = State.SelectingTool;
-            }
+            _baseFeature = feature;
+            _currentState = State.SelectingTool;
         }
-        else if (_currentState == State.SelectingTool)
+        else if (_currentState == State.SelectingTool && feature != _baseFeature)
         {
-            if (hitFeature != null && hitFeature != _baseFeature)
+            _toolFeature = feature;
+            if (_sketch != null)
             {
-                _toolFeature = hitFeature;
-                _selectionService.SelectFeature(_toolFeature);
-                Execute(sketch);
+                Execute(_sketch);
             }
         }
     }
@@ -80,9 +67,8 @@ public class BooleanTool : ICommandTool
             var booleanFeature = new BooleanFeature(name, _operationType, _baseFeature, new[] { _toolFeature });
             sketch.AddFeature(booleanFeature);
             
-            // Re-select the new boolean feature
-            _selectionService.SelectFeature(booleanFeature);
             Cancel();
+            _selectionService.SelectFeature(booleanFeature);
         }
     }
 
@@ -93,6 +79,12 @@ public class BooleanTool : ICommandTool
         _currentState = State.SelectingBase;
         _baseFeature = null;
         _toolFeature = null;
+        _sketch = null;
+    }
+
+    public void Dispose()
+    {
+        _selectionService.SelectionChanged -= OnSelectionChanged;
     }
 
     public IEnumerable<Entity> GetPreviewEntities() => Enumerable.Empty<Entity>();
@@ -115,22 +107,5 @@ public class BooleanTool : ICommandTool
             State.SelectingTool => $"Operação {opName}: 2/2 Selecione o Volume FERRAMENTA para {_operationType} de {_baseFeature?.Name}",
             _ => ""
         };
-    }
-
-    private IFeature? FindFeatureNear(Sketch sketch, Point3D point)
-    {
-        // Simple heuristic: find visible feature whose center/origin is nearest
-        return sketch.Features
-            .Where(f => f.IsVisible)
-            .OrderBy(f => GetFeatureCenter(f).DistanceTo(point))
-            .FirstOrDefault();
-    }
-
-    private Point3D GetFeatureCenter(IFeature feature)
-    {
-        if (feature is ExtrudeFeature extrude) return extrude.Centroid;
-        if (feature is CylinderFeature cyl) return cyl.GlobalBaseCenter;
-        if (feature is BoxFeature box) return box.GlobalCenter;
-        return Point3D.Origin;
     }
 }

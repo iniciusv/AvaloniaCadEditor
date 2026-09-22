@@ -8,6 +8,7 @@ public class DrawCircleCommand : ICommandTool
     public string Name => "Circle";
 
     private enum State { WaitingForCenter, WaitingForRadius }
+    private AvaloniaCadEditor.Domain.ValueObjects.WorkPlane? _currentPlane;
     private State _currentState = State.WaitingForCenter;
 
     private Point3D _center;
@@ -15,6 +16,7 @@ public class DrawCircleCommand : ICommandTool
 
     public void OnMouseDown(Sketch sketch, Point3D point)
     {
+        _currentPlane = sketch.Plane;
         if (_currentState == State.WaitingForCenter)
         {
             _center = point;
@@ -36,6 +38,7 @@ public class DrawCircleCommand : ICommandTool
 
     public void OnMouseMove(Sketch sketch, Point3D point)
     {
+        _currentPlane = sketch.Plane;
         if (_currentState == State.WaitingForRadius)
         {
             _currentRadius = _center.DistanceTo(point);
@@ -65,7 +68,7 @@ public class DrawCircleCommand : ICommandTool
     {
         if (_currentState == State.WaitingForRadius && _currentRadius > 0)
         {
-            yield return new CircleEntity(_center, _currentRadius);
+            yield return new CircleEntity(_center, _currentRadius) { Plane = _currentPlane ?? AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.XY };
         }
     }
 

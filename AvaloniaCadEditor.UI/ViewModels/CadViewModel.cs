@@ -116,6 +116,7 @@ public class CadViewModel : INotifyPropertyChanged
         get => _currentTool;
         set
         {
+            if (_currentTool is IDisposable disposable) disposable.Dispose();
             _currentTool?.Cancel();
             _currentTool = value;
             ClearVcb();
@@ -237,6 +238,7 @@ public class CadViewModel : INotifyPropertyChanged
         };
         PropertyInspector = new PropertyInspectorViewModel(_selectionService, () =>
         {
+            _featureMeshCache.Clear();
             RefreshSolidMesh();
             ModelTree.RebuildTree();
         });
@@ -422,6 +424,7 @@ public class CadViewModel : INotifyPropertyChanged
     public bool OnPointerPressed(Point3D worldPoint)
     {
         var localSnapped = ActiveWorkPlane.ToLocalSpace(_osnapService.GetSnappedPoint(Sketch, worldPoint, 5.0, SolidMesh));
+        localSnapped = new Point3D(localSnapped.X, localSnapped.Y, 0.0); // Force strictly 2D on the work plane
 
         if (CurrentTool is SelectTool)
         {
@@ -588,6 +591,12 @@ public class CadViewModel : INotifyPropertyChanged
                 {
                     return; // Cannot delete base plane
                 }
+                if (targetFeature is BooleanFeature boolF)
+                {
+                    boolF.BaseFeature.IsVisible = true;
+                    foreach (var tool in boolF.ToolFeatures)
+                        tool.IsVisible = true;
+                }
                 Sketch.RemoveFeature(targetFeature);
                 ClearSelection();
                 RefreshProfiles();
@@ -630,6 +639,12 @@ public class CadViewModel : INotifyPropertyChanged
                 foreach (var feature in selectedFeatures)
                 {
                     if (feature is Domain.Features.WorkPlaneFeature wpf && wpf.IsBasePlane) continue;
+                    if (feature is BooleanFeature boolF)
+                    {
+                        boolF.BaseFeature.IsVisible = true;
+                        foreach (var tool in boolF.ToolFeatures)
+                            tool.IsVisible = true;
+                    }
                     Sketch.RemoveFeature(feature);
                 }
                 ClearSelection();

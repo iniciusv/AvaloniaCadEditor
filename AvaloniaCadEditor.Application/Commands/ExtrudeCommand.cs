@@ -78,26 +78,28 @@ public class ExtrudeCommand : ICommandTool
             var previewLines = new List<Entity>();
             var baseVerts = _selectedProfile.GetVertices();
             var dir = _selectedProfile.Normal * _currentDepth;
+            var plane = _selectedProfile.Plane;
 
-            // 1. Top perimeter lines
             for (int i = 0; i < baseVerts.Count; i++)
             {
-                var p1 = baseVerts[i];
-                var p2 = baseVerts[(i + 1) % baseVerts.Count];
+                var p1World = baseVerts[i];
+                var p2World = baseVerts[(i + 1) % baseVerts.Count];
 
-                var top1 = new Point3D(p1.X + dir.X, p1.Y + dir.Y, p1.Z + dir.Z);
-                var top2 = new Point3D(p2.X + dir.X, p2.Y + dir.Y, p2.Z + dir.Z);
+                var top1World = new Point3D(p1World.X + dir.X, p1World.Y + dir.Y, p1World.Z + dir.Z);
+                var top2World = new Point3D(p2World.X + dir.X, p2World.Y + dir.Y, p2World.Z + dir.Z);
 
-                previewLines.Add(new LineEntity(top1, top2));
-            }
+                var p1Local = plane.ToLocalSpace(p1World);
+                var top1Local = plane.ToLocalSpace(top1World);
+                var top2Local = plane.ToLocalSpace(top2World);
 
-            // 2. Vertical corner lines
-            int step = Math.Max(1, baseVerts.Count / 8);
-            for (int i = 0; i < baseVerts.Count; i += step)
-            {
-                var p1 = baseVerts[i];
-                var top1 = new Point3D(p1.X + dir.X, p1.Y + dir.Y, p1.Z + dir.Z);
-                previewLines.Add(new LineEntity(p1, top1));
+                previewLines.Add(new LineEntity(top1Local, top2Local) { Plane = plane });
+                
+                // For vertical lines, just draw at corners, but maybe all of them?
+                int step = Math.Max(1, baseVerts.Count / 8);
+                if (i % step == 0)
+                {
+                    previewLines.Add(new LineEntity(p1Local, top1Local) { Plane = plane });
+                }
             }
 
             return previewLines;
