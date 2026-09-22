@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
+using System.Linq;
 using AvaloniaCadEditor.UI.ViewModels;
 using AvaloniaCadEditor.Domain.Features;
 
@@ -9,7 +10,6 @@ namespace AvaloniaCadEditor.UI.Views;
 public partial class ModelTreeView : UserControl
 {
     private static readonly DataFormat<TreeItemNode> NodeFormat = DataFormat.CreateInProcessFormat<TreeItemNode>("TreeItemNode");
-
     private Point _dragStartPoint;
     private bool _isDragging = false;
     private TreeItemNode? _draggedNode;
@@ -21,7 +21,9 @@ public partial class ModelTreeView : UserControl
         AddHandler(DragDrop.DropEvent, OnDrop);
         AddHandler(DragDrop.DragOverEvent, OnDragOver);
         
-        // This stops ghost drag-and-drops
+        // Register pointer events globally to intercept handled events from TreeViewItem
+        AddHandler(PointerPressedEvent, OnPointerPressed, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
+        AddHandler(PointerMovedEvent, OnPointerMoved, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
         AddHandler(PointerReleasedEvent, OnPointerReleasedAnywhere, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
     }
 
@@ -33,7 +35,8 @@ public partial class ModelTreeView : UserControl
         
         if (pointerUpdateKind == PointerUpdateKind.LeftButtonPressed)
         {
-            var control = e.Source as Control;
+            var sourceObj = e.Source;
+            var control = sourceObj as Control;
             
             // Do not start drag if they clicked a button (like the expand/collapse arrow or visibility eye)
             if (control is Avalonia.Controls.Primitives.ToggleButton) return;
@@ -85,7 +88,7 @@ public partial class ModelTreeView : UserControl
             return;
         }
 
-        var draggedNode = e.DataTransfer.TryGetValue(NodeFormat);
+        var draggedNode = e.DataTransfer.TryGetValue(NodeFormat) as TreeItemNode;
         var control = e.Source as Control;
         var targetNode = control?.DataContext as TreeItemNode;
 
@@ -118,7 +121,7 @@ public partial class ModelTreeView : UserControl
     {
         if (e.DataTransfer == null || !e.DataTransfer.Contains(NodeFormat)) return;
 
-        var draggedNode = e.DataTransfer.TryGetValue(NodeFormat);
+        var draggedNode = e.DataTransfer.TryGetValue(NodeFormat) as TreeItemNode;
         var control = e.Source as Control;
         var targetNode = control?.DataContext as TreeItemNode;
 
@@ -140,7 +143,6 @@ public partial class ModelTreeView : UserControl
             if (boolFeature != null)
             {
                 var oldBase = boolFeature.ChangeBaseFeature(featureToMove);
-                // Old base goes back to root automatically because it was unlinked
             }
         }
         else if (targetNode.Category == TreeItemCategory.BooleanToolGroup)
@@ -154,6 +156,10 @@ public partial class ModelTreeView : UserControl
         // If dropped in FeatureGroup (Volumes 3D), it's already removed from parents, so it just becomes root again.
 
         viewModel.RebuildTree();
+
+        // Let's force a refresh in CadViewModel by hacking a visibility toggle so it fires the event
+        featureToMove.IsVisible = !featureToMove.IsVisible;
+        featureToMove.IsVisible = !featureToMove.IsVisible;
     }
     
     private void RemoveFeatureFromParents(AvaloniaCadEditor.Domain.Entities.Sketch sketch, IFeature featureToRemove)

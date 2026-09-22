@@ -21,8 +21,6 @@
                       ItemsSource="{Binding RootNodes}"
                       Background="Transparent"
                       DragDrop.AllowDrop="True"
-                      PointerPressed="OnPointerPressed"
-                      PointerMoved="OnPointerMoved"
                       DragDrop.DragOver="OnDragOver"
                       DragDrop.Drop="OnDrop">
                 <TreeView.ItemTemplate>
