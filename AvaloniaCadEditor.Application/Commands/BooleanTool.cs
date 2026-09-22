@@ -33,6 +33,8 @@ public class BooleanTool : ICommandTool
         // Allow the user to select via the ModelTree if the 3D hit test misses
         if (_selectionService.CurrentSelectionType == SelectionType.Feature && _selectionService.SelectedObject is IFeature feature)
         {
+            if (feature is WorkPlaneFeature) return;
+
             if (_currentState == State.SelectingBase)
             {
                 _baseFeature = feature;
@@ -48,6 +50,7 @@ public class BooleanTool : ICommandTool
     public void OnMouseDown(Sketch sketch, Point3D point)
     {
         var hitFeature = FindFeatureNear(sketch, point);
+        if (hitFeature is WorkPlaneFeature) return;
 
         if (_currentState == State.SelectingBase)
         {

@@ -36,9 +36,10 @@ public class CsCodeGenerator
 
         // We only care about features that actually form volumes.
         // If they are boolean features, they consume other features.
-        // We need to write them in dependency order.
+        var allFeatures = new List<IFeature>();
+        allFeatures.AddRange(sketch.WorkPlanes);
+        allFeatures.AddRange(sketch.Features);
         
-        var allFeatures = sketch.Features.ToList();
         var writtenFeatures = new HashSet<Guid>();
         var featureNames = new Dictionary<Guid, string>();
         

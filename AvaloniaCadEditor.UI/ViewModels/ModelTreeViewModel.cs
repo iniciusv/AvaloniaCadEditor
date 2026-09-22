@@ -88,7 +88,94 @@ public class ModelTreeViewModel : INotifyPropertyChanged
 
         var rootFeatures = CurrentSketch.Features.Where(f => !consumedFeatures.Contains(f)).ToList();
 
-        // 1. Features 3D Group
+        // 1. Geometria de Referência Group
+        var refGroup = new TreeItemNode($"Geometria de Referência", iconFolder, TreeItemCategory.FeatureGroup);
+        refGroup.PropertyChanged += OnNodePropertyChanged;
+        
+        foreach (var wp in CurrentSketch.WorkPlanes)
+        {
+            var wpNode = new TreeItemNode(wp.Name, iconCube, TreeItemCategory.FeatureItem, wp.Id, wp);
+            wpNode.IsVisible = wp.IsVisible;
+            wpNode.PropertyChanged += (s, e) => {
+                if (e.PropertyName == nameof(TreeItemNode.IsVisible)) {
+                    wp.IsVisible = wpNode.IsVisible;
+                    OnNodeVisibilityChanged();
+                }
+            };
+            wpNode.PropertyChanged += OnNodePropertyChanged;
+
+            var sketchNode = new TreeItemNode(wp.Sketch.Name, iconFolder, TreeItemCategory.FeatureItem, wp.Sketch.Id, wp.Sketch);
+            sketchNode.IsVisible = wp.Sketch.IsVisible;
+            sketchNode.PropertyChanged += (s, e) => {
+                if (e.PropertyName == nameof(TreeItemNode.IsVisible)) {
+                    wp.Sketch.IsVisible = sketchNode.IsVisible;
+                    OnNodeVisibilityChanged();
+                }
+            };
+            sketchNode.PropertyChanged += OnNodePropertyChanged;
+
+            // Profiles 2D Group
+            var profilesGroup = new TreeItemNode($"Perfis 2D ({wp.Sketch.Profiles.Count})", iconFolder, TreeItemCategory.ProfileGroup);
+            profilesGroup.PropertyChanged += OnNodePropertyChanged;
+            foreach (var profile in wp.Sketch.Profiles)
+            {
+                string icon = profile.Classification switch
+                {
+                    ProfileClassification.Circle => iconCircle,
+                    ProfileClassification.Rectangle => iconRect,
+                    _ => iconPolygon
+                };
+                string name = $"Perfil {profile.Classification} (Área: {profile.Area:F1})";
+
+                var node = new TreeItemNode(name, icon, TreeItemCategory.ProfileItem, profile.Id, profile);
+                node.IsVisible = profile.IsVisible;
+                node.PropertyChanged += (s, e) =>
+                {
+                    if (e.PropertyName == nameof(TreeItemNode.IsVisible))
+                    {
+                        profile.IsVisible = node.IsVisible;
+                        OnNodeVisibilityChanged();
+                    }
+                };
+                node.PropertyChanged += OnNodePropertyChanged;
+                profilesGroup.Children.Add(node);
+            }
+            sketchNode.Children.Add(profilesGroup);
+
+            // Sketch Entities 2D Group
+            var entitiesGroup = new TreeItemNode($"Linhas e Entidades ({wp.Sketch.Entities.Count})", iconFolder, TreeItemCategory.EntityGroup);
+            entitiesGroup.PropertyChanged += OnNodePropertyChanged;
+            int lineCount = 1;
+            int circleCount = 1;
+            foreach (var entity in wp.Sketch.Entities)
+            {
+                string icon = iconPolygon;
+                string name = "Entidade";
+                if (entity is LineEntity l)
+                {
+                    icon = iconLine;
+                    name = $"Linha {lineCount++} ({l.Length:F1}mm)";
+                }
+                else if (entity is CircleEntity c)
+                {
+                    icon = iconCircle;
+                    name = $"Círculo {circleCount++} (R={c.Radius:F1}mm)";
+                }
+
+                var node = new TreeItemNode(name, icon, TreeItemCategory.EntityItem, entity.Id, entity);
+                node.IsVisible = entity.IsVisible;
+                node.VisibilityChanged += (s, e) => OnNodeVisibilityChanged();
+                node.PropertyChanged += OnNodePropertyChanged;
+                entitiesGroup.Children.Add(node);
+            }
+            sketchNode.Children.Add(entitiesGroup);
+
+            wpNode.Children.Add(sketchNode);
+            refGroup.Children.Add(wpNode);
+        }
+        RootNodes.Add(refGroup);
+
+        // 2. Features 3D Group
         var featuresGroup = new TreeItemNode($"Volumes 3D ({CurrentSketch.Features.Count})", iconFolder, TreeItemCategory.FeatureGroup);
         featuresGroup.PropertyChanged += OnNodePropertyChanged;
         foreach (var feature in rootFeatures)
@@ -97,65 +184,6 @@ public class ModelTreeViewModel : INotifyPropertyChanged
             featuresGroup.Children.Add(node);
         }
         RootNodes.Add(featuresGroup);
-
-        // 2. Profiles 2D Group
-        var profilesGroup = new TreeItemNode($"Perfis 2D ({CurrentSketch.Profiles.Count})", iconFolder, TreeItemCategory.ProfileGroup);
-        profilesGroup.PropertyChanged += OnNodePropertyChanged;
-        foreach (var profile in CurrentSketch.Profiles)
-        {
-            string icon = profile.Classification switch
-            {
-                ProfileClassification.Circle => iconCircle,
-                ProfileClassification.Rectangle => iconRect,
-                _ => iconPolygon
-            };
-            string name = $"Perfil {profile.Classification} (Área: {profile.Area:F1})";
-
-            var node = new TreeItemNode(name, icon, TreeItemCategory.ProfileItem, profile.Id, profile);
-            node.IsVisible = profile.IsVisible;
-            
-            // Re-sync visibility changes
-            node.PropertyChanged += (s, e) =>
-            {
-                if (e.PropertyName == nameof(TreeItemNode.IsVisible))
-                {
-                    profile.IsVisible = node.IsVisible;
-                    OnNodeVisibilityChanged();
-                }
-            };
-            node.PropertyChanged += OnNodePropertyChanged;
-            
-            profilesGroup.Children.Add(node);
-        }
-        RootNodes.Add(profilesGroup);
-
-        // 3. Sketch Entities 2D Group
-        var entitiesGroup = new TreeItemNode($"Linhas e Entidades ({CurrentSketch.Entities.Count})", iconFolder, TreeItemCategory.EntityGroup);
-        entitiesGroup.PropertyChanged += OnNodePropertyChanged;
-        int lineCount = 1;
-        int circleCount = 1;
-        foreach (var entity in CurrentSketch.Entities)
-        {
-            string icon = iconPolygon;
-            string name = "Entidade";
-            if (entity is LineEntity l)
-            {
-                icon = iconLine;
-                name = $"Linha {lineCount++} ({l.Length:F1}mm)";
-            }
-            else if (entity is CircleEntity c)
-            {
-                icon = iconCircle;
-                name = $"Círculo {circleCount++} (R={c.Radius:F1}mm)";
-            }
-
-            var node = new TreeItemNode(name, icon, TreeItemCategory.EntityItem, entity.Id, entity);
-            node.IsVisible = entity.IsVisible;
-            node.VisibilityChanged += (s, e) => OnNodeVisibilityChanged();
-            node.PropertyChanged += OnNodePropertyChanged;
-            entitiesGroup.Children.Add(node);
-        }
-        RootNodes.Add(entitiesGroup);
 
         // 2. Restore expansion states
         RestoreExpansionState(RootNodes, expandedIds, expandedCategories);
