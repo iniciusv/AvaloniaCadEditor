@@ -77,34 +77,37 @@ public class CadViewModel : INotifyPropertyChanged
         }
     }
 
-    private Guid? _targetHoverFeatureId;
+    private Ray? _lastHoverRay;
     private Avalonia.Threading.DispatcherTimer? _hoverTimer;
 
     public void ProcessHover(Ray ray)
     {
-        var hit = Raycast3D(ray);
-        Guid? hitId = hit?.FeatureId;
-
-        if (_targetHoverFeatureId != hitId)
+        _lastHoverRay = ray;
+        
+        // Remove the highlight immediately when mouse starts moving
+        if (HoveredFeatureId != null) 
         {
-            _targetHoverFeatureId = hitId;
-            HoveredFeatureId = null; // Clear immediate hover
-            
-            _hoverTimer?.Stop();
-            if (hitId.HasValue)
-            {
-                if (_hoverTimer == null)
-                {
-                    _hoverTimer = new Avalonia.Threading.DispatcherTimer { Interval = System.TimeSpan.FromMilliseconds(400) };
-                    _hoverTimer.Tick += (s, e) =>
-                    {
-                        _hoverTimer.Stop();
-                        HoveredFeatureId = _targetHoverFeatureId;
-                    };
-                }
-                _hoverTimer.Start();
-            }
+            HoveredFeatureId = null;
         }
+        
+        _hoverTimer?.Stop();
+        
+        if (_hoverTimer == null)
+        {
+            _hoverTimer = new Avalonia.Threading.DispatcherTimer { Interval = System.TimeSpan.FromMilliseconds(200) }; // 200ms feels more responsive for a stop
+            _hoverTimer.Tick += (s, e) =>
+            {
+                _hoverTimer.Stop();
+                if (_lastHoverRay.HasValue)
+                {
+                    // O raycast PESADO só roda agora, quando o mouse efetivamente parou!
+                    var hit = Raycast3D(_lastHoverRay.Value);
+                    HoveredFeatureId = hit?.FeatureId;
+                }
+            };
+        }
+        
+        _hoverTimer.Start();
     }
 
     private ICommandTool? _currentTool;
@@ -289,6 +292,8 @@ public class CadViewModel : INotifyPropertyChanged
         CurrentTool = new SelectTool(_geometryEngine, _selectionService);
     }
 
+    private Dictionary<Guid, TriangleMesh> _featureMeshCache = new();
+
     public RaycastHit? Raycast3D(Ray ray)
     {
         if (Sketch.Features.Count == 0) return null;
@@ -300,7 +305,15 @@ public class CadViewModel : INotifyPropertyChanged
         {
             if (!feature.IsVisible) continue; // CRITICAL FIX: Ignore hidden features
 
-            var mesh = _geometryKernel.BuildSolidMesh(new[] { feature }, _settingsProvider.GetSettings());
+            if (!_featureMeshCache.TryGetValue(feature.Id, out var mesh))
+            {
+                mesh = _geometryKernel.BuildSolidMesh(new[] { feature }, _settingsProvider.GetSettings());
+                if (mesh != null)
+                {
+                    _featureMeshCache[feature.Id] = mesh;
+                }
+            }
+            
             if (mesh != null)
             {
                 var hit = ray.IntersectMesh(mesh);
@@ -330,6 +343,7 @@ public class CadViewModel : INotifyPropertyChanged
 
     public void RefreshSolidMesh()
     {
+        _featureMeshCache.Clear(); // Clear raycast cache so it rebuilds on next hover/click
         var featuresToRender = new List<IFeature>(Sketch.Features.Where(f => f.IsVisible));
         if (CurrentTool is ExtrudeCommand extCmd)
         {
