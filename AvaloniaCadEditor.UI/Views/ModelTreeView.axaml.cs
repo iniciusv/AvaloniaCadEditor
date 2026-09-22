@@ -26,6 +26,17 @@ public partial class ModelTreeView : UserControl
         AddHandler(PointerMovedEvent, OnPointerMoved, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
         AddHandler(PointerReleasedEvent, OnPointerReleasedAnywhere, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
     }
+    
+    private void OnDoubleTapped(object? sender, Avalonia.Input.TappedEventArgs e)
+    {
+        var control = e.Source as Avalonia.Controls.Control;
+        var node = control?.DataContext as AvaloniaCadEditor.UI.ViewModels.TreeItemNode;
+        if (node != null)
+        {
+            var vm = this.DataContext as AvaloniaCadEditor.UI.ViewModels.ModelTreeViewModel;
+            vm?.HandleDoubleTap(node);
+        }
+    }
 
     private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
     {

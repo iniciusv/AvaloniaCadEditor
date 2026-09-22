@@ -16,6 +16,16 @@ public class ModelTreeViewModel : INotifyPropertyChanged
     private readonly ISelectionService _selectionService;
     private bool _isUpdatingSelectionInternally = false;
 
+        public event Action<AvaloniaCadEditor.Domain.Features.WorkPlaneFeature>? WorkPlaneDoubleClicked;
+
+    public void HandleDoubleTap(TreeItemNode node)
+    {
+        if (node.Tag is AvaloniaCadEditor.Domain.Features.WorkPlaneFeature wpf)
+        {
+            WorkPlaneDoubleClicked?.Invoke(wpf);
+        }
+    }
+
     public ObservableCollection<TreeItemNode> RootNodes { get; } = new();
 
     private TreeItemNode? _selectedNode;

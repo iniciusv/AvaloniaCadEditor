@@ -230,7 +230,15 @@ public class CadViewModel : INotifyPropertyChanged
         _settingsProvider = settingsProvider ?? new AvaloniaCadEditor.Infrastructure.Settings.JsonTessellationSettingsProvider();
         _sceneEvaluator = sceneEvaluator;
         
+        // Add Base XY Plane to tree
+        var basePlane = new AvaloniaCadEditor.Domain.Features.WorkPlaneFeature(AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.XY, "Plano Base (XY)");
+        Sketch.AddFeature(basePlane);
+        
         ModelTree = new ModelTreeViewModel(_selectionService);
+        ModelTree.WorkPlaneDoubleClicked += (wpf) => 
+        {
+            SetActiveWorkPlane(wpf);
+        };
         ModelTree.NodeVisibilityChanged += (s, e) => 
         {
             RefreshProfiles();
@@ -414,6 +422,13 @@ public class CadViewModel : INotifyPropertyChanged
         {
             GenerateCodeCommand.Execute(null);
         }
+    }
+
+        public void SetActiveWorkPlane(AvaloniaCadEditor.Domain.Features.WorkPlaneFeature wpf)
+    {
+        Sketch.Plane = wpf.Plane;
+        OnPropertyChanged(nameof(ActiveWorkPlane));
+        RefreshSolidMesh();
     }
 
     public WorkPlane ActiveWorkPlane

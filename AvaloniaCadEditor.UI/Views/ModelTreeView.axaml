@@ -25,7 +25,7 @@
                       DragDrop.Drop="OnDrop">
                 <TreeView.ItemTemplate>
                     <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="vm:TreeItemNode">
-                        <Border Classes.selectedNode="{Binding IsSelected}" CornerRadius="3" Padding="6,3" Margin="1">
+                        <Border Classes.selectedNode="{Binding IsSelected}" CornerRadius="3" Padding="6,3" Margin="1" DoubleTapped="OnDoubleTapped">
                             <Grid ColumnDefinitions="Auto, Auto, *">
                                 <!-- Eye Toggle for Visibility -->
                                 <ToggleButton Grid.Column="0" 
