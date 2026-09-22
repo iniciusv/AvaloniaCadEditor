@@ -1,5 +1,6 @@
 using System;
 using AvaloniaCadEditor.Domain.Entities;
+using AvaloniaCadEditor.Domain.Mesh;
 using FluentAssertions;
 using FluentAssertions.Execution;
 
@@ -22,6 +23,19 @@ public static class CadAssertionsExtensions
             subject.EndPoint.X.Should().BeApproximately(expected.EndPoint.X, tolerance, "EndPoint X should match");
             subject.EndPoint.Y.Should().BeApproximately(expected.EndPoint.Y, tolerance, "EndPoint Y should match");
             subject.EndPoint.Z.Should().BeApproximately(expected.EndPoint.Z, tolerance, "EndPoint Z should match");
+        }
+    }
+
+    public static void HaveApproximateVolume(this TriangleMesh mesh, double expectedVolume, double tolerancePercent = 5.0, string because = "", params object[] becauseArgs)
+    {
+        using (new AssertionScope())
+        {
+            mesh.Should().NotBeNull(because, becauseArgs);
+            if (mesh == null) return;
+
+            var actualVolume = MeshVolumeEstimator.EstimatePrismaticVolume(mesh);
+            var margin = expectedVolume * tolerancePercent / 100.0;
+            actualVolume.Should().BeApproximately(expectedVolume, margin, because, becauseArgs);
         }
     }
 }
