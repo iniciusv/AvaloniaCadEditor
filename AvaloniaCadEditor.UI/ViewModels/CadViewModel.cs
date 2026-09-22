@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -62,6 +63,50 @@ public class CadViewModel : INotifyPropertyChanged
         }
     }
 
+    private Guid? _hoveredFeatureId;
+    public Guid? HoveredFeatureId
+    {
+        get => _hoveredFeatureId;
+        set
+        {
+            if (_hoveredFeatureId != value)
+            {
+                _hoveredFeatureId = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
+    private Guid? _targetHoverFeatureId;
+    private Avalonia.Threading.DispatcherTimer? _hoverTimer;
+
+    public void ProcessHover(Ray ray)
+    {
+        var hit = Raycast3D(ray);
+        Guid? hitId = hit?.FeatureId;
+
+        if (_targetHoverFeatureId != hitId)
+        {
+            _targetHoverFeatureId = hitId;
+            HoveredFeatureId = null; // Clear immediate hover
+            
+            _hoverTimer?.Stop();
+            if (hitId.HasValue)
+            {
+                if (_hoverTimer == null)
+                {
+                    _hoverTimer = new Avalonia.Threading.DispatcherTimer { Interval = System.TimeSpan.FromMilliseconds(400) };
+                    _hoverTimer.Tick += (s, e) =>
+                    {
+                        _hoverTimer.Stop();
+                        HoveredFeatureId = _targetHoverFeatureId;
+                    };
+                }
+                _hoverTimer.Start();
+            }
+        }
+    }
+
     private ICommandTool? _currentTool;
     public ICommandTool? CurrentTool
     {
@@ -71,6 +116,9 @@ public class CadViewModel : INotifyPropertyChanged
             _currentTool?.Cancel();
             _currentTool = value;
             ClearVcb();
+            
+            HoveredFeatureId = null;
+            _hoverTimer?.Stop();
             
             if (value != null && !(value is SelectTool) && !(value is MoveTool))
             {

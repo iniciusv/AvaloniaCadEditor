@@ -65,7 +65,8 @@ public class SilkViewportControl : OpenGlControlBase
     {
         if (e.PropertyName == nameof(CadViewModel.SolidMesh) || 
             e.PropertyName == nameof(CadViewModel.Profiles) || 
-            e.PropertyName == nameof(CadViewModel.HoveredProfile))
+            e.PropertyName == nameof(CadViewModel.HoveredProfile) ||
+            e.PropertyName == nameof(CadViewModel.HoveredFeatureId))
         {
             RequestNextFrameRendering();
         }
@@ -662,19 +663,24 @@ public class SilkViewportControl : OpenGlControlBase
                 }
                 else if (feature.IsSelected)
                 {
-                    faceR = 0.90f; faceG = 0.60f; faceB = 0.20f; // Warm Amber Selection Highlight
-                    edgeR = 1.00f; edgeG = 0.85f; edgeB = 0.30f;
+                    faceR = 0.10f; faceG = 0.40f; faceB = 1.00f; // Strong Vivid Blue Selection Highlight
+                    edgeR = 0.00f; edgeG = 0.20f; edgeB = 0.80f;
+                }
+                else if (ViewModel.HoveredFeatureId == feature.Id)
+                {
+                    faceR = 1.00f; faceG = 1.00f; faceB = 1.00f; // Pure white for Hover Delay feedback
+                    edgeR = 0.80f; edgeG = 0.80f; edgeB = 0.80f;
                 }
                 else
                 {
-                    faceR = 0.55f; faceG = 0.70f; faceB = 0.90f; // Metallic Steel Blue Unselected
-                    edgeR = 0.12f; edgeG = 0.16f; edgeB = 0.22f;
+                    faceR = 0.92f; faceG = 0.92f; faceB = 0.95f; // Near white / light grey Base Color
+                    edgeR = 0.60f; edgeG = 0.60f; edgeB = 0.65f;
                     
                     // Dim background objects if we are in a custom workplane
                     if (!ViewModel.ActiveWorkPlane.Equals(AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.XY))
                     {
-                        faceR *= 0.4f; faceG *= 0.4f; faceB *= 0.4f;
-                        edgeR *= 0.4f; edgeG *= 0.4f; edgeB *= 0.4f;
+                        faceR *= 0.6f; faceG *= 0.6f; faceB *= 0.6f;
+                        edgeR *= 0.6f; edgeG *= 0.6f; edgeB *= 0.6f;
                     }
                 }
 
@@ -950,6 +956,11 @@ public class SilkViewportControl : OpenGlControlBase
             {
                 _cubePos = new Vector3((float)intersection.Value.X, (float)intersection.Value.Y, (float)intersection.Value.Z);
                 ViewModel.OnPointerMoved(intersection.Value);
+            }
+            
+            if (ViewModel.CurrentTool is Application.Commands.BooleanTool)
+            {
+                ViewModel.ProcessHover(ray);
             }
         }
 
