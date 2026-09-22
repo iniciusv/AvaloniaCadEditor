@@ -5,6 +5,7 @@ using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.Mesh;
 using AvaloniaCadEditor.Domain.Settings;
+using AvaloniaCadEditor.Domain.ValueObjects;
 using OcctNet.Wrapper;
 
 namespace AvaloniaCadEditor.Infrastructure.OpenCascade;
@@ -141,6 +142,21 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             vertices.Reverse();
         }
 
+        // Remove consecutive duplicates just in case
+        for (int i = vertices.Count - 1; i > 0; i--)
+        {
+            if (vertices[i].DistanceTo(vertices[i - 1]) < 1e-5)
+            {
+                vertices.RemoveAt(i);
+            }
+        }
+        if (vertices.Count > 1 && vertices[0].DistanceTo(vertices.Last()) < 1e-5)
+        {
+            vertices.RemoveAt(vertices.Count - 1);
+        }
+
+        if (vertices.Count < 3) return null;
+
         var edges = new List<OcctEdge>();
         for (int i = 0; i < vertices.Count; i++)
         {
@@ -218,16 +234,26 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             positions.Add((float)verts[i].Z);
         }
 
+        double cx = 0, cy = 0, cz = 0;
+        if (verts.Count > 0)
+        {
+            for (int i = 0; i < verts.Count; i++)
+            {
+                cx += verts[i].X;
+                cy += verts[i].Y;
+                cz += verts[i].Z;
+            }
+            cx /= verts.Count;
+            cy /= verts.Count;
+            cz /= verts.Count;
+        }
+
         // Calculate flat normals since OcctMeshVertex doesn't provide them
         for (int i = 0; i < triIndices.Count; i += 3)
         {
             uint i1 = (uint)triIndices[i];
             uint i2 = (uint)triIndices[i + 1];
             uint i3 = (uint)triIndices[i + 2];
-
-            indices.Add(i1);
-            indices.Add(i2);
-            indices.Add(i3);
 
             var p1 = verts[(int)i1];
             var p2 = verts[(int)i2];
@@ -245,6 +271,26 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             var nx = (uy * vz) - (uz * vy);
             var ny = (uz * vx) - (ux * vz);
             var nz = (ux * vy) - (uy * vx);
+
+            // Centroid heuristic: normal should point away from the solid's center
+            var tcx = (p1.X + p2.X + p3.X) / 3.0 - cx;
+            var tcy = (p1.Y + p2.Y + p3.Y) / 3.0 - cy;
+            var tcz = (p1.Z + p2.Z + p3.Z) / 3.0 - cz;
+            
+            if (nx * tcx + ny * tcy + nz * tcz < 0)
+            {
+                nx = -nx;
+                ny = -ny;
+                nz = -nz;
+                // Swap i2 and i3 to fix winding order
+                uint temp = i2;
+                i2 = i3;
+                i3 = temp;
+            }
+
+            indices.Add(i1);
+            indices.Add(i2);
+            indices.Add(i3);
 
             // Normalize face normal
             var len = Math.Sqrt(nx * nx + ny * ny + nz * nz);
