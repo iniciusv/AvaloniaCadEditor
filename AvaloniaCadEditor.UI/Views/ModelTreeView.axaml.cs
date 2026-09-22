@@ -18,6 +18,10 @@ public partial class ModelTreeView : UserControl
     public ModelTreeView()
     {
         InitializeComponent();
+        AddHandler(DragDrop.DropEvent, OnDrop);
+        AddHandler(DragDrop.DragOverEvent, OnDragOver);
+        
+        // This stops ghost drag-and-drops
         AddHandler(PointerReleasedEvent, OnPointerReleasedAnywhere, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
     }
 
