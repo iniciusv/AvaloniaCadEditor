@@ -12,6 +12,26 @@ namespace AvaloniaCadEditor.Infrastructure.OpenCascade;
 
 public class OpenCascadeGeometryKernel : IGeometryKernel
 {
+    private readonly Dictionary<Guid, OcctShape> _shapeCache = new();
+
+    public void InvalidateShape(Guid featureId)
+    {
+        if (_shapeCache.TryGetValue(featureId, out var cached))
+        {
+            cached.Dispose();
+            _shapeCache.Remove(featureId);
+        }
+    }
+
+    public void InvalidateAll()
+    {
+        foreach (var shape in _shapeCache.Values)
+        {
+            shape?.Dispose();
+        }
+        _shapeCache.Clear();
+    }
+
     public TriangleMesh BuildFeatureMesh(IFeature feature, TessellationSettings? settings = null)
     {
         settings ??= new TessellationSettings();
@@ -22,7 +42,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
                 return TriangleMesh.Empty;
 
             var mesh = TessellateShape(shape, settings);
-            shape.Dispose();
+            // shape.Dispose(); // Shape is now cached, do not dispose here
             return mesh;
         }
         catch (Exception ex)
@@ -75,29 +95,41 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
 
     private OcctShape BuildShape(IFeature feature, TessellationSettings settings)
     {
+        if (_shapeCache.TryGetValue(feature.Id, out var cached) && cached != null && !cached.IsNull)
+        {
+            return cached;
+        }
+
+        OcctShape result = null;
         try {
             if (feature is ExtrudeFeature extrude && extrude.IsEnabled)
             {
-                return BuildExtrude(extrude, settings);
+                result = BuildExtrude(extrude, settings);
             }
             else if (feature is CylinderFeature cyl && cyl.IsEnabled)
             {
-                return BuildCylinder(cyl, settings);
+                result = BuildCylinder(cyl, settings);
             }
             else if (feature is BoxFeature box && box.IsEnabled)
             {
-                return BuildBox(box, settings);
+                result = BuildBox(box, settings);
             }
             else if (feature is BooleanFeature boolean && boolean.IsEnabled)
             {
-                return BuildBoolean(boolean, settings);
+                result = BuildBoolean(boolean, settings);
             }
         }
         catch (Exception ex)
         {
             Console.WriteLine($"[BuildShape Error] {ex}");
         }
-        return null;
+
+        if (result != null && !result.IsNull)
+        {
+            _shapeCache[feature.Id] = result;
+        }
+
+        return result;
     }
 
     private OcctShape BuildCylinder(CylinderFeature cyl, TessellationSettings settings)
@@ -190,6 +222,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         if (toolShapes.Count == 0) return baseShape;
 
         var currentShape = baseShape;
+        bool isIntermediate = false;
 
         foreach (var tool in toolShapes)
         {
@@ -203,9 +236,12 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
 
             if (newShape != null && !newShape.IsNull)
             {
-                currentShape.Dispose();
-                tool.Dispose();
+                if (isIntermediate)
+                {
+                    currentShape.Dispose();
+                }
                 currentShape = newShape;
+                isIntermediate = true;
             }
         }
 

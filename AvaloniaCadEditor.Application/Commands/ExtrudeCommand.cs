@@ -99,14 +99,27 @@ public class ExtrudeCommand : ICommandTool
         _currentState = State.SelectingProfile;
         _selectedProfile = null;
         CurrentDepth = 20.0;
+        _previewFeature = null;
     }
+
+    private ExtrudeFeature? _previewFeature;
 
     public IFeature? GetPreviewFeature()
     {
         if (_currentState == State.DefiningDepth && _selectedProfile != null)
         {
-            return new ExtrudeFeature(_selectedProfile, CurrentDepth);
+            if (_previewFeature == null || _previewFeature.Profile != _selectedProfile)
+            {
+                _previewFeature = new ExtrudeFeature(_selectedProfile, CurrentDepth);
+            }
+            else
+            {
+                _previewFeature.Depth = CurrentDepth;
+                _previewFeature.Direction = _selectedProfile.Normal * CurrentDepth; // Update direction based on depth
+            }
+            return _previewFeature;
         }
+        _previewFeature = null;
         return null;
     }
 

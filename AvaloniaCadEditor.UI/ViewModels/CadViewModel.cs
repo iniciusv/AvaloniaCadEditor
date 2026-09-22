@@ -249,7 +249,15 @@ public class CadViewModel : INotifyPropertyChanged
         };
         PropertyInspector = new PropertyInspectorViewModel(_selectionService, () =>
         {
-            _featureMeshCache.Clear();
+            if (_selectionService.SelectedObject is IFeature selectedFeature)
+            {
+                InvalidateFeatureAndDependents(selectedFeature.Id);
+            }
+            else
+            {
+                _featureMeshCache.Clear();
+                _geometryKernel.InvalidateAll();
+            }
             RefreshSolidMesh();
             ModelTree.RebuildTree();
         });
@@ -286,6 +294,8 @@ public class CadViewModel : INotifyPropertyChanged
             var result = await _sceneEvaluator.EvaluateAsync(GeneratedCSharpCode);
             if (result.Success)
             {
+                _geometryKernel.InvalidateAll();
+                _featureMeshCache.Clear();
                 Sketch.Clear();
                 foreach (var feature in result.Features)
                 {
@@ -307,13 +317,54 @@ public class CadViewModel : INotifyPropertyChanged
 
     private Dictionary<Guid, TriangleMesh> _featureMeshCache = new();
 
-        public AvaloniaCadEditor.Domain.Mesh.TriangleMesh? GetFeatureMesh(Guid featureId)
+    public AvaloniaCadEditor.Domain.Mesh.TriangleMesh? GetFeatureMesh(Guid featureId, bool forceRebuild = false)
     {
-        if (_featureMeshCache.TryGetValue(featureId, out var mesh))
+        if (forceRebuild)
+        {
+            _geometryKernel.InvalidateShape(featureId);
+        }
+
+        if (!forceRebuild && _featureMeshCache.TryGetValue(featureId, out var mesh))
         {
             return mesh;
         }
-        return null;
+
+        var feature = Sketch.Features.FirstOrDefault(f => f.Id == featureId);
+        if (feature == null && CurrentTool is AvaloniaCadEditor.Application.Commands.ExtrudeCommand extCmd)
+        {
+            var preview = extCmd.GetPreviewFeature();
+            if (preview != null && preview.Id == featureId)
+            {
+                feature = preview;
+            }
+        }
+
+        if (feature == null) return null;
+
+        mesh = _geometryKernel.BuildSolidMesh(new[] { feature }, _settingsProvider.GetSettings());
+        if (mesh != null && !forceRebuild)
+        {
+            _featureMeshCache[featureId] = mesh;
+        }
+        return mesh;
+    }
+
+    public void InvalidateFeatureAndDependents(Guid featureId)
+    {
+        _featureMeshCache.Remove(featureId);
+        _geometryKernel.InvalidateShape(featureId);
+
+        foreach (var feature in Sketch.Features)
+        {
+            foreach (var dep in feature.Dependencies)
+            {
+                if (dep.Id == featureId)
+                {
+                    InvalidateFeatureAndDependents(feature.Id);
+                    break;
+                }
+            }
+        }
     }
 
     public RaycastHit? Raycast3D(Ray ray)
@@ -385,6 +436,7 @@ public class CadViewModel : INotifyPropertyChanged
             if (preview != null)
             {
                 featuresToRender.Add(preview);
+                _featureMeshCache.Remove(preview.Id); // Force rebuild preview mesh during drag
             }
         }
 

@@ -15,6 +15,9 @@ public sealed class SolidFeatureRenderPass : IRenderPass
     private uint _internalEdgesVao;
     private uint _internalEdgesVbo;
 
+    private float[] _vertexDataBuffer = new float[1024];
+    private float[] _edgeLinesBuffer = new float[1024];
+
     public void Init(GL gl)
     {
         // Setup Solid Mesh VAO / VBO / EBO
@@ -100,11 +103,15 @@ public sealed class SolidFeatureRenderPass : IRenderPass
 
         foreach (var (feature, isPreview) in featuresToRender)
         {
-            var mesh = vm.GeometryKernel.BuildSolidMesh(new[] { feature });
+            var mesh = vm.GetFeatureMesh(feature.Id, forceRebuild: isPreview);
             if (mesh == null || mesh.TriangleCount == 0) continue;
 
             int vertexCount = mesh.VertexCount;
-            float[] solidVertexData = new float[vertexCount * 9];
+            int requiredLength = vertexCount * 9;
+            if (_vertexDataBuffer.Length < requiredLength)
+            {
+                _vertexDataBuffer = new float[requiredLength * 2]; // double the size to minimize future allocations
+            }
 
             // Base Face Color: Emerald when previewing, Warm Amber if selected, Cool Steel Blue default
             float faceR, faceG, faceB;
@@ -144,18 +151,18 @@ public sealed class SolidFeatureRenderPass : IRenderPass
                 int posIdx = i * 3;
                 int outIdx = i * 9;
 
-                solidVertexData[outIdx + 0] = mesh.Positions[posIdx + 0];
-                solidVertexData[outIdx + 1] = mesh.Positions[posIdx + 1];
-                solidVertexData[outIdx + 2] = mesh.Positions[posIdx + 2];
+                _vertexDataBuffer[outIdx + 0] = mesh.Positions[posIdx + 0];
+                _vertexDataBuffer[outIdx + 1] = mesh.Positions[posIdx + 1];
+                _vertexDataBuffer[outIdx + 2] = mesh.Positions[posIdx + 2];
 
-                solidVertexData[outIdx + 3] = faceR;
-                solidVertexData[outIdx + 4] = faceG;
-                solidVertexData[outIdx + 5] = faceB;
+                _vertexDataBuffer[outIdx + 3] = faceR;
+                _vertexDataBuffer[outIdx + 4] = faceG;
+                _vertexDataBuffer[outIdx + 5] = faceB;
 
                 // Normal vector for real-time diffuse shading
-                solidVertexData[outIdx + 6] = mesh.Normals[posIdx + 0];
-                solidVertexData[outIdx + 7] = mesh.Normals[posIdx + 1];
-                solidVertexData[outIdx + 8] = mesh.Normals[posIdx + 2];
+                _vertexDataBuffer[outIdx + 6] = mesh.Normals[posIdx + 0];
+                _vertexDataBuffer[outIdx + 7] = mesh.Normals[posIdx + 1];
+                _vertexDataBuffer[outIdx + 8] = mesh.Normals[posIdx + 2];
             }
 
             gl.BindVertexArray(_solidVao);
@@ -163,9 +170,9 @@ public sealed class SolidFeatureRenderPass : IRenderPass
             gl.BindBuffer(BufferTargetARB.ArrayBuffer, _solidVbo);
             unsafe
             {
-                fixed (float* vPtr = solidVertexData)
+                fixed (float* vPtr = _vertexDataBuffer)
                 {
-                    gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(solidVertexData.Length * sizeof(float)), vPtr, BufferUsageARB.DynamicDraw);
+                    gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(requiredLength * sizeof(float)), vPtr, BufferUsageARB.DynamicDraw);
                 }
             }
 
@@ -203,8 +210,14 @@ public sealed class SolidFeatureRenderPass : IRenderPass
             {
                 if (edgeIndices == null || edgeIndices.Length == 0) return;
 
-                var edgeLines = new List<float>();
+                int requiredEdgeLength = (edgeIndices.Length / 2) * 12; // 2 points per line * 6 floats per point (pos + color)
+                if (_edgeLinesBuffer.Length < requiredEdgeLength)
+                {
+                    _edgeLinesBuffer = new float[requiredEdgeLength * 2];
+                }
+
                 bool colorByAxis = vm.OsnapSettings.ColorEdgesByAxis;
+                int edgeOffset = 0;
 
                 for (int i = 0; i < edgeIndices.Length; i += 2)
                 {
@@ -230,12 +243,12 @@ public sealed class SolidFeatureRenderPass : IRenderPass
                     }
 
                     // Point A
-                    edgeLines.Add(ax); edgeLines.Add(ay); edgeLines.Add(az);
-                    edgeLines.Add(r); edgeLines.Add(g); edgeLines.Add(b);
+                    _edgeLinesBuffer[edgeOffset++] = ax; _edgeLinesBuffer[edgeOffset++] = ay; _edgeLinesBuffer[edgeOffset++] = az;
+                    _edgeLinesBuffer[edgeOffset++] = r; _edgeLinesBuffer[edgeOffset++] = g; _edgeLinesBuffer[edgeOffset++] = b;
 
                     // Point B
-                    edgeLines.Add(bx); edgeLines.Add(by); edgeLines.Add(bz);
-                    edgeLines.Add(r); edgeLines.Add(g); edgeLines.Add(b);
+                    _edgeLinesBuffer[edgeOffset++] = bx; _edgeLinesBuffer[edgeOffset++] = by; _edgeLinesBuffer[edgeOffset++] = bz;
+                    _edgeLinesBuffer[edgeOffset++] = r; _edgeLinesBuffer[edgeOffset++] = g; _edgeLinesBuffer[edgeOffset++] = b;
                 }
 
                 gl.BindVertexArray(vao);
@@ -243,10 +256,9 @@ public sealed class SolidFeatureRenderPass : IRenderPass
 
                 unsafe
                 {
-                    var edgeArr = edgeLines.ToArray();
-                    fixed (float* ePtr = edgeArr)
+                    fixed (float* ePtr = _edgeLinesBuffer)
                     {
-                        gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(edgeArr.Length * sizeof(float)), ePtr, BufferUsageARB.DynamicDraw);
+                        gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(edgeOffset * sizeof(float)), ePtr, BufferUsageARB.DynamicDraw);
                     }
 
                     gl.Uniform1(context.Uniforms.LightingLoc, 0); // Solid color for edges
@@ -257,7 +269,7 @@ public sealed class SolidFeatureRenderPass : IRenderPass
                         gl.BlendFunc(BlendingFactor.SrcAlpha, BlendingFactor.OneMinusSrcAlpha);
                     }
                     
-                    gl.DrawArrays(PrimitiveType.Lines, 0, (uint)(edgeLines.Count / 6));
+                    gl.DrawArrays(PrimitiveType.Lines, 0, (uint)(edgeOffset / 6));
                     
                     if (color.A < 1.0f) {
                         gl.Disable(EnableCap.Blend);

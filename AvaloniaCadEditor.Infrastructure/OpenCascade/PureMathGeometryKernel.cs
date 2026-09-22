@@ -21,6 +21,9 @@ public class PureMathGeometryKernel : IGeometryKernel
         return TriangleMesh.Empty;
     }
 
+    public void InvalidateShape(System.Guid featureId) { }
+    public void InvalidateAll() { }
+
     public TriangleMesh BuildSolidMesh(IEnumerable<IFeature> features, TessellationSettings? settings = null)
     {
         settings ??= new TessellationSettings();
