@@ -224,8 +224,8 @@ public class ModelTreeAndPropertyInspectorTests
     {
         var mockGeo = new Moq.Mock<AvaloniaCadEditor.Domain.Interfaces.IGeometryEngine>();
         var mockSnap = new Moq.Mock<AvaloniaCadEditor.Application.Services.IOSnapService>();
-        mockSnap.Setup(s => s.GetSnappedPoint(Moq.It.IsAny<Sketch>(), Moq.It.IsAny<Point3D>(), Moq.It.IsAny<double>(), Moq.It.IsAny<AvaloniaCadEditor.Domain.Mesh.TriangleMesh>()))
-                .Returns<Sketch, Point3D, double, AvaloniaCadEditor.Domain.Mesh.TriangleMesh>((s, p, t, m) => p);
+        mockSnap.Setup(s => s.GetSnappedPoint(Moq.It.IsAny<Sketch>(), Moq.It.IsAny<Point3D>(), Moq.It.IsAny<Point3D?>(), Moq.It.IsAny<AvaloniaCadEditor.Domain.Mesh.TriangleMesh>()))
+                .Returns<Sketch, Point3D, Point3D?, AvaloniaCadEditor.Domain.Mesh.TriangleMesh>((s, p, t, m) => p);
 
         var selectionService = new SelectionService();
         var vm = new CadViewModel(mockGeo.Object, mockSnap.Object, null, null, selectionService);
@@ -253,8 +253,8 @@ public class ModelTreeAndPropertyInspectorTests
         var kernel = new PureMathGeometryKernel();
         var mockGeo = new Moq.Mock<AvaloniaCadEditor.Domain.Interfaces.IGeometryEngine>();
         var mockSnap = new Moq.Mock<AvaloniaCadEditor.Application.Services.IOSnapService>();
-        mockSnap.Setup(s => s.GetSnappedPoint(Moq.It.IsAny<Sketch>(), Moq.It.IsAny<Point3D>(), Moq.It.IsAny<double>(), Moq.It.IsAny<AvaloniaCadEditor.Domain.Mesh.TriangleMesh>()))
-                .Returns<Sketch, Point3D, double, AvaloniaCadEditor.Domain.Mesh.TriangleMesh>((s, p, t, m) => p);
+        mockSnap.Setup(s => s.GetSnappedPoint(Moq.It.IsAny<Sketch>(), Moq.It.IsAny<Point3D>(), Moq.It.IsAny<Point3D?>(), Moq.It.IsAny<AvaloniaCadEditor.Domain.Mesh.TriangleMesh>()))
+                .Returns<Sketch, Point3D, Point3D?, AvaloniaCadEditor.Domain.Mesh.TriangleMesh>((s, p, t, m) => p);
 
         var selectionService = new SelectionService();
         var vm = new CadViewModel(mockGeo.Object, mockSnap.Object, null, kernel, selectionService);

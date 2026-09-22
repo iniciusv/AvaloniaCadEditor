@@ -184,6 +184,8 @@ public class CadViewModel : INotifyPropertyChanged
         set { _generatedCSharpCode = value; OnPropertyChanged(); }
     }
 
+    public OsnapSettings OsnapSettings => _osnapService.Settings;
+
     public bool OsnapEnabled
     {
         get => _osnapService.IsEnabled;
@@ -230,9 +232,7 @@ public class CadViewModel : INotifyPropertyChanged
         _settingsProvider = settingsProvider ?? new AvaloniaCadEditor.Infrastructure.Settings.JsonTessellationSettingsProvider();
         _sceneEvaluator = sceneEvaluator;
         
-        // Add Base XY Plane to tree
-        var basePlane = new AvaloniaCadEditor.Domain.Features.WorkPlaneFeature(AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.XY, "Plano Base (XY)");
-        Sketch.AddFeature(basePlane);
+        // Base XY Plane is already added by Sketch constructor.
         
         ModelTree = new ModelTreeViewModel(_selectionService);
         ModelTree.WorkPlaneDoubleClicked += (wpf) => 
@@ -436,9 +436,19 @@ public class CadViewModel : INotifyPropertyChanged
         get => Sketch.Plane;
         set
         {
+            // If it's already the active plane, do nothing
+            if (Sketch.Plane.Equals(value)) return;
+            
             Sketch.Plane = value;
-            var wpf = new Domain.Features.WorkPlaneFeature(value, $"Plano {Sketch.Features.Count(f => f is Domain.Features.WorkPlaneFeature)}");
-            Sketch.AddFeature(wpf);
+
+            var existingWpf = Sketch.Features.OfType<Domain.Features.WorkPlaneFeature>().FirstOrDefault(f => f.Plane.Equals(value));
+            
+            if (existingWpf == null)
+            {
+                var wpf = new Domain.Features.WorkPlaneFeature(value, $"Plano {Sketch.Features.Count(f => f is Domain.Features.WorkPlaneFeature)}");
+                Sketch.AddFeature(wpf);
+            }
+            
             ModelTree.RebuildTree();
             OnPropertyChanged();
             RefreshSolidMesh();
@@ -447,7 +457,9 @@ public class CadViewModel : INotifyPropertyChanged
 
     public bool OnPointerPressed(Point3D worldPoint)
     {
-        var localSnapped = ActiveWorkPlane.ToLocalSpace(_osnapService.GetSnappedPoint(Sketch, worldPoint, 5.0, SolidMesh));
+        var refPt = CurrentTool?.GetReferencePoint();
+        var snappedWorld = _osnapService.GetSnappedPoint(Sketch, worldPoint, refPt != null ? ActiveWorkPlane.ToWorldSpace(refPt.Value) : null, SolidMesh);
+        var localSnapped = ActiveWorkPlane.ToLocalSpace(snappedWorld);
         localSnapped = new Point3D(localSnapped.X, localSnapped.Y, 0.0); // Force strictly 2D on the work plane
 
         if (CurrentTool is SelectTool)
@@ -473,7 +485,9 @@ public class CadViewModel : INotifyPropertyChanged
 
     public void OnPointerMoved(Point3D worldPoint)
     {
-        var localSnapped = ActiveWorkPlane.ToLocalSpace(_osnapService.GetSnappedPoint(Sketch, worldPoint, 5.0, SolidMesh));
+        var refPt = CurrentTool?.GetReferencePoint();
+        var snappedWorld = _osnapService.GetSnappedPoint(Sketch, worldPoint, refPt != null ? ActiveWorkPlane.ToWorldSpace(refPt.Value) : null, SolidMesh);
+        var localSnapped = ActiveWorkPlane.ToLocalSpace(snappedWorld);
         CurrentSnappedPoint = localSnapped; // Note: UI will show local coordinates
         CurrentTool?.OnMouseMove(Sketch, localSnapped);
 

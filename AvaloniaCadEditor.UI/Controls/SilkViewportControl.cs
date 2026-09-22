@@ -115,9 +115,17 @@ public class SilkViewportControl : OpenGlControlBase
                 gl_Position = uProjection * uView * uModel * vec4(aPos, 1.0);
                 
                 if (uUseLighting == 1) {
-                    vec3 lightDir = normalize(vec3(0.5, 0.8, 1.0));
-                    vec3 norm = normalize(mat3(uModel) * aNormal);
-                    float diff = max(dot(norm, lightDir), 0.0);
+                    // Convert normal to view space
+                    vec3 viewNormal = normalize(mat3(uView * uModel) * aNormal);
+                    // Light comes from slightly above and right of the camera
+                    vec3 lightDir = normalize(vec3(0.3, 0.5, 1.0));
+                    float diff = max(dot(viewNormal, lightDir), 0.0);
+                    
+                    // Double sided lighting for faces looking away but still visible
+                    if (diff == 0.0) {
+                        diff = max(dot(-viewNormal, lightDir), 0.0) * 0.5; // Dimmer on the back
+                    }
+                    
                     float ambient = 0.40;
                     float light = ambient + (1.0 - ambient) * diff;
                     vertexColor = aColor * light;

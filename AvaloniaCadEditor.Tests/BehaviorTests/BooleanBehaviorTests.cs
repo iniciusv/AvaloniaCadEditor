@@ -51,8 +51,8 @@ public class BooleanBehaviorTests
         var kernel = new OpenCascadeGeometryKernel();
         var mockEngine = new Mock<IGeometryEngine>();
         var mockSnap = new Mock<IOSnapService>();
-        mockSnap.Setup(s => s.GetSnappedPoint(It.IsAny<Sketch>(), It.IsAny<Point3D>(), It.IsAny<double>(), It.IsAny<AvaloniaCadEditor.Domain.Mesh.TriangleMesh>()))
-                .Returns<Sketch, Point3D, double, AvaloniaCadEditor.Domain.Mesh.TriangleMesh>((s, p, t, m) => p);
+        mockSnap.Setup(s => s.GetSnappedPoint(It.IsAny<Sketch>(), It.IsAny<Point3D>(), It.IsAny<Point3D?>(), It.IsAny<AvaloniaCadEditor.Domain.Mesh.TriangleMesh>()))
+                .Returns<Sketch, Point3D, Point3D?, AvaloniaCadEditor.Domain.Mesh.TriangleMesh>((s, p, t, m) => p);
         var profileService = new ProfileRecognitionService();
         var selectionService = new SelectionService();
         var vm = new CadViewModel(mockEngine.Object, mockSnap.Object, profileService, kernel, selectionService);
@@ -86,8 +86,8 @@ public class BooleanBehaviorTests
         // Selecionar Base (Cilindro 1) via SelectionService (Option B)
         selectionService.SelectFeature(extrudes[0]);
 
-        // Clicar no Cilindro 2 para usá-lo como ferramenta
-        booleanTool.OnMouseDown(vm.Sketch, extrudes[1].Centroid);
+        // Clicar no Cilindro 2 para usá-lo como ferramenta (via SelectionService como a UI faria)
+        selectionService.SelectFeature(extrudes[1]);
 
         // Assert: Boolean Feature created
         var booleanFeatures = vm.Sketch.Features.OfType<BooleanFeature>().ToList();
@@ -151,12 +151,14 @@ public class BooleanBehaviorTests
         var selectionService = new SelectionService();
         var booleanTool = new BooleanTool(BooleanOperationType.Subtract, selectionService);
 
-        // 2. Act - Simular o clique do mouse no Cyl 1 (em (2, 0, 0)) e depois no Cyl 2 (em (13, 0, 0))
-        booleanTool.OnMouseDown(sketch, new Point3D(2, 0, 0));
+        // 2. Act - Simular seleção do Cyl 1 e depois Cyl 2 via UI/SelectionService
+        selectionService.SelectFeature(cylinder1);
+        booleanTool.OnMouseDown(sketch, new Point3D(2, 0, 0)); // Atribui sketch interno e possivelmente executa se pronto
         
         // Assert parcial - Cyl 1 deve ser o base
         selectionService.SelectedObject.Should().Be(cylinder1);
         
+        selectionService.SelectFeature(cylinder2);
         booleanTool.OnMouseDown(sketch, new Point3D(13, 0, 0));
         
         // Assert - A operação deve ter sido consumada e inserida no Sketch
