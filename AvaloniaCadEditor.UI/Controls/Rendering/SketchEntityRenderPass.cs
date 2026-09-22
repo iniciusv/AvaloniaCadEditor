@@ -115,6 +115,30 @@ public sealed class SketchEntityRenderPass : IRenderPass
             }
         }
 
+        // Draw Snap Indicator if in Drawing Mode
+        if (vm.IsDrawingMode)
+        {
+            var snapLocal = vm.CurrentSnappedPoint;
+            float s = 2.0f; // size of the snap indicator cross
+            float pr = 1.0f, pg = 0.5f, pb = 0.0f; // Orange snap indicator
+            
+            // Vertical line of the cross
+            var p1 = vm.ActiveWorkPlane.ToWorldSpace(new Point3D(snapLocal.X, snapLocal.Y - s, snapLocal.Z));
+            var p2 = vm.ActiveWorkPlane.ToWorldSpace(new Point3D(snapLocal.X, snapLocal.Y + s, snapLocal.Z));
+            sketchVertices.Add((float)p1.X); sketchVertices.Add((float)p1.Y); sketchVertices.Add((float)p1.Z);
+            sketchVertices.Add(pr); sketchVertices.Add(pg); sketchVertices.Add(pb);
+            sketchVertices.Add((float)p2.X); sketchVertices.Add((float)p2.Y); sketchVertices.Add((float)p2.Z);
+            sketchVertices.Add(pr); sketchVertices.Add(pg); sketchVertices.Add(pb);
+            
+            // Horizontal line of the cross
+            var p3 = vm.ActiveWorkPlane.ToWorldSpace(new Point3D(snapLocal.X - s, snapLocal.Y, snapLocal.Z));
+            var p4 = vm.ActiveWorkPlane.ToWorldSpace(new Point3D(snapLocal.X + s, snapLocal.Y, snapLocal.Z));
+            sketchVertices.Add((float)p3.X); sketchVertices.Add((float)p3.Y); sketchVertices.Add((float)p3.Z);
+            sketchVertices.Add(pr); sketchVertices.Add(pg); sketchVertices.Add(pb);
+            sketchVertices.Add((float)p4.X); sketchVertices.Add((float)p4.Y); sketchVertices.Add((float)p4.Z);
+            sketchVertices.Add(pr); sketchVertices.Add(pg); sketchVertices.Add(pb);
+        }
+
         if (sketchVertices.Count > 0)
         {
             gl.BindVertexArray(_sketchVao);

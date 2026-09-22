@@ -130,11 +130,14 @@ public class CadViewModel : INotifyPropertyChanged
             }
 
             OnPropertyChanged();
+            OnPropertyChanged(nameof(IsDrawingMode));
             
             // Force status text update so user sees the new tool instructions immediately
             UpdateStatusText(CurrentSnappedPoint);
         }
     }
+
+    public bool IsDrawingMode => _currentTool is DrawLineCommand || _currentTool is DrawCircleCommand;
 
     private void ClearSelection()
     {

@@ -18,10 +18,21 @@ public class OSnapService : IOSnapService
 
     public Point3D GetSnappedPoint(Sketch sketch, Point3D cursor, Point3D? referencePoint, AvaloniaCadEditor.Domain.Mesh.TriangleMesh? solidMesh = null)
     {
-        if (!IsEnabled) return ApplyPolarAndGridSnap(cursor, referencePoint);
+        if (!IsEnabled) return ApplyPolarAndGridSnap(sketch, cursor, referencePoint);
 
         Point3D? bestSnap = null;
         double minDistance = Settings.SnapTolerance;
+
+        // Snap to WorkPlane Origin
+        if (Settings.EndpointEnabled)
+        {
+            var originDist = cursor.DistanceTo(sketch.Plane.Origin);
+            if (originDist < minDistance)
+            {
+                minDistance = originDist;
+                bestSnap = sketch.Plane.Origin;
+            }
+        }
 
         foreach (var entity in sketch.Entities)
         {
@@ -60,7 +71,7 @@ public class OSnapService : IOSnapService
 
         if (bestSnap != null) return bestSnap.Value;
 
-        return ApplyPolarAndGridSnap(cursor, referencePoint);
+        return ApplyPolarAndGridSnap(sketch, cursor, referencePoint);
     }
 
     private bool IsSnapTypeEnabled(SnapPointType type)
@@ -75,52 +86,58 @@ public class OSnapService : IOSnapService
         };
     }
 
-    private Point3D ApplyPolarAndGridSnap(Point3D cursor, Point3D? referencePoint)
+    private Point3D ApplyPolarAndGridSnap(Sketch sketch, Point3D cursor, Point3D? referencePoint)
     {
-        if (referencePoint == null) return cursor;
+        var localCursor = sketch.Plane.ToLocalSpace(cursor);
+        var localRef = referencePoint.HasValue ? sketch.Plane.ToLocalSpace(referencePoint.Value) : (Point3D?)null;
 
-        var refPt = referencePoint.Value;
-        var dx = cursor.X - refPt.X;
-        var dy = cursor.Y - refPt.Y;
-        var distance = Math.Sqrt(dx * dx + dy * dy);
-        var angle = Math.Atan2(dy, dx);
-
-        if (distance < 0.001) return cursor;
-
+        double finalLocalX = localCursor.X;
+        double finalLocalY = localCursor.Y;
         bool changed = false;
 
-        if (Settings.PolarSnapEnabled)
+        // Cartesian Grid Snap
+        if (Settings.GridSnapEnabled && Settings.GridIncrement > 0.001)
         {
+            // Grid is relative to the origin of the WorkPlane. So we round the local X and Y.
+            finalLocalX = Math.Round(localCursor.X / Settings.GridIncrement) * Settings.GridIncrement;
+            finalLocalY = Math.Round(localCursor.Y / Settings.GridIncrement) * Settings.GridIncrement;
+            changed = true;
+        }
+
+        // Polar Snap
+        if (Settings.PolarSnapEnabled && localRef.HasValue)
+        {
+            var dx = localCursor.X - localRef.Value.X;
+            var dy = localCursor.Y - localRef.Value.Y;
+            var distance = Math.Sqrt(dx * dx + dy * dy);
+            var angle = Math.Atan2(dy, dx);
+
             var angleIncRad = Settings.PolarAngleIncrement * Math.PI / 180.0;
-            if (angleIncRad > 0.001)
+            if (angleIncRad > 0.001 && distance > 0.001)
             {
                 var roundedAngle = Math.Round(angle / angleIncRad) * angleIncRad;
                 
-                // Snap to angle if we are close to it (e.g., within 5 degrees)
                 var diff = Math.Abs(angle - roundedAngle);
                 if (diff > Math.PI) diff = 2 * Math.PI - diff;
                 
                 if (diff < (5.0 * Math.PI / 180.0))
                 {
-                    angle = roundedAngle;
+                    // Snap to the angle. Distance can still be restricted to Grid increments along the polar line.
+                    if (Settings.GridSnapEnabled && Settings.GridIncrement > 0.001)
+                    {
+                        distance = Math.Round(distance / Settings.GridIncrement) * Settings.GridIncrement;
+                    }
+                    
+                    finalLocalX = localRef.Value.X + distance * Math.Cos(roundedAngle);
+                    finalLocalY = localRef.Value.Y + distance * Math.Sin(roundedAngle);
                     changed = true;
                 }
             }
         }
 
-        if (Settings.GridSnapEnabled && Settings.GridIncrement > 0.001)
-        {
-            distance = Math.Round(distance / Settings.GridIncrement) * Settings.GridIncrement;
-            changed = true;
-        }
-
         if (changed)
         {
-            return new Point3D(
-                refPt.X + distance * Math.Cos(angle),
-                refPt.Y + distance * Math.Sin(angle),
-                cursor.Z // Preserve Z if needed, assuming 2D plane for polar/grid
-            );
+            return sketch.Plane.ToWorldSpace(new Point3D(finalLocalX, finalLocalY, localCursor.Z));
         }
 
         return cursor;

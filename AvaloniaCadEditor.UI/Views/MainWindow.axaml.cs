@@ -7,6 +7,20 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        
+        this.DataContextChanged += (s, e) =>
+        {
+            if (DataContext is AvaloniaCadEditor.UI.ViewModels.CadViewModel vm)
+            {
+                vm.PropertyChanged += (sender, args) =>
+                {
+                    if (args.PropertyName == nameof(AvaloniaCadEditor.UI.ViewModels.CadViewModel.IsDrawingMode))
+                    {
+                        Cursor = vm.IsDrawingMode ? new Avalonia.Input.Cursor(Avalonia.Input.StandardCursorType.Cross) : Avalonia.Input.Cursor.Default;
+                    }
+                };
+            }
+        };
     }
 
     private void Viewport_PointerPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
