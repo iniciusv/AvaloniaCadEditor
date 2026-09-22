@@ -129,6 +129,8 @@ public class BooleanTool : ICommandTool
     private Point3D GetFeatureCenter(IFeature feature)
     {
         if (feature is ExtrudeFeature extrude) return extrude.Centroid;
+        if (feature is CylinderFeature cyl) return cyl.GlobalBaseCenter;
+        if (feature is BoxFeature box) return box.GlobalCenter;
         return Point3D.Origin;
     }
 }

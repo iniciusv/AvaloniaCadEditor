@@ -136,4 +136,33 @@ public class BooleanBehaviorTests
         minX.Should().BeApproximately(-10.0, 0.5);
         maxX.Should().BeApproximately(7.5, 0.5, "os vértices extremos do corte nos chifres ficam em X = 7.5");
     }
+
+    [Fact]
+    public void BooleanTool_ComGeometriasInstanciadasDoCodigo_DeveSelecionarCorretamente()
+    {
+        // 1. Arrange - Instanciar geometria diretamente como feito pelo Avaliador C#
+        var cylinder1 = CylinderFeature.FromWorkPlane(WorkPlane.XY, new Point3D(0, 0, 0), 10, 30);
+        var cylinder2 = CylinderFeature.FromWorkPlane(WorkPlane.XY, new Point3D(15, 0, 0), 10, 30);
+        
+        var sketch = new Sketch();
+        sketch.AddFeature(cylinder1);
+        sketch.AddFeature(cylinder2);
+        
+        var selectionService = new SelectionService();
+        var booleanTool = new BooleanTool(BooleanOperationType.Subtract, selectionService);
+
+        // 2. Act - Simular o clique do mouse no Cyl 1 (em (2, 0, 0)) e depois no Cyl 2 (em (13, 0, 0))
+        booleanTool.OnMouseDown(sketch, new Point3D(2, 0, 0));
+        
+        // Assert parcial - Cyl 1 deve ser o base
+        selectionService.SelectedObject.Should().Be(cylinder1);
+        
+        booleanTool.OnMouseDown(sketch, new Point3D(13, 0, 0));
+        
+        // Assert - A operação deve ter sido consumada e inserida no Sketch
+        sketch.Features.Should().Contain(f => f is BooleanFeature);
+        var booleanOp = sketch.Features.OfType<BooleanFeature>().First();
+        booleanOp.BaseFeature.Should().Be(cylinder1);
+        booleanOp.ToolFeatures.Should().Contain(cylinder2);
+    }
 }
