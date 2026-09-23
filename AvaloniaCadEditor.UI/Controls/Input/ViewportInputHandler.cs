@@ -196,6 +196,14 @@ public sealed class ViewportInputHandler
                                                 selectedProfile = new AvaloniaCadEditor.Domain.Profiles.ParametricBoxFace(boxFeature, faceType.Value);
                                             }
                                         }
+                                        else if (baseFeature is AvaloniaCadEditor.Domain.Features.CylinderFeature cylinderFeature)
+                                        {
+                                            var faceType = cylinderFeature.GetFaceTypeFromNormal(new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(normal.X, normal.Y, normal.Z));
+                                            if (faceType.HasValue)
+                                            {
+                                                selectedProfile = new AvaloniaCadEditor.Domain.Profiles.ParametricCylinderFace(cylinderFeature, faceType.Value);
+                                            }
+                                        }
 
                                         if (selectedProfile == null)
                                         {

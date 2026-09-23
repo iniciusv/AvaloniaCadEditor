@@ -50,4 +50,35 @@ public class CylinderFeature : FeatureBase
 
         return new CylinderFeature(globalCenter, globalDirection, radius, height, name);
     }
+
+    public Point3D GetFaceCenter(FaceType faceType)
+    {
+        return faceType switch
+        {
+            FaceType.Bottom => GlobalBaseCenter,
+            FaceType.Top => new Point3D(
+                GlobalBaseCenter.X + GlobalDirection.X * Height,
+                GlobalBaseCenter.Y + GlobalDirection.Y * Height,
+                GlobalBaseCenter.Z + GlobalDirection.Z * Height),
+            _ => GlobalBaseCenter
+        };
+    }
+
+    public Vector3D GetFaceNormal(FaceType faceType)
+    {
+        return faceType switch
+        {
+            FaceType.Top => GlobalDirection,
+            FaceType.Bottom => new Vector3D(-GlobalDirection.X, -GlobalDirection.Y, -GlobalDirection.Z),
+            _ => GlobalDirection
+        };
+    }
+
+    public FaceType? GetFaceTypeFromNormal(Vector3D normal)
+    {
+        double tol = 0.99;
+        if (normal.DotProduct(GlobalDirection) > tol) return FaceType.Top;
+        if (normal.DotProduct(new Vector3D(-GlobalDirection.X, -GlobalDirection.Y, -GlobalDirection.Z)) > tol) return FaceType.Bottom;
+        return null;
+    }
 }

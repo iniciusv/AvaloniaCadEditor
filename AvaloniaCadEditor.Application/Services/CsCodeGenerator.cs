@@ -113,6 +113,10 @@ public class CsCodeGenerator
         {
             createdVarName = WriteBoxFeature(box, sb, featureNames, ref boxCount);
         }
+        else if (feature is CylinderFeature cylinder)
+        {
+            createdVarName = WriteCylinderFeature(cylinder, sb, featureNames, ref cylinderCount);
+        }
         else
         {
             // Generic fallback
@@ -192,6 +196,17 @@ public class CsCodeGenerator
             sb.AppendLine($"    DirectionZ = {parentVar}.GetFaceNormal(FaceType.{paramBox.SelectedFace})");
             sb.AppendLine($"}};");
         }
+        else if (extrude.Profile is ParametricCylinderFace paramCyl)
+        {
+            string varName = $"cylinder_{cylinderCount++}";
+            featureNames[extrude.Id] = varName;
+            returnedVarName = varName;
+            
+            string parentVar = featureNames.ContainsKey(paramCyl.ParentCylinder.Id) ? featureNames[paramCyl.ParentCylinder.Id] : "null";
+            
+            sb.AppendLine($"// Procedural CSG: Anchored to {parentVar}'s {paramCyl.SelectedFace} face");
+            sb.AppendLine($"var {varName} = new CylinderFeature(globalBaseCenter: {parentVar}.GetFaceCenter(FaceType.{paramCyl.SelectedFace}), globalDirection: {parentVar}.GetFaceNormal(FaceType.{paramCyl.SelectedFace}), radius: {Fmt(paramCyl.ParentCylinder.Radius)}, height: {Fmt(extrude.Depth)});");
+        }
         else
         {
             // Generic profile fallback (Option 1)
@@ -256,6 +271,15 @@ public class CsCodeGenerator
         sb.AppendLine($"    DirectionY = new Vector3D({Fmt(box.DirectionY.X)}, {Fmt(box.DirectionY.Y)}, {Fmt(box.DirectionY.Z)}),");
         sb.AppendLine($"    DirectionZ = new Vector3D({Fmt(box.DirectionZ.X)}, {Fmt(box.DirectionZ.Y)}, {Fmt(box.DirectionZ.Z)})");
         sb.AppendLine($"}};");
+        return varName;
+    }
+
+    private string WriteCylinderFeature(CylinderFeature cylinder, StringBuilder sb, Dictionary<Guid, string> featureNames, ref int cylinderCount)
+    {
+        string varName = $"cylinder_{cylinderCount++}";
+        featureNames[cylinder.Id] = varName;
+        
+        sb.AppendLine($"var {varName} = new CylinderFeature(globalBaseCenter: new Point3D({Fmt(cylinder.GlobalBaseCenter.X)}, {Fmt(cylinder.GlobalBaseCenter.Y)}, {Fmt(cylinder.GlobalBaseCenter.Z)}), globalDirection: new Vector3D({Fmt(cylinder.GlobalDirection.X)}, {Fmt(cylinder.GlobalDirection.Y)}, {Fmt(cylinder.GlobalDirection.Z)}), radius: {Fmt(cylinder.Radius)}, height: {Fmt(cylinder.Height)});");
         return varName;
     }
 }

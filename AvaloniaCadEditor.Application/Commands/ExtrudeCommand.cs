@@ -53,6 +53,10 @@ public class ExtrudeCommand : ICommandTool
                 {
                     baseFeatureForBool = paramFace.ParentBox;
                 }
+                else if (_selectedProfile is ParametricCylinderFace paramCylFace)
+                {
+                    baseFeatureForBool = paramCylFace.ParentCylinder;
+                }
 
                 if (baseFeatureForBool != null)
                 {
@@ -201,6 +205,10 @@ public class ExtrudeCommand : ICommandTool
             {
                 baseFeatureForBool = paramFace.ParentBox;
             }
+            else if (_selectedProfile is ParametricCylinderFace paramCylFace)
+            {
+                baseFeatureForBool = paramCylFace.ParentCylinder;
+            }
 
             if (baseFeatureForBool != null)
             {
@@ -222,7 +230,7 @@ public class ExtrudeCommand : ICommandTool
     private void HideProfileAndEntities(Sketch sketch, IProfile profile)
     {
         profile.IsVisible = false;
-        if (profile is FaceProfile || profile is ParametricBoxFace) return;
+        if (profile is FaceProfile || profile is ParametricBoxFace || profile is ParametricCylinderFace) return;
 
         foreach (var entityId in profile.SourceEntityIds)
         {

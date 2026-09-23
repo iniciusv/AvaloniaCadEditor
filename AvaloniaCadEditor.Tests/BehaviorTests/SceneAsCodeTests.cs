@@ -181,4 +181,50 @@ public class SceneAsCodeTests
         topBox.Length.Should().Be(30.0);
         topBox.Height.Should().Be(15.0);
     }
+
+    [Fact]
+    public async Task RoundTrip_ParametricCylinder_Extrusion_DeveGerarCylinderProcedural()
+    {
+        // 1. Cria o cilindro original
+        var baseCylinder = new CylinderFeature(Point3D.Origin, new Vector3D(0, 0, 1), 20, 50);
+        
+        // 2. Simula o usuário selecionando a face do topo e extrudando
+        var paramFace = new ParametricCylinderFace(baseCylinder, FaceType.Top);
+        var extrude = new ExtrudeFeature(paramFace, 25.0);
+        
+        // 3. Simula o Push/Pull (Boolean Union)
+        var booleanUnion = new BooleanFeature("Push/Pull", BooleanOperationType.Union, baseCylinder, new[] { extrude });
+
+        var sketch = new Sketch();
+        sketch.AddFeature(baseCylinder);
+        sketch.AddFeature(extrude);
+        sketch.AddFeature(booleanUnion);
+
+        // 4. Gera o código C#
+        var generator = new CsCodeGenerator();
+        var code = generator.GenerateCode(sketch);
+
+        // 5. Verifica se o código usa lógica procedural
+        code.Should().Contain("GetFaceCenter(FaceType.Top)");
+        code.Should().Contain("GetFaceNormal(FaceType.Top)");
+        code.Should().Contain("radius:");
+
+        // 6. Avalia o código C#
+        var evaluator = new RoslynSceneEvaluator();
+        var result = await evaluator.EvaluateAsync(code);
+
+        result.Success.Should().BeTrue($"O evaluator deveria ter compilado o código gerado. Erro: {result.ErrorMessage}");
+        
+        result.Features.Should().HaveCount(4);
+        var generatedUnion = result.Features[3] as BooleanFeature;
+        generatedUnion.Should().NotBeNull();
+        
+        var topCyl = generatedUnion!.ToolFeatures[0] as CylinderFeature;
+        topCyl.Should().NotBeNull();
+        
+        // A nova caixa no topo deve ter centro Z deslocado para 50
+        topCyl!.GlobalBaseCenter.Z.Should().Be(50.0);
+        topCyl.Radius.Should().Be(20.0);
+        topCyl.Height.Should().Be(25.0);
+    }
 }
