@@ -186,8 +186,23 @@ public sealed class ViewportInputHandler
                                     var mesh = viewModel.GetFeatureMesh(hit.Value.FeatureId.Value);
                                     if (mesh != null)
                                     {
-                                        var faceProfile = new AvaloniaCadEditor.Domain.Profiles.FaceProfile(baseFeature, plane, mesh);
-                                        extCmd.StartDirectExtrusion(viewModel.Sketch, faceProfile, hit.Value.Point);
+                                        AvaloniaCadEditor.Domain.Profiles.IProfile selectedProfile = null;
+                                        
+                                        if (baseFeature is AvaloniaCadEditor.Domain.Features.BoxFeature boxFeature)
+                                        {
+                                            var faceType = boxFeature.GetFaceTypeFromNormal(new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(normal.X, normal.Y, normal.Z));
+                                            if (faceType.HasValue)
+                                            {
+                                                selectedProfile = new AvaloniaCadEditor.Domain.Profiles.ParametricBoxFace(boxFeature, faceType.Value);
+                                            }
+                                        }
+
+                                        if (selectedProfile == null)
+                                        {
+                                            selectedProfile = new AvaloniaCadEditor.Domain.Profiles.FaceProfile(baseFeature, plane, mesh);
+                                        }
+
+                                        extCmd.StartDirectExtrusion(viewModel.Sketch, selectedProfile, hit.Value.Point);
                                         requestRender();
                                     }
                                 }

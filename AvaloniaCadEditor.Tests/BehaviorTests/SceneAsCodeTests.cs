@@ -129,4 +129,56 @@ public class SceneAsCodeTests
         origBounds.Min.Should().BeApproximately(newBounds.Min, 0.5f);
         origBounds.Max.Should().BeApproximately(newBounds.Max, 0.5f);
     }
+
+    [Fact]
+    public async Task RoundTrip_ParametricBox_Extrusion_DeveGerarBoxProcedural()
+    {
+        // 1. Cria a caixa original
+        var baseBox = new BoxFeature(Point3D.Origin, 30, 30, 30);
+        
+        // 2. Simula o usuário selecionando a face do topo e extrudando
+        var paramFace = new ParametricBoxFace(baseBox, FaceType.Top);
+        var extrude = new ExtrudeFeature(paramFace, 15.0);
+        
+        // 3. Simula o Push/Pull (Boolean Union)
+        var booleanUnion = new BooleanFeature("Push/Pull", BooleanOperationType.Union, baseBox, new[] { extrude });
+
+        var sketch = new Sketch();
+        sketch.AddFeature(baseBox);
+        sketch.AddFeature(extrude);
+        sketch.AddFeature(booleanUnion);
+
+        // 4. Gera o código C#
+        var generator = new CsCodeGenerator();
+        var code = generator.GenerateCode(sketch);
+
+        System.Console.WriteLine("Código Gerado:\n" + code);
+
+        // 5. Verifica se o código usa lógica procedural (referencia a FaceType.Top e dimensões)
+        code.Should().Contain("GetFaceCenter(FaceType.Top)");
+        code.Should().Contain("GetFaceWidth(FaceType.Top)");
+        code.Should().Contain("GetFaceLength(FaceType.Top)");
+
+        // 6. Avalia o código C#
+        var evaluator = new RoslynSceneEvaluator();
+        var result = await evaluator.EvaluateAsync(code);
+
+        result.Success.Should().BeTrue($"O evaluator deveria ter compilado o código gerado. Erro: {result.ErrorMessage}");
+        
+        // O Sketch gerado deve ter o WorkPlane, BaseBox, TopBox e o BooleanUnion.
+        result.Features.Should().HaveCount(4);
+        var generatedUnion = result.Features[3] as BooleanFeature;
+        generatedUnion.Should().NotBeNull();
+        
+        var topBox = generatedUnion!.ToolFeatures[0] as BoxFeature;
+        topBox.Should().NotBeNull();
+        
+        // A nova caixa no topo deve ter centro Z deslocado (base 30 de altura, topo em 30. Centro Z da base era 0, Z do topo é 30. + altura 15 = centro da nova caixa na verdade o GetFaceCenter do Top da caixa original base center 0 com altura 30 é z = 30)
+        // Wait, if base center is 0, height is 30. GetFaceCenter(Top) returns Z=30.
+        // A nova caixa vai ter GlobalCenter no topo da velha (Z=30). E ela própria é extrudada a partir dali. 
+        topBox!.GlobalCenter.Z.Should().Be(30.0);
+        topBox.Width.Should().Be(30.0);
+        topBox.Length.Should().Be(30.0);
+        topBox.Height.Should().Be(15.0);
+    }
 }

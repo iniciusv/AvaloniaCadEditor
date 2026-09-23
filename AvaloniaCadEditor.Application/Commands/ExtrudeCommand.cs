@@ -44,12 +44,22 @@ public class ExtrudeCommand : ICommandTool
                 var feature = new ExtrudeFeature(_selectedProfile, depth);
                 sketch.AddFeature(feature);
                 
+                IFeature? baseFeatureForBool = null;
                 if (_selectedProfile is FaceProfile faceProfile)
+                {
+                    baseFeatureForBool = faceProfile.BaseFeature;
+                }
+                else if (_selectedProfile is ParametricBoxFace paramFace)
+                {
+                    baseFeatureForBool = paramFace.ParentBox;
+                }
+
+                if (baseFeatureForBool != null)
                 {
                     var booleanFeature = new BooleanFeature(
                         $"Push/Pull ({depth:F1}mm)",
                         CurrentDepth < 0 ? BooleanOperationType.Subtract : BooleanOperationType.Union,
-                        faceProfile.BaseFeature,
+                        baseFeatureForBool,
                         new[] { feature }
                     );
                     sketch.AddFeature(booleanFeature);
@@ -182,12 +192,22 @@ public class ExtrudeCommand : ICommandTool
             var feature = new ExtrudeFeature(_selectedProfile, value);
             sketch.AddFeature(feature);
             
+            IFeature? baseFeatureForBool = null;
             if (_selectedProfile is FaceProfile faceProfile)
+            {
+                baseFeatureForBool = faceProfile.BaseFeature;
+            }
+            else if (_selectedProfile is ParametricBoxFace paramFace)
+            {
+                baseFeatureForBool = paramFace.ParentBox;
+            }
+
+            if (baseFeatureForBool != null)
             {
                 var booleanFeature = new BooleanFeature(
                     $"Push/Pull ({value:F1}mm)",
                     value < 0 ? BooleanOperationType.Subtract : BooleanOperationType.Union,
-                    faceProfile.BaseFeature,
+                    baseFeatureForBool,
                     new[] { feature }
                 );
                 sketch.AddFeature(booleanFeature);
@@ -202,7 +222,7 @@ public class ExtrudeCommand : ICommandTool
     private void HideProfileAndEntities(Sketch sketch, IProfile profile)
     {
         profile.IsVisible = false;
-        if (profile is FaceProfile) return;
+        if (profile is FaceProfile || profile is ParametricBoxFace) return;
 
         foreach (var entityId in profile.SourceEntityIds)
         {

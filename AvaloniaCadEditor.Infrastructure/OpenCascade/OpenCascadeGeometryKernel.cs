@@ -141,7 +141,8 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
 
     private OcctShape BuildBox(BoxFeature box, TessellationSettings settings)
     {
-        var profile = new AvaloniaCadEditor.Domain.Profiles.RectangleProfile(box.GlobalCenter, box.Width, box.Length);
+        var plane = new WorkPlane(box.GlobalCenter, box.DirectionZ, box.DirectionX);
+        var profile = new AvaloniaCadEditor.Domain.Profiles.RectangleProfile(box.GlobalCenter, box.Width, box.Length, 0.0, box.DirectionZ, null, plane);
         var extrude = new ExtrudeFeature(profile, box.Height, box.DirectionZ * box.Height);
         return BuildExtrude(extrude, settings);
     }

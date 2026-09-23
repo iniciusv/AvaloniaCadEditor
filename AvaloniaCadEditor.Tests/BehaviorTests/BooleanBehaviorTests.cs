@@ -83,6 +83,9 @@ public class BooleanBehaviorTests
         vm.SelectBooleanCutCommand.Execute(null);
         var booleanTool = (BooleanTool)vm.CurrentTool!;
 
+        // Precisa passar o sketch para a ferramenta
+        booleanTool.OnMouseDown(vm.Sketch, Point3D.Origin);
+
         // Selecionar Base (Cilindro 1) via SelectionService (Option B)
         selectionService.SelectFeature(extrudes[0]);
 

@@ -109,6 +109,10 @@ public class CsCodeGenerator
         {
             createdVarName = WriteWorkPlaneFeature(wpf, sb, featureNames);
         }
+        else if (feature is BoxFeature box)
+        {
+            createdVarName = WriteBoxFeature(box, sb, featureNames, ref boxCount);
+        }
         else
         {
             // Generic fallback
@@ -172,6 +176,22 @@ public class CsCodeGenerator
                 sb.AppendLine($"var {varName} = new BoxFeature(globalCenter: new Point3D({Fmt(rect.Center.X)}, {Fmt(rect.Center.Y)}, {Fmt(rect.Center.Z)}), width: {Fmt(rect.Width)}, length: {Fmt(rect.Height)}, height: {Fmt(extrude.Depth)});");
             }
         }
+        else if (extrude.Profile is ParametricBoxFace paramBox)
+        {
+            string varName = $"box_{boxCount++}";
+            featureNames[extrude.Id] = varName;
+            returnedVarName = varName;
+            
+            string parentVar = featureNames.ContainsKey(paramBox.ParentBox.Id) ? featureNames[paramBox.ParentBox.Id] : "null";
+            
+            sb.AppendLine($"// Procedural CSG: Anchored to {parentVar}'s {paramBox.SelectedFace} face");
+            sb.AppendLine($"var {varName} = new BoxFeature(globalCenter: {parentVar}.GetFaceCenter(FaceType.{paramBox.SelectedFace}), width: {parentVar}.GetFaceWidth(FaceType.{paramBox.SelectedFace}), length: {parentVar}.GetFaceLength(FaceType.{paramBox.SelectedFace}), height: {Fmt(extrude.Depth)})");
+            sb.AppendLine($"{{");
+            sb.AppendLine($"    DirectionX = {parentVar}.GetFaceDirectionX(FaceType.{paramBox.SelectedFace}),");
+            sb.AppendLine($"    DirectionY = {parentVar}.GetFaceDirectionY(FaceType.{paramBox.SelectedFace}),");
+            sb.AppendLine($"    DirectionZ = {parentVar}.GetFaceNormal(FaceType.{paramBox.SelectedFace})");
+            sb.AppendLine($"}};");
+        }
         else
         {
             // Generic profile fallback (Option 1)
@@ -222,6 +242,20 @@ public class CsCodeGenerator
         {
             sb.AppendLine($"var {varName} = new WorkPlaneFeature(new WorkPlane(origin: new Point3D({Fmt(wpf.Plane.Origin.X)}, {Fmt(wpf.Plane.Origin.Y)}, {Fmt(wpf.Plane.Origin.Z)}), normal: new Vector3D({Fmt(wpf.Plane.Normal.X)}, {Fmt(wpf.Plane.Normal.Y)}, {Fmt(wpf.Plane.Normal.Z)})), \"{wpf.Name}\"{ (wpf.IsBasePlane ? ", true" : "") });");
         }
+        return varName;
+    }
+
+    private string WriteBoxFeature(BoxFeature box, StringBuilder sb, Dictionary<Guid, string> featureNames, ref int boxCount)
+    {
+        string varName = $"box_{boxCount++}";
+        featureNames[box.Id] = varName;
+        
+        sb.AppendLine($"var {varName} = new BoxFeature(globalCenter: new Point3D({Fmt(box.GlobalCenter.X)}, {Fmt(box.GlobalCenter.Y)}, {Fmt(box.GlobalCenter.Z)}), width: {Fmt(box.Width)}, length: {Fmt(box.Length)}, height: {Fmt(box.Height)})");
+        sb.AppendLine($"{{");
+        sb.AppendLine($"    DirectionX = new Vector3D({Fmt(box.DirectionX.X)}, {Fmt(box.DirectionX.Y)}, {Fmt(box.DirectionX.Z)}),");
+        sb.AppendLine($"    DirectionY = new Vector3D({Fmt(box.DirectionY.X)}, {Fmt(box.DirectionY.Y)}, {Fmt(box.DirectionY.Z)}),");
+        sb.AppendLine($"    DirectionZ = new Vector3D({Fmt(box.DirectionZ.X)}, {Fmt(box.DirectionZ.Y)}, {Fmt(box.DirectionZ.Z)})");
+        sb.AppendLine($"}};");
         return varName;
     }
 }
