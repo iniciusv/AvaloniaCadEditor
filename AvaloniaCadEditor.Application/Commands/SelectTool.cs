@@ -8,6 +8,7 @@ namespace AvaloniaCadEditor.Application.Commands;
 
 public class SelectTool : ICommandTool
 {
+    public event EventHandler<string>? CodeGenerated;
     private readonly IGeometryEngine _geometryEngine;
     private readonly Services.ISelectionService? _selectionService;
 
@@ -87,3 +88,5 @@ public class SelectTool : ICommandTool
 
     public string GetMeasurementText() => "";
 }
+
+

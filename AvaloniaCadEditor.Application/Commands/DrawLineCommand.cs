@@ -5,6 +5,7 @@ namespace AvaloniaCadEditor.Application.Commands;
 
 public class DrawLineCommand : ICommandTool
 {
+    public event EventHandler<string>? CodeGenerated;
     public string Name => "Line";
 
     private enum State { WaitingForStartPoint, WaitingForEndPoint }
@@ -164,3 +165,5 @@ public class DrawLineCommand : ICommandTool
         return null;
     }
 }
+
+

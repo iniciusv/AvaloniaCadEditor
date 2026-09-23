@@ -5,6 +5,7 @@ namespace AvaloniaCadEditor.Application.Commands;
 
 public class DrawCircleCommand : ICommandTool
 {
+    public event EventHandler<string>? CodeGenerated;
     public string Name => "Circle";
 
     private enum State { WaitingForCenter, WaitingForRadius }
@@ -81,3 +82,5 @@ public class DrawCircleCommand : ICommandTool
         return "";
     }
 }
+
+

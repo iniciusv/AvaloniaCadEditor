@@ -7,6 +7,7 @@ namespace AvaloniaCadEditor.Application.Commands;
 
 public class MoveTool : ICommandTool
 {
+    public event EventHandler<string>? CodeGenerated;
     public string Name => "Move";
 
     private enum State { WaitingForBasePoint, WaitingForTargetPoint }
@@ -123,3 +124,5 @@ public class MoveTool : ICommandTool
         return "";
     }
 }
+
+

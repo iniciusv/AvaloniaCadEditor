@@ -119,8 +119,19 @@ public class CadViewModel : INotifyPropertyChanged
         set
         {
             if (_currentTool is IDisposable disposable) disposable.Dispose();
-            _currentTool?.Cancel();
+            if (_currentTool != null)
+            {
+                _currentTool.CodeGenerated -= CurrentTool_CodeGenerated;
+                _currentTool.Cancel();
+            }
+            
             _currentTool = value;
+            
+            if (_currentTool != null)
+            {
+                _currentTool.CodeGenerated += CurrentTool_CodeGenerated;
+            }
+
             VcbService.Clear();
             
             HoveredFeatureId = null;
@@ -136,6 +147,12 @@ public class CadViewModel : INotifyPropertyChanged
             
             UpdateStatusText(CurrentSnappedPoint);
         }
+    }
+
+    private void CurrentTool_CodeGenerated(object? sender, string codeSnippet)
+    {
+        ScriptEditor.AppendCode(codeSnippet + "\n");
+        ScriptEditor.RunCodeCommand.Execute(null);
     }
 
     public bool IsDrawingMode => _currentTool is DrawLineCommand || _currentTool is DrawCircleCommand;

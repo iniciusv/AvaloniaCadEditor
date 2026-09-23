@@ -6,6 +6,7 @@ namespace AvaloniaCadEditor.Application.Commands;
 
 public class TrimCommand : ICommandTool
 {
+    public event EventHandler<string>? CodeGenerated;
     private readonly IGeometryEngine _geometryEngine;
     public string Name => "Trim";
 
@@ -79,3 +80,5 @@ public class TrimCommand : ICommandTool
 
     public string GetMeasurementText() => "";
 }
+
+

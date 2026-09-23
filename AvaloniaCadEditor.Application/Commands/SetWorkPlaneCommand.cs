@@ -6,6 +6,7 @@ namespace AvaloniaCadEditor.Application.Commands;
 
 public class SetWorkPlaneCommand : ICommandTool
 {
+    public event EventHandler<string>? CodeGenerated;
     public string Name => "Set WorkPlane";
     public string GetStatusText() => "Click on a 3D face to set WorkPlane";
     public string GetMeasurementText() => "";
@@ -38,3 +39,5 @@ public class SetWorkPlaneCommand : ICommandTool
     {
     }
 }
+
+

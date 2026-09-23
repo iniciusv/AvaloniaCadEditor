@@ -7,6 +7,8 @@ public interface ICommandTool
 {
     string Name { get; }
     
+    event EventHandler<string>? CodeGenerated;
+
     /// <summary>
     /// Called when the user clicks on the canvas.
     /// </summary>

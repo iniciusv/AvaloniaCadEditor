@@ -22,6 +22,8 @@ public class ExtrudeCommand : ICommandTool
     private Point3D _startPoint;
     public Point3D StartPointWorld { get; private set; }
     public bool IsFinished { get; private set; }
+    
+    public event EventHandler<string>? CodeGenerated;
 
     public void OnMouseDown(Sketch sketch, Point3D point)
     {
@@ -41,35 +43,32 @@ public class ExtrudeCommand : ICommandTool
             if (_selectedProfile != null)
             {
                 double depth = Math.Abs(CurrentDepth) < 1e-3 ? 20.0 : CurrentDepth;
-                var feature = new ExtrudeFeature(_selectedProfile, depth);
-                sketch.AddFeature(feature);
                 
-                IFeature? baseFeatureForBool = null;
-                if (_selectedProfile is FaceProfile faceProfile)
+                string code = $"// Extrusão de {depth:F1}mm\n";
+                string id = Guid.NewGuid().ToString("N").Substring(0, 4);
+                
+                if (_selectedProfile is ParametricBoxFace boxFace)
                 {
-                    baseFeatureForBool = faceProfile.BaseFeature;
+                    // Exemplo de como a ferramenta passa a apenas formatar C#
+                    string parentId = $"feature_{boxFace.ParentBox.Id.ToString("N").Substring(0, 4)}"; // (Em breve será varName)
+                    code += $"var box_{id} = new BoxFeature(globalCenter: {parentId}.GetFaceCenter(FaceType.{boxFace.SelectedFace}), width: {parentId}.GetFaceWidth(FaceType.{boxFace.SelectedFace}), length: {parentId}.GetFaceLength(FaceType.{boxFace.SelectedFace}), height: {depth.ToString(System.Globalization.CultureInfo.InvariantCulture)});\n";
+                    code += $"var boolOp_{id} = new BooleanFeature(\"Push/Pull\", {(CurrentDepth < 0 ? "BooleanOperationType.Subtract" : "BooleanOperationType.Union")}, {parentId}, new[] {{ box_{id} }});\n";
                 }
-                else if (_selectedProfile is ParametricBoxFace paramFace)
+                else if (_selectedProfile is ParametricCylinderFace cylFace)
                 {
-                    baseFeatureForBool = paramFace.ParentBox;
+                    string parentId = $"feature_{cylFace.ParentCylinder.Id.ToString("N").Substring(0, 4)}";
+                    code += $"var cylinder_{id} = new CylinderFeature(globalBaseCenter: {parentId}.GetFaceCenter(FaceType.{cylFace.SelectedFace}), globalDirection: {parentId}.GetFaceNormal(FaceType.{cylFace.SelectedFace}), radius: {cylFace.ParentCylinder.Radius.ToString(System.Globalization.CultureInfo.InvariantCulture)}, height: {depth.ToString(System.Globalization.CultureInfo.InvariantCulture)});\n";
+                    code += $"var boolOp_{id} = new BooleanFeature(\"Push/Pull\", {(CurrentDepth < 0 ? "BooleanOperationType.Subtract" : "BooleanOperationType.Union")}, {parentId}, new[] {{ cylinder_{id} }});\n";
                 }
-                else if (_selectedProfile is ParametricCylinderFace paramCylFace)
+                else
                 {
-                    baseFeatureForBool = paramCylFace.ParentCylinder;
-                }
-
-                if (baseFeatureForBool != null)
-                {
-                    var booleanFeature = new BooleanFeature(
-                        $"Push/Pull ({depth:F1}mm)",
-                        CurrentDepth < 0 ? BooleanOperationType.Subtract : BooleanOperationType.Union,
-                        baseFeatureForBool,
-                        new[] { feature }
-                    );
-                    sketch.AddFeature(booleanFeature);
+                    code += $"// TODO: Extrusão genérica de perfil 2D\n";
                 }
                 
-                HideProfileAndEntities(sketch, _selectedProfile);
+                CodeGenerated?.Invoke(this, code);
+                
+                // HideProfileAndEntities e manipulação do Sketch foram removidas.
+                // O estado agora viverá apenas no Editor de Código.
                 IsFinished = true;
             }
             Cancel();
@@ -193,35 +192,28 @@ public class ExtrudeCommand : ICommandTool
 
         if (_selectedProfile != null)
         {
-            var feature = new ExtrudeFeature(_selectedProfile, value);
-            sketch.AddFeature(feature);
+            string code = $"// Extrusão de {value:F1}mm (Via VCB)\n";
+            string id = Guid.NewGuid().ToString("N").Substring(0, 4);
             
-            IFeature? baseFeatureForBool = null;
-            if (_selectedProfile is FaceProfile faceProfile)
+            if (_selectedProfile is ParametricBoxFace boxFace)
             {
-                baseFeatureForBool = faceProfile.BaseFeature;
+                string parentId = $"feature_{boxFace.ParentBox.Id.ToString("N").Substring(0, 4)}";
+                code += $"var box_{id} = new BoxFeature(globalCenter: {parentId}.GetFaceCenter(FaceType.{boxFace.SelectedFace}), width: {parentId}.GetFaceWidth(FaceType.{boxFace.SelectedFace}), length: {parentId}.GetFaceLength(FaceType.{boxFace.SelectedFace}), height: {value.ToString(System.Globalization.CultureInfo.InvariantCulture)});\n";
+                code += $"var boolOp_{id} = new BooleanFeature(\"Push/Pull\", {(value < 0 ? "BooleanOperationType.Subtract" : "BooleanOperationType.Union")}, {parentId}, new[] {{ box_{id} }});\n";
             }
-            else if (_selectedProfile is ParametricBoxFace paramFace)
+            else if (_selectedProfile is ParametricCylinderFace cylFace)
             {
-                baseFeatureForBool = paramFace.ParentBox;
+                string parentId = $"feature_{cylFace.ParentCylinder.Id.ToString("N").Substring(0, 4)}";
+                code += $"var cylinder_{id} = new CylinderFeature(globalBaseCenter: {parentId}.GetFaceCenter(FaceType.{cylFace.SelectedFace}), globalDirection: {parentId}.GetFaceNormal(FaceType.{cylFace.SelectedFace}), radius: {cylFace.ParentCylinder.Radius.ToString(System.Globalization.CultureInfo.InvariantCulture)}, height: {value.ToString(System.Globalization.CultureInfo.InvariantCulture)});\n";
+                code += $"var boolOp_{id} = new BooleanFeature(\"Push/Pull\", {(value < 0 ? "BooleanOperationType.Subtract" : "BooleanOperationType.Union")}, {parentId}, new[] {{ cylinder_{id} }});\n";
             }
-            else if (_selectedProfile is ParametricCylinderFace paramCylFace)
+            else
             {
-                baseFeatureForBool = paramCylFace.ParentCylinder;
+                code += $"// TODO: Extrusão genérica de perfil 2D (Via VCB)\n";
             }
-
-            if (baseFeatureForBool != null)
-            {
-                var booleanFeature = new BooleanFeature(
-                    $"Push/Pull ({value:F1}mm)",
-                    value < 0 ? BooleanOperationType.Subtract : BooleanOperationType.Union,
-                    baseFeatureForBool,
-                    new[] { feature }
-                );
-                sketch.AddFeature(booleanFeature);
-            }
-
-            HideProfileAndEntities(sketch, _selectedProfile);
+            
+            CodeGenerated?.Invoke(this, code);
+            
             IsFinished = true;
         }
         Cancel();

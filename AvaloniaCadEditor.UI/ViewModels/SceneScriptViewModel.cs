@@ -28,10 +28,8 @@ public class SceneScriptViewModel : INotifyPropertyChanged
 
         GenerateCodeCommand = new RelayCommand(() => 
         {
-            var generator = new CsCodeGenerator();
-            GeneratedCSharpCode = generator.GenerateCode(_cadViewModel.Sketch, _cadViewModel.ActiveWorkPlane);
+            // O gerador foi castrado. O código agora é a fonte da verdade.
         });
-
         RunCodeCommand = new RelayCommand(async () =>
         {
             if (_sceneEvaluator == null)
@@ -103,5 +101,15 @@ public class SceneScriptViewModel : INotifyPropertyChanged
     protected virtual void OnPropertyChanged([CallerMemberName] string? propertyName = null)
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
+    }
+
+    public void AppendCode(string codeSnippet)
+    {
+        if (GeneratedCSharpCode.StartsWith("// Pressione"))
+        {
+            GeneratedCSharpCode = string.Empty;
+        }
+
+        GeneratedCSharpCode += codeSnippet;
     }
 }

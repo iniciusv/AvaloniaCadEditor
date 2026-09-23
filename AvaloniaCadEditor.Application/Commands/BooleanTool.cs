@@ -10,6 +10,7 @@ namespace AvaloniaCadEditor.Application.Commands;
 
 public class BooleanTool : ICommandTool, IDisposable
 {
+    public event EventHandler<string>? CodeGenerated;
     private readonly BooleanOperationType _operationType;
     private readonly ISelectionService _selectionService;
     private Sketch? _sketch;
@@ -109,3 +110,6 @@ public class BooleanTool : ICommandTool, IDisposable
         };
     }
 }
+
+
+
