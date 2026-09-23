@@ -124,7 +124,9 @@ public class SceneScriptViewModel : INotifyPropertyChanged
         foreach (var line in lines)
         {
             // Simple string matching to remove the declaration and AddFeature calls
+            // Also removes support variables like _verts, _plane, etc.
             if (line.TrimStart().StartsWith($"var {variableName} =") || 
+                line.TrimStart().StartsWith($"var {variableName}_") ||
                 line.TrimStart().StartsWith($"AddFeature({variableName})"))
             {
                 continue; // Skip this line

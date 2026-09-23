@@ -291,6 +291,13 @@ public class CadViewModel : INotifyPropertyChanged
                 var feature = System.Linq.Enumerable.FirstOrDefault(Sketch.Features, f => f.Id == selectedId.Value);
                 if (feature != null && feature is not AvaloniaCadEditor.Domain.Features.WorkPlaneFeature)
                 {
+                    if (feature is AvaloniaCadEditor.Domain.Features.BooleanFeature boolF)
+                    {
+                        foreach (var tool in boolF.ToolFeatures)
+                        {
+                            ScriptEditor.RemoveCodeForFeature(tool.Name);
+                        }
+                    }
                     ScriptEditor.RemoveCodeForFeature(feature.Name);
                     ScriptEditor.RunCodeCommand.Execute(null);
                     return;
