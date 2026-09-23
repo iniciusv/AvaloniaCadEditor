@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
+using System.Text;
 using AvaloniaCadEditor.Domain.Entities;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.Profiles;
@@ -43,32 +45,8 @@ public class ExtrudeCommand : ICommandTool
             if (_selectedProfile != null)
             {
                 double depth = Math.Abs(CurrentDepth) < 1e-3 ? 20.0 : CurrentDepth;
-                
-                string code = $"// Extrusão de {depth:F1}mm\n";
-                string id = Guid.NewGuid().ToString("N").Substring(0, 4);
-                
-                if (_selectedProfile is ParametricBoxFace boxFace)
-                {
-                    // Exemplo de como a ferramenta passa a apenas formatar C#
-                    string parentId = $"feature_{boxFace.ParentBox.Id.ToString("N").Substring(0, 4)}"; // (Em breve será varName)
-                    code += $"var box_{id} = new BoxFeature(globalCenter: {parentId}.GetFaceCenter(FaceType.{boxFace.SelectedFace}), width: {parentId}.GetFaceWidth(FaceType.{boxFace.SelectedFace}), length: {parentId}.GetFaceLength(FaceType.{boxFace.SelectedFace}), height: {depth.ToString(System.Globalization.CultureInfo.InvariantCulture)});\n";
-                    code += $"var boolOp_{id} = new BooleanFeature(\"Push/Pull\", {(CurrentDepth < 0 ? "BooleanOperationType.Subtract" : "BooleanOperationType.Union")}, {parentId}, new[] {{ box_{id} }});\n";
-                }
-                else if (_selectedProfile is ParametricCylinderFace cylFace)
-                {
-                    string parentId = $"feature_{cylFace.ParentCylinder.Id.ToString("N").Substring(0, 4)}";
-                    code += $"var cylinder_{id} = new CylinderFeature(globalBaseCenter: {parentId}.GetFaceCenter(FaceType.{cylFace.SelectedFace}), globalDirection: {parentId}.GetFaceNormal(FaceType.{cylFace.SelectedFace}), radius: {cylFace.ParentCylinder.Radius.ToString(System.Globalization.CultureInfo.InvariantCulture)}, height: {depth.ToString(System.Globalization.CultureInfo.InvariantCulture)});\n";
-                    code += $"var boolOp_{id} = new BooleanFeature(\"Push/Pull\", {(CurrentDepth < 0 ? "BooleanOperationType.Subtract" : "BooleanOperationType.Union")}, {parentId}, new[] {{ cylinder_{id} }});\n";
-                }
-                else
-                {
-                    code += $"// TODO: Extrusão genérica de perfil 2D\n";
-                }
-                
+                string code = GenerateExtrusionCode(_selectedProfile, depth, sketch);
                 CodeGenerated?.Invoke(this, code);
-                
-                // HideProfileAndEntities e manipulação do Sketch foram removidas.
-                // O estado agora viverá apenas no Editor de Código.
                 IsFinished = true;
             }
             Cancel();
@@ -78,7 +56,7 @@ public class ExtrudeCommand : ICommandTool
     public void StartDirectExtrusion(Sketch sketch, IProfile profile, Point3D startPoint)
     {
         _selectedProfile = profile;
-        _startPoint = startPoint; // Actually, for FaceProfile, we can just use the world point.
+        _startPoint = startPoint;
         StartPointWorld = startPoint;
         CurrentDepth = 20.0;
         _currentState = State.DefiningDepth;
@@ -192,46 +170,115 @@ public class ExtrudeCommand : ICommandTool
 
         if (_selectedProfile != null)
         {
-            string code = $"// Extrusão de {value:F1}mm (Via VCB)\n";
-            string id = Guid.NewGuid().ToString("N").Substring(0, 4);
-            
-            if (_selectedProfile is ParametricBoxFace boxFace)
-            {
-                string parentId = $"feature_{boxFace.ParentBox.Id.ToString("N").Substring(0, 4)}";
-                code += $"var box_{id} = new BoxFeature(globalCenter: {parentId}.GetFaceCenter(FaceType.{boxFace.SelectedFace}), width: {parentId}.GetFaceWidth(FaceType.{boxFace.SelectedFace}), length: {parentId}.GetFaceLength(FaceType.{boxFace.SelectedFace}), height: {value.ToString(System.Globalization.CultureInfo.InvariantCulture)});\n";
-                code += $"var boolOp_{id} = new BooleanFeature(\"Push/Pull\", {(value < 0 ? "BooleanOperationType.Subtract" : "BooleanOperationType.Union")}, {parentId}, new[] {{ box_{id} }});\n";
-            }
-            else if (_selectedProfile is ParametricCylinderFace cylFace)
-            {
-                string parentId = $"feature_{cylFace.ParentCylinder.Id.ToString("N").Substring(0, 4)}";
-                code += $"var cylinder_{id} = new CylinderFeature(globalBaseCenter: {parentId}.GetFaceCenter(FaceType.{cylFace.SelectedFace}), globalDirection: {parentId}.GetFaceNormal(FaceType.{cylFace.SelectedFace}), radius: {cylFace.ParentCylinder.Radius.ToString(System.Globalization.CultureInfo.InvariantCulture)}, height: {value.ToString(System.Globalization.CultureInfo.InvariantCulture)});\n";
-                code += $"var boolOp_{id} = new BooleanFeature(\"Push/Pull\", {(value < 0 ? "BooleanOperationType.Subtract" : "BooleanOperationType.Union")}, {parentId}, new[] {{ cylinder_{id} }});\n";
-            }
-            else
-            {
-                code += $"// TODO: Extrusão genérica de perfil 2D (Via VCB)\n";
-            }
-            
+            string code = GenerateExtrusionCode(_selectedProfile, value, sketch);
             CodeGenerated?.Invoke(this, code);
-            
             IsFinished = true;
         }
         Cancel();
     }
 
-    private void HideProfileAndEntities(Sketch sketch, IProfile profile)
+    private string GenerateExtrusionCode(IProfile profile, double depth, Sketch? sketch)
     {
-        profile.IsVisible = false;
-        if (profile is FaceProfile || profile is ParametricBoxFace || profile is ParametricCylinderFace) return;
+        var sb = new StringBuilder();
+        string id = Guid.NewGuid().ToString("N").Substring(0, 4);
+        string depthStr = depth.ToString(CultureInfo.InvariantCulture);
 
-        foreach (var entityId in profile.SourceEntityIds)
+        if (profile is ParametricBoxFace boxFace)
         {
-            var entity = sketch.Entities.FirstOrDefault(e => e.Id == entityId);
-            if (entity != null)
+            string parentId = string.IsNullOrEmpty(boxFace.ParentBox.Name)
+                ? $"feature_{boxFace.ParentBox.Id.ToString("N").Substring(0, 4)}"
+                : boxFace.ParentBox.Name;
+
+            string boxVar = $"box_{id}";
+            string boolVar = $"boolOp_{id}";
+
+            sb.AppendLine($"var {boxVar} = new BoxFeature(baseCorner: {parentId}.GetFaceCorner(FaceType.{boxFace.SelectedFace}), width: {parentId}.GetFaceWidth(FaceType.{boxFace.SelectedFace}), length: {parentId}.GetFaceLength(FaceType.{boxFace.SelectedFace}), height: {depthStr}) {{ Name = \"{boxVar}\" }};");
+            sb.AppendLine($"{boxVar}.AlignToFace({parentId}, FaceType.{boxFace.SelectedFace});");
+            sb.AppendLine($"AddFeature({boxVar});");
+            sb.AppendLine($"var {boolVar} = new BooleanFeature(\"Push/Pull\", {(depth < 0 ? "BooleanOperationType.Subtract" : "BooleanOperationType.Union")}, {parentId}, new[] {{ {boxVar} }}) {{ Name = \"{boolVar}\" }};");
+            sb.AppendLine($"AddFeature({boolVar});");
+        }
+        else if (profile is ParametricCylinderFace cylFace)
+        {
+            string parentId = string.IsNullOrEmpty(cylFace.ParentCylinder.Name)
+                ? $"feature_{cylFace.ParentCylinder.Id.ToString("N").Substring(0, 4)}"
+                : cylFace.ParentCylinder.Name;
+
+            string cylVar = $"cylinder_{id}";
+            string boolVar = $"boolOp_{id}";
+
+            sb.AppendLine($"var {cylVar} = new CylinderFeature(globalBaseCenter: {parentId}.GetFaceCenter(FaceType.{cylFace.SelectedFace}), globalDirection: {parentId}.GetFaceNormal(FaceType.{cylFace.SelectedFace}), radius: {cylFace.ParentCylinder.Radius.ToString(CultureInfo.InvariantCulture)}, height: {depthStr}) {{ Name = \"{cylVar}\" }};");
+            sb.AppendLine($"AddFeature({cylVar});");
+            sb.AppendLine($"var {boolVar} = new BooleanFeature(\"Push/Pull\", {(depth < 0 ? "BooleanOperationType.Subtract" : "BooleanOperationType.Union")}, {parentId}, new[] {{ {cylVar} }}) {{ Name = \"{boolVar}\" }};");
+            sb.AppendLine($"AddFeature({boolVar});");
+        }
+        else if (profile is CircleProfile circleProfile)
+        {
+            string cylVar = $"cylinder_{id}";
+            var center = circleProfile.Plane.ToWorldSpace(circleProfile.Center);
+            var normal = circleProfile.Normal;
+            sb.AppendLine($"var {cylVar} = new CylinderFeature(globalBaseCenter: new Point3D({center.X.ToString(CultureInfo.InvariantCulture)}, {center.Y.ToString(CultureInfo.InvariantCulture)}, {center.Z.ToString(CultureInfo.InvariantCulture)}), globalDirection: new Vector3D({normal.X.ToString(CultureInfo.InvariantCulture)}, {normal.Y.ToString(CultureInfo.InvariantCulture)}, {normal.Z.ToString(CultureInfo.InvariantCulture)}), radius: {circleProfile.Radius.ToString(CultureInfo.InvariantCulture)}, height: {depthStr}) {{ Name = \"{cylVar}\" }};");
+            sb.AppendLine($"AddFeature({cylVar});");
+        }
+        else if (profile is RectangleProfile rectProfile)
+        {
+            string boxVar = $"box_{id}";
+            double cos = Math.Cos(rectProfile.RotationAngle);
+            double sin = Math.Sin(rectProfile.RotationAngle);
+            var dirX = rectProfile.Plane.XAxis * cos + rectProfile.Plane.YAxis * sin;
+            var dirY = rectProfile.Plane.XAxis * (-sin) + rectProfile.Plane.YAxis * cos;
+            var dirZ = rectProfile.Plane.Normal;
+            
+            double hw = rectProfile.Width / 2.0;
+            double hh = rectProfile.Height / 2.0;
+            double cx = -hw * cos - (-hh) * sin;
+            double cy = -hw * sin + (-hh) * cos;
+            var localCorner = new Point3D(rectProfile.Center.X + cx, rectProfile.Center.Y + cy, rectProfile.Center.Z);
+            var corner = rectProfile.Plane.ToWorldSpace(localCorner);
+
+            sb.AppendLine($"var {boxVar} = new BoxFeature(baseCorner: new Point3D({corner.X.ToString(CultureInfo.InvariantCulture)}, {corner.Y.ToString(CultureInfo.InvariantCulture)}, {corner.Z.ToString(CultureInfo.InvariantCulture)}), width: {rectProfile.Width.ToString(CultureInfo.InvariantCulture)}, length: {rectProfile.Height.ToString(CultureInfo.InvariantCulture)}, height: {depthStr}) {{ Name = \"{boxVar}\", DirectionX = new Vector3D({dirX.X.ToString(CultureInfo.InvariantCulture)}, {dirX.Y.ToString(CultureInfo.InvariantCulture)}, {dirX.Z.ToString(CultureInfo.InvariantCulture)}), DirectionY = new Vector3D({dirY.X.ToString(CultureInfo.InvariantCulture)}, {dirY.Y.ToString(CultureInfo.InvariantCulture)}, {dirY.Z.ToString(CultureInfo.InvariantCulture)}), DirectionZ = new Vector3D({dirZ.X.ToString(CultureInfo.InvariantCulture)}, {dirZ.Y.ToString(CultureInfo.InvariantCulture)}, {dirZ.Z.ToString(CultureInfo.InvariantCulture)}) }};");
+            sb.AppendLine($"AddFeature({boxVar});");
+        }
+        else
+        {
+            var verts = profile.GetVertices();
+            if (verts.Count > 0)
             {
-                entity.IsVisible = false;
+                var localVerts = verts.Select(v => profile.Plane.ToLocalSpace(v)).ToList();
+                double minX = localVerts.Min(v => v.X);
+                double maxX = localVerts.Max(v => v.X);
+                double minY = localVerts.Min(v => v.Y);
+                double maxY = localVerts.Max(v => v.Y);
+                double minZ = localVerts.Min(v => v.Z);
+                double maxZ = localVerts.Max(v => v.Z);
+
+                double width = Math.Max(0.1, maxX - minX);
+                double length = Math.Max(0.1, maxY - minY);
+                Point3D localCorner = new Point3D(minX, minY, minZ);
+                Point3D corner = profile.Plane.ToWorldSpace(localCorner);
+
+                string boxVar = $"box_{id}";
+                var dirX = profile.Plane.XAxis;
+                var dirY = profile.Plane.YAxis;
+                var dirZ = profile.Plane.Normal;
+                sb.AppendLine($"var {boxVar} = new BoxFeature(baseCorner: new Point3D({corner.X.ToString(CultureInfo.InvariantCulture)}, {corner.Y.ToString(CultureInfo.InvariantCulture)}, {corner.Z.ToString(CultureInfo.InvariantCulture)}), width: {width.ToString(CultureInfo.InvariantCulture)}, length: {length.ToString(CultureInfo.InvariantCulture)}, height: {depthStr}) {{ Name = \"{boxVar}\", DirectionX = new Vector3D({dirX.X.ToString(CultureInfo.InvariantCulture)}, {dirX.Y.ToString(CultureInfo.InvariantCulture)}, {dirX.Z.ToString(CultureInfo.InvariantCulture)}), DirectionY = new Vector3D({dirY.X.ToString(CultureInfo.InvariantCulture)}, {dirY.Y.ToString(CultureInfo.InvariantCulture)}, {dirY.Z.ToString(CultureInfo.InvariantCulture)}), DirectionZ = new Vector3D({dirZ.X.ToString(CultureInfo.InvariantCulture)}, {dirZ.Y.ToString(CultureInfo.InvariantCulture)}, {dirZ.Z.ToString(CultureInfo.InvariantCulture)}) }};");
+                sb.AppendLine($"AddFeature({boxVar});");
             }
         }
+
+        if (sketch != null && !(profile is FaceProfile || profile is ParametricBoxFace || profile is ParametricCylinderFace))
+        {
+            foreach (var entityId in profile.SourceEntityIds)
+            {
+                var entity = sketch.Entities.FirstOrDefault(e => e.Id == entityId);
+                if (entity != null)
+                {
+                    sketch.RemoveEntity(entity);
+                }
+            }
+        }
+
+        return sb.ToString();
     }
 
     public string GetMeasurementText()
@@ -245,7 +292,6 @@ public class ExtrudeCommand : ICommandTool
 
     private static IProfile? FindProfileAtPoint(Sketch sketch, Point3D point)
     {
-        // Simple bounding check or distance to center
         return sketch.Profiles
             .Where(p => p.IsVisible && !(p is FaceProfile))
             .OrderBy(p => p.Center.DistanceTo(point))

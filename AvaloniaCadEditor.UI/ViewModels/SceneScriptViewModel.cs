@@ -42,11 +42,12 @@ public class SceneScriptViewModel : INotifyPropertyChanged
             if (result.Success)
             {
                 _cadViewModel.MeshManager.ClearCache();
-                _cadViewModel.Sketch.Clear();
+                _cadViewModel.Sketch.ClearFeatures();
                 foreach (var feature in result.Features)
                 {
                     _cadViewModel.Sketch.AddFeature(feature);
                 }
+                _cadViewModel.ModelTree.RebuildTree();
                 _cadViewModel.RefreshProfiles();
                 _cadViewModel.StatusText = $"✓ Código executado: {result.Features.Count} feature(s)";
             }

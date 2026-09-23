@@ -134,15 +134,21 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
 
     private OcctShape BuildCylinder(CylinderFeature cyl, TessellationSettings settings)
     {
-        var profile = new AvaloniaCadEditor.Domain.Profiles.CircleProfile(cyl.GlobalBaseCenter, cyl.Radius);
+        var plane = new WorkPlane(cyl.GlobalDirection, cyl.GlobalBaseCenter);
+        var profile = new AvaloniaCadEditor.Domain.Profiles.CircleProfile(Point3D.Origin, cyl.Radius, plane: plane);
         var extrude = new ExtrudeFeature(profile, cyl.Height, cyl.GlobalDirection * cyl.Height);
         return BuildExtrude(extrude, settings);
     }
 
     private OcctShape BuildBox(BoxFeature box, TessellationSettings settings)
     {
-        var plane = new WorkPlane(box.GlobalCenter, box.DirectionZ, box.DirectionX);
-        var profile = new AvaloniaCadEditor.Domain.Profiles.RectangleProfile(box.GlobalCenter, box.Width, box.Length, 0.0, box.DirectionZ, null, plane);
+        Point3D bottomCenter = new Point3D(
+            box.BaseCorner.X + box.DirectionX.X * (box.Width / 2.0) + box.DirectionY.X * (box.Length / 2.0),
+            box.BaseCorner.Y + box.DirectionX.Y * (box.Width / 2.0) + box.DirectionY.Y * (box.Length / 2.0),
+            box.BaseCorner.Z + box.DirectionX.Z * (box.Width / 2.0) + box.DirectionY.Z * (box.Length / 2.0)
+        );
+        var plane = new WorkPlane(bottomCenter, box.DirectionZ, box.DirectionX);
+        var profile = new AvaloniaCadEditor.Domain.Profiles.RectangleProfile(Point3D.Origin, box.Width, box.Length, 0.0, box.DirectionZ, null, plane);
         var extrude = new ExtrudeFeature(profile, box.Height, box.DirectionZ * box.Height);
         return BuildExtrude(extrude, settings);
     }

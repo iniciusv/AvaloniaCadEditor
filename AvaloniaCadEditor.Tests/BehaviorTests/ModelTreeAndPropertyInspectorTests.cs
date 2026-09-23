@@ -31,27 +31,9 @@ public class ModelTreeAndPropertyInspectorTests
 
         treeVm.BindSketch(sketch);
 
-        // Assert
-        Assert.Equal(2, treeVm.RootNodes.Count);
-        
-        var refGroup = treeVm.RootNodes[0];
-        Assert.Single(refGroup.Children); // Plano Base
-        var wpNode = refGroup.Children[0];
-        Assert.Single(wpNode.Children); // Esboço
-        var sketchNode = wpNode.Children[0];
-        Assert.Equal(2, sketchNode.Children.Count); // Perfis e Entidades
-
-        var profilesGroup = sketchNode.Children[0];
-        Assert.Single(profilesGroup.Children);
-        Assert.Equal(circleProfile.Id, profilesGroup.Children[0].Id);
-
-        var entitiesGroup = sketchNode.Children[1];
-        Assert.Single(entitiesGroup.Children);
-
-        var featuresGroup = treeVm.RootNodes[1];
-        Assert.Single(featuresGroup.Children); // The new ExtrudeFeature
-        Assert.NotNull(featuresGroup.Children[0].Icon);
-        Assert.Equal(cylinderFeature.Id, featuresGroup.Children[0].Id);
+        // Assert: ModelTree only contains WorkPlanes (default 1)
+        Assert.Single(treeVm.RootNodes);
+        Assert.Equal("Plano Base (XY)", treeVm.RootNodes[0].Name);
     }
 
     [Fact]
@@ -96,33 +78,26 @@ public class ModelTreeAndPropertyInspectorTests
         var selectionService = new SelectionService();
         var treeVm = new ModelTreeViewModel(selectionService);
         var sketch = new Sketch();
-
-        var circleProfile = new CircleProfile(new Point3D(0, 0, 0), 10.0);
-        var cylinder = new ExtrudeFeature(circleProfile, 30.0);
-        sketch.AddFeature(cylinder);
+        var wp = sketch.WorkPlanes[0];
 
         treeVm.BindSketch(sketch);
 
         // Act 1: Select via Tree Node
-        var featureNode = treeVm.RootNodes[1].Children[0];
-        treeVm.SelectedNode = featureNode;
+        var wpNode = treeVm.RootNodes[0];
+        treeVm.SelectedNode = wpNode;
 
         // Assert 1
-        Assert.True(cylinder.IsSelected);
-        Assert.Equal(cylinder.Id, selectionService.SelectedId);
-        Assert.Equal(SelectionType.Feature, selectionService.CurrentSelectionType);
+        Assert.Equal(wp.Id, selectionService.SelectedId);
 
-        // Act 2: Select via SelectionService directly (e.g. from 3D Viewport raycast)
+        // Act 2: Select via SelectionService directly
         selectionService.ClearSelection(sketch);
-        Assert.False(cylinder.IsSelected);
         Assert.Null(treeVm.SelectedNode);
 
-        selectionService.SelectById(sketch, cylinder.Id);
+        selectionService.SelectById(sketch, wp.Id);
 
         // Assert 2
-        Assert.True(cylinder.IsSelected);
         Assert.NotNull(treeVm.SelectedNode);
-        Assert.Equal(cylinder.Id, treeVm.SelectedNode.Id);
+        Assert.Equal(wp.Id, treeVm.SelectedNode.Id);
     }
 
     [Fact]

@@ -76,8 +76,8 @@ public class BooleanBehaviorTests
         vm.OnKeyDown("D3"); vm.OnKeyDown("D0"); vm.OnKeyDown("Return");
 
         // Assert: Setup is correct
-        var extrudes = vm.Sketch.Features.OfType<ExtrudeFeature>().ToList();
-        extrudes.Should().HaveCount(2);
+        var cylinders = vm.Sketch.Features.OfType<CylinderFeature>().ToList();
+        cylinders.Should().HaveCount(2);
 
         // Act - Passo 5: Boolean Cut
         vm.SelectBooleanCutCommand.Execute(null);
@@ -87,18 +87,18 @@ public class BooleanBehaviorTests
         booleanTool.OnMouseDown(vm.Sketch, Point3D.Origin);
 
         // Selecionar Base (Cilindro 1) via SelectionService (Option B)
-        selectionService.SelectFeature(extrudes[0]);
+        selectionService.SelectFeature(cylinders[0]);
 
         // Clicar no Cilindro 2 para usá-lo como ferramenta (via SelectionService como a UI faria)
-        selectionService.SelectFeature(extrudes[1]);
+        selectionService.SelectFeature(cylinders[1]);
 
         // Assert: Boolean Feature created
         var booleanFeatures = vm.Sketch.Features.OfType<BooleanFeature>().ToList();
         booleanFeatures.Should().ContainSingle();
         var cutFeature = booleanFeatures.Single();
         cutFeature.Operation.Should().Be(BooleanOperationType.Subtract);
-        cutFeature.BaseFeature.Should().Be(extrudes[0]);
-        cutFeature.ToolFeatures.Should().ContainSingle().Which.Should().Be(extrudes[1]);
+        cutFeature.BaseFeature.Should().Be(cylinders[0]);
+        cutFeature.ToolFeatures.Should().ContainSingle().Which.Should().Be(cylinders[1]);
     }
 
     [Fact]

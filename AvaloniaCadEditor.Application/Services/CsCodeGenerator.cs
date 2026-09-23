@@ -177,7 +177,20 @@ public class CsCodeGenerator
             }
             else
             {
-                sb.AppendLine($"var {varName} = new BoxFeature(globalCenter: new Point3D({Fmt(rect.Center.X)}, {Fmt(rect.Center.Y)}, {Fmt(rect.Center.Z)}), width: {Fmt(rect.Width)}, length: {Fmt(rect.Height)}, height: {Fmt(extrude.Depth)});");
+                double hw = rect.Width / 2.0;
+                double hh = rect.Height / 2.0;
+                double cos = Math.Cos(rect.RotationAngle);
+                double sin = Math.Sin(rect.RotationAngle);
+                double cx = -hw * cos - (-hh) * sin;
+                double cy = -hw * sin + (-hh) * cos;
+                var localCorner = new Point3D(rect.Center.X + cx, rect.Center.Y + cy, rect.Center.Z);
+                var corner = rect.Plane.ToWorldSpace(localCorner);
+                sb.AppendLine($"var {varName} = new BoxFeature(baseCorner: new Point3D({Fmt(corner.X)}, {Fmt(corner.Y)}, {Fmt(corner.Z)}), width: {Fmt(rect.Width)}, length: {Fmt(rect.Height)}, height: {Fmt(extrude.Depth)})");
+                sb.AppendLine($"{{");
+                sb.AppendLine($"    DirectionX = new Vector3D({Fmt(rect.Plane.XAxis.X)}, {Fmt(rect.Plane.XAxis.Y)}, {Fmt(rect.Plane.XAxis.Z)}),");
+                sb.AppendLine($"    DirectionY = new Vector3D({Fmt(rect.Plane.YAxis.X)}, {Fmt(rect.Plane.YAxis.Y)}, {Fmt(rect.Plane.YAxis.Z)}),");
+                sb.AppendLine($"    DirectionZ = new Vector3D({Fmt(rect.Plane.Normal.X)}, {Fmt(rect.Plane.Normal.Y)}, {Fmt(rect.Plane.Normal.Z)})");
+                sb.AppendLine($"}};");
             }
         }
         else if (extrude.Profile is ParametricBoxFace paramBox)
@@ -189,7 +202,7 @@ public class CsCodeGenerator
             string parentVar = featureNames.ContainsKey(paramBox.ParentBox.Id) ? featureNames[paramBox.ParentBox.Id] : "null";
             
             sb.AppendLine($"// Procedural CSG: Anchored to {parentVar}'s {paramBox.SelectedFace} face");
-            sb.AppendLine($"var {varName} = new BoxFeature(globalCenter: {parentVar}.GetFaceCenter(FaceType.{paramBox.SelectedFace}), width: {parentVar}.GetFaceWidth(FaceType.{paramBox.SelectedFace}), length: {parentVar}.GetFaceLength(FaceType.{paramBox.SelectedFace}), height: {Fmt(extrude.Depth)})");
+            sb.AppendLine($"var {varName} = new BoxFeature(baseCorner: {parentVar}.GetFaceCorner(FaceType.{paramBox.SelectedFace}), width: {parentVar}.GetFaceWidth(FaceType.{paramBox.SelectedFace}), length: {parentVar}.GetFaceLength(FaceType.{paramBox.SelectedFace}), height: {Fmt(extrude.Depth)})");
             sb.AppendLine($"{{");
             sb.AppendLine($"    DirectionX = {parentVar}.GetFaceDirectionX(FaceType.{paramBox.SelectedFace}),");
             sb.AppendLine($"    DirectionY = {parentVar}.GetFaceDirectionY(FaceType.{paramBox.SelectedFace}),");
@@ -265,7 +278,7 @@ public class CsCodeGenerator
         string varName = $"box_{boxCount++}";
         featureNames[box.Id] = varName;
         
-        sb.AppendLine($"var {varName} = new BoxFeature(globalCenter: new Point3D({Fmt(box.GlobalCenter.X)}, {Fmt(box.GlobalCenter.Y)}, {Fmt(box.GlobalCenter.Z)}), width: {Fmt(box.Width)}, length: {Fmt(box.Length)}, height: {Fmt(box.Height)})");
+        sb.AppendLine($"var {varName} = new BoxFeature(baseCorner: new Point3D({Fmt(box.BaseCorner.X)}, {Fmt(box.BaseCorner.Y)}, {Fmt(box.BaseCorner.Z)}), width: {Fmt(box.Width)}, length: {Fmt(box.Length)}, height: {Fmt(box.Height)})");
         sb.AppendLine($"{{");
         sb.AppendLine($"    DirectionX = new Vector3D({Fmt(box.DirectionX.X)}, {Fmt(box.DirectionX.Y)}, {Fmt(box.DirectionX.Z)}),");
         sb.AppendLine($"    DirectionY = new Vector3D({Fmt(box.DirectionY.X)}, {Fmt(box.DirectionY.Y)}, {Fmt(box.DirectionY.Z)}),");

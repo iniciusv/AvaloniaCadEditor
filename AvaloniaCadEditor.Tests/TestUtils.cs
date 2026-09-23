@@ -34,7 +34,7 @@ public static class TestUtils
             selService,
             settingsProvider);
             
-        vm.ScriptEditor = new SceneScriptViewModel(vm, null, null);
+        vm.ScriptEditor = new SceneScriptViewModel(vm, new AvaloniaCadEditor.Infrastructure.Scripting.RoslynSceneEvaluator(), null);
         return vm;
     }
 }

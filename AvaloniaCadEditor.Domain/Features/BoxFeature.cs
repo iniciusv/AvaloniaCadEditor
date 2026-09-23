@@ -6,7 +6,7 @@ namespace AvaloniaCadEditor.Domain.Features;
 public class BoxFeature : FeatureBase
 {
     // Defined in global coordinates
-    public Point3D GlobalCenter { get; set; }
+    public Point3D BaseCorner { get; set; }
     public double Width { get; set; }  // X size
     public double Length { get; set; } // Y size
     public double Height { get; set; } // Z size
@@ -16,9 +16,9 @@ public class BoxFeature : FeatureBase
     public Vector3D DirectionY { get; set; } = new Vector3D(0, 1, 0);
     public Vector3D DirectionZ { get; set; } = new Vector3D(0, 0, 1);
 
-    public BoxFeature(Point3D globalCenter, double width, double length, double height, string? name = null)
+    public BoxFeature(Point3D baseCorner, double width, double length, double height, string? name = null)
     {
-        GlobalCenter = globalCenter;
+        BaseCorner = baseCorner;
         Width = width;
         Length = length;
         Height = height;
@@ -27,16 +27,36 @@ public class BoxFeature : FeatureBase
 
     public Point3D GetFaceCenter(FaceType faceType)
     {
+        Point3D bottomCenter = new Point3D(
+            BaseCorner.X + DirectionX.X * (Width / 2.0) + DirectionY.X * (Length / 2.0),
+            BaseCorner.Y + DirectionX.Y * (Width / 2.0) + DirectionY.Y * (Length / 2.0),
+            BaseCorner.Z + DirectionX.Z * (Width / 2.0) + DirectionY.Z * (Length / 2.0)
+        );
+
         return faceType switch
         {
-            FaceType.Bottom => GlobalCenter,
-            FaceType.Top => new Point3D(GlobalCenter.X + DirectionZ.X * Height, GlobalCenter.Y + DirectionZ.Y * Height, GlobalCenter.Z + DirectionZ.Z * Height),
-            FaceType.Front => new Point3D(GlobalCenter.X - DirectionY.X * (Length / 2.0) + DirectionZ.X * (Height / 2.0), GlobalCenter.Y - DirectionY.Y * (Length / 2.0) + DirectionZ.Y * (Height / 2.0), GlobalCenter.Z - DirectionY.Z * (Length / 2.0) + DirectionZ.Z * (Height / 2.0)),
-            FaceType.Back => new Point3D(GlobalCenter.X + DirectionY.X * (Length / 2.0) + DirectionZ.X * (Height / 2.0), GlobalCenter.Y + DirectionY.Y * (Length / 2.0) + DirectionZ.Y * (Height / 2.0), GlobalCenter.Z + DirectionY.Z * (Length / 2.0) + DirectionZ.Z * (Height / 2.0)),
-            FaceType.Right => new Point3D(GlobalCenter.X + DirectionX.X * (Width / 2.0) + DirectionZ.X * (Height / 2.0), GlobalCenter.Y + DirectionX.Y * (Width / 2.0) + DirectionZ.Y * (Height / 2.0), GlobalCenter.Z + DirectionX.Z * (Width / 2.0) + DirectionZ.Z * (Height / 2.0)),
-            FaceType.Left => new Point3D(GlobalCenter.X - DirectionX.X * (Width / 2.0) + DirectionZ.X * (Height / 2.0), GlobalCenter.Y - DirectionX.Y * (Width / 2.0) + DirectionZ.Y * (Height / 2.0), GlobalCenter.Z - DirectionX.Z * (Width / 2.0) + DirectionZ.Z * (Height / 2.0)),
-            _ => GlobalCenter
+            FaceType.Bottom => bottomCenter,
+            FaceType.Top => new Point3D(bottomCenter.X + DirectionZ.X * Height, bottomCenter.Y + DirectionZ.Y * Height, bottomCenter.Z + DirectionZ.Z * Height),
+            FaceType.Front => new Point3D(bottomCenter.X - DirectionY.X * (Length / 2.0) + DirectionZ.X * (Height / 2.0), bottomCenter.Y - DirectionY.Y * (Length / 2.0) + DirectionZ.Y * (Height / 2.0), bottomCenter.Z - DirectionY.Z * (Length / 2.0) + DirectionZ.Z * (Height / 2.0)),
+            FaceType.Back => new Point3D(bottomCenter.X + DirectionY.X * (Length / 2.0) + DirectionZ.X * (Height / 2.0), bottomCenter.Y + DirectionY.Y * (Length / 2.0) + DirectionZ.Y * (Height / 2.0), bottomCenter.Z + DirectionY.Z * (Length / 2.0) + DirectionZ.Z * (Height / 2.0)),
+            FaceType.Right => new Point3D(bottomCenter.X + DirectionX.X * (Width / 2.0) + DirectionZ.X * (Height / 2.0), bottomCenter.Y + DirectionX.Y * (Width / 2.0) + DirectionZ.Y * (Height / 2.0), bottomCenter.Z + DirectionX.Z * (Width / 2.0) + DirectionZ.Z * (Height / 2.0)),
+            FaceType.Left => new Point3D(bottomCenter.X - DirectionX.X * (Width / 2.0) + DirectionZ.X * (Height / 2.0), bottomCenter.Y - DirectionX.Y * (Width / 2.0) + DirectionZ.Y * (Height / 2.0), bottomCenter.Z - DirectionX.Z * (Width / 2.0) + DirectionZ.Z * (Height / 2.0)),
+            _ => bottomCenter
         };
+    }
+
+    public Point3D GetFaceCorner(FaceType faceType)
+    {
+        Point3D faceCenter = GetFaceCenter(faceType);
+        Vector3D dirX = GetFaceDirectionX(faceType);
+        Vector3D dirY = GetFaceDirectionY(faceType);
+        double w = GetFaceWidth(faceType);
+        double l = GetFaceLength(faceType);
+        return new Point3D(
+            faceCenter.X - dirX.X * (w / 2.0) - dirY.X * (l / 2.0),
+            faceCenter.Y - dirX.Y * (w / 2.0) - dirY.Y * (l / 2.0),
+            faceCenter.Z - dirX.Z * (w / 2.0) - dirY.Z * (l / 2.0)
+        );
     }
 
     public Vector3D GetFaceNormal(FaceType faceType)

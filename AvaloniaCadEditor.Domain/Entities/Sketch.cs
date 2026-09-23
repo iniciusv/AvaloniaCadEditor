@@ -85,10 +85,16 @@ public class Sketch
         _features.Remove(feature);
     }
 
+    public void ClearFeatures()
+    {
+        _features.Clear();
+    }
+
     public void Clear()
     {
         if (_workPlanes.Count > 0) _workPlanes[0].Sketch.Clear();
         _workPlanes.Clear();
         _features.Clear();
+        _workPlanes.Add(new WorkPlaneFeature(Plane, "Plano Base (XY)", true));
     }
 }

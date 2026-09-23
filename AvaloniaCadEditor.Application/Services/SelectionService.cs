@@ -49,6 +49,16 @@ public class SelectionService : ISelectionService
             return;
         }
 
+        // 0. Search in WorkPlanes
+        var wp = sketch.WorkPlanes.FirstOrDefault(w => w.Id == id.Value);
+        if (wp != null)
+        {
+            UnselectAllInSketch(sketch);
+            wp.IsSelected = true;
+            SelectFeature(wp);
+            return;
+        }
+
         // 1. Search in Features
         var feature = sketch.Features.FirstOrDefault(f => f.Id == id.Value);
         if (feature != null)
@@ -98,6 +108,7 @@ public class SelectionService : ISelectionService
 
     private void UnselectAllInSketch(Sketch sketch)
     {
+        foreach (var w in sketch.WorkPlanes) w.IsSelected = false;
         foreach (var f in sketch.Features) f.IsSelected = false;
         foreach (var p in sketch.Profiles) p.IsSelected = false;
         foreach (var e in sketch.Entities) e.IsSelected = false;

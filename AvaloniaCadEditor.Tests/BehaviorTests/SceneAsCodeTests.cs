@@ -155,7 +155,7 @@ public class SceneAsCodeTests
         System.Console.WriteLine("Código Gerado:\n" + code);
 
         // 5. Verifica se o código usa lógica procedural (referencia a FaceType.Top e dimensões)
-        code.Should().Contain("GetFaceCenter(FaceType.Top)");
+        code.Should().Contain("GetFaceCorner(FaceType.Top)");
         code.Should().Contain("GetFaceWidth(FaceType.Top)");
         code.Should().Contain("GetFaceLength(FaceType.Top)");
 
@@ -175,8 +175,8 @@ public class SceneAsCodeTests
         
         // A nova caixa no topo deve ter centro Z deslocado (base 30 de altura, topo em 30. Centro Z da base era 0, Z do topo é 30. + altura 15 = centro da nova caixa na verdade o GetFaceCenter do Top da caixa original base center 0 com altura 30 é z = 30)
         // Wait, if base center is 0, height is 30. GetFaceCenter(Top) returns Z=30.
-        // A nova caixa vai ter GlobalCenter no topo da velha (Z=30). E ela própria é extrudada a partir dali. 
-        topBox!.GlobalCenter.Z.Should().Be(30.0);
+        // A nova caixa vai ter BaseCorner no topo da velha (Z=30). E ela própria é extrudada a partir dali. 
+        topBox!.BaseCorner.Z.Should().Be(30.0);
         topBox.Width.Should().Be(30.0);
         topBox.Length.Should().Be(30.0);
         topBox.Height.Should().Be(15.0);

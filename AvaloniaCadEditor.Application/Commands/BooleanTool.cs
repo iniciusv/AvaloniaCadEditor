@@ -65,11 +65,12 @@ public class BooleanTool : ICommandTool, IDisposable
         if (_baseFeature != null && _toolFeature != null)
         {
             string name = $"{_operationType} ({_baseFeature.Name}, {_toolFeature.Name})";
-            var booleanFeature = new BooleanFeature(name, _operationType, _baseFeature, new[] { _toolFeature });
-            sketch.AddFeature(booleanFeature);
+            string id = Guid.NewGuid().ToString("N").Substring(0, 4);
+            string boolVar = $"boolOp_{id}";
+            string code = $"var {boolVar} = new BooleanFeature(name: \"{name}\", operation: BooleanOperationType.{_operationType}, baseFeature: {_baseFeature.Name}, toolFeatures: new IFeature[] {{ {_toolFeature.Name} }});\r\nAddFeature({boolVar});";
             
+            CodeGenerated?.Invoke(this, code);
             Cancel();
-            _selectionService.SelectFeature(booleanFeature);
         }
     }
 
