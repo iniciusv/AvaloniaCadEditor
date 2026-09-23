@@ -23,6 +23,21 @@ public class BooleanFeature : FeatureBase
             tool.IsVisible = false;
         }
     }
+    
+    public static BooleanFeature CreateUnion(string name, IFeature baseFeature, params IFeature[] toolFeatures)
+    {
+        return new BooleanFeature(name, BooleanOperationType.Union, baseFeature, toolFeatures);
+    }
+    
+    public static BooleanFeature CreateDifference(string name, IFeature baseFeature, params IFeature[] toolFeatures)
+    {
+        return new BooleanFeature(name, BooleanOperationType.Subtract, baseFeature, toolFeatures);
+    }
+    
+    public static BooleanFeature CreateIntersection(string name, IFeature baseFeature, params IFeature[] toolFeatures)
+    {
+        return new BooleanFeature(name, BooleanOperationType.Intersect, baseFeature, toolFeatures);
+    }
 
     public void AddToolFeature(IFeature feature)
     {

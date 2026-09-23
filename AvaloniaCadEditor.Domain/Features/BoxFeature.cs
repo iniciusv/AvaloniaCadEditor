@@ -114,6 +114,19 @@ public class BoxFeature : FeatureBase
         DirectionY = parentBox.GetFaceDirectionY(faceType);
     }
 
+    public BoxFeature CreateExtrusion(FaceType faceType, double extrusionHeight, string? name = null)
+    {
+        var extrudedBox = new BoxFeature(
+            GetFaceCorner(faceType),
+            GetFaceWidth(faceType),
+            GetFaceLength(faceType),
+            extrusionHeight,
+            name);
+            
+        extrudedBox.AlignToFace(this, faceType);
+        return extrudedBox;
+    }
+
     public Vector3D GetFaceDirectionX(FaceType faceType)
     {
         return faceType switch

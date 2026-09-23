@@ -13,6 +13,10 @@ public readonly struct Vector3D : IEquatable<Vector3D>
         Z = z;
     }
 
+    public static Vector3D UnitX => new Vector3D(1, 0, 0);
+    public static Vector3D UnitY => new Vector3D(0, 1, 0);
+    public static Vector3D UnitZ => new Vector3D(0, 0, 1);
+
     public double Length => Math.Sqrt(X * X + Y * Y + Z * Z);
 
     public Vector3D Normalize()
