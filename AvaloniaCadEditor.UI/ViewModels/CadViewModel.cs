@@ -181,6 +181,42 @@ public class CadViewModel : INotifyPropertyChanged
         set { _currentSnappedPoint = value; OnPropertyChanged(); }
     }
 
+    public enum TargetSelectionMode { Feature, Face }
+    
+    private TargetSelectionMode _currentSelectionMode = TargetSelectionMode.Feature;
+    public TargetSelectionMode CurrentSelectionMode
+    {
+        get => _currentSelectionMode;
+        set 
+        { 
+            _currentSelectionMode = value; 
+            OnPropertyChanged(); 
+            OnPropertyChanged(nameof(SelectionModeIndex));
+            OnPropertyChanged(nameof(IsFeatureSelectionMode));
+            OnPropertyChanged(nameof(IsFaceSelectionMode));
+        }
+    }
+
+    public int SelectionModeIndex
+    {
+        get => (int)CurrentSelectionMode;
+        set { CurrentSelectionMode = (TargetSelectionMode)value; }
+    }
+
+    public bool IsFeatureSelectionMode 
+    {
+        get => CurrentSelectionMode == TargetSelectionMode.Feature;
+        set { if(value) CurrentSelectionMode = TargetSelectionMode.Feature; }
+    }
+
+    public bool IsFaceSelectionMode 
+    {
+        get => CurrentSelectionMode == TargetSelectionMode.Face;
+        set { if(value) CurrentSelectionMode = TargetSelectionMode.Face; }
+    }
+
+    public bool IsInCustomWorkPlane => !ActiveWorkPlane.Equals(WorkPlane.XY);
+
     public ICommand SelectLineToolCommand { get; }
     public ICommand SelectCircleToolCommand { get; }
     public ICommand SelectTrimToolCommand { get; }
@@ -191,6 +227,7 @@ public class CadViewModel : INotifyPropertyChanged
     public ICommand SelectMoveToolCommand { get; }
     public ICommand SelectSetWorkPlaneCommand { get; }
     public ICommand DeleteSelectedCommand { get; }
+    public ICommand ExitWorkPlaneCommand { get; }
 
     public OsnapSettings OsnapSettings => _osnapService.Settings;
 
@@ -272,8 +309,24 @@ public class CadViewModel : INotifyPropertyChanged
 
         ModelTree.BindSketch(Sketch);
 
-        SelectLineToolCommand = new RelayCommand(() => CurrentTool = new DrawLineCommand());
-        SelectCircleToolCommand = new RelayCommand(() => CurrentTool = new DrawCircleCommand());
+        SelectLineToolCommand = new RelayCommand(() => 
+        {
+            if (_selectionService.SelectedObject is IProfile faceProfile && faceProfile.Plane != null)
+            {
+                ActiveWorkPlane = faceProfile.Plane;
+            }
+            CurrentTool = new DrawLineCommand();
+        });
+
+        SelectCircleToolCommand = new RelayCommand(() => 
+        {
+            if (_selectionService.SelectedObject is IProfile faceProfile && faceProfile.Plane != null)
+            {
+                ActiveWorkPlane = faceProfile.Plane;
+            }
+            CurrentTool = new DrawCircleCommand();
+        });
+
         SelectTrimToolCommand = new RelayCommand(() => CurrentTool = new TrimCommand(_geometryEngine));
         SelectExtrudeToolCommand = new RelayCommand(() => CurrentTool = new ExtrudeCommand());
         SelectBooleanCutCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Subtract, _selectionService));
@@ -282,6 +335,12 @@ public class CadViewModel : INotifyPropertyChanged
         SelectSelectToolCommand = new RelayCommand(() => CurrentTool = new SelectTool(_geometryEngine, _selectionService));
         SelectMoveToolCommand = new RelayCommand(() => CurrentTool = new MoveTool());
         SelectSetWorkPlaneCommand = new RelayCommand(() => CurrentTool = new SetWorkPlaneCommand());
+        
+        ExitWorkPlaneCommand = new RelayCommand(() => 
+        {
+            ActiveWorkPlane = WorkPlane.XY;
+            SelectSelectToolCommand.Execute(null);
+        });
         
         DeleteSelectedCommand = new RelayCommand(() =>
         {
@@ -369,6 +428,7 @@ public class CadViewModel : INotifyPropertyChanged
             
             ModelTree.RebuildTree();
             OnPropertyChanged();
+            OnPropertyChanged(nameof(IsInCustomWorkPlane));
             RefreshSolidMesh();
         }
     }

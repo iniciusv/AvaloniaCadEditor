@@ -27,6 +27,8 @@ public class FaceProfile : IProfile
 
     public AvaloniaCadEditor.Domain.Features.IFeature BaseFeature { get; }
     private IReadOnlyList<Point3D> _vertices = Array.Empty<Point3D>();
+    private IReadOnlyList<Point3D> _faceTriVertices = Array.Empty<Point3D>();
+    private IReadOnlyList<uint> _faceTriIndices = Array.Empty<uint>();
 
     public FaceProfile(AvaloniaCadEditor.Domain.Features.IFeature baseFeature, WorkPlane plane, AvaloniaCadEditor.Domain.Mesh.TriangleMesh mesh)
     {
@@ -72,6 +74,25 @@ public class FaceProfile : IProfile
         }
 
         if (faceIndices.Count == 0) return;
+
+        // Build tessellated face lists
+        var uniqueVerts = new List<Point3D>();
+        var vertMap = new Dictionary<uint, uint>();
+        var finalIndices = new List<uint>();
+
+        foreach (var originalIdx in faceIndices)
+        {
+            if (!vertMap.TryGetValue(originalIdx, out uint newIdx))
+            {
+                newIdx = (uint)uniqueVerts.Count;
+                vertMap[originalIdx] = newIdx;
+                uniqueVerts.Add(GetPoint(mesh, originalIdx));
+            }
+            finalIndices.Add(newIdx);
+        }
+
+        _faceTriVertices = uniqueVerts;
+        _faceTriIndices = finalIndices;
 
         // 2. Find boundary edges while preserving winding order
         var edgeCount = new Dictionary<(uint, uint), int>();
@@ -159,7 +180,7 @@ public class FaceProfile : IProfile
 
     public (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace(int segments = 128)
     {
-        return (_vertices, Array.Empty<uint>());
+        return (_faceTriVertices, _faceTriIndices);
     }
 
     public bool ContainsPoint(Point3D point)

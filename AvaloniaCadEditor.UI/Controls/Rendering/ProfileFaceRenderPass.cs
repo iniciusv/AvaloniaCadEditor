@@ -34,12 +34,22 @@ public sealed class ProfileFaceRenderPass : IRenderPass
     public void Render(GL gl, RenderContext context)
     {
         var vm = context.ViewModel;
-        if (vm == null || vm.Sketch.Profiles.Count == 0) return;
+        if (vm == null) return;
+
+        var profilesToRender = new System.Collections.Generic.List<AvaloniaCadEditor.Domain.Profiles.IProfile>(vm.Sketch.Profiles);
+        
+        if (vm.SelectionService.SelectedObject is AvaloniaCadEditor.Domain.Profiles.IProfile selectedProfile && 
+            !profilesToRender.Contains(selectedProfile))
+        {
+            profilesToRender.Add(selectedProfile);
+        }
+
+        if (profilesToRender.Count == 0) return;
 
         gl.DepthMask(false);
 
         // Render 2D Profiles Face Shading (Subtle Shading, Hover Pre-highlight, Selection)
-        foreach (var profile in vm.Sketch.Profiles)
+        foreach (var profile in profilesToRender)
         {
             if (!profile.IsVisible) continue;
             var (faceVerts, faceIndices) = profile.GetTessellatedFace();

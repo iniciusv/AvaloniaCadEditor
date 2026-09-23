@@ -14,10 +14,35 @@
     <Grid RowDefinitions="Auto,*,30">
         <!-- Toolbar -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Background="#2D2D2D" Margin="4" Spacing="6">
+            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" Margin="0,0,5,0">
+                <TextBlock Text="Seleção:" Foreground="LightGray" VerticalAlignment="Center" FontSize="12"/>
+                <RadioButton GroupName="SelMode" IsChecked="{Binding IsFeatureSelectionMode}" Foreground="White" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <Path Data="M21,16.5C21,16.88 20.79,17.21 20.47,17.38L12.57,21.82C12.41,21.94 12.21,22 12,22C11.79,22 11.59,21.94 11.43,21.82L3.53,17.38C3.21,17.21 3,16.88 3,16.5V7.5C3,7.12 3.21,6.79 3.53,6.62L11.43,2.18C11.59,2.06 11.79,2 12,2C12.21,2 12.41,2.06 12.57,2.18L20.47,6.62C20.79,6.79 21,7.12 21,7.5V16.5M12,4.15L5,8.09L12,12.03L19,8.09L12,4.15M4.5,15.97L11.25,19.79V13.16L4.5,9.33V15.97M19.5,15.97V9.33L12.75,13.16V19.79L19.5,15.97Z" 
+                              Fill="LightGray" Stretch="Uniform" Width="14" Height="14" VerticalAlignment="Center"/>
+                        <TextBlock Text="Volumes" VerticalAlignment="Center" FontSize="12" />
+                    </StackPanel>
+                </RadioButton>
+                <RadioButton GroupName="SelMode" IsChecked="{Binding IsFaceSelectionMode}" Foreground="White" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <Path Data="M12,4.15 L5,8.09 L12,12.03 L19,8.09 Z" 
+                              Stroke="LightGray" StrokeThickness="2" Fill="Transparent" Stretch="Uniform" Width="14" Height="14" VerticalAlignment="Center"/>
+                        <TextBlock Text="Faces" VerticalAlignment="Center" FontSize="12" />
+                    </StackPanel>
+                </RadioButton>
+            </StackPanel>
+
+            <Separator Width="1" Height="20" Background="#555" Margin="4,0" />
+
             <Button Content="Select (Space)" Command="{Binding SelectSelectToolCommand}" />
             <Button Content="Line (L)" Command="{Binding SelectLineToolCommand}" />
             <Button Content="Circle (C)" Command="{Binding SelectCircleToolCommand}" />
             <Button Content="Trim (T)" Command="{Binding SelectTrimToolCommand}" />
+            
+            <Button Content="Sair do Esboço" Command="{Binding ExitWorkPlaneCommand}" IsVisible="{Binding IsInCustomWorkPlane}" Background="#E74C3C" Foreground="White" FontWeight="Bold" Margin="4,0" />
+            
+            <Separator Width="1" Height="20" Background="#555" Margin="4,0" />
+
             <Button Content="Extrude (P)" Command="{Binding SelectExtrudeToolCommand}" Background="#007ACC" Foreground="White" FontWeight="Bold" />
             <Button Content="Cut (-)" Command="{Binding SelectBooleanCutCommand}" Background="#E67E22" Foreground="White" FontWeight="Bold" />
             <Button Content="Fuse (+)" Command="{Binding SelectBooleanFuseCommand}" Background="#27AE60" Foreground="White" FontWeight="Bold" />

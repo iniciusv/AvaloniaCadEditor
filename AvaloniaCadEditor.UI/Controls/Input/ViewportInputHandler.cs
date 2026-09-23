@@ -109,54 +109,8 @@ public sealed class ViewportInputHandler
                         var hit = viewModel.Raycast3D(ray);
                         if (hit.HasValue)
                         {
-                            var normal = hit.Value.Normal;
-                            var origin = hit.Value.Point;
-                            
-                            if (hit.Value.FeatureId.HasValue)
-                            {
-                                var featureId = hit.Value.FeatureId.Value;
-                                var mesh = viewModel.GetFeatureMesh(featureId);
-                                if (mesh != null)
-                                {
-                                    var tempPlane = new AvaloniaCadEditor.Domain.ValueObjects.WorkPlane(normal, origin);
-                                    double minX = double.MaxValue;
-                                    double minY = double.MaxValue;
-                                    bool foundAny = false;
-                                    
-                                    for (int i = 0; i < mesh.Indices.Length; i += 3)
-                                    {
-                                        uint i0 = mesh.Indices[i]; uint i1 = mesh.Indices[i + 1]; uint i2 = mesh.Indices[i + 2];
-                                        var v0 = new AvaloniaCadEditor.Domain.ValueObjects.Point3D(mesh.Positions[i0*3], mesh.Positions[i0*3+1], mesh.Positions[i0*3+2]);
-                                        var v1 = new AvaloniaCadEditor.Domain.ValueObjects.Point3D(mesh.Positions[i1*3], mesh.Positions[i1*3+1], mesh.Positions[i1*3+2]);
-                                        var v2 = new AvaloniaCadEditor.Domain.ValueObjects.Point3D(mesh.Positions[i2*3], mesh.Positions[i2*3+1], mesh.Positions[i2*3+2]);
-                                        
-                                        var d1 = new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(v1.X - v0.X, v1.Y - v0.Y, v1.Z - v0.Z);
-                                        var d2 = new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(v2.X - v0.X, v2.Y - v0.Y, v2.Z - v0.Z);
-                                        var cross = d1.CrossProduct(d2);
-                                        if (cross.Length > 1e-6)
-                                        {
-                                            var tNormal = cross.Normalize();
-                                            if (tNormal.DotProduct(normal) > 0.99)
-                                            {
-                                                var p0 = tempPlane.ToLocalSpace(v0);
-                                                var p1 = tempPlane.ToLocalSpace(v1);
-                                                var p2 = tempPlane.ToLocalSpace(v2);
-                                                
-                                                minX = Math.Min(minX, Math.Min(p0.X, Math.Min(p1.X, p2.X)));
-                                                minY = Math.Min(minY, Math.Min(p0.Y, Math.Min(p1.Y, p2.Y)));
-                                                foundAny = true;
-                                            }
-                                        }
-                                    }
-                                    
-                                    if (foundAny)
-                                    {
-                                        origin = tempPlane.ToWorldSpace(new AvaloniaCadEditor.Domain.ValueObjects.Point3D(minX, minY, 0));
-                                    }
-                                }
-                            }
-
-                            viewModel.ActiveWorkPlane = new AvaloniaCadEditor.Domain.ValueObjects.WorkPlane(normal, origin);
+                            var plane = GetStableWorkPlane(viewModel, hit.Value);
+                            viewModel.ActiveWorkPlane = plane;
                             viewModel.SelectSelectToolCommand.Execute(null);
                             requestRender();
                         }
@@ -166,8 +120,51 @@ public sealed class ViewportInputHandler
                         var hit = viewModel.Raycast3D(ray);
                         if (hit.HasValue && hit.Value.FeatureId.HasValue)
                         {
-                            viewModel.SelectionService.SelectById(viewModel.Sketch, hit.Value.FeatureId.Value);
-                            requestRender();
+                            if (viewModel.CurrentSelectionMode == CadViewModel.TargetSelectionMode.Feature)
+                            {
+                                viewModel.SelectionService.SelectById(viewModel.Sketch, hit.Value.FeatureId.Value);
+                                requestRender();
+                            }
+                            else if (viewModel.CurrentSelectionMode == CadViewModel.TargetSelectionMode.Face)
+                            {
+                                var normal = hit.Value.Normal;
+                                var plane = GetStableWorkPlane(viewModel, hit.Value);
+                                var baseFeature = viewModel.Sketch.Features.FirstOrDefault(f => f.Id == hit.Value.FeatureId.Value);
+                                if (baseFeature != null) 
+                                {
+                                    var mesh = viewModel.GetFeatureMesh(hit.Value.FeatureId.Value);
+                                    if (mesh != null)
+                                    {
+                                        AvaloniaCadEditor.Domain.Profiles.IProfile selectedProfile = null;
+                                        
+                                        if (baseFeature is AvaloniaCadEditor.Domain.Features.BoxFeature boxFeature)
+                                        {
+                                            var faceType = boxFeature.GetFaceTypeFromNormal(new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(normal.X, normal.Y, normal.Z));
+                                            if (faceType.HasValue)
+                                            {
+                                                selectedProfile = new AvaloniaCadEditor.Domain.Profiles.ParametricBoxFace(boxFeature, faceType.Value);
+                                            }
+                                        }
+                                        else if (baseFeature is AvaloniaCadEditor.Domain.Features.CylinderFeature cylinderFeature)
+                                        {
+                                            var faceType = cylinderFeature.GetFaceTypeFromNormal(new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(normal.X, normal.Y, normal.Z));
+                                            if (faceType.HasValue)
+                                            {
+                                                selectedProfile = new AvaloniaCadEditor.Domain.Profiles.ParametricCylinderFace(cylinderFeature, faceType.Value);
+                                            }
+                                        }
+
+                                        if (selectedProfile == null)
+                                        {
+                                            selectedProfile = new AvaloniaCadEditor.Domain.Profiles.FaceProfile(baseFeature, plane, mesh);
+                                        }
+
+                                        selectedProfile.IsSelected = true;
+                                        viewModel.SelectionService.SelectProfile(selectedProfile);
+                                        requestRender();
+                                    }
+                                }
+                            }
                         }
                     }
                     if (viewModel.CurrentTool is Application.Commands.ExtrudeCommand extCmd)
@@ -178,8 +175,7 @@ public sealed class ViewportInputHandler
                             if (hit.HasValue && hit.Value.FeatureId.HasValue)
                             {
                                 var normal = hit.Value.Normal;
-                                var origin = hit.Value.Point;
-                                var plane = new AvaloniaCadEditor.Domain.ValueObjects.WorkPlane(normal, origin);
+                                var plane = GetStableWorkPlane(viewModel, hit.Value);
                                 var baseFeature = viewModel.Sketch.Features.FirstOrDefault(f => f.Id == hit.Value.FeatureId.Value);
                                 if (baseFeature != null) 
                                 {
@@ -333,5 +329,57 @@ public sealed class ViewportInputHandler
             _isOrbiting = false;
             _lastMousePos = null;
         }
+    }
+
+    private AvaloniaCadEditor.Domain.ValueObjects.WorkPlane GetStableWorkPlane(CadViewModel viewModel, AvaloniaCadEditor.Domain.ValueObjects.RaycastHit hit)
+    {
+        var normal = hit.Normal;
+        var origin = hit.Point;
+        
+        if (hit.FeatureId.HasValue)
+        {
+            var featureId = hit.FeatureId.Value;
+            var mesh = viewModel.GetFeatureMesh(featureId);
+            if (mesh != null)
+            {
+                var tempPlane = new AvaloniaCadEditor.Domain.ValueObjects.WorkPlane(normal, origin);
+                double minX = double.MaxValue;
+                double minY = double.MaxValue;
+                bool foundAny = false;
+                
+                for (int i = 0; i < mesh.Indices.Length; i += 3)
+                {
+                    uint i0 = mesh.Indices[i]; uint i1 = mesh.Indices[i + 1]; uint i2 = mesh.Indices[i + 2];
+                    var v0 = new AvaloniaCadEditor.Domain.ValueObjects.Point3D(mesh.Positions[i0*3], mesh.Positions[i0*3+1], mesh.Positions[i0*3+2]);
+                    var v1 = new AvaloniaCadEditor.Domain.ValueObjects.Point3D(mesh.Positions[i1*3], mesh.Positions[i1*3+1], mesh.Positions[i1*3+2]);
+                    var v2 = new AvaloniaCadEditor.Domain.ValueObjects.Point3D(mesh.Positions[i2*3], mesh.Positions[i2*3+1], mesh.Positions[i2*3+2]);
+                    
+                    var d1 = new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(v1.X - v0.X, v1.Y - v0.Y, v1.Z - v0.Z);
+                    var d2 = new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(v2.X - v0.X, v2.Y - v0.Y, v2.Z - v0.Z);
+                    var cross = d1.CrossProduct(d2);
+                    if (cross.Length > 1e-6)
+                    {
+                        var tNormal = cross.Normalize();
+                        if (tNormal.DotProduct(normal) > 0.99)
+                        {
+                            var p0 = tempPlane.ToLocalSpace(v0);
+                            var p1 = tempPlane.ToLocalSpace(v1);
+                            var p2 = tempPlane.ToLocalSpace(v2);
+                            
+                            minX = Math.Min(minX, Math.Min(p0.X, Math.Min(p1.X, p2.X)));
+                            minY = Math.Min(minY, Math.Min(p0.Y, Math.Min(p1.Y, p2.Y)));
+                            foundAny = true;
+                        }
+                    }
+                }
+                
+                if (foundAny)
+                {
+                    origin = tempPlane.ToWorldSpace(new AvaloniaCadEditor.Domain.ValueObjects.Point3D(minX, minY, 0));
+                }
+            }
+        }
+        
+        return new AvaloniaCadEditor.Domain.ValueObjects.WorkPlane(normal, origin);
     }
 }
