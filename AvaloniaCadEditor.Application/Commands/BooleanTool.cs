@@ -64,10 +64,9 @@ public class BooleanTool : ICommandTool, IDisposable
     {
         if (_baseFeature != null && _toolFeature != null)
         {
-            string name = $"{_operationType} ({_baseFeature.Name}, {_toolFeature.Name})";
             string id = Guid.NewGuid().ToString("N").Substring(0, 4);
             string boolVar = $"boolOp_{id}";
-            string code = $"var {boolVar} = new BooleanFeature(name: \"{name}\", operation: BooleanOperationType.{_operationType}, baseFeature: {_baseFeature.Name}, toolFeatures: new IFeature[] {{ {_toolFeature.Name} }});\r\nAddFeature({boolVar});";
+            string code = $"var {boolVar} = new BooleanFeature(name: \"{boolVar}\", operation: BooleanOperationType.{_operationType}, baseFeature: {_baseFeature.Name}, toolFeatures: new IFeature[] {{ {_toolFeature.Name} }});\r\nAddFeature({boolVar});";
             
             CodeGenerated?.Invoke(this, code);
             Cancel();

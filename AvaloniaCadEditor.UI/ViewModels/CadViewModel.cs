@@ -153,6 +153,9 @@ public class CadViewModel : INotifyPropertyChanged
     {
         ScriptEditor.AppendCode(codeSnippet + "\n");
         ScriptEditor.RunCodeCommand.Execute(null);
+        
+        // Return to SelectTool after an operation is committed
+        CurrentTool = new SelectTool(_geometryEngine, _selectionService);
     }
 
     public bool IsDrawingMode => _currentTool is DrawLineCommand || _currentTool is DrawCircleCommand;
@@ -282,6 +285,18 @@ public class CadViewModel : INotifyPropertyChanged
         
         DeleteSelectedCommand = new RelayCommand(() =>
         {
+            var selectedId = _selectionService.SelectedId ?? ModelTree.SelectedNode?.Id;
+            if (selectedId.HasValue)
+            {
+                var feature = System.Linq.Enumerable.FirstOrDefault(Sketch.Features, f => f.Id == selectedId.Value);
+                if (feature != null && feature is not AvaloniaCadEditor.Domain.Features.WorkPlaneFeature)
+                {
+                    ScriptEditor.RemoveCodeForFeature(feature.Name);
+                    ScriptEditor.RunCodeCommand.Execute(null);
+                    return;
+                }
+            }
+
             DeletionService.DeleteSelected(Sketch, ModelTree.SelectedNode?.Id);
             RefreshProfiles();
             ModelTree.RebuildTree();
