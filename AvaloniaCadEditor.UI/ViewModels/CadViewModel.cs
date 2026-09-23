@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
@@ -14,8 +13,6 @@ using AvaloniaCadEditor.Domain.Interfaces;
 using AvaloniaCadEditor.Domain.Mesh;
 using AvaloniaCadEditor.Domain.Profiles;
 using AvaloniaCadEditor.Domain.ValueObjects;
-using System.Globalization;
-using System.IO;
 
 namespace AvaloniaCadEditor.UI.ViewModels;
 
@@ -24,17 +21,22 @@ public class CadViewModel : INotifyPropertyChanged
     private readonly IGeometryEngine _geometryEngine;
     private readonly IOSnapService _osnapService;
     private readonly IProfileRecognitionService _profileRecognitionService;
-    private readonly IGeometryKernel _geometryKernel;
     private readonly ISelectionService _selectionService;
     
+    // Services
+    public ISceneMeshManager MeshManager { get; }
+    public IVcbInputService VcbService { get; }
+    public ISceneDeletionService DeletionService { get; }
+
     public Sketch Sketch { get; } = new Sketch();
     
     public IReadOnlyList<IProfile> Profiles => Sketch.Profiles;
 
     public ModelTreeViewModel ModelTree { get; }
     public PropertyInspectorViewModel PropertyInspector { get; }
+    public SceneScriptViewModel ScriptEditor { get; set; }
+
     public ISelectionService SelectionService => _selectionService;
-    public IGeometryKernel GeometryKernel => _geometryKernel;
 
     private TriangleMesh _solidMesh = TriangleMesh.Empty;
     public TriangleMesh SolidMesh
@@ -95,14 +97,13 @@ public class CadViewModel : INotifyPropertyChanged
         
         if (_hoverTimer == null)
         {
-            _hoverTimer = new Avalonia.Threading.DispatcherTimer { Interval = System.TimeSpan.FromMilliseconds(200) }; // 200ms feels more responsive for a stop
+            _hoverTimer = new Avalonia.Threading.DispatcherTimer { Interval = System.TimeSpan.FromMilliseconds(200) };
             _hoverTimer.Tick += (s, e) =>
             {
                 _hoverTimer.Stop();
                 if (_lastHoverRay.HasValue)
                 {
-                    // O raycast PESADO só roda agora, quando o mouse efetivamente parou!
-                    var hit = Raycast3D(_lastHoverRay.Value);
+                    var hit = MeshManager.Raycast3D(Sketch, _lastHoverRay.Value);
                     HoveredFeatureId = hit?.FeatureId;
                 }
             };
@@ -120,7 +121,7 @@ public class CadViewModel : INotifyPropertyChanged
             if (_currentTool is IDisposable disposable) disposable.Dispose();
             _currentTool?.Cancel();
             _currentTool = value;
-            ClearVcb();
+            VcbService.Clear();
             
             HoveredFeatureId = null;
             _hoverTimer?.Stop();
@@ -133,7 +134,6 @@ public class CadViewModel : INotifyPropertyChanged
             OnPropertyChanged();
             OnPropertyChanged(nameof(IsDrawingMode));
             
-            // Force status text update so user sees the new tool instructions immediately
             UpdateStatusText(CurrentSnappedPoint);
         }
     }
@@ -152,14 +152,7 @@ public class CadViewModel : INotifyPropertyChanged
         set { _statusText = value; OnPropertyChanged(); }
     }
 
-    private string _vcbText = "";
-    public string VcbText
-    {
-        get => _vcbText;
-        set { _vcbText = value; OnPropertyChanged(); }
-    }
-    
-    private string _inputBuffer = "";
+    public string VcbText => VcbService.InputBuffer.Length > 0 ? VcbService.InputBuffer : (CurrentTool?.GetMeasurementText() ?? "");
     
     private Point3D _currentSnappedPoint;
     public Point3D CurrentSnappedPoint
@@ -178,17 +171,6 @@ public class CadViewModel : INotifyPropertyChanged
     public ICommand SelectMoveToolCommand { get; }
     public ICommand SelectSetWorkPlaneCommand { get; }
     public ICommand DeleteSelectedCommand { get; }
-    public ICommand GenerateCodeCommand { get; }
-    public ICommand RunCodeCommand { get; }
-    public ICommand LoadCodeFromFileCommand { get; }
-    public ICommand SaveCodeToFileCommand { get; }
-
-    private string _generatedCSharpCode = "// Pressione 'Atualizar Código' para gerar o C#.";
-    public string GeneratedCSharpCode
-    {
-        get => _generatedCSharpCode;
-        set { _generatedCSharpCode = value; OnPropertyChanged(); }
-    }
 
     public OsnapSettings OsnapSettings => _osnapService.Settings;
 
@@ -219,50 +201,50 @@ public class CadViewModel : INotifyPropertyChanged
     }
 
     private readonly ITessellationSettingsProvider _settingsProvider;
-    private readonly ISceneEvaluator? _sceneEvaluator;
-    private readonly IFilePickerService? _filePickerService;
 
     public CadViewModel(
         IGeometryEngine geometryEngine,
         IOSnapService osnapService,
+        ISceneMeshManager meshManager,
+        IVcbInputService vcbService,
+        ISceneDeletionService deletionService,
+        SceneScriptViewModel scriptEditor,
         IProfileRecognitionService? profileRecognitionService = null,
-        IGeometryKernel? geometryKernel = null,
         ISelectionService? selectionService = null,
-        ITessellationSettingsProvider? settingsProvider = null,
-        ISceneEvaluator? sceneEvaluator = null,
-        IFilePickerService? filePickerService = null)
+        ITessellationSettingsProvider? settingsProvider = null)
     {
         _geometryEngine = geometryEngine;
         _osnapService = osnapService;
+        MeshManager = meshManager;
+        VcbService = vcbService;
+        DeletionService = deletionService;
+        ScriptEditor = scriptEditor;
+        
         _profileRecognitionService = profileRecognitionService ?? new ProfileRecognitionService();
-        _geometryKernel = geometryKernel ?? new NullGeometryKernel();
         _selectionService = selectionService ?? new SelectionService();
         _settingsProvider = settingsProvider ?? new AvaloniaCadEditor.Infrastructure.Settings.JsonTessellationSettingsProvider();
-        _sceneEvaluator = sceneEvaluator;
-        _filePickerService = filePickerService;
-        
-        // Base XY Plane is already added by Sketch constructor.
         
         ModelTree = new ModelTreeViewModel(_selectionService);
         ModelTree.WorkPlaneDoubleClicked += (wpf) => 
         {
             SetActiveWorkPlane(wpf);
         };
+
         ModelTree.NodeVisibilityChanged += (s, e) => 
         {
             RefreshProfiles();
             RefreshSolidMesh();
         };
+
         PropertyInspector = new PropertyInspectorViewModel(_selectionService, () =>
         {
             if (_selectionService.SelectedObject is IFeature selectedFeature)
             {
-                InvalidateFeatureAndDependents(selectedFeature.Id);
+                MeshManager.InvalidateFeatureAndDependents(Sketch, selectedFeature.Id);
             }
             else
             {
-                _featureMeshCache.Clear();
-                _geometryKernel.InvalidateAll();
+                MeshManager.ClearCache();
             }
             RefreshSolidMesh();
             ModelTree.RebuildTree();
@@ -280,162 +262,26 @@ public class CadViewModel : INotifyPropertyChanged
         SelectSelectToolCommand = new RelayCommand(() => CurrentTool = new SelectTool(_geometryEngine, _selectionService));
         SelectMoveToolCommand = new RelayCommand(() => CurrentTool = new MoveTool());
         SelectSetWorkPlaneCommand = new RelayCommand(() => CurrentTool = new SetWorkPlaneCommand());
-        DeleteSelectedCommand = new RelayCommand(DeleteSelected);
         
-        GenerateCodeCommand = new RelayCommand(() => 
+        DeleteSelectedCommand = new RelayCommand(() =>
         {
-            var generator = new CsCodeGenerator();
-            // We use the ActiveWorkPlane as the optional 'lens' to see coordinates from its perspective
-            GeneratedCSharpCode = generator.GenerateCode(Sketch, ActiveWorkPlane);
-        });
-
-        RunCodeCommand = new RelayCommand(async () =>
-        {
-            if (_sceneEvaluator == null)
-            {
-                StatusText = "Aviso: Evaluator não configurado.";
-                return;
-            }
-            StatusText = "Avaliando código...";
-            var result = await _sceneEvaluator.EvaluateAsync(GeneratedCSharpCode);
-            if (result.Success)
-            {
-                _geometryKernel.InvalidateAll();
-                _featureMeshCache.Clear();
-                Sketch.Clear();
-                foreach (var feature in result.Features)
-                {
-                    Sketch.AddFeature(feature);
-                }
-                RefreshProfiles();
-                StatusText = $"✓ Código executado: {result.Features.Count} feature(s)";
-            }
-            else
-            {
-                StatusText = $"✗ Erro de Compilação";
-                // Print to console to avoid huge UI status messages
-                System.Console.WriteLine("Evaluation Error:\n" + result.ErrorMessage);
-            }
-        });
-
-        LoadCodeFromFileCommand = new RelayCommand(async () =>
-        {
-            if (_filePickerService == null) return;
-            var path = await _filePickerService.OpenFileAsync("Carregar Código C#", new[] { "*.cs" });
-            if (!string.IsNullOrEmpty(path))
-            {
-                GeneratedCSharpCode = File.ReadAllText(path);
-                RunCodeCommand.Execute(null);
-                StatusText = $"✓ Modelo carregado de: {Path.GetFileName(path)}";
-            }
-        });
-
-        SaveCodeToFileCommand = new RelayCommand(async () =>
-        {
-            if (_filePickerService == null) return;
-            if (GenerateCodeCommand != null && GenerateCodeCommand.CanExecute(null))
-            {
-                GenerateCodeCommand.Execute(null);
-            }
-            var path = await _filePickerService.SaveFileAsync("Salvar Modelo como C#", ".cs", "Model.cs");
-            if (!string.IsNullOrEmpty(path))
-            {
-                File.WriteAllText(path, GeneratedCSharpCode);
-                StatusText = $"✓ Modelo salvo em: {Path.GetFileName(path)}";
-            }
+            DeletionService.DeleteSelected(Sketch, ModelTree.SelectedNode?.Id);
+            RefreshProfiles();
+            ModelTree.RebuildTree();
         });
 
         CurrentTool = new SelectTool(_geometryEngine, _selectionService);
     }
 
-    private Dictionary<Guid, TriangleMesh> _featureMeshCache = new();
-
-    public AvaloniaCadEditor.Domain.Mesh.TriangleMesh? GetFeatureMesh(Guid featureId, bool forceRebuild = false)
+    public TriangleMesh? GetFeatureMesh(Guid featureId, bool forceRebuild = false)
     {
-        if (forceRebuild)
-        {
-            _geometryKernel.InvalidateShape(featureId);
-        }
-
-        if (!forceRebuild && _featureMeshCache.TryGetValue(featureId, out var mesh))
-        {
-            return mesh;
-        }
-
-        var feature = Sketch.Features.FirstOrDefault(f => f.Id == featureId);
-        if (feature == null && CurrentTool is AvaloniaCadEditor.Application.Commands.ExtrudeCommand extCmd)
-        {
-            var preview = extCmd.GetPreviewFeature();
-            if (preview != null && preview.Id == featureId)
-            {
-                feature = preview;
-            }
-        }
-
-        if (feature == null) return null;
-
-        mesh = _geometryKernel.BuildSolidMesh(new[] { feature }, _settingsProvider.GetSettings());
-        if (mesh != null && !forceRebuild)
-        {
-            _featureMeshCache[featureId] = mesh;
-        }
-        return mesh;
-    }
-
-    public void InvalidateFeatureAndDependents(Guid featureId)
-    {
-        _featureMeshCache.Remove(featureId);
-        _geometryKernel.InvalidateShape(featureId);
-
-        foreach (var feature in Sketch.Features)
-        {
-            foreach (var dep in feature.Dependencies)
-            {
-                if (dep.Id == featureId)
-                {
-                    InvalidateFeatureAndDependents(feature.Id);
-                    break;
-                }
-            }
-        }
+        IFeature? previewFeature = (CurrentTool as ExtrudeCommand)?.GetPreviewFeature();
+        return MeshManager.GetFeatureMesh(Sketch, featureId, previewFeature, forceRebuild);
     }
 
     public RaycastHit? Raycast3D(Ray ray)
     {
-        if (Sketch.Features.Count == 0) return null;
-
-        float bestDist = float.MaxValue;
-        RaycastHit? bestHit = null;
-
-        foreach (var feature in Sketch.Features)
-        {
-            if (!feature.IsVisible) continue; // CRITICAL FIX: Ignore hidden features
-
-            if (!_featureMeshCache.TryGetValue(feature.Id, out var mesh))
-            {
-                mesh = _geometryKernel.BuildSolidMesh(new[] { feature }, _settingsProvider.GetSettings());
-                if (mesh != null)
-                {
-                    _featureMeshCache[feature.Id] = mesh;
-                }
-            }
-            
-            if (mesh != null)
-            {
-                var hit = ray.IntersectMesh(mesh);
-                if (hit.HasValue && hit.Value.Distance < bestDist)
-                {
-                    bestDist = hit.Value.Distance;
-                    bestHit = new RaycastHit(
-                        hit.Value.Distance,
-                        hit.Value.Point,
-                        hit.Value.Normal,
-                        feature.Id);
-                }
-            }
-        }
-
-        return bestHit;
+        return MeshManager.Raycast3D(Sketch, ray);
     }
 
     public void RefreshProfiles()
@@ -449,70 +295,16 @@ public class CadViewModel : INotifyPropertyChanged
 
     public void RefreshSolidMesh(bool skipCodeGeneration = false)
     {
-        // Limpa o cache apenas das features que não existem mais no sketch
-        var currentIds = new HashSet<Guid>(Sketch.Features.Select(f => f.Id));
-        if (CurrentTool is ExtrudeCommand ext && ext.GetPreviewFeature() is IFeature prev)
-        {
-            currentIds.Add(prev.Id);
-        }
+        IFeature? previewFeature = (CurrentTool as ExtrudeCommand)?.GetPreviewFeature();
+        SolidMesh = MeshManager.BuildCompositeMesh(Sketch, previewFeature);
         
-        var keysToRemove = _featureMeshCache.Keys.Where(k => !currentIds.Contains(k)).ToList();
-        foreach(var key in keysToRemove)
+        if (!skipCodeGeneration && ScriptEditor.GenerateCodeCommand != null && ScriptEditor.GenerateCodeCommand.CanExecute(null))
         {
-            _featureMeshCache.Remove(key);
-        }
-
-        var featuresToRender = new List<IFeature>(Sketch.Features.Where(f => f.IsVisible));
-        if (CurrentTool is ExtrudeCommand extCmd)
-        {
-            var preview = extCmd.GetPreviewFeature();
-            if (preview != null)
-            {
-                featuresToRender.Add(preview);
-                _featureMeshCache.Remove(preview.Id); // Force rebuild preview mesh during drag
-            }
-        }
-
-        // Combine meshes directly in C# using cache to bypass OpenCascade rebuilding
-        var positions = new List<float>();
-        var normals = new List<float>();
-        var indices = new List<uint>();
-        var featureEdges = new List<uint>();
-        var internalEdges = new List<uint>();
-        uint vertexOffset = 0;
-
-        foreach (var f in featuresToRender)
-        {
-            if (!_featureMeshCache.TryGetValue(f.Id, out var mesh))
-            {
-                mesh = _geometryKernel.BuildSolidMesh(new[] { f }, _settingsProvider.GetSettings());
-                if (mesh != null)
-                {
-                    _featureMeshCache[f.Id] = mesh;
-                }
-            }
-
-            if (mesh == null || mesh.VertexCount == 0) continue;
-
-            positions.AddRange(mesh.Positions);
-            normals.AddRange(mesh.Normals);
-
-            foreach (var idx in mesh.Indices) indices.Add(idx + vertexOffset);
-            foreach (var fe in mesh.FeatureEdges) featureEdges.Add(fe + vertexOffset);
-            foreach (var ie in mesh.InternalEdges) internalEdges.Add(ie + vertexOffset);
-
-            vertexOffset += (uint)mesh.VertexCount;
-        }
-
-        SolidMesh = new TriangleMesh(positions.ToArray(), normals.ToArray(), indices.ToArray(), featureEdges.ToArray(), internalEdges.ToArray());
-        
-        if (!skipCodeGeneration && GenerateCodeCommand != null && GenerateCodeCommand.CanExecute(null))
-        {
-            GenerateCodeCommand.Execute(null);
+            ScriptEditor.GenerateCodeCommand.Execute(null);
         }
     }
 
-        public void SetActiveWorkPlane(AvaloniaCadEditor.Domain.Features.WorkPlaneFeature wpf)
+    public void SetActiveWorkPlane(AvaloniaCadEditor.Domain.Features.WorkPlaneFeature wpf)
     {
         Sketch.Plane = wpf.Plane;
         OnPropertyChanged(nameof(ActiveWorkPlane));
@@ -524,16 +316,15 @@ public class CadViewModel : INotifyPropertyChanged
         get => Sketch.Plane;
         set
         {
-            // If it's already the active plane, do nothing
             if (Sketch.Plane.Equals(value)) return;
             
             Sketch.Plane = value;
 
-            var existingWpf = Sketch.Features.OfType<Domain.Features.WorkPlaneFeature>().FirstOrDefault(f => f.Plane.Equals(value));
+            var existingWpf = Sketch.Features.OfType<AvaloniaCadEditor.Domain.Features.WorkPlaneFeature>().FirstOrDefault(f => f.Plane.Equals(value));
             
             if (existingWpf == null)
             {
-                var wpf = new Domain.Features.WorkPlaneFeature(value, $"Plano {Sketch.Features.Count(f => f is Domain.Features.WorkPlaneFeature)}");
+                var wpf = new AvaloniaCadEditor.Domain.Features.WorkPlaneFeature(value, $"Plano {Sketch.Features.Count(f => f is AvaloniaCadEditor.Domain.Features.WorkPlaneFeature)}");
                 Sketch.AddFeature(wpf);
             }
             
@@ -548,7 +339,7 @@ public class CadViewModel : INotifyPropertyChanged
         var refPt = CurrentTool?.GetReferencePoint();
         var snappedWorld = _osnapService.GetSnappedPoint(Sketch, worldPoint, refPt != null ? ActiveWorkPlane.ToWorldSpace(refPt.Value) : null, SolidMesh);
         var localSnapped = ActiveWorkPlane.ToLocalSpace(snappedWorld);
-        localSnapped = new Point3D(localSnapped.X, localSnapped.Y, 0.0); // Force strictly 2D on the work plane
+        localSnapped = new Point3D(localSnapped.X, localSnapped.Y, 0.0);
 
         if (CurrentTool is SelectTool)
         {
@@ -558,7 +349,7 @@ public class CadViewModel : INotifyPropertyChanged
                 _selectionService.SelectById(Sketch, hitProfile.Id);
                 ModelTree.RebuildTree();
                 RefreshProfiles();
-                return true; // Indicates we hit and selected a 2D Profile
+                return true; 
             }
         }
 
@@ -582,7 +373,7 @@ public class CadViewModel : INotifyPropertyChanged
         var refPt = CurrentTool?.GetReferencePoint();
         var snappedWorld = _osnapService.GetSnappedPoint(Sketch, worldPoint, refPt != null ? ActiveWorkPlane.ToWorldSpace(refPt.Value) : null, SolidMesh);
         var localSnapped = ActiveWorkPlane.ToLocalSpace(snappedWorld);
-        CurrentSnappedPoint = localSnapped; // Note: UI will show local coordinates
+        CurrentSnappedPoint = localSnapped; 
         CurrentTool?.OnMouseMove(Sketch, localSnapped);
 
         if (CurrentTool is ExtrudeCommand)
@@ -602,50 +393,22 @@ public class CadViewModel : INotifyPropertyChanged
         string prefix = string.IsNullOrEmpty(toolInstruction) ? "" : $"{toolInstruction} | ";
         StatusText = $"{prefix}X: {snapped.X:F2}, Y: {snapped.Y:F2}";
         
-        if (!string.IsNullOrEmpty(_inputBuffer))
-        {
-            VcbText = _inputBuffer;
-        }
-        else
-        {
-            VcbText = CurrentTool?.GetMeasurementText() ?? "";
-        }
+        OnPropertyChanged(nameof(VcbText)); // Force update
     }
 
     public void OnKeyDown(string keyName)
     {
-        string upperKey = keyName.ToUpperInvariant();
-
-        // Handle numeric input for VCB
-        if (IsNumericKey(upperKey, out char numChar))
+        if (VcbService.ProcessKeyDown(keyName, Sketch, CurrentTool, () => RefreshProfiles()))
         {
-            _inputBuffer += numChar;
             UpdateStatusText(CurrentSnappedPoint);
-            return;
-        }
-        else if (upperKey == "BACK" && _inputBuffer.Length > 0)
-        {
-            _inputBuffer = _inputBuffer.Substring(0, _inputBuffer.Length - 1);
-            UpdateStatusText(CurrentSnappedPoint);
-            return;
-        }
-        else if (upperKey == "RETURN" || upperKey == "ENTER")
-        {
-            if (double.TryParse(_inputBuffer, NumberStyles.Any, CultureInfo.InvariantCulture, out double value))
-            {
-                CurrentTool?.OnValueEntered(Sketch, value);
-                RefreshProfiles();
-            }
-            ClearVcb();
-            
             if (CurrentTool is ExtrudeCommand extCmd && extCmd.IsFinished)
             {
                 SelectSelectToolCommand.Execute(null);
             }
-            
             return;
         }
 
+        string upperKey = keyName.ToUpperInvariant();
         switch (upperKey)
         {
             case "L":
@@ -661,9 +424,6 @@ public class CadViewModel : INotifyPropertyChanged
             case "T":
                 SelectTrimToolCommand.Execute(null);
                 break;
-            case "O": // Placeholder for Orbit
-                // SelectOrbitToolCommand.Execute(null);
-                break;
             case "M":
                 SelectMoveToolCommand.Execute(null);
                 break;
@@ -671,16 +431,18 @@ public class CadViewModel : INotifyPropertyChanged
                 SelectSetWorkPlaneCommand.Execute(null);
                 break;
             case "SPACE":
-                ClearVcb();
+                VcbService.Clear();
+                UpdateStatusText(CurrentSnappedPoint);
                 SelectSelectToolCommand.Execute(null);
                 break;
             case "DELETE":
             case "DEL":
                 CurrentTool?.OnKeyDown(Sketch, CadKey.Delete);
-                DeleteSelected();
+                DeleteSelectedCommand.Execute(null);
                 break;
             case "ESCAPE":
-                ClearVcb();
+                VcbService.Clear();
+                UpdateStatusText(CurrentSnappedPoint);
                 CurrentTool?.OnKeyDown(Sketch, CadKey.Escape);
                 CurrentTool?.Cancel();
                 break;
@@ -701,139 +463,6 @@ public class CadViewModel : INotifyPropertyChanged
                 CurrentTool?.OnKeyDown(Sketch, CadKey.Control);
                 break;
         }
-    }
-
-    public void DeleteSelected()
-    {
-        var selectedId = _selectionService.SelectedId ?? ModelTree.SelectedNode?.Id;
-
-        if (selectedId.HasValue)
-        {
-            var id = selectedId.Value;
-
-            // 1. Check in Entities
-            var targetEntity = Sketch.Entities.FirstOrDefault(e => e.Id == id);
-            if (targetEntity != null)
-            {
-                Sketch.RemoveEntity(targetEntity);
-                ClearSelection();
-                RefreshProfiles();
-                return;
-            }
-
-            // 2. Check in Features
-            var targetFeature = Sketch.Features.FirstOrDefault(f => f.Id == id);
-            if (targetFeature != null)
-            {
-                if (targetFeature is Domain.Features.WorkPlaneFeature wpf && wpf.IsBasePlane)
-                {
-                    return; // Cannot delete base plane
-                }
-                if (targetFeature is BooleanFeature boolF)
-                {
-                    boolF.BaseFeature.IsVisible = true;
-                    foreach (var tool in boolF.ToolFeatures)
-                        tool.IsVisible = true;
-                }
-                Sketch.RemoveFeature(targetFeature);
-                ClearSelection();
-                RefreshProfiles();
-                return;
-            }
-
-            // 3. Check in Profiles
-            var targetProfile = Sketch.Profiles.FirstOrDefault(p => p.Id == id);
-            if (targetProfile != null)
-            {
-                var entitiesToRemove = Sketch.Entities.Where(e => targetProfile.SourceEntityIds.Contains(e.Id)).ToList();
-                foreach (var entity in entitiesToRemove)
-                {
-                    Sketch.RemoveEntity(entity);
-                }
-                Sketch.RemoveProfile(targetProfile);
-                ClearSelection();
-                RefreshProfiles();
-                return;
-            }
-        }
-        else
-        {
-            // Check IsSelected flags on Entities, Features, and Profiles
-            var selectedEntities = Sketch.Entities.Where(e => e.IsSelected).ToList();
-            if (selectedEntities.Count > 0)
-            {
-                foreach (var entity in selectedEntities)
-                {
-                    Sketch.RemoveEntity(entity);
-                }
-                ClearSelection();
-                RefreshProfiles();
-                return;
-            }
-
-            var selectedFeatures = Sketch.Features.Where(f => f.IsSelected).ToList();
-            if (selectedFeatures.Count > 0)
-            {
-                foreach (var feature in selectedFeatures)
-                {
-                    if (feature is Domain.Features.WorkPlaneFeature wpf && wpf.IsBasePlane) continue;
-                    if (feature is BooleanFeature boolF)
-                    {
-                        boolF.BaseFeature.IsVisible = true;
-                        foreach (var tool in boolF.ToolFeatures)
-                            tool.IsVisible = true;
-                    }
-                    Sketch.RemoveFeature(feature);
-                }
-                ClearSelection();
-                RefreshProfiles();
-                return;
-            }
-
-            var selectedProfiles = Sketch.Profiles.Where(p => p.IsSelected).ToList();
-            if (selectedProfiles.Count > 0)
-            {
-                foreach (var profile in selectedProfiles)
-                {
-                    var entitiesToRemove = Sketch.Entities.Where(e => profile.SourceEntityIds.Contains(e.Id)).ToList();
-                    foreach (var entity in entitiesToRemove)
-                    {
-                        Sketch.RemoveEntity(entity);
-                    }
-                    Sketch.RemoveProfile(profile);
-                }
-                ClearSelection();
-                RefreshProfiles();
-                return;
-            }
-        }
-    }
-
-    private void ClearVcb()
-    {
-        _inputBuffer = "";
-        UpdateStatusText(CurrentSnappedPoint);
-    }
-
-    private bool IsNumericKey(string keyName, out char result)
-    {
-        result = '\0';
-        if (keyName.Length == 2 && keyName.StartsWith("D") && char.IsDigit(keyName[1]))
-        {
-            result = keyName[1];
-            return true;
-        }
-        if (keyName.StartsWith("NUMPAD") && keyName.Length == 7 && char.IsDigit(keyName[6]))
-        {
-            result = keyName[6];
-            return true;
-        }
-        if (keyName == "OEMPERIOD" || keyName == "DECIMAL" || keyName == "OEMCOMMA")
-        {
-            result = '.';
-            return true;
-        }
-        return false;
     }
 
     public void SetTool(ICommandTool tool)

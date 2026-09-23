@@ -17,7 +17,7 @@ public class IntegrationBehaviorTests
     {
         var mockEngine = new Mock<IGeometryEngine>();
         var mockSnap = new Mock<IOSnapService>();
-        var vm = new CadViewModel(mockEngine.Object, mockSnap.Object);
+        var vm = TestUtils.CreateCadViewModel(mockEngine.Object, mockSnap.Object);
 
         // Inicializa com Line
         vm.SelectLineToolCommand.Execute(null);
@@ -73,7 +73,7 @@ public class IntegrationBehaviorTests
     {
         var mockEngine = new Mock<IGeometryEngine>();
         var mockSnap = new Mock<IOSnapService>();
-        var vm = new CadViewModel(mockEngine.Object, mockSnap.Object);
+        var vm = TestUtils.CreateCadViewModel(mockEngine.Object, mockSnap.Object);
 
         // Seleciona uma linha e adiciona ao Sketch
         var line = new LineEntity(new Point3D(0, 0), new Point3D(10, 0)) { IsSelected = true };

@@ -23,7 +23,7 @@ public class DeleteBehaviorTests
         var mockGeo = new Mock<AvaloniaCadEditor.Domain.Interfaces.IGeometryEngine>();
         var mockSnap = new Mock<IOSnapService>();
         var selectionService = new SelectionService();
-        var vm = new CadViewModel(mockGeo.Object, mockSnap.Object, null, new PureMathGeometryKernel(), selectionService);
+        var vm = TestUtils.CreateCadViewModel(mockGeo.Object, mockSnap.Object, null, new PureMathGeometryKernel(), selectionService);
 
         var line = new LineEntity(new Point3D(0, 0, 0), new Point3D(100, 0, 0));
         var circle = new CircleEntity(new Point3D(50, 50, 0), 20.0);
@@ -56,7 +56,7 @@ public class DeleteBehaviorTests
         var mockGeo = new Mock<AvaloniaCadEditor.Domain.Interfaces.IGeometryEngine>();
         var mockSnap = new Mock<IOSnapService>();
         var selectionService = new SelectionService();
-        var vm = new CadViewModel(mockGeo.Object, mockSnap.Object, null, new PureMathGeometryKernel(), selectionService);
+        var vm = TestUtils.CreateCadViewModel(mockGeo.Object, mockSnap.Object, null, new PureMathGeometryKernel(), selectionService);
 
         var line = new LineEntity(new Point3D(0, 0, 0), new Point3D(50, 50, 0));
         vm.Sketch.AddEntity(line);
@@ -80,7 +80,7 @@ public class DeleteBehaviorTests
         var mockGeo = new Mock<AvaloniaCadEditor.Domain.Interfaces.IGeometryEngine>();
         var mockSnap = new Mock<IOSnapService>();
         var selectionService = new SelectionService();
-        var vm = new CadViewModel(mockGeo.Object, mockSnap.Object, null, kernel, selectionService);
+        var vm = TestUtils.CreateCadViewModel(mockGeo.Object, mockSnap.Object, null, kernel, selectionService);
 
         var circleProfile = new CircleProfile(new Point3D(0, 0, 0), 15.0);
         var cylinder = new ExtrudeFeature(circleProfile, 30.0);
@@ -107,7 +107,7 @@ public class DeleteBehaviorTests
         var mockGeo = new Mock<AvaloniaCadEditor.Domain.Interfaces.IGeometryEngine>();
         var mockSnap = new Mock<IOSnapService>();
         var selectionService = new SelectionService();
-        var vm = new CadViewModel(mockGeo.Object, mockSnap.Object, null, new PureMathGeometryKernel(), selectionService);
+        var vm = TestUtils.CreateCadViewModel(mockGeo.Object, mockSnap.Object, null, new PureMathGeometryKernel(), selectionService);
 
         var line1 = new LineEntity(new Point3D(0, 0), new Point3D(10, 0));
         var line2 = new LineEntity(new Point3D(10, 0), new Point3D(10, 10));
@@ -142,7 +142,7 @@ public class DeleteBehaviorTests
         var mockGeo = new Mock<AvaloniaCadEditor.Domain.Interfaces.IGeometryEngine>();
         var mockSnap = new Mock<IOSnapService>();
         var selectionService = new SelectionService();
-        var vm = new CadViewModel(mockGeo.Object, mockSnap.Object, null, null, selectionService);
+        var vm = TestUtils.CreateCadViewModel(mockGeo.Object, mockSnap.Object, null, null, selectionService);
 
         vm.CurrentTool.Should().BeOfType<SelectTool>();
 
@@ -160,7 +160,7 @@ public class DeleteBehaviorTests
         var mockGeo = new Mock<AvaloniaCadEditor.Domain.Interfaces.IGeometryEngine>();
         var mockSnap = new Mock<IOSnapService>();
         var selectionService = new SelectionService();
-        var vm = new CadViewModel(mockGeo.Object, mockSnap.Object, null, null, selectionService);
+        var vm = TestUtils.CreateCadViewModel(mockGeo.Object, mockSnap.Object, null, null, selectionService);
 
         // Act: Press 'E'
         vm.OnKeyDown("E");

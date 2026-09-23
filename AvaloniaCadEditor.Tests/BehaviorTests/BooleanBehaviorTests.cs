@@ -55,7 +55,7 @@ public class BooleanBehaviorTests
                 .Returns<Sketch, Point3D, Point3D?, AvaloniaCadEditor.Domain.Mesh.TriangleMesh>((s, p, t, m) => p);
         var profileService = new ProfileRecognitionService();
         var selectionService = new SelectionService();
-        var vm = new CadViewModel(mockEngine.Object, mockSnap.Object, profileService, kernel, selectionService);
+        var vm = TestUtils.CreateCadViewModel(mockEngine.Object, mockSnap.Object, profileService, kernel, selectionService);
 
         // Act - Passo 1: Desenhar Círculo 1 (r=10, origem)
         vm.OnKeyDown("C");

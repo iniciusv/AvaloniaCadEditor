@@ -24,12 +24,20 @@ public partial class App : Avalonia.Application
 			var geometryKernel = new AvaloniaCadEditor.Infrastructure.OpenCascade.OpenCascadeGeometryKernel();
 			var settingsProvider = new AvaloniaCadEditor.Infrastructure.Settings.JsonTessellationSettingsProvider();
 			var evaluator = new AvaloniaCadEditor.Infrastructure.Scripting.RoslynSceneEvaluator();
-			desktop.MainWindow = new MainWindow();
+			var selectionService = new SelectionService();
 			
+			var meshManager = new SceneMeshManager(geometryKernel, settingsProvider);
+			var vcbService = new VcbInputService();
+			var deletionService = new SceneDeletionService(selectionService);
+			
+			desktop.MainWindow = new MainWindow();
 			var filePicker = new AvaloniaCadEditor.UI.Services.AvaloniaFilePickerService(desktop.MainWindow);
 			
-			var viewModel = new CadViewModel(geometryEngine, osnapService, profileRecognitionService, geometryKernel, null, settingsProvider, evaluator, filePicker);
-
+			var viewModel = new CadViewModel(geometryEngine, osnapService, meshManager, vcbService, deletionService, null!, profileRecognitionService, selectionService, settingsProvider);
+			
+			var scriptEditor = new SceneScriptViewModel(viewModel, evaluator, filePicker);
+			viewModel.ScriptEditor = scriptEditor;
+			
 			desktop.MainWindow.DataContext = viewModel;
 		}
 

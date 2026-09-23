@@ -94,13 +94,13 @@
                     <TabItem Header="Código C#" Padding="10,5">
                         <Grid RowDefinitions="Auto,*">
                             <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" Margin="4" HorizontalAlignment="Right">
-                                <Button Content="Load (.cs)" Command="{Binding LoadCodeFromFileCommand}" />
-                                <Button Content="Save (.cs)" Command="{Binding SaveCodeToFileCommand}" />
-                                <Button Content="Atualizar Código" Command="{Binding GenerateCodeCommand}" />
-                                <Button Content="▶ Run" Command="{Binding RunCodeCommand}"
+                                <Button Content="Load (.cs)" Command="{Binding ScriptEditor.LoadCodeFromFileCommand}" />
+                                <Button Content="Save (.cs)" Command="{Binding ScriptEditor.SaveCodeToFileCommand}" />
+                                <Button Content="Atualizar Código" Command="{Binding ScriptEditor.GenerateCodeCommand}" />
+                                <Button Content="▶ Run" Command="{Binding ScriptEditor.RunCodeCommand}"
                                         Background="#27AE60" Foreground="White" FontWeight="Bold" />
                             </StackPanel>
-                            <TextBox Grid.Row="1" Text="{Binding GeneratedCSharpCode, Mode=TwoWay}" 
+                            <TextBox Grid.Row="1" Text="{Binding ScriptEditor.GeneratedCSharpCode, Mode=TwoWay}" 
                                      IsReadOnly="False" 
                                      FontFamily="Consolas, Fira Code, Monospace" 
                                      Background="#1E1E1E" 

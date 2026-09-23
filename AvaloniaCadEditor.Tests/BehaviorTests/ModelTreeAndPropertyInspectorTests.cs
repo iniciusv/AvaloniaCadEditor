@@ -168,7 +168,7 @@ public class ModelTreeAndPropertyInspectorTests
         var mockGeo = new Moq.Mock<AvaloniaCadEditor.Domain.Interfaces.IGeometryEngine>();
         var mockSnap = new Moq.Mock<AvaloniaCadEditor.Application.Services.IOSnapService>();
         var selectionService = new SelectionService();
-        var vm = new CadViewModel(mockGeo.Object, mockSnap.Object, null, kernel, selectionService);
+        var vm = TestUtils.CreateCadViewModel(mockGeo.Object, mockSnap.Object, null, kernel, selectionService);
         vm.Sketch.AddFeature(cylinder);
         vm.RefreshSolidMesh();
 
@@ -228,7 +228,7 @@ public class ModelTreeAndPropertyInspectorTests
                 .Returns<Sketch, Point3D, Point3D?, AvaloniaCadEditor.Domain.Mesh.TriangleMesh>((s, p, t, m) => p);
 
         var selectionService = new SelectionService();
-        var vm = new CadViewModel(mockGeo.Object, mockSnap.Object, null, null, selectionService);
+        var vm = TestUtils.CreateCadViewModel(mockGeo.Object, mockSnap.Object, null, null, selectionService);
 
         var circle = new CircleProfile(new Point3D(50, 50, 0), 20.0);
         vm.Sketch.AddProfile(circle);
@@ -257,7 +257,7 @@ public class ModelTreeAndPropertyInspectorTests
                 .Returns<Sketch, Point3D, Point3D?, AvaloniaCadEditor.Domain.Mesh.TriangleMesh>((s, p, t, m) => p);
 
         var selectionService = new SelectionService();
-        var vm = new CadViewModel(mockGeo.Object, mockSnap.Object, null, kernel, selectionService);
+        var vm = TestUtils.CreateCadViewModel(mockGeo.Object, mockSnap.Object, null, kernel, selectionService);
 
         var circle = new CircleProfile(new Point3D(0, 0, 0), 10.0);
         vm.Sketch.AddProfile(circle);
