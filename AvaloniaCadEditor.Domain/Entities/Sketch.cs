@@ -8,6 +8,8 @@ public class Sketch
 {
     private readonly List<WorkPlaneFeature> _workPlanes = new();
     private readonly List<IFeature> _features = new();
+    private readonly List<Entity> _entities = new();
+    private readonly List<IProfile> _profiles = new();
 
     public ValueObjects.WorkPlane Plane { get; set; }
 
@@ -26,33 +28,33 @@ public class Sketch
     public IReadOnlyList<WorkPlaneFeature> WorkPlanes => _workPlanes.AsReadOnly();
     public IReadOnlyList<IFeature> Features => _features.AsReadOnly();
     
-    // Compatibility wrappers for the active sketch (assuming first WorkPlane for now)
-    public IReadOnlyList<Entity> Entities => _workPlanes.Count > 0 ? _workPlanes[0].Sketch.Entities : System.Array.Empty<Entity>();
-    public IReadOnlyList<IProfile> Profiles => _workPlanes.Count > 0 ? _workPlanes[0].Sketch.Profiles : System.Array.Empty<IProfile>();
+    public IReadOnlyList<Entity> Entities => _entities.AsReadOnly();
+    public IReadOnlyList<IProfile> Profiles => _profiles.AsReadOnly();
 
     public void AddEntity(Entity entity)
     {
-        if (_workPlanes.Count > 0) _workPlanes[0].Sketch.AddEntity(entity);
+        _entities.Add(entity);
     }
 
     public void RemoveEntity(Entity entity)
     {
-        if (_workPlanes.Count > 0) _workPlanes[0].Sketch.RemoveEntity(entity);
+        _entities.Remove(entity);
     }
 
     public void SetProfiles(IEnumerable<IProfile> profiles)
     {
-        if (_workPlanes.Count > 0) _workPlanes[0].Sketch.SetProfiles(profiles);
+        _profiles.Clear();
+        _profiles.AddRange(profiles);
     }
 
     public void AddProfile(IProfile profile)
     {
-        if (_workPlanes.Count > 0) _workPlanes[0].Sketch.AddProfile(profile);
+        _profiles.Add(profile);
     }
 
     public void RemoveProfile(IProfile profile)
     {
-        if (_workPlanes.Count > 0) _workPlanes[0].Sketch.RemoveProfile(profile);
+        _profiles.Remove(profile);
     }
 
     public void AddWorkPlane(WorkPlaneFeature wp)
@@ -92,7 +94,8 @@ public class Sketch
 
     public void Clear()
     {
-        if (_workPlanes.Count > 0) _workPlanes[0].Sketch.Clear();
+        _entities.Clear();
+        _profiles.Clear();
         _workPlanes.Clear();
         _features.Clear();
         _workPlanes.Add(new WorkPlaneFeature(Plane, "Plano Base (XY)", true));
