@@ -114,6 +114,10 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             {
                 result = BuildBox(box, settings);
             }
+            else if (feature is PrismFeature prism && prism.IsEnabled)
+            {
+                result = BuildPrism(prism, settings);
+            }
             else if (feature is BooleanFeature boolean && boolean.IsEnabled)
             {
                 result = BuildBoolean(boolean, settings);
@@ -150,6 +154,13 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         var plane = new WorkPlane(bottomCenter, box.DirectionZ, box.DirectionX);
         var profile = new AvaloniaCadEditor.Domain.Profiles.RectangleProfile(Point3D.Origin, box.Width, box.Length, 0.0, box.DirectionZ, null, plane);
         var extrude = new ExtrudeFeature(profile, box.Height, box.DirectionZ * box.Height);
+        return BuildExtrude(extrude, settings);
+    }
+
+    private OcctShape BuildPrism(PrismFeature prism, TessellationSettings settings)
+    {
+        var profile = new AvaloniaCadEditor.Domain.Profiles.PolygonProfile(prism.Vertices, plane: prism.Plane);
+        var extrude = new ExtrudeFeature(profile, prism.Height, prism.Plane.Normal * prism.Height);
         return BuildExtrude(extrude, settings);
     }
 
@@ -211,7 +222,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         var wire = new OcctWire(edges.ToArray());
         var face = new OcctFace(wire);
 
-        if (Math.Abs(extrude.Depth) < 1e-6) return face;
+        if (Math.Abs(extrude.Height) < 1e-6) return face;
 
         return face.Extrude(vec);
     }

@@ -170,9 +170,9 @@ public sealed class ViewportInputHandler
                             requestRender();
                         }
                     }
-                    else if (viewModel.CurrentTool is Application.Commands.ExtrudeCommand extCmd)
+                    if (viewModel.CurrentTool is Application.Commands.ExtrudeCommand extCmd)
                     {
-                        if (!extCmd.IsDefiningDepth)
+                        if (!extCmd.IsDefiningHeight)
                         {
                             var hit = viewModel.Raycast3D(ray);
                             if (hit.HasValue && hit.Value.FeatureId.HasValue)
@@ -269,7 +269,7 @@ public sealed class ViewportInputHandler
                 (float)viewModel.ActiveWorkPlane.Origin.Y,
                 (float)viewModel.ActiveWorkPlane.Origin.Z);
             
-            if (viewModel.CurrentTool is Application.Commands.ExtrudeCommand extCmd && extCmd.IsDefiningDepth && extCmd.SelectedProfile != null)
+            if (viewModel.CurrentTool is Application.Commands.ExtrudeCommand extCmd && extCmd.IsDefiningHeight && extCmd.SelectedProfile != null)
             {
                 if (_lastMousePos.HasValue)
                 {
@@ -300,7 +300,7 @@ public sealed class ViewportInputHandler
                         screenNormal = Vector2.Normalize(screenNormal);
                         float mouseProj = deltaX * screenNormal.X + deltaY * screenNormal.Y;
                         float sensitivity = 0.5f; // Screen pixels to depth units
-                        extCmd.UpdateDepth(extCmd.CurrentDepth + mouseProj * sensitivity);
+                        extCmd.UpdateHeight(extCmd.CurrentHeight + mouseProj * sensitivity);
                         requestRender();
                     }
                 }

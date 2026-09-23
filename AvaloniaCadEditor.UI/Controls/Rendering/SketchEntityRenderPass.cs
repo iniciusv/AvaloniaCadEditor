@@ -87,7 +87,7 @@ public sealed class SketchEntityRenderPass : IRenderPass
                     float pr = 1.0f, pg = 1.0f, pb = 0.0f;
                     if (vm.CurrentTool is Application.Commands.ExtrudeCommand extCmd)
                     {
-                        if (extCmd.CurrentDepth < 0)
+                        if (extCmd.CurrentHeight < 0)
                         {
                             pr = 1.0f; pg = 0.2f; pb = 0.2f; // Red for subtract
                         }

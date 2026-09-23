@@ -14,13 +14,13 @@ public class ExtrudeCommand : ICommandTool
 {
     public string Name => "Extrude";
 
-    private enum State { SelectingProfile, DefiningDepth }
+    private enum State { SelectingProfile, DefiningHeight }
     private State _currentState = State.SelectingProfile;
-    public bool IsDefiningDepth => _currentState == State.DefiningDepth;
+    public bool IsDefiningHeight => _currentState == State.DefiningHeight;
 
     private IProfile? _selectedProfile;
     public IProfile? SelectedProfile => _selectedProfile;
-    public double CurrentDepth { get; private set; } = 20.0;
+    public double CurrentHeight { get; private set; } = 20.0;
     private Point3D _startPoint;
     public Point3D StartPointWorld { get; private set; }
     public bool IsFinished { get; private set; }
@@ -37,15 +37,15 @@ public class ExtrudeCommand : ICommandTool
             if (_selectedProfile != null)
             {
                 _startPoint = point;
-                _currentState = State.DefiningDepth;
+                _currentState = State.DefiningHeight;
             }
         }
-        else if (_currentState == State.DefiningDepth)
+        else if (_currentState == State.DefiningHeight)
         {
             if (_selectedProfile != null)
             {
-                double depth = Math.Abs(CurrentDepth) < 1e-3 ? 20.0 : CurrentDepth;
-                string code = GenerateExtrusionCode(_selectedProfile, depth, sketch);
+                double height = Math.Abs(CurrentHeight) < 1e-3 ? 20.0 : CurrentHeight;
+                string code = GenerateExtrusionCode(_selectedProfile, height, sketch);
                 CodeGenerated?.Invoke(this, code);
                 IsFinished = true;
             }
@@ -58,13 +58,13 @@ public class ExtrudeCommand : ICommandTool
         _selectedProfile = profile;
         _startPoint = startPoint;
         StartPointWorld = startPoint;
-        CurrentDepth = 20.0;
-        _currentState = State.DefiningDepth;
+        CurrentHeight = 20.0;
+        _currentState = State.DefiningHeight;
     }
 
     public void OnMouseMove(Sketch sketch, Point3D point)
     {
-        if (_currentState == State.DefiningDepth && _selectedProfile != null)
+        if (_currentState == State.DefiningHeight && _selectedProfile != null)
         {
             // Fallback for 2D extrusion drag
             double dx = point.X - _startPoint.X;
@@ -73,15 +73,15 @@ public class ExtrudeCommand : ICommandTool
             
             // Determine sign based on general drag direction
             double sign = (dx + dy) >= 0 ? 1.0 : -1.0;
-            CurrentDepth = distance > 0.1 ? distance * sign : 20.0;
+            CurrentHeight = distance > 0.1 ? distance * sign : 20.0;
         }
     }
 
-    public void UpdateDepth(double depth)
+    public void UpdateHeight(double height)
     {
-        if (_currentState == State.DefiningDepth)
+        if (_currentState == State.DefiningHeight)
         {
-            CurrentDepth = depth;
+            CurrentHeight = height;
         }
     }
 
@@ -89,7 +89,7 @@ public class ExtrudeCommand : ICommandTool
     {
         _currentState = State.SelectingProfile;
         _selectedProfile = null;
-        CurrentDepth = 20.0;
+        CurrentHeight = 20.0;
         _previewFeature = null;
     }
 
@@ -97,16 +97,16 @@ public class ExtrudeCommand : ICommandTool
 
     public IFeature? GetPreviewFeature()
     {
-        if (_currentState == State.DefiningDepth && _selectedProfile != null)
+        if (_currentState == State.DefiningHeight && _selectedProfile != null)
         {
             if (_previewFeature == null || _previewFeature.Profile != _selectedProfile)
             {
-                _previewFeature = new ExtrudeFeature(_selectedProfile, CurrentDepth);
+                _previewFeature = new ExtrudeFeature(_selectedProfile, CurrentHeight);
             }
             else
             {
-                _previewFeature.Depth = CurrentDepth;
-                _previewFeature.Direction = _selectedProfile.Normal * CurrentDepth; // Update direction based on depth
+                _previewFeature.Height = CurrentHeight;
+                _previewFeature.Direction = _selectedProfile.Normal * CurrentHeight; // Update direction based on height
             }
             return _previewFeature;
         }
@@ -116,13 +116,13 @@ public class ExtrudeCommand : ICommandTool
 
     public IEnumerable<Entity> GetPreviewEntities()
     {
-        if (_currentState == State.DefiningDepth && _selectedProfile != null)
+        if (_currentState == State.DefiningHeight && _selectedProfile != null)
         {
             var previewLines = new List<Entity>();
             var baseVerts = _selectedProfile.GetVertices();
             if (baseVerts.Count == 0) return previewLines; // FaceProfile might not have simple vertices for preview
 
-            var dir = _selectedProfile.Normal * CurrentDepth;
+            var dir = _selectedProfile.Normal * CurrentHeight;
             var plane = _selectedProfile.Plane;
 
             for (int i = 0; i < baseVerts.Count; i++)
@@ -177,11 +177,11 @@ public class ExtrudeCommand : ICommandTool
         Cancel();
     }
 
-    private string GenerateExtrusionCode(IProfile profile, double depth, Sketch? sketch)
+    private string GenerateExtrusionCode(IProfile profile, double height, Sketch? sketch)
     {
         var sb = new StringBuilder();
         string id = Guid.NewGuid().ToString("N").Substring(0, 4);
-        string depthStr = depth.ToString(CultureInfo.InvariantCulture);
+        string heightStr = height.ToString(CultureInfo.InvariantCulture);
 
         if (profile is ParametricBoxFace boxFace)
         {
@@ -192,10 +192,10 @@ public class ExtrudeCommand : ICommandTool
             string boxVar = $"box_{id}";
             string boolVar = $"boolOp_{id}";
 
-            sb.AppendLine($"var {boxVar} = new BoxFeature(baseCorner: {parentId}.GetFaceCorner(FaceType.{boxFace.SelectedFace}), width: {parentId}.GetFaceWidth(FaceType.{boxFace.SelectedFace}), length: {parentId}.GetFaceLength(FaceType.{boxFace.SelectedFace}), height: {depthStr}) {{ Name = \"{boxVar}\" }};");
+            sb.AppendLine($"var {boxVar} = new BoxFeature(baseCorner: {parentId}.GetFaceCorner(FaceType.{boxFace.SelectedFace}), width: {parentId}.GetFaceWidth(FaceType.{boxFace.SelectedFace}), length: {parentId}.GetFaceLength(FaceType.{boxFace.SelectedFace}), height: {heightStr}) {{ Name = \"{boxVar}\" }};");
             sb.AppendLine($"{boxVar}.AlignToFace({parentId}, FaceType.{boxFace.SelectedFace});");
             sb.AppendLine($"AddFeature({boxVar});");
-            sb.AppendLine($"var {boolVar} = new BooleanFeature(\"Push/Pull\", {(depth < 0 ? "BooleanOperationType.Subtract" : "BooleanOperationType.Union")}, {parentId}, new[] {{ {boxVar} }}) {{ Name = \"{boolVar}\" }};");
+            sb.AppendLine($"var {boolVar} = new BooleanFeature(\"Push/Pull\", {(height < 0 ? "BooleanOperationType.Subtract" : "BooleanOperationType.Union")}, {parentId}, new[] {{ {boxVar} }}) {{ Name = \"{boolVar}\" }};");
             sb.AppendLine($"AddFeature({boolVar});");
         }
         else if (profile is ParametricCylinderFace cylFace)
@@ -207,9 +207,9 @@ public class ExtrudeCommand : ICommandTool
             string cylVar = $"cylinder_{id}";
             string boolVar = $"boolOp_{id}";
 
-            sb.AppendLine($"var {cylVar} = new CylinderFeature(globalBaseCenter: {parentId}.GetFaceCenter(FaceType.{cylFace.SelectedFace}), globalDirection: {parentId}.GetFaceNormal(FaceType.{cylFace.SelectedFace}), radius: {cylFace.ParentCylinder.Radius.ToString(CultureInfo.InvariantCulture)}, height: {depthStr}) {{ Name = \"{cylVar}\" }};");
+            sb.AppendLine($"var {cylVar} = new CylinderFeature(globalBaseCenter: {parentId}.GetFaceCenter(FaceType.{cylFace.SelectedFace}), globalDirection: {parentId}.GetFaceNormal(FaceType.{cylFace.SelectedFace}), radius: {cylFace.ParentCylinder.Radius.ToString(CultureInfo.InvariantCulture)}, height: {heightStr}) {{ Name = \"{cylVar}\" }};");
             sb.AppendLine($"AddFeature({cylVar});");
-            sb.AppendLine($"var {boolVar} = new BooleanFeature(\"Push/Pull\", {(depth < 0 ? "BooleanOperationType.Subtract" : "BooleanOperationType.Union")}, {parentId}, new[] {{ {cylVar} }}) {{ Name = \"{boolVar}\" }};");
+            sb.AppendLine($"var {boolVar} = new BooleanFeature(\"Push/Pull\", {(height < 0 ? "BooleanOperationType.Subtract" : "BooleanOperationType.Union")}, {parentId}, new[] {{ {cylVar} }}) {{ Name = \"{boolVar}\" }};");
             sb.AppendLine($"AddFeature({boolVar});");
         }
         else if (profile is CircleProfile circleProfile)
@@ -217,7 +217,7 @@ public class ExtrudeCommand : ICommandTool
             string cylVar = $"cylinder_{id}";
             var center = circleProfile.Plane.ToWorldSpace(circleProfile.Center);
             var normal = circleProfile.Normal;
-            sb.AppendLine($"var {cylVar} = new CylinderFeature(globalBaseCenter: new Point3D({center.X.ToString(CultureInfo.InvariantCulture)}, {center.Y.ToString(CultureInfo.InvariantCulture)}, {center.Z.ToString(CultureInfo.InvariantCulture)}), globalDirection: new Vector3D({normal.X.ToString(CultureInfo.InvariantCulture)}, {normal.Y.ToString(CultureInfo.InvariantCulture)}, {normal.Z.ToString(CultureInfo.InvariantCulture)}), radius: {circleProfile.Radius.ToString(CultureInfo.InvariantCulture)}, height: {depthStr}) {{ Name = \"{cylVar}\" }};");
+            sb.AppendLine($"var {cylVar} = new CylinderFeature(globalBaseCenter: new Point3D({center.X.ToString(CultureInfo.InvariantCulture)}, {center.Y.ToString(CultureInfo.InvariantCulture)}, {center.Z.ToString(CultureInfo.InvariantCulture)}), globalDirection: new Vector3D({normal.X.ToString(CultureInfo.InvariantCulture)}, {normal.Y.ToString(CultureInfo.InvariantCulture)}, {normal.Z.ToString(CultureInfo.InvariantCulture)}), radius: {circleProfile.Radius.ToString(CultureInfo.InvariantCulture)}, height: {heightStr}) {{ Name = \"{cylVar}\" }};");
             sb.AppendLine($"AddFeature({cylVar});");
         }
         else if (profile is RectangleProfile rectProfile)
@@ -236,33 +236,72 @@ public class ExtrudeCommand : ICommandTool
             var localCorner = new Point3D(rectProfile.Center.X + cx, rectProfile.Center.Y + cy, rectProfile.Center.Z);
             var corner = rectProfile.Plane.ToWorldSpace(localCorner);
 
-            sb.AppendLine($"var {boxVar} = new BoxFeature(baseCorner: new Point3D({corner.X.ToString(CultureInfo.InvariantCulture)}, {corner.Y.ToString(CultureInfo.InvariantCulture)}, {corner.Z.ToString(CultureInfo.InvariantCulture)}), width: {rectProfile.Width.ToString(CultureInfo.InvariantCulture)}, length: {rectProfile.Height.ToString(CultureInfo.InvariantCulture)}, height: {depthStr}) {{ Name = \"{boxVar}\", DirectionX = new Vector3D({dirX.X.ToString(CultureInfo.InvariantCulture)}, {dirX.Y.ToString(CultureInfo.InvariantCulture)}, {dirX.Z.ToString(CultureInfo.InvariantCulture)}), DirectionY = new Vector3D({dirY.X.ToString(CultureInfo.InvariantCulture)}, {dirY.Y.ToString(CultureInfo.InvariantCulture)}, {dirY.Z.ToString(CultureInfo.InvariantCulture)}), DirectionZ = new Vector3D({dirZ.X.ToString(CultureInfo.InvariantCulture)}, {dirZ.Y.ToString(CultureInfo.InvariantCulture)}, {dirZ.Z.ToString(CultureInfo.InvariantCulture)}) }};");
+            sb.AppendLine($"var {boxVar} = new BoxFeature(baseCorner: new Point3D({corner.X.ToString(CultureInfo.InvariantCulture)}, {corner.Y.ToString(CultureInfo.InvariantCulture)}, {corner.Z.ToString(CultureInfo.InvariantCulture)}), width: {rectProfile.Width.ToString(CultureInfo.InvariantCulture)}, length: {rectProfile.Height.ToString(CultureInfo.InvariantCulture)}, height: {heightStr}) {{ Name = \"{boxVar}\", DirectionX = new Vector3D({dirX.X.ToString(CultureInfo.InvariantCulture)}, {dirX.Y.ToString(CultureInfo.InvariantCulture)}, {dirX.Z.ToString(CultureInfo.InvariantCulture)}), DirectionY = new Vector3D({dirY.X.ToString(CultureInfo.InvariantCulture)}, {dirY.Y.ToString(CultureInfo.InvariantCulture)}, {dirY.Z.ToString(CultureInfo.InvariantCulture)}), DirectionZ = new Vector3D({dirZ.X.ToString(CultureInfo.InvariantCulture)}, {dirZ.Y.ToString(CultureInfo.InvariantCulture)}, {dirZ.Z.ToString(CultureInfo.InvariantCulture)}) }};");
             sb.AppendLine($"AddFeature({boxVar});");
+        }
+        else if (profile is PolygonProfile polyProfile)
+        {
+            string prismVar = $"prism_{id}";
+            
+            sb.AppendLine($"var {prismVar}_verts = new[] {{");
+            foreach (var v in polyProfile.Vertices)
+            {
+                sb.AppendLine($"    new Point3D({v.X.ToString(CultureInfo.InvariantCulture)}, {v.Y.ToString(CultureInfo.InvariantCulture)}, {v.Z.ToString(CultureInfo.InvariantCulture)}),");
+            }
+            sb.AppendLine($"}};");
+            
+            var o = polyProfile.Plane.Origin;
+            var normal = polyProfile.Plane.Normal;
+            var xAxis = polyProfile.Plane.XAxis;
+            
+            bool isDefaultPlane = o.DistanceTo(Point3D.Origin) < 1e-6 && 
+                                  (normal - new Vector3D(0,0,1)).Length < 1e-6 && 
+                                  (xAxis - new Vector3D(1,0,0)).Length < 1e-6;
+
+            if (isDefaultPlane)
+            {
+                sb.AppendLine($"var {prismVar} = new PrismFeature({prismVar}_verts, height: {heightStr}) {{ Name = \"{prismVar}\" }};");
+            }
+            else
+            {
+                sb.AppendLine($"var {prismVar}_plane = new WorkPlane(new Point3D({o.X.ToString(CultureInfo.InvariantCulture)}, {o.Y.ToString(CultureInfo.InvariantCulture)}, {o.Z.ToString(CultureInfo.InvariantCulture)}), new Vector3D({normal.X.ToString(CultureInfo.InvariantCulture)}, {normal.Y.ToString(CultureInfo.InvariantCulture)}, {normal.Z.ToString(CultureInfo.InvariantCulture)}), new Vector3D({xAxis.X.ToString(CultureInfo.InvariantCulture)}, {xAxis.Y.ToString(CultureInfo.InvariantCulture)}, {xAxis.Z.ToString(CultureInfo.InvariantCulture)}));");
+                sb.AppendLine($"var {prismVar} = new PrismFeature({prismVar}_verts, height: {heightStr}, plane: {prismVar}_plane) {{ Name = \"{prismVar}\" }};");
+            }
+            sb.AppendLine($"AddFeature({prismVar});");
         }
         else
         {
             var verts = profile.GetVertices();
             if (verts.Count > 0)
             {
-                var localVerts = verts.Select(v => profile.Plane.ToLocalSpace(v)).ToList();
-                double minX = localVerts.Min(v => v.X);
-                double maxX = localVerts.Max(v => v.X);
-                double minY = localVerts.Min(v => v.Y);
-                double maxY = localVerts.Max(v => v.Y);
-                double minZ = localVerts.Min(v => v.Z);
-                double maxZ = localVerts.Max(v => v.Z);
+                string prismVar = $"prism_{id}";
+                
+                sb.AppendLine($"var {prismVar}_verts = new[] {{");
+                foreach (var v in verts)
+                {
+                    var localV = profile.Plane.ToLocalSpace(v);
+                    sb.AppendLine($"    new Point3D({localV.X.ToString(CultureInfo.InvariantCulture)}, {localV.Y.ToString(CultureInfo.InvariantCulture)}, {localV.Z.ToString(CultureInfo.InvariantCulture)}),");
+                }
+                sb.AppendLine($"}};");
+                
+                var o = profile.Plane.Origin;
+                var normal = profile.Plane.Normal;
+                var xAxis = profile.Plane.XAxis;
+                
+                bool isDefaultPlane = o.DistanceTo(Point3D.Origin) < 1e-6 && 
+                                      (normal - new Vector3D(0,0,1)).Length < 1e-6 && 
+                                      (xAxis - new Vector3D(1,0,0)).Length < 1e-6;
 
-                double width = Math.Max(0.1, maxX - minX);
-                double length = Math.Max(0.1, maxY - minY);
-                Point3D localCorner = new Point3D(minX, minY, minZ);
-                Point3D corner = profile.Plane.ToWorldSpace(localCorner);
-
-                string boxVar = $"box_{id}";
-                var dirX = profile.Plane.XAxis;
-                var dirY = profile.Plane.YAxis;
-                var dirZ = profile.Plane.Normal;
-                sb.AppendLine($"var {boxVar} = new BoxFeature(baseCorner: new Point3D({corner.X.ToString(CultureInfo.InvariantCulture)}, {corner.Y.ToString(CultureInfo.InvariantCulture)}, {corner.Z.ToString(CultureInfo.InvariantCulture)}), width: {width.ToString(CultureInfo.InvariantCulture)}, length: {length.ToString(CultureInfo.InvariantCulture)}, height: {depthStr}) {{ Name = \"{boxVar}\", DirectionX = new Vector3D({dirX.X.ToString(CultureInfo.InvariantCulture)}, {dirX.Y.ToString(CultureInfo.InvariantCulture)}, {dirX.Z.ToString(CultureInfo.InvariantCulture)}), DirectionY = new Vector3D({dirY.X.ToString(CultureInfo.InvariantCulture)}, {dirY.Y.ToString(CultureInfo.InvariantCulture)}, {dirY.Z.ToString(CultureInfo.InvariantCulture)}), DirectionZ = new Vector3D({dirZ.X.ToString(CultureInfo.InvariantCulture)}, {dirZ.Y.ToString(CultureInfo.InvariantCulture)}, {dirZ.Z.ToString(CultureInfo.InvariantCulture)}) }};");
-                sb.AppendLine($"AddFeature({boxVar});");
+                if (isDefaultPlane)
+                {
+                    sb.AppendLine($"var {prismVar} = new PrismFeature({prismVar}_verts, height: {heightStr}) {{ Name = \"{prismVar}\" }};");
+                }
+                else
+                {
+                    sb.AppendLine($"var {prismVar}_plane = new WorkPlane(new Point3D({o.X.ToString(CultureInfo.InvariantCulture)}, {o.Y.ToString(CultureInfo.InvariantCulture)}, {o.Z.ToString(CultureInfo.InvariantCulture)}), new Vector3D({normal.X.ToString(CultureInfo.InvariantCulture)}, {normal.Y.ToString(CultureInfo.InvariantCulture)}, {normal.Z.ToString(CultureInfo.InvariantCulture)}), new Vector3D({xAxis.X.ToString(CultureInfo.InvariantCulture)}, {xAxis.Y.ToString(CultureInfo.InvariantCulture)}, {xAxis.Z.ToString(CultureInfo.InvariantCulture)}));");
+                    sb.AppendLine($"var {prismVar} = new PrismFeature({prismVar}_verts, height: {heightStr}, plane: {prismVar}_plane) {{ Name = \"{prismVar}\" }};");
+                }
+                sb.AppendLine($"AddFeature({prismVar});");
             }
         }
 
@@ -283,9 +322,9 @@ public class ExtrudeCommand : ICommandTool
 
     public string GetMeasurementText()
     {
-        if (_currentState == State.DefiningDepth)
+        if (_currentState == State.DefiningHeight)
         {
-            return $"Height: {CurrentDepth:F2}";
+            return $"Height: {CurrentHeight:F2}";
         }
         return "Click a Profile/Face or enter Height";
     }

@@ -9,12 +9,12 @@ public class ExtrudeFeature : FeatureBase
 {
 
     public IProfile Profile { get; set; }
-    public double Depth { get; set; }
+    public double Height { get; set; }
     public Vector3D Direction { get; set; }
 
 
     public double BaseArea => Profile?.Area ?? 0.0;
-    public double Volume => BaseArea * Math.Abs(Depth);
+    public double Volume => BaseArea * Math.Abs(Height);
 
     public Point3D BaseCenter => Profile?.Center ?? Point3D.Origin;
     public Point3D TopCenter
@@ -22,7 +22,7 @@ public class ExtrudeFeature : FeatureBase
         get
         {
             var baseC = BaseCenter;
-            var dir = Direction.Normalize() * Depth;
+            var dir = Direction.Normalize() * Height;
             return new Point3D(baseC.X + dir.X, baseC.Y + dir.Y, baseC.Z + dir.Z);
         }
     }
@@ -37,11 +37,11 @@ public class ExtrudeFeature : FeatureBase
         }
     }
 
-    public ExtrudeFeature(IProfile profile, double depth, Vector3D? direction = null, string? name = null)
+    public ExtrudeFeature(IProfile profile, double height, Vector3D? direction = null, string? name = null)
     {
         Profile = profile ?? throw new ArgumentNullException(nameof(profile));
-        Depth = depth;
-        Direction = direction ?? profile.Normal * depth;
+        Height = height;
+        Direction = direction ?? profile.Normal * height;
         
         string typeName = profile.Classification switch
         {
@@ -49,15 +49,15 @@ public class ExtrudeFeature : FeatureBase
             ProfileClassification.Rectangle => "Prisma Retangular",
             _ => "Extrusão 3D"
         };
-        Name = name ?? $"{typeName} ({depth:F1}mm)";
+        Name = name ?? $"{typeName} ({height:F1}mm)";
     }
 
-    public void UpdateDepth(double depth)
+    public void UpdateHeight(double height)
     {
-        if (depth != 0)
+        if (height != 0)
         {
-            Depth = depth;
-            Direction = Profile.Normal * depth;
+            Height = height;
+            Direction = Profile.Normal * height;
         }
     }
 }

@@ -228,7 +228,7 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
                 _centerZ = circleProfile.Center.Z;
                 _radius = circleProfile.Radius;
                 _diameter = circleProfile.Radius * 2.0;
-                _height = feature.Depth;
+                _height = feature.Height;
                 BaseArea = feature.BaseArea;
                 Volume = feature.Volume;
                 DirectionText = $"({feature.Direction.X:F2}, {feature.Direction.Y:F2}, {feature.Direction.Z:F2})";
@@ -249,7 +249,7 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
                 _centerX = feature.BaseCenter.X;
                 _centerY = feature.BaseCenter.Y;
                 _centerZ = feature.BaseCenter.Z;
-                _height = feature.Depth;
+                _height = feature.Height;
                 BaseArea = feature.BaseArea;
                 Volume = feature.Volume;
                 DirectionText = $"({feature.Direction.X:F2}, {feature.Direction.Y:F2}, {feature.Direction.Z:F2})";
@@ -349,7 +349,7 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
         var obj = _selectionService.SelectedObject;
         if (obj is ExtrudeFeature ef)
         {
-            ef.UpdateDepth(_height);
+            ef.UpdateHeight(_height);
             Volume = ef.Volume;
             _onModelParametricModified?.Invoke();
         }

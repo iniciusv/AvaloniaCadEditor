@@ -14,7 +14,7 @@ public class OpenCascadeKernelTests
     {
         // Arrange
         var rect = new RectangleProfile(new Point3D(0, 0, 0), width: 10, height: 20);
-        var extrude = new ExtrudeFeature(rect, depth: 30.0);
+        var extrude = new ExtrudeFeature(rect, height: 30.0);
         var kernel = new OpenCascadeGeometryKernel();
 
         // Act
@@ -33,7 +33,7 @@ public class OpenCascadeKernelTests
     {
         // Arrange
         var circle = new CircleProfile(new Point3D(0, 0, 0), radius: 5.0);
-        var extrude = new ExtrudeFeature(circle, depth: 15.0);
+        var extrude = new ExtrudeFeature(circle, height: 15.0);
         var kernel = new OpenCascadeGeometryKernel();
 
         // Act

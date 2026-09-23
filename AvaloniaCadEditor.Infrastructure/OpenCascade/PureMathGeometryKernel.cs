@@ -18,6 +18,11 @@ public class PureMathGeometryKernel : IGeometryKernel
         {
             return ExtrudeProfile(extrude.Profile, extrude.Direction, settings);
         }
+        else if (feature is PrismFeature prism && prism.IsEnabled)
+        {
+            var profile = new PolygonProfile(prism.Vertices, plane: prism.Plane);
+            return ExtrudeProfile(profile, prism.Plane.Normal * prism.Height, settings);
+        }
         return TriangleMesh.Empty;
     }
 

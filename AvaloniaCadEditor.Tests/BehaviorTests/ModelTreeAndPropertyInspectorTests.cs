@@ -67,7 +67,7 @@ public class ModelTreeAndPropertyInspectorTests
 
         // Assert
         Assert.True(modifiedCallbackInvoked);
-        Assert.Equal(60.0, cylinder.Depth);
+        Assert.Equal(60.0, cylinder.Height);
         Assert.Equal(Math.PI * 15.0 * 15.0 * 60.0, inspectorVm.Volume, 3);
     }
 
@@ -119,8 +119,8 @@ public class ModelTreeAndPropertyInspectorTests
         }
         Assert.Equal(20.0f, maxZ1, 1e-3f);
 
-        // Act: Update depth to 50.0 mm
-        cylinder.UpdateDepth(50.0);
+        // Act: Update height to 50.0 mm
+        cylinder.UpdateHeight(50.0);
         var mesh2 = kernel.BuildSolidMesh(new[] { cylinder });
 
         // Assert: max Z in mesh2 is 50.0
