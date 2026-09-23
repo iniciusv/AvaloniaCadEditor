@@ -29,21 +29,23 @@ public class ProfileRecognitionService : IProfileRecognitionService
         // 1. Recognize standalone circles
         foreach (var circle in sketch.Entities.OfType<CircleEntity>().Where(e => e.IsVisible))
         {
+            var localCenter = circle.Plane.ToLocalSpace(circle.Center);
+            
             var circleCandidate = new ProfileCandidate(
                 ProfileClassification.Circle,
                 "Círculo (Paramétrico)",
                 specificityRank: 1,
-                factory: () => new CircleProfile(circle.Center, circle.Radius, sourceEntityIds: new[] { circle.Id }, plane: circle.Plane)
+                factory: () => new CircleProfile(localCenter, circle.Radius, sourceEntityIds: new[] { circle.Id }, plane: circle.Plane)
             );
 
             var polyCandidate = new ProfileCandidate(
                 ProfileClassification.Polygon,
                 "Polígono Aproximado",
                 specificityRank: 100,
-                factory: () => new PolygonProfile(new CircleProfile(circle.Center, circle.Radius).GetVertices(), new[] { circle.Id }, plane: circle.Plane)
+                factory: () => new PolygonProfile(new CircleProfile(localCenter, circle.Radius, plane: circle.Plane).GetVertices(), new[] { circle.Id }, plane: circle.Plane)
             );
 
-            var profile = new CircleProfile(circle.Center, circle.Radius, sourceEntityIds: new[] { circle.Id }, plane: circle.Plane)
+            var profile = new CircleProfile(localCenter, circle.Radius, sourceEntityIds: new[] { circle.Id }, plane: circle.Plane)
             {
                 AvailableCandidates = new List<ProfileCandidate> { circleCandidate, polyCandidate }
             };

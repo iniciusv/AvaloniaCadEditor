@@ -79,8 +79,11 @@ public class RectangleProfile : IProfile
 
     public bool ContainsPoint(Point3D point)
     {
-        double dx = point.X - Center.X;
-        double dy = point.Y - Center.Y;
+        var localPt = Plane.ToLocalSpace(point);
+        if (Math.Abs(localPt.Z) > 1e-2) return false;
+
+        double dx = localPt.X - Center.X;
+        double dy = localPt.Y - Center.Y;
 
         double cos = Math.Cos(RotationAngle);
         double sin = Math.Sin(RotationAngle);

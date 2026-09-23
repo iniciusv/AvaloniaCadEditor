@@ -98,8 +98,12 @@ public class CircleProfile : IProfile
 
     public bool ContainsPoint(Point3D point)
     {
-        double dx = point.X - Center.X;
-        double dy = point.Y - Center.Y;
+        var localPt = Plane.ToLocalSpace(point);
+        // Assuming point is close to the plane Z wise
+        if (Math.Abs(localPt.Z) > 1e-2) return false;
+
+        double dx = localPt.X - Center.X;
+        double dy = localPt.Y - Center.Y;
         return (dx * dx + dy * dy) <= (Radius * Radius + 1e-4);
     }
 

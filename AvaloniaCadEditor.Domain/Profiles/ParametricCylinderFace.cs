@@ -39,19 +39,19 @@ public class ParametricCylinderFace : IProfile
     public IReadOnlyList<Point3D> GetVertices(int segments = 128)
     {
         // Calculate the circle vertices using the Center and Normal from the ParentCylinder
-        var circleProfile = new CircleProfile(Center, ParentCylinder.Radius, Normal, null, Plane);
+        var circleProfile = new CircleProfile(Point3D.Origin, ParentCylinder.Radius, Normal, null, Plane);
         return circleProfile.GetVertices(segments);
     }
 
     public (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace(int segments = 128)
     {
-        var circleProfile = new CircleProfile(Center, ParentCylinder.Radius, Normal, null, Plane);
+        var circleProfile = new CircleProfile(Point3D.Origin, ParentCylinder.Radius, Normal, null, Plane);
         return circleProfile.GetTessellatedFace(segments);
     }
 
     public bool ContainsPoint(Point3D point)
     {
-        var circleProfile = new CircleProfile(Center, ParentCylinder.Radius, Normal, null, Plane);
+        var circleProfile = new CircleProfile(Point3D.Origin, ParentCylinder.Radius, Normal, null, Plane);
         return circleProfile.ContainsPoint(point);
     }
 

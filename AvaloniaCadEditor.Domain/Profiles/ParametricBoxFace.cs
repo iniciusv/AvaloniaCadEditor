@@ -43,19 +43,19 @@ public class ParametricBoxFace : IProfile
         double w = ParentBox.GetFaceWidth(SelectedFace);
         double h = ParentBox.GetFaceLength(SelectedFace);
         
-        var rectProfile = new RectangleProfile(Center, w, h, 0, Normal, null, Plane);
+        var rectProfile = new RectangleProfile(Point3D.Origin, w, h, 0, Normal, null, Plane);
         return rectProfile.GetVertices(segments);
     }
 
     public (IReadOnlyList<Point3D> Vertices, IReadOnlyList<uint> Indices) GetTessellatedFace(int segments = 128)
     {
-        var rectProfile = new RectangleProfile(Center, ParentBox.GetFaceWidth(SelectedFace), ParentBox.GetFaceLength(SelectedFace), 0, Normal, null, Plane);
+        var rectProfile = new RectangleProfile(Point3D.Origin, ParentBox.GetFaceWidth(SelectedFace), ParentBox.GetFaceLength(SelectedFace), 0, Normal, null, Plane);
         return rectProfile.GetTessellatedFace(segments);
     }
 
     public bool ContainsPoint(Point3D point)
     {
-        var rectProfile = new RectangleProfile(Center, ParentBox.GetFaceWidth(SelectedFace), ParentBox.GetFaceLength(SelectedFace), 0, Normal, null, Plane);
+        var rectProfile = new RectangleProfile(Point3D.Origin, ParentBox.GetFaceWidth(SelectedFace), ParentBox.GetFaceLength(SelectedFace), 0, Normal, null, Plane);
         return rectProfile.ContainsPoint(point);
     }
 

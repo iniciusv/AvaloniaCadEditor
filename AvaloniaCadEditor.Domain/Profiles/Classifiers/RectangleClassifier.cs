@@ -52,14 +52,19 @@ public class RectangleClassifier : IShapeClassifier
         // Valid Rectangle!
         double width = len0;
         double height = len1;
-        var center = new Point3D((p0.X + p2.X) / 2.0, (p0.Y + p2.Y) / 2.0, (p0.Z + p2.Z) / 2.0);
-        double rotationAngle = Math.Atan2(e0.Y, e0.X);
+        var worldCenter = new Point3D((p0.X + p2.X) / 2.0, (p0.Y + p2.Y) / 2.0, (p0.Z + p2.Z) / 2.0);
+        var localCenter = plane.ToLocalSpace(worldCenter);
+        // Ensure e0 is calculated correctly in local space for rotation?
+        // Wait, e0 is in world space. Math.Atan2(e0.Y, e0.X) relies on e0 being projected?
+        // If we want rotation angle on the plane, we should compute it from local e0.
+        var localE0 = plane.ToLocalSpace(p0 + e0) - plane.ToLocalSpace(p0);
+        double rotationAngle = Math.Atan2(localE0.Y, localE0.X);
 
         return new ProfileCandidate(
             ProfileClassification.Rectangle,
             "Retângulo (Paramétrico)",
             specificityRank: 1, // Highest priority
-            factory: () => new RectangleProfile(center, width, height, rotationAngle, sourceEntityIds: sourceEntityIds, plane: plane)
+            factory: () => new RectangleProfile(localCenter, width, height, rotationAngle, sourceEntityIds: sourceEntityIds, plane: plane)
         );
     }
 
