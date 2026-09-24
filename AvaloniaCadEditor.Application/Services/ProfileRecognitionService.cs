@@ -29,7 +29,7 @@ public class ProfileRecognitionService : IProfileRecognitionService
         // 1. Recognize standalone circles
         foreach (var circle in sketch.Entities.OfType<CircleEntity>().Where(e => e.IsVisible))
         {
-            var localCenter = circle.Plane.ToLocalSpace(circle.Center);
+            var localCenter = circle.Center;
             
             var circleCandidate = new ProfileCandidate(
                 ProfileClassification.Circle,
@@ -42,7 +42,20 @@ public class ProfileRecognitionService : IProfileRecognitionService
                 ProfileClassification.Polygon,
                 "Polígono Aproximado",
                 specificityRank: 100,
-                factory: () => new PolygonProfile(new CircleProfile(localCenter, circle.Radius, plane: circle.Plane).GetVertices(), new[] { circle.Id }, plane: circle.Plane)
+                factory: () => {
+                    var polyVerts = new List<Point3D>();
+                    int segments = 128;
+                    for (int i = 0; i < segments; i++)
+                    {
+                        double theta = 2.0 * Math.PI * i / segments;
+                        polyVerts.Add(new Point3D(
+                            localCenter.X + circle.Radius * Math.Cos(theta),
+                            localCenter.Y + circle.Radius * Math.Sin(theta),
+                            localCenter.Z
+                        ));
+                    }
+                    return new PolygonProfile(polyVerts, new[] { circle.Id }, plane: circle.Plane);
+                }
             );
 
             var profile = new CircleProfile(localCenter, circle.Radius, sourceEntityIds: new[] { circle.Id }, plane: circle.Plane)
