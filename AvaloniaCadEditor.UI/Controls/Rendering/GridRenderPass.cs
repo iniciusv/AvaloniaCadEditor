@@ -123,7 +123,10 @@ public sealed class GridRenderPass : IRenderPass
         var gridMatrix = context.IdentityMatrix;
         if (context.ViewModel != null)
         {
-            var wp = context.ViewModel.ActiveWorkPlane;
+            var wp = context.ViewModel.CurrentMode == AvaloniaCadEditor.UI.ViewModels.EditorMode.SketchEdit 
+                ? context.ViewModel.ActiveWorkPlane 
+                : AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.XY;
+                
             gridMatrix = new Matrix4x4(
                 (float)wp.XAxis.X, (float)wp.XAxis.Y, (float)wp.XAxis.Z, 0,
                 (float)wp.YAxis.X, (float)wp.YAxis.Y, (float)wp.YAxis.Z, 0,

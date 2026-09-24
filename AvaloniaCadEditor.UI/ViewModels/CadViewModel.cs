@@ -16,6 +16,8 @@ using AvaloniaCadEditor.Domain.ValueObjects;
 
 namespace AvaloniaCadEditor.UI.ViewModels;
 
+public enum EditorMode { Part, SketchEdit }
+
 public class CadViewModel : INotifyPropertyChanged
 {
     private readonly IGeometryEngine _geometryEngine;
@@ -27,6 +29,13 @@ public class CadViewModel : INotifyPropertyChanged
     public ISceneMeshManager MeshManager { get; }
     public IVcbInputService VcbService { get; }
     public ISceneDeletionService DeletionService { get; }
+
+    private EditorMode _currentMode = EditorMode.Part;
+    public EditorMode CurrentMode
+    {
+        get => _currentMode;
+        set { _currentMode = value; OnPropertyChanged(); }
+    }
 
     public Sketch Sketch { get; } = new Sketch();
     
@@ -284,7 +293,7 @@ public class CadViewModel : INotifyPropertyChanged
         ModelTree = new ModelTreeViewModel(_selectionService);
         ModelTree.WorkPlaneDoubleClicked += (wpf) => 
         {
-            SetActiveWorkPlane(wpf);
+            EnterSketchMode(wpf);
         };
 
         ModelTree.NodeVisibilityChanged += (s, e) => 
@@ -315,6 +324,7 @@ public class CadViewModel : INotifyPropertyChanged
             {
                 ActiveWorkPlane = faceProfile.Plane;
             }
+            CurrentMode = EditorMode.SketchEdit;
             CurrentTool = new DrawLineCommand();
         });
 
@@ -324,10 +334,11 @@ public class CadViewModel : INotifyPropertyChanged
             {
                 ActiveWorkPlane = faceProfile.Plane;
             }
+            CurrentMode = EditorMode.SketchEdit;
             CurrentTool = new DrawCircleCommand();
         });
 
-        SelectTrimToolCommand = new RelayCommand(() => CurrentTool = new TrimCommand(_geometryEngine));
+        SelectTrimToolCommand = new RelayCommand(() => { CurrentMode = EditorMode.SketchEdit; CurrentTool = new TrimCommand(_geometryEngine); });
         SelectExtrudeToolCommand = new RelayCommand(() => CurrentTool = new ExtrudeCommand());
         SelectBooleanCutCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Subtract, _selectionService));
         SelectBooleanFuseCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Union, _selectionService));
@@ -338,8 +349,7 @@ public class CadViewModel : INotifyPropertyChanged
         
         ExitWorkPlaneCommand = new RelayCommand(() => 
         {
-            ActiveWorkPlane = WorkPlane.XY;
-            SelectSelectToolCommand.Execute(null);
+            ExitSketchMode();
         });
         
         DeleteSelectedCommand = new RelayCommand(() =>
@@ -402,11 +412,26 @@ public class CadViewModel : INotifyPropertyChanged
         }
     }
 
+    public void EnterSketchMode(AvaloniaCadEditor.Domain.Features.WorkPlaneFeature wpf)
+    {
+        CurrentMode = EditorMode.SketchEdit;
+        SetActiveWorkPlane(wpf);
+        // By default, when entering sketch mode, grab the Select tool or Line tool
+        if (!(CurrentTool is DrawLineCommand) && !(CurrentTool is DrawCircleCommand) && !(CurrentTool is TrimCommand))
+        {
+            SelectSelectToolCommand.Execute(null);
+        }
+    }
+
+    public void ExitSketchMode()
+    {
+        CurrentMode = EditorMode.Part;
+        SelectSelectToolCommand.Execute(null);
+    }
+
     public void SetActiveWorkPlane(AvaloniaCadEditor.Domain.Features.WorkPlaneFeature wpf)
     {
-        Sketch.Plane = wpf.Plane;
-        OnPropertyChanged(nameof(ActiveWorkPlane));
-        RefreshSolidMesh();
+        ActiveWorkPlane = wpf.Plane;
     }
 
     public WorkPlane ActiveWorkPlane
@@ -440,7 +465,7 @@ public class CadViewModel : INotifyPropertyChanged
         var localSnapped = ActiveWorkPlane.ToLocalSpace(snappedWorld);
         localSnapped = new Point3D(localSnapped.X, localSnapped.Y, 0.0);
 
-        if (CurrentTool is SelectTool)
+        if (CurrentTool is SelectTool && CurrentMode == EditorMode.SketchEdit)
         {
             var hitProfile = Sketch.Profiles.FirstOrDefault(p => p.Plane.Equals(ActiveWorkPlane) && p.ContainsPoint(localSnapped));
             if (hitProfile != null)
@@ -461,7 +486,7 @@ public class CadViewModel : INotifyPropertyChanged
         
         if (CurrentTool is ExtrudeCommand extCmd && extCmd.IsFinished)
         {
-            SelectSelectToolCommand.Execute(null);
+            ExitSketchMode();
         }
         
         return false;
@@ -480,8 +505,15 @@ public class CadViewModel : INotifyPropertyChanged
             RefreshSolidMesh(skipCodeGeneration: true);
         }
         
-        var hitProfile = Sketch.Profiles.FirstOrDefault(p => p.ContainsPoint(localSnapped));
-        HoveredProfile = hitProfile;
+        if (CurrentMode == EditorMode.SketchEdit)
+        {
+            var hitProfile = Sketch.Profiles.FirstOrDefault(p => p.ContainsPoint(localSnapped));
+            HoveredProfile = hitProfile;
+        }
+        else
+        {
+            HoveredProfile = null;
+        }
 
         UpdateStatusText(localSnapped);
     }
@@ -518,7 +550,7 @@ public class CadViewModel : INotifyPropertyChanged
             UpdateStatusText(CurrentSnappedPoint);
             if (CurrentTool is ExtrudeCommand extCmd && extCmd.IsFinished)
             {
-                SelectSelectToolCommand.Execute(null);
+                ExitSketchMode();
             }
             return;
         }

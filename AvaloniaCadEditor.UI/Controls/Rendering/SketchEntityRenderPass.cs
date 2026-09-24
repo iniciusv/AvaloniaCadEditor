@@ -32,7 +32,7 @@ public sealed class SketchEntityRenderPass : IRenderPass
     public void Render(GL gl, RenderContext context)
     {
         var vm = context.ViewModel;
-        if (vm == null) return;
+        if (vm == null || vm.CurrentMode != AvaloniaCadEditor.UI.ViewModels.EditorMode.SketchEdit) return;
 
         var sketchVertices = new List<float>();
 
@@ -160,7 +160,9 @@ public sealed class SketchEntityRenderPass : IRenderPass
                 gl.Uniform1(context.Uniforms.LightingLoc, 0);
             }
             
+            gl.Disable(EnableCap.DepthTest);
             gl.DrawArrays(PrimitiveType.Lines, 0, (uint)(sketchVertices.Count / 6));
+            gl.Enable(EnableCap.DepthTest);
         }
     }
 

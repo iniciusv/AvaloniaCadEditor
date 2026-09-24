@@ -34,7 +34,7 @@ public sealed class ProfileFaceRenderPass : IRenderPass
     public void Render(GL gl, RenderContext context)
     {
         var vm = context.ViewModel;
-        if (vm == null) return;
+        if (vm == null || vm.CurrentMode != AvaloniaCadEditor.UI.ViewModels.EditorMode.SketchEdit) return;
 
         var profilesToRender = new System.Collections.Generic.List<AvaloniaCadEditor.Domain.Profiles.IProfile>(vm.Sketch.Profiles);
         
@@ -45,8 +45,7 @@ public sealed class ProfileFaceRenderPass : IRenderPass
         }
 
         if (profilesToRender.Count == 0) return;
-
-        gl.DepthMask(false);
+        gl.Disable(EnableCap.DepthTest);
 
         // Render 2D Profiles Face Shading (Subtle Shading, Hover Pre-highlight, Selection)
         foreach (var profile in profilesToRender)
@@ -111,8 +110,7 @@ public sealed class ProfileFaceRenderPass : IRenderPass
                 gl.DrawElements(PrimitiveType.Triangles, (uint)iData.Length, DrawElementsType.UnsignedInt, (void*)0);
             }
         }
-
-        gl.DepthMask(true);
+        gl.Enable(EnableCap.DepthTest);
 
         // Reset alpha to 1.0 for lines and solids
         unsafe
