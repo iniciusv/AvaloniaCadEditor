@@ -32,6 +32,7 @@ public class SceneMeshManager : ISceneMeshManager
         if (forceRebuild)
         {
             _geometryKernel.InvalidateShape(featureId);
+            _featureMeshCache.Remove(featureId);
         }
 
         if (!forceRebuild && _featureMeshCache.TryGetValue(featureId, out var mesh))
@@ -129,7 +130,6 @@ public class SceneMeshManager : ISceneMeshManager
         if (previewFeature != null)
         {
             featuresToRender.Add(previewFeature);
-            _featureMeshCache.Remove(previewFeature.Id); // Force rebuild preview mesh
         }
 
         var positions = new List<float>();

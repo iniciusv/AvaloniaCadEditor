@@ -384,7 +384,8 @@ public class CadViewModel : INotifyPropertyChanged
     public TriangleMesh? GetFeatureMesh(Guid featureId, bool forceRebuild = false)
     {
         IFeature? previewFeature = (CurrentTool as ExtrudeCommand)?.GetPreviewFeature();
-        return MeshManager.GetFeatureMesh(Sketch, featureId, previewFeature, forceRebuild);
+        bool isPreview = previewFeature != null && previewFeature.Id == featureId;
+        return MeshManager.GetFeatureMesh(Sketch, featureId, previewFeature, forceRebuild || isPreview);
     }
 
     public RaycastHit? Raycast3D(Ray ray)
@@ -403,7 +404,17 @@ public class CadViewModel : INotifyPropertyChanged
 
     public void RefreshSolidMesh(bool skipCodeGeneration = false)
     {
-        IFeature? previewFeature = (CurrentTool as ExtrudeCommand)?.GetPreviewFeature();
+        IFeature? previewFeature = null;
+        if (CurrentTool is ExtrudeCommand extCmd)
+        {
+            previewFeature = extCmd.GetPreviewFeature();
+            if (previewFeature != null && extCmd.IsPreviewDirty)
+            {
+                MeshManager.InvalidateFeatureAndDependents(Sketch, previewFeature.Id);
+                extCmd.IsPreviewDirty = false;
+            }
+        }
+        
         SolidMesh = MeshManager.BuildCompositeMesh(Sketch, previewFeature);
         
         if (!skipCodeGeneration && ScriptEditor.GenerateCodeCommand != null && ScriptEditor.GenerateCodeCommand.CanExecute(null))
@@ -479,9 +490,14 @@ public class CadViewModel : INotifyPropertyChanged
 
         CurrentTool?.OnMouseDown(Sketch, localSnapped);
         UpdateStatusText(localSnapped);
-        if (!(CurrentTool is SelectTool))
+        
+        if (CurrentTool is DrawLineCommand || CurrentTool is DrawCircleCommand || CurrentTool is TrimCommand)
         {
             RefreshProfiles();
+        }
+        else if (CurrentTool is ExtrudeCommand)
+        {
+            RefreshSolidMesh(skipCodeGeneration: true);
         }
         
         if (CurrentTool is ExtrudeCommand extCmd && extCmd.IsFinished)

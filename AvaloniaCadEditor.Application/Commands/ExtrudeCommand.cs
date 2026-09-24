@@ -73,7 +73,13 @@ public class ExtrudeCommand : ICommandTool
 
 			// Determine sign based on general drag direction
 			double sign = (dx + dy) >= 0 ? 1.0 : -1.0;
-			CurrentHeight = distance > 0.1 ? distance * sign : 20.0;
+			double newHeight = distance > 0.1 ? distance * sign : 20.0;
+			
+			if (Math.Abs(CurrentHeight - newHeight) > 1e-4)
+			{
+				CurrentHeight = newHeight;
+			}
+			IsPreviewDirty = true;
 		}
 	}
 
@@ -81,7 +87,11 @@ public class ExtrudeCommand : ICommandTool
 	{
 		if (_currentState == State.DefiningHeight)
 		{
-			CurrentHeight = height;
+			if (Math.Abs(CurrentHeight - height) > 1e-4)
+			{
+				CurrentHeight = height;
+				IsPreviewDirty = true;
+			}
 		}
 	}
 
@@ -91,9 +101,11 @@ public class ExtrudeCommand : ICommandTool
 		_selectedProfile = null;
 		CurrentHeight = 20.0;
 		_previewFeature = null;
+		IsPreviewDirty = false;
 	}
 
 	private ExtrudeFeature? _previewFeature;
+	public bool IsPreviewDirty { get; set; }
 
 	public IFeature? GetPreviewFeature()
 	{
@@ -102,6 +114,7 @@ public class ExtrudeCommand : ICommandTool
 			if (_previewFeature == null || _previewFeature.Profile != _selectedProfile)
 			{
 				_previewFeature = new ExtrudeFeature(_selectedProfile, CurrentHeight);
+				IsPreviewDirty = true; // Force initial build
 			}
 			else
 			{

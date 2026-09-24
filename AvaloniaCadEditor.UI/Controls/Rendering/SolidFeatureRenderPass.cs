@@ -103,7 +103,7 @@ public sealed class SolidFeatureRenderPass : IRenderPass
 
         foreach (var (feature, isPreview) in featuresToRender)
         {
-            var mesh = vm.GetFeatureMesh(feature.Id, forceRebuild: isPreview);
+            var mesh = vm.GetFeatureMesh(feature.Id, forceRebuild: false);
             if (mesh == null || mesh.TriangleCount == 0) continue;
 
             int vertexCount = mesh.VertexCount;
