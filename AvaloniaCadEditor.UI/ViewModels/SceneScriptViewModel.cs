@@ -8,6 +8,7 @@ using AvaloniaCadEditor.Application.Services;
 using AvaloniaCadEditor.Domain.Entities;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using AvaloniaCadEditor.UI.Services;
 
 namespace AvaloniaCadEditor.UI.ViewModels;
 
@@ -16,6 +17,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged
     private readonly ISceneEvaluator? _sceneEvaluator;
     private readonly IFilePickerService? _filePickerService;
     private readonly CadViewModel _cadViewModel;
+    private readonly CodeHistoryManager _history = new();
 
     public SceneScriptViewModel(
         CadViewModel cadViewModel,
@@ -64,6 +66,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged
             var path = await _filePickerService.OpenFileAsync("Carregar Código C#", new[] { "*.cs" });
             if (!string.IsNullOrEmpty(path))
             {
+                _history.SaveState(GeneratedCSharpCode);
                 GeneratedCSharpCode = File.ReadAllText(path);
                 RunCodeCommand.Execute(null);
                 _cadViewModel.StatusText = $"✓ Modelo carregado de: {Path.GetFileName(path)}";
@@ -106,6 +109,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged
 
     public void AppendCode(string codeSnippet)
     {
+        _history.SaveState(GeneratedCSharpCode);
         if (GeneratedCSharpCode.StartsWith("// Pressione"))
         {
             GeneratedCSharpCode = string.Empty;
@@ -116,6 +120,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged
 
     public void RemoveCodeForFeature(string variableName)
     {
+        _history.SaveState(GeneratedCSharpCode);
         if (string.IsNullOrWhiteSpace(variableName)) return;
         
         var lines = GeneratedCSharpCode.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
@@ -135,5 +140,23 @@ public class SceneScriptViewModel : INotifyPropertyChanged
         }
         
         GeneratedCSharpCode = string.Join(Environment.NewLine, newLines);
+    }
+
+    public void Undo()
+    {
+        if (_history.TryUndo(GeneratedCSharpCode, out var previousCode))
+        {
+            GeneratedCSharpCode = previousCode;
+            RunCodeCommand.Execute(null);
+        }
+    }
+
+    public void Redo()
+    {
+        if (_history.TryRedo(GeneratedCSharpCode, out var nextCode))
+        {
+            GeneratedCSharpCode = nextCode;
+            RunCodeCommand.Execute(null);
+        }
     }
 }

@@ -48,7 +48,8 @@ public partial class MainWindow : Window
         base.OnKeyDown(e);
         if (DataContext is AvaloniaCadEditor.UI.ViewModels.CadViewModel vm)
         {
-            vm.OnKeyDown(e.Key.ToString());
+            bool isCtrl = e.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Control);
+            vm.OnKeyDown(e.Key.ToString(), isCtrl);
             ViewportControl.RequestNextFrameRendering();
         }
     }

@@ -495,8 +495,24 @@ public class CadViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(VcbText)); // Force update
     }
 
-    public void OnKeyDown(string keyName)
+    public void OnKeyDown(string keyName, bool isCtrlPressed = false)
     {
+        string upperKey = keyName.ToUpperInvariant();
+        
+        if (isCtrlPressed)
+        {
+            if (upperKey == "Z")
+            {
+                ScriptEditor.Undo();
+                return;
+            }
+            if (upperKey == "U" || upperKey == "Y")
+            {
+                ScriptEditor.Redo();
+                return;
+            }
+        }
+
         if (VcbService.ProcessKeyDown(keyName, Sketch, CurrentTool, () => RefreshProfiles()))
         {
             UpdateStatusText(CurrentSnappedPoint);
@@ -507,7 +523,6 @@ public class CadViewModel : INotifyPropertyChanged
             return;
         }
 
-        string upperKey = keyName.ToUpperInvariant();
         switch (upperKey)
         {
             case "L":
