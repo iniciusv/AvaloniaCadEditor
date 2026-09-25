@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using AvaloniaCadEditor.Domain.ValueObjects;
 
 namespace AvaloniaCadEditor.Domain.Features;
 
@@ -18,5 +19,10 @@ public abstract class FeatureBase : IFeature
     {
         // In a complete implementation, this would trigger an event or 
         // notify the SceneGraph/Document that this node needs recompilation.
+    }
+
+    public virtual FaceReference FindFace(int faceId, Vector3D normalHint, string? name = null)
+    {
+        return new FaceReference(this, faceId, normalHint, name ?? $"face_{faceId}");
     }
 }

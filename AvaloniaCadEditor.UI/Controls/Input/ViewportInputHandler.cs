@@ -377,6 +377,26 @@ public sealed class ViewportInputHandler
                 {
                     origin = tempPlane.ToWorldSpace(new AvaloniaCadEditor.Domain.ValueObjects.Point3D(minX, minY, 0));
                 }
+
+                var baseFeature = viewModel.Sketch.Features.FirstOrDefault(f => f.Id == hit.FeatureId.Value);
+                if (baseFeature is AvaloniaCadEditor.Domain.Features.BoxFeature boxFeature)
+                {
+                    var faceType = boxFeature.GetFaceTypeFromNormal(new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(normal.X, normal.Y, normal.Z));
+                    if (faceType.HasValue)
+                    {
+                        var faceRef = baseFeature.FindFace((int)faceType.Value, new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(normal.X, normal.Y, normal.Z));
+                        return new AvaloniaCadEditor.Domain.ValueObjects.LinkedWorkPlane(faceRef);
+                    }
+                }
+                else if (baseFeature is AvaloniaCadEditor.Domain.Features.CylinderFeature cylinderFeature)
+                {
+                    var faceType = cylinderFeature.GetFaceTypeFromNormal(new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(normal.X, normal.Y, normal.Z));
+                    if (faceType.HasValue)
+                    {
+                        var faceRef = baseFeature.FindFace((int)faceType.Value, new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(normal.X, normal.Y, normal.Z));
+                        return new AvaloniaCadEditor.Domain.ValueObjects.LinkedWorkPlane(faceRef);
+                    }
+                }
             }
         }
         

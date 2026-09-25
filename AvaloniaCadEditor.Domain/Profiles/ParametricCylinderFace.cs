@@ -33,7 +33,8 @@ public class ParametricCylinderFace : IProfile
     {
         ParentCylinder = parentCylinder ?? throw new ArgumentNullException(nameof(parentCylinder));
         SelectedFace = selectedFace;
-        Plane = new WorkPlane(Normal, Center);
+        var faceRef = parentCylinder.FindFace((int)selectedFace, Normal);
+        Plane = new LinkedWorkPlane(faceRef);
     }
 
     public IReadOnlyList<Point3D> GetVertices(int segments = 128)

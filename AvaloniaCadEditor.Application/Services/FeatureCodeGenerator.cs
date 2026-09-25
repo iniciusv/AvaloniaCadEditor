@@ -121,18 +121,34 @@ public static class FeatureCodeGenerator
                 var normal = CleanV(profile.Plane.Normal);
                 var xAxis = CleanV(profile.Plane.XAxis);
 
-                bool isDefaultPlane = o.DistanceTo(Point3D.Origin) < 1e-6 &&
-                                      (normal - new Vector3D(0, 0, 1)).Length < 1e-6 &&
-                                      (xAxis - new Vector3D(1, 0, 0)).Length < 1e-6;
-
-                if (isDefaultPlane)
+                if (profile.Plane is LinkedWorkPlane linkedPlane)
                 {
-                    sb.AppendLine($"var {prismVar} = new PrismFeature({prismVar}_verts, height: {heightStr}) {{ Name = \"{prismVar}\" }};");
+                    string parentFeatureVar = string.IsNullOrEmpty(linkedPlane.TargetFace.ParentFeature.Name) 
+                        ? $"feature_{linkedPlane.TargetFace.ParentFeature.Id.ToString("N").Substring(0, 4)}"
+                        : linkedPlane.TargetFace.ParentFeature.Name;
+                    
+                    string faceVar = linkedPlane.TargetFace.Name;
+                    
+                    sb.AppendLine($"var {faceVar} = {parentFeatureVar}.FindFace({linkedPlane.TargetFace.FaceId}, new Vector3D({F(linkedPlane.TargetFace.NormalHint.X)}, {F(linkedPlane.TargetFace.NormalHint.Y)}, {F(linkedPlane.TargetFace.NormalHint.Z)}), \"{faceVar}\");");
+                    sb.AppendLine($"var {prismVar}_plane = new LinkedWorkPlane({faceVar});");
+                    sb.AppendLine($"var {prismVar} = new PrismFeature({prismVar}_verts, height: {heightStr}, plane: {prismVar}_plane) {{ Name = \"{prismVar}\" }};");
                 }
                 else
                 {
-                    sb.AppendLine($"var {prismVar}_plane = new WorkPlane(new Point3D({F(o.X)}, {F(o.Y)}, {F(o.Z)}), new Vector3D({F(normal.X)}, {F(normal.Y)}, {F(normal.Z)}), new Vector3D({F(xAxis.X)}, {F(xAxis.Y)}, {F(xAxis.Z)}));");
-                    sb.AppendLine($"var {prismVar} = new PrismFeature({prismVar}_verts, height: {heightStr}, plane: {prismVar}_plane) {{ Name = \"{prismVar}\" }};");
+                    bool isDefaultPlane = o.DistanceTo(Point3D.Origin) < 1e-6 &&
+                                          (normal - new Vector3D(0, 0, 1)).Length < 1e-6 &&
+                                          (xAxis - new Vector3D(1, 0, 0)).Length < 1e-6;
+
+                    if (isDefaultPlane)
+                    {
+                        sb.AppendLine($"var {prismVar} = new PrismFeature({prismVar}_verts, height: {heightStr}) {{ Name = \"{prismVar}\" }};");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"// Fallback plane generation. Actual type was: {profile.Plane.GetType().FullName}");
+                        sb.AppendLine($"var {prismVar}_plane = new WorkPlane(new Point3D({F(o.X)}, {F(o.Y)}, {F(o.Z)}), new Vector3D({F(normal.X)}, {F(normal.Y)}, {F(normal.Z)}), new Vector3D({F(xAxis.X)}, {F(xAxis.Y)}, {F(xAxis.Z)}));");
+                        sb.AppendLine($"var {prismVar} = new PrismFeature({prismVar}_verts, height: {heightStr}, plane: {prismVar}_plane) {{ Name = \"{prismVar}\" }};");
+                    }
                 }
                 sb.AppendLine($"AddFeature({prismVar});");
             }

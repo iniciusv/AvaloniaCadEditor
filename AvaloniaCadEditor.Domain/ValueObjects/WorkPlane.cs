@@ -4,36 +4,39 @@ namespace AvaloniaCadEditor.Domain.ValueObjects;
 
 public class WorkPlane : IEquatable<WorkPlane>
 {
-    public Vector3D Normal { get; }
-    public Point3D Origin { get; }
-    public Vector3D XAxis { get; }
-    public Vector3D YAxis { get; }
+    public virtual Vector3D Normal { get; }
+    public virtual Point3D Origin { get; }
+    public virtual Vector3D XAxis { get; }
+    public virtual Vector3D YAxis { get; }
 
     public WorkPlane(Vector3D normal, Point3D origin)
     {
-        Normal = normal.Normalize();
+        var n = normal.Normalize();
+        Normal = n;
         Origin = origin;
 
         // Calculate a consistent orthonormal basis
         // If Normal is parallel to Z-axis
-        if (Math.Abs(Math.Abs(Normal.Z) - 1.0) < 1e-6)
+        if (Math.Abs(Math.Abs(n.Z) - 1.0) < 1e-6)
         {
             XAxis = new Vector3D(1, 0, 0);
         }
         else
         {
-            XAxis = new Vector3D(0, 0, 1).CrossProduct(Normal).Normalize();
+            XAxis = new Vector3D(0, 0, 1).CrossProduct(n).Normalize();
         }
 
-        YAxis = Normal.CrossProduct(XAxis).Normalize();
+        YAxis = n.CrossProduct(XAxis).Normalize();
     }
 
     public WorkPlane(Point3D origin, Vector3D normal, Vector3D xAxis)
     {
         Origin = origin;
-        Normal = normal.Normalize();
-        XAxis = xAxis.Normalize();
-        YAxis = Normal.CrossProduct(XAxis).Normalize();
+        var n = normal.Normalize();
+        var x = xAxis.Normalize();
+        Normal = n;
+        XAxis = x;
+        YAxis = n.CrossProduct(x).Normalize();
     }
 
     /// <summary>

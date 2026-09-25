@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using AvaloniaCadEditor.Domain.ValueObjects;
 
 namespace AvaloniaCadEditor.Domain.Features;
 
@@ -21,4 +22,9 @@ public interface IFeature
     /// Marks this feature and its dependents as dirty, requiring a rebuild of the geometry.
     /// </summary>
     void MarkDirty();
+
+    /// <summary>
+    /// Finds a face reference on this feature.
+    /// </summary>
+    FaceReference FindFace(int faceId, Vector3D normalHint, string? name = null);
 }

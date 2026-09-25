@@ -33,7 +33,8 @@ public class ParametricBoxFace : IProfile
     {
         ParentBox = parentBox ?? throw new ArgumentNullException(nameof(parentBox));
         SelectedFace = selectedFace;
-        Plane = new WorkPlane(Center, Normal, ParentBox.GetFaceDirectionX(SelectedFace));
+        var faceRef = parentBox.FindFace((int)selectedFace, Normal);
+        Plane = new LinkedWorkPlane(faceRef);
     }
 
     public IReadOnlyList<Point3D> GetVertices(int segments = 128)
