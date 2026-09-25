@@ -238,6 +238,9 @@ public class CadViewModel : INotifyPropertyChanged
     public ICommand DeleteSelectedCommand { get; }
     public ICommand ExitWorkPlaneCommand { get; }
 
+    public ICommand ImportStlCommand { get; }
+    public ICommand ExportStlCommand { get; }
+
     public OsnapSettings OsnapSettings => _osnapService.Settings;
 
     public bool OsnapEnabled
@@ -267,6 +270,8 @@ public class CadViewModel : INotifyPropertyChanged
     }
 
     private readonly ITessellationSettingsProvider _settingsProvider;
+    private readonly IStlService _stlService;
+    private readonly IFilePickerService _filePickerService;
 
     public CadViewModel(
         IGeometryEngine geometryEngine,
@@ -277,7 +282,9 @@ public class CadViewModel : INotifyPropertyChanged
         SceneScriptViewModel scriptEditor,
         IProfileRecognitionService? profileRecognitionService = null,
         ISelectionService? selectionService = null,
-        ITessellationSettingsProvider? settingsProvider = null)
+        ITessellationSettingsProvider? settingsProvider = null,
+        IStlService? stlService = null,
+        IFilePickerService? filePickerService = null)
     {
         _geometryEngine = geometryEngine;
         _osnapService = osnapService;
@@ -289,6 +296,8 @@ public class CadViewModel : INotifyPropertyChanged
         _profileRecognitionService = profileRecognitionService ?? new ProfileRecognitionService();
         _selectionService = selectionService ?? new SelectionService();
         _settingsProvider = settingsProvider ?? new AvaloniaCadEditor.Infrastructure.Settings.JsonTessellationSettingsProvider();
+        _stlService = stlService ?? new AvaloniaCadEditor.Infrastructure.IO.StlService();
+        _filePickerService = filePickerService!;
         
         ModelTree = new ModelTreeViewModel(_selectionService);
         ModelTree.WorkPlaneDoubleClicked += (wpf) => 
@@ -376,6 +385,33 @@ public class CadViewModel : INotifyPropertyChanged
             DeletionService.DeleteSelected(Sketch, ModelTree.SelectedNode?.Id);
             RefreshProfiles();
             ModelTree.RebuildTree();
+        });
+
+        ImportStlCommand = new RelayCommand(async () =>
+        {
+            var path = await _filePickerService.OpenFileAsync("Open STL File", new[] { "*.stl" });
+            if (string.IsNullOrEmpty(path)) return;
+
+            var mesh = await _stlService.ImportAsync(path);
+            if (mesh != null && mesh.TriangleCount > 0)
+            {
+                var featureName = System.IO.Path.GetFileNameWithoutExtension(path);
+                var importedFeature = new AvaloniaCadEditor.Domain.Features.ImportedMeshFeature(mesh, featureName);
+                Sketch.AddFeature(importedFeature);
+                
+                RefreshSolidMesh();
+                ModelTree.RebuildTree();
+            }
+        });
+
+        ExportStlCommand = new RelayCommand(async () =>
+        {
+            if (SolidMesh == null || SolidMesh.TriangleCount == 0) return;
+            
+            var path = await _filePickerService.SaveFileAsync("Save STL File", "stl", "model");
+            if (string.IsNullOrEmpty(path)) return;
+
+            await _stlService.ExportAsync(SolidMesh, path, asBinary: true);
         });
 
         CurrentTool = new SelectTool(_geometryEngine, _selectionService);

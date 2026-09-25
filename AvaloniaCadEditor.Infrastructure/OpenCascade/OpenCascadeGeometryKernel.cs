@@ -34,6 +34,11 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
 
     public TriangleMesh BuildFeatureMesh(IFeature feature, TessellationSettings? settings = null)
     {
+        if (feature is ImportedMeshFeature imported)
+        {
+            return imported.Mesh;
+        }
+
         settings ??= new TessellationSettings();
         try 
         {

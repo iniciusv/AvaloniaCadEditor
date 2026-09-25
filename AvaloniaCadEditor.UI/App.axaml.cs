@@ -33,7 +33,7 @@ public partial class App : Avalonia.Application
 			desktop.MainWindow = new MainWindow();
 			var filePicker = new AvaloniaCadEditor.UI.Services.AvaloniaFilePickerService(desktop.MainWindow);
 			
-			var viewModel = new CadViewModel(geometryEngine, osnapService, meshManager, vcbService, deletionService, null!, profileRecognitionService, selectionService, settingsProvider);
+			var viewModel = new CadViewModel(geometryEngine, osnapService, meshManager, vcbService, deletionService, null!, profileRecognitionService, selectionService, settingsProvider, null, filePicker);
 			
 			var scriptEditor = new SceneScriptViewModel(viewModel, evaluator, filePicker);
 			viewModel.ScriptEditor = scriptEditor;
