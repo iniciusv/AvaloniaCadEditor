@@ -124,13 +124,19 @@ public class MathGeometryEngine : IGeometryEngine
 
     private double DistancePointToLine(Point3D p, LineEntity line)
     {
-        double l2 = Math.Pow(line.StartPoint.X - line.EndPoint.X, 2) + Math.Pow(line.StartPoint.Y - line.EndPoint.Y, 2);
-        if (l2 == 0.0) return Math.Sqrt(Math.Pow(p.X - line.StartPoint.X, 2) + Math.Pow(p.Y - line.StartPoint.Y, 2));
+        var v = line.EndPoint - line.StartPoint;
+        var w = p - line.StartPoint;
+        
+        double l2 = v.X * v.X + v.Y * v.Y;
+        if (l2 < 1e-10) return Math.Sqrt(w.X * w.X + w.Y * w.Y); // Ponto até o início
 
-        double t = Math.Max(0, Math.Min(1, ((p.X - line.StartPoint.X) * (line.EndPoint.X - line.StartPoint.X) + (p.Y - line.StartPoint.Y) * (line.EndPoint.Y - line.StartPoint.Y)) / l2));
-        var projection = new Point3D(line.StartPoint.X + t * (line.EndPoint.X - line.StartPoint.X), line.StartPoint.Y + t * (line.EndPoint.Y - line.StartPoint.Y), 0);
-
-        return Math.Sqrt(Math.Pow(p.X - projection.X, 2) + Math.Pow(p.Y - projection.Y, 2));
+        double t = (w.X * v.X + w.Y * v.Y) / l2;
+        t = Math.Max(0, Math.Min(1, t));
+        
+        var proj = new Point3D(line.StartPoint.X + t * v.X, line.StartPoint.Y + t * v.Y, 0);
+        var distVec = p - proj;
+        
+        return Math.Sqrt(distVec.X * distVec.X + distVec.Y * distVec.Y);
     }
 
     private Point3D? IntersectLines(Point3D p1, Point3D p2, Point3D p3, Point3D p4)
@@ -151,11 +157,18 @@ public class MathGeometryEngine : IGeometryEngine
 
     private bool IsPointOnSegment(Point3D p, Point3D a, Point3D b)
     {
-        var distAP = Math.Sqrt(Math.Pow(p.X - a.X, 2) + Math.Pow(p.Y - a.Y, 2));
-        var distPB = Math.Sqrt(Math.Pow(b.X - p.X, 2) + Math.Pow(b.Y - p.Y, 2));
-        var distAB = Math.Sqrt(Math.Pow(b.X - a.X, 2) + Math.Pow(b.Y - a.Y, 2));
+        var v = b - a;
+        var w = p - a;
+        double l2 = v.X * v.X + v.Y * v.Y;
+        if (l2 < 1e-10) return Math.Abs(p.X - a.X) < 1e-5 && Math.Abs(p.Y - a.Y) < 1e-5;
 
-        return Math.Abs((distAP + distPB) - distAB) < 0.1;
+        double t = (w.X * v.X + w.Y * v.Y) / l2;
+        if (t < -0.01 || t > 1.01) return false;
+
+        var proj = new Point3D(a.X + t * v.X, a.Y + t * v.Y, 0);
+        var dist2 = Math.Pow(p.X - proj.X, 2) + Math.Pow(p.Y - proj.Y, 2);
+        
+        return dist2 < 0.01; // Tolerância de 0.1 ao quadrado
     }
 
     private class Point3DComparer : IEqualityComparer<Point3D>

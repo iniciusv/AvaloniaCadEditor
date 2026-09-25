@@ -41,6 +41,14 @@ public class Sketch
         _entities.Remove(entity);
     }
 
+    public void UpdateEntities(IEnumerable<Entity> newEntities)
+    {
+        var safeList = newEntities.ToList();
+        _entities.Clear();
+        _entities.AddRange(safeList);
+    }
+
+
     public void SetProfiles(IEnumerable<IProfile> profiles)
     {
         _profiles.Clear();

@@ -23,7 +23,7 @@ public class SelectTool : ICommandTool
     public void OnMouseDown(Sketch sketch, Point3D point)
     {
         // 1. Try 2D HitTest on entities
-        var hitEntity = _geometryEngine.HitTest(sketch.Entities.Where(e => e.IsVisible), point, 5.0);
+        var hitEntity = _geometryEngine.HitTest(sketch.Entities.Where(e => e.IsVisible), point, 0.5);
 
         if (hitEntity != null)
         {

@@ -24,6 +24,7 @@ public class CadViewModel : INotifyPropertyChanged
     private readonly IOSnapService _osnapService;
     private readonly IProfileRecognitionService _profileRecognitionService;
     private readonly ISelectionService _selectionService;
+    private readonly IPlanarTopologyService _planarTopologyService;
     
     // Services
     public ISceneMeshManager MeshManager { get; }
@@ -287,7 +288,8 @@ public class CadViewModel : INotifyPropertyChanged
         ITessellationSettingsProvider? settingsProvider = null,
         IStlService? stlService = null,
         IFilePickerService? filePickerService = null,
-        IShapeReconstructionService? reconstructionService = null)
+        IShapeReconstructionService? reconstructionService = null,
+        IPlanarTopologyService? planarTopologyService = null)
     {
         _geometryEngine = geometryEngine;
         _osnapService = osnapService;
@@ -302,6 +304,7 @@ public class CadViewModel : INotifyPropertyChanged
         _stlService = stlService ?? new AvaloniaCadEditor.Infrastructure.IO.StlService();
         _filePickerService = filePickerService!;
         _reconstructionService = reconstructionService!;
+        _planarTopologyService = planarTopologyService ?? new AvaloniaCadEditor.Domain.Services.PlanarTopologyService(_geometryEngine);
         
         ModelTree = new ModelTreeViewModel(_selectionService);
         ModelTree.WorkPlaneDoubleClicked += (wpf) => 
@@ -463,6 +466,9 @@ public class CadViewModel : INotifyPropertyChanged
 
     public void RefreshProfiles()
     {
+        var arrangedEntities = _planarTopologyService.ComputePlanarArrangement(Sketch.Entities);
+        Sketch.UpdateEntities(arrangedEntities);
+        
         var recognized = _profileRecognitionService.RecognizeProfiles(Sketch);
         Sketch.SetProfiles(recognized);
         OnPropertyChanged(nameof(Profiles));
@@ -546,6 +552,14 @@ public class CadViewModel : INotifyPropertyChanged
 
         if (CurrentTool is SelectTool && CurrentMode == EditorMode.SketchEdit)
         {
+            var hitEntity = _geometryEngine.HitTest(Sketch.Entities.Where(e => e.IsVisible), localSnapped, 0.5);
+            if (hitEntity != null)
+            {
+                _selectionService.SelectById(Sketch, hitEntity.Id);
+                ModelTree.RebuildTree();
+                return true; 
+            }
+
             var hitProfile = Sketch.Profiles.FirstOrDefault(p => p.Plane.Equals(ActiveWorkPlane) && p.ContainsPoint(localSnapped));
             if (hitProfile != null)
             {
