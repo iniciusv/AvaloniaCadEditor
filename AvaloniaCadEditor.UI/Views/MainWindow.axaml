@@ -46,6 +46,7 @@
             <!-- IO STL Buttons -->
             <Button Content="Importar STL" Command="{Binding ImportStlCommand}" Background="#34495E" Foreground="White" />
             <Button Content="Exportar STL" Command="{Binding ExportStlCommand}" Background="#34495E" Foreground="White" />
+            <Button Content="✨ Deduzir Sólido" Command="{Binding ReconstructMeshCommand}" Background="#8E44AD" Foreground="White" ToolTip.Tip="Deduz geometria CSG a partir da malha STL selecionada" />
 
             <Separator Width="1" Height="20" Background="#555" Margin="4,0" />
 

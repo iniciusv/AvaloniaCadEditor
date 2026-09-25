@@ -33,7 +33,13 @@ public partial class App : Avalonia.Application
 			desktop.MainWindow = new MainWindow();
 			var filePicker = new AvaloniaCadEditor.UI.Services.AvaloniaFilePickerService(desktop.MainWindow);
 			
-			var viewModel = new CadViewModel(geometryEngine, osnapService, meshManager, vcbService, deletionService, null!, profileRecognitionService, selectionService, settingsProvider, null, filePicker);
+			var algorithms = new System.Collections.Generic.List<AvaloniaCadEditor.Application.Interfaces.IReconstructionAlgorithm>
+			{
+			    new AvaloniaCadEditor.Infrastructure.Engines.BaseFaceExtrusionAlgorithm()
+			};
+			var reconstructionService = new AvaloniaCadEditor.Application.Services.ShapeReconstructionService(algorithms, geometryKernel);
+			
+			var viewModel = new CadViewModel(geometryEngine, osnapService, meshManager, vcbService, deletionService, null!, profileRecognitionService, selectionService, settingsProvider, null, filePicker, reconstructionService);
 			
 			var scriptEditor = new SceneScriptViewModel(viewModel, evaluator, filePicker);
 			viewModel.ScriptEditor = scriptEditor;

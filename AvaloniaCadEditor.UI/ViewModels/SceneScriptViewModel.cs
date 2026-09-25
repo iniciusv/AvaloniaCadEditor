@@ -51,6 +51,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged
                 }
                 _cadViewModel.ModelTree.RebuildTree();
                 _cadViewModel.RefreshProfiles();
+                _cadViewModel.RefreshSolidMesh();
                 _cadViewModel.StatusText = $"✓ Código executado: {result.Features.Count} feature(s)";
             }
             else

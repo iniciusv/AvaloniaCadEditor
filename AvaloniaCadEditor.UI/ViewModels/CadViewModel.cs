@@ -237,6 +237,7 @@ public class CadViewModel : INotifyPropertyChanged
     public ICommand SelectSetWorkPlaneCommand { get; }
     public ICommand DeleteSelectedCommand { get; }
     public ICommand ExitWorkPlaneCommand { get; }
+    public ICommand ReconstructMeshCommand { get; }
 
     public ICommand ImportStlCommand { get; }
     public ICommand ExportStlCommand { get; }
@@ -272,6 +273,7 @@ public class CadViewModel : INotifyPropertyChanged
     private readonly ITessellationSettingsProvider _settingsProvider;
     private readonly IStlService _stlService;
     private readonly IFilePickerService _filePickerService;
+    private readonly IShapeReconstructionService _reconstructionService;
 
     public CadViewModel(
         IGeometryEngine geometryEngine,
@@ -284,7 +286,8 @@ public class CadViewModel : INotifyPropertyChanged
         ISelectionService? selectionService = null,
         ITessellationSettingsProvider? settingsProvider = null,
         IStlService? stlService = null,
-        IFilePickerService? filePickerService = null)
+        IFilePickerService? filePickerService = null,
+        IShapeReconstructionService? reconstructionService = null)
     {
         _geometryEngine = geometryEngine;
         _osnapService = osnapService;
@@ -298,6 +301,7 @@ public class CadViewModel : INotifyPropertyChanged
         _settingsProvider = settingsProvider ?? new AvaloniaCadEditor.Infrastructure.Settings.JsonTessellationSettingsProvider();
         _stlService = stlService ?? new AvaloniaCadEditor.Infrastructure.IO.StlService();
         _filePickerService = filePickerService!;
+        _reconstructionService = reconstructionService!;
         
         ModelTree = new ModelTreeViewModel(_selectionService);
         ModelTree.WorkPlaneDoubleClicked += (wpf) => 
@@ -413,6 +417,34 @@ public class CadViewModel : INotifyPropertyChanged
 
             await _stlService.ExportAsync(SolidMesh, path, asBinary: true);
         });
+
+        ReconstructMeshCommand = new RelayCommand(async () =>
+        {
+            if (_selectionService.SelectedObject is ImportedMeshFeature importedFeature && _reconstructionService != null)
+            {
+                var reconstructedFeature = await _reconstructionService.ReconstructMeshAsync(importedFeature.Mesh);
+                if (reconstructedFeature != null)
+                {
+                    importedFeature.IsVisible = false;
+                    
+                    // Converte a geometria deduzida em código C# e joga no ScriptEditor
+                    string code = AvaloniaCadEditor.Application.Services.FeatureToCSharpConverter.GenerateCode(reconstructedFeature);
+                    ScriptEditor.AppendCode(code + "\n");
+                    ScriptEditor.RunCodeCommand.Execute(null);
+                    
+                    RefreshSolidMesh();
+                    ModelTree.RebuildTree();
+                }
+            }
+        }, () => _selectionService.SelectedObject is ImportedMeshFeature);
+
+        _selectionService.SelectionChanged += () => 
+        {
+            if (ReconstructMeshCommand is RelayCommand rc)
+            {
+                rc.RaiseCanExecuteChanged();
+            }
+        };
 
         CurrentTool = new SelectTool(_geometryEngine, _selectionService);
     }
