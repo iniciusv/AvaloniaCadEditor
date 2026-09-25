@@ -35,7 +35,9 @@ public partial class App : Avalonia.Application
 			
 			var algorithms = new System.Collections.Generic.List<AvaloniaCadEditor.Application.Interfaces.IReconstructionAlgorithm>
 			{
-			    new AvaloniaCadEditor.Infrastructure.Engines.BaseFaceExtrusionAlgorithm()
+			    new AvaloniaCadEditor.Infrastructure.Engines.BaseFaceExtrusionAlgorithm(),
+			    new AvaloniaCadEditor.Infrastructure.Engines.RansacReconstructionAlgorithm(),
+			    new AvaloniaCadEditor.Infrastructure.Engines.BoundingBoxHeuristicAlgorithm()
 			};
 			var reconstructionService = new AvaloniaCadEditor.Application.Services.ShapeReconstructionService(algorithms, geometryKernel);
 			

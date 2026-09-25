@@ -80,8 +80,8 @@ public class ShapeReconstructionService : IShapeReconstructionService
                     globalBestResult = roundBest;
                 }
 
-                // Se alcançamos 99% de acurácia volumétrica (Erro < 0.01), paramos de tentar!
-                if (globalBestResult.ErrorMargin <= 0.01)
+                // Se alcançamos 99.9% de acurácia volumétrica (Erro <= 0.001), paramos de tentar!
+                if (globalBestResult.ErrorMargin <= 0.001)
                 {
                     break;
                 }
@@ -109,7 +109,7 @@ public class ShapeReconstructionService : IShapeReconstructionService
         minY -= margin; maxY += margin;
         minZ -= margin; maxZ += margin;
 
-        int resolution = 15; // 3375 Voxels
+        int resolution = 20; // 8000 Voxels
         float stepX = (maxX - minX) / resolution;
         float stepY = (maxY - minY) / resolution;
         float stepZ = (maxZ - minZ) / resolution;
