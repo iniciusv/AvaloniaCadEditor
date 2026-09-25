@@ -438,7 +438,7 @@ public class CadViewModel : INotifyPropertyChanged
                     importedFeature.IsVisible = false;
                     
                     // Converte a geometria deduzida em código C# e joga no ScriptEditor
-                    string code = AvaloniaCadEditor.Application.Services.FeatureToCSharpConverter.GenerateCode(reconstructedFeature);
+                    string code = FeatureToCSharpConverter.GenerateCode(reconstructedFeature);
                     ScriptEditor.AppendCode(code + "\n");
                     ScriptEditor.RunCodeCommand.Execute(null);
                     
@@ -560,7 +560,8 @@ public class CadViewModel : INotifyPropertyChanged
         var localRaw = ActiveWorkPlane.ToLocalSpace(worldPoint);
         localRaw = new Point3D(localRaw.X, localRaw.Y, 0.0);
         
-        double dynamicTolerance = 5.0 / CurrentZoom;
+        // Reduced 10x as requested (0.5 visual pixels)
+        double dynamicTolerance = 0.5 / CurrentZoom;
 
         if (CurrentTool is SelectTool selTool)
         {
@@ -588,23 +589,39 @@ public class CadViewModel : INotifyPropertyChanged
                     
                     if (currentProfile is AvaloniaCadEditor.Domain.Profiles.CompoundProfile compound)
                         subs.AddRange(compound.SubProfiles);
-                    else if (currentProfile != null && currentProfile.Id != hitProfile.Id)
+                    else if (currentProfile != null)
                         subs.Add(currentProfile);
 
-                    if (currentProfile?.Id == hitProfile.Id)
-                        subs.Remove(currentProfile); // Deselect if exactly the same profile
+                    // Check if hitProfile is already in subs (geometrically or by ID)
+                    var existing = subs.FirstOrDefault(p => p.Id == hitProfile.Id || 
+                        (p.Center.DistanceTo(hitProfile.Center) < 1e-4 && Math.Abs(p.Area - hitProfile.Area) < 1e-4));
 
-                    if (subs.Contains(hitProfile))
-                        subs.Remove(hitProfile);
+                    if (existing != null)
+                        subs.Remove(existing); // Deselect
                     else
-                        subs.Add(hitProfile);
+                        subs.Add(hitProfile); // Add to selection
 
                     _selectionService.ClearSelection(Sketch);
 
                     if (subs.Count == 1)
-                        _selectionService.SelectById(Sketch, subs[0].Id);
+                    {
+                        // Ensure we select the live profile from Sketch if possible
+                        var liveProfile = Sketch.Profiles.FirstOrDefault(p => p.Id == subs[0].Id || 
+                            (p.Center.DistanceTo(subs[0].Center) < 1e-4 && Math.Abs(p.Area - subs[0].Area) < 1e-4)) ?? subs[0];
+                        
+                        _selectionService.SelectById(Sketch, liveProfile.Id);
+                        if (_selectionService.SelectedObject == null) // Fallback if ID changed
+                        {
+                            liveProfile.IsSelected = true;
+                            _selectionService.SelectProfile(liveProfile);
+                        }
+                    }
                     else if (subs.Count > 1)
-                        _selectionService.SelectProfile(new AvaloniaCadEditor.Domain.Profiles.CompoundProfile(subs));
+                    {
+                        var newCompound = new AvaloniaCadEditor.Domain.Profiles.CompoundProfile(subs) { IsSelected = true };
+                        foreach(var sub in newCompound.SubProfiles) sub.IsSelected = true;
+                        _selectionService.SelectProfile(newCompound);
+                    }
                 }
                 else
                 {
@@ -612,7 +629,8 @@ public class CadViewModel : INotifyPropertyChanged
                 }
                 
                 ModelTree.RebuildTree();
-                RefreshProfiles();
+                // Removed RefreshProfiles() here because it destroys and recreates all profiles, 
+                // breaking selection references and IDs.
                 return true; 
             }
         }
