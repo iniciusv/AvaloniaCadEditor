@@ -227,6 +227,13 @@ public class CadViewModel : INotifyPropertyChanged
 
     public bool IsInCustomWorkPlane => !ActiveWorkPlane.Equals(WorkPlane.XY);
 
+    private double _currentZoom = 1.0;
+    public double CurrentZoom
+    {
+        get => _currentZoom;
+        set { _currentZoom = value; OnPropertyChanged(); }
+    }
+
     public ICommand SelectLineToolCommand { get; }
     public ICommand SelectCircleToolCommand { get; }
     public ICommand SelectTrimToolCommand { get; }
@@ -543,16 +550,27 @@ public class CadViewModel : INotifyPropertyChanged
         }
     }
 
-    public bool OnPointerPressed(Point3D worldPoint)
+    public bool OnPointerPressed(Point3D worldPoint, bool isCtrlPressed = false)
     {
         var refPt = CurrentTool?.GetReferencePoint();
         var snappedWorld = _osnapService.GetSnappedPoint(Sketch, worldPoint, refPt != null ? ActiveWorkPlane.ToWorldSpace(refPt.Value) : null, SolidMesh);
         var localSnapped = ActiveWorkPlane.ToLocalSpace(snappedWorld);
         localSnapped = new Point3D(localSnapped.X, localSnapped.Y, 0.0);
+        
+        var localRaw = ActiveWorkPlane.ToLocalSpace(worldPoint);
+        localRaw = new Point3D(localRaw.X, localRaw.Y, 0.0);
+        
+        double dynamicTolerance = 5.0 / CurrentZoom;
+
+        if (CurrentTool is SelectTool selTool)
+        {
+            selTool.HitTolerance = dynamicTolerance;
+        }
 
         if (CurrentTool is SelectTool && CurrentMode == EditorMode.SketchEdit)
         {
-            var hitEntity = _geometryEngine.HitTest(Sketch.Entities.Where(e => e.IsVisible), localSnapped, 0.5);
+            // Use localRaw for HitTest so magnetic snapping doesn't force line selection
+            var hitEntity = _geometryEngine.HitTest(Sketch.Entities.Where(e => e.IsVisible), localRaw, dynamicTolerance);
             if (hitEntity != null)
             {
                 _selectionService.SelectById(Sketch, hitEntity.Id);
@@ -560,17 +578,50 @@ public class CadViewModel : INotifyPropertyChanged
                 return true; 
             }
 
-            var hitProfile = Sketch.Profiles.FirstOrDefault(p => p.Plane.Equals(ActiveWorkPlane) && p.ContainsPoint(localSnapped));
+            var hitProfile = Sketch.Profiles.FirstOrDefault(p => p.Plane.Equals(ActiveWorkPlane) && p.ContainsPoint(localRaw));
             if (hitProfile != null)
             {
-                _selectionService.SelectById(Sketch, hitProfile.Id);
+                if (isCtrlPressed)
+                {
+                    var currentProfile = _selectionService.SelectedObject as IProfile;
+                    var subs = new List<IProfile>();
+                    
+                    if (currentProfile is AvaloniaCadEditor.Domain.Profiles.CompoundProfile compound)
+                        subs.AddRange(compound.SubProfiles);
+                    else if (currentProfile != null && currentProfile.Id != hitProfile.Id)
+                        subs.Add(currentProfile);
+
+                    if (currentProfile?.Id == hitProfile.Id)
+                        subs.Remove(currentProfile); // Deselect if exactly the same profile
+
+                    if (subs.Contains(hitProfile))
+                        subs.Remove(hitProfile);
+                    else
+                        subs.Add(hitProfile);
+
+                    _selectionService.ClearSelection(Sketch);
+
+                    if (subs.Count == 1)
+                        _selectionService.SelectById(Sketch, subs[0].Id);
+                    else if (subs.Count > 1)
+                        _selectionService.SelectProfile(new AvaloniaCadEditor.Domain.Profiles.CompoundProfile(subs));
+                }
+                else
+                {
+                    _selectionService.SelectById(Sketch, hitProfile.Id);
+                }
+                
                 ModelTree.RebuildTree();
                 RefreshProfiles();
                 return true; 
             }
         }
 
-        CurrentTool?.OnMouseDown(Sketch, localSnapped);
+        if (CurrentTool is SelectTool)
+            CurrentTool.OnMouseDown(Sketch, localRaw);
+        else
+            CurrentTool?.OnMouseDown(Sketch, localSnapped);
+            
         UpdateStatusText(localSnapped);
         
         if (CurrentTool is DrawLineCommand || CurrentTool is DrawCircleCommand || CurrentTool is TrimCommand)

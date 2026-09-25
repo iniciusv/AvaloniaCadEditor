@@ -57,6 +57,44 @@ public static class FeatureCodeGenerator
             sb.AppendLine($"var {boolVar} = new BooleanFeature(\"Push/Pull\", {(height < 0 ? "BooleanOperationType.Subtract" : "BooleanOperationType.Union")}, {parentId}, new[] {{ {cylVar} }}) {{ Name = \"{boolVar}\" }};");
             sb.AppendLine($"AddFeature({boolVar});");
         }
+        else if (profile is AvaloniaCadEditor.Domain.Profiles.CompoundProfile compoundProfile)
+        {
+            var vars = new List<string>();
+            foreach (var sub in compoundProfile.SubProfiles)
+            {
+                // Recursive call without sketch to avoid deleting sketch entities yet
+                string subCode = GenerateExtrusionCode(sub, height, null);
+                
+                // Extract the variable name added to AddFeature(varName);
+                var lines = subCode.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+                foreach (var line in lines)
+                {
+                    if (line.StartsWith("AddFeature(")) continue; // We don't want to emit AddFeature for subparts immediately if we want them unioned, wait we can just add them and union them.
+                    sb.AppendLine(line);
+                }
+                
+                // Hack: Find the variable name from the last var declaration
+                var varLine = lines.LastOrDefault(l => l.StartsWith("var "));
+                if (varLine != null)
+                {
+                    var varName = varLine.Split(' ')[1];
+                    vars.Add(varName);
+                }
+            }
+
+            if (vars.Count > 1)
+            {
+                string boolVar = $"compound_{id}";
+                string baseVar = vars[0];
+                string tools = string.Join(", ", vars.Skip(1));
+                sb.AppendLine($"var {boolVar} = BooleanFeature.CreateUnion(\"{boolVar}\", {baseVar}, {tools});");
+                sb.AppendLine($"AddFeature({boolVar});");
+            }
+            else if (vars.Count == 1)
+            {
+                sb.AppendLine($"AddFeature({vars[0]});");
+            }
+        }
         else if (profile is CircleProfile circleProfile)
         {
             string cylVar = $"cylinder_{id}";

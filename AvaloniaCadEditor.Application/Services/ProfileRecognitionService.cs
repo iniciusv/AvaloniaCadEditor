@@ -211,13 +211,38 @@ public class ProfileRecognitionService : IProfileRecognitionService
             if (!seenCycleKeys.Contains(key))
             {
                 seenCycleKeys.Add(key);
-                var firstLine = lines.First(l => l.Id == edges.First());
-                uniqueLoops.Add(new LoopData
+
+                // Verificar se o ciclo possui "chords" (arestas cortando o meio). Se sim, não é uma face mínima!
+                bool hasChord = false;
+                for (int vIdx = 0; vIdx < cycle.Count; vIdx++)
                 {
-                    Vertices = cycle.Select(n => n.Point).ToList(),
-                    SourceEntityIds = edges.Distinct().ToList(),
-                    Plane = firstLine.Plane
-                });
+                    var node = cycle[vIdx];
+                    var predNode = cycle[(vIdx - 1 + cycle.Count) % cycle.Count];
+                    var succNode = cycle[(vIdx + 1) % cycle.Count];
+
+                    foreach (var edge in node.Edges)
+                    {
+                        var neighbor = edge.Target;
+                        // Se o vizinho está no ciclo, mas não é o vizinho adjacente da borda, é um chord
+                        if (neighbor != predNode && neighbor != succNode && cycle.Contains(neighbor))
+                        {
+                            hasChord = true;
+                            break;
+                        }
+                    }
+                    if (hasChord) break;
+                }
+
+                if (!hasChord)
+                {
+                    var firstLine = lines.First(l => l.Id == edges.First());
+                    uniqueLoops.Add(new LoopData
+                    {
+                        Vertices = cycle.Select(n => n.Point).ToList(),
+                        SourceEntityIds = edges.Distinct().ToList(),
+                        Plane = firstLine.Plane
+                    });
+                }
             }
         }
 

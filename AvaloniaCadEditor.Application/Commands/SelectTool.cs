@@ -12,6 +12,8 @@ public class SelectTool : ICommandTool
     private readonly IGeometryEngine _geometryEngine;
     private readonly Services.ISelectionService? _selectionService;
 
+    public double HitTolerance { get; set; } = 0.5;
+
     public SelectTool(IGeometryEngine geometryEngine, Services.ISelectionService? selectionService = null)
     {
         _geometryEngine = geometryEngine;
@@ -23,7 +25,7 @@ public class SelectTool : ICommandTool
     public void OnMouseDown(Sketch sketch, Point3D point)
     {
         // 1. Try 2D HitTest on entities
-        var hitEntity = _geometryEngine.HitTest(sketch.Entities.Where(e => e.IsVisible), point, 0.5);
+        var hitEntity = _geometryEngine.HitTest(sketch.Entities.Where(e => e.IsVisible), point, HitTolerance);
 
         if (hitEntity != null)
         {

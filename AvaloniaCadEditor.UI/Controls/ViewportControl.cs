@@ -42,6 +42,7 @@ public class ViewportControl : Control
 		var worldBefore = ScreenToWorld(mousePos);
 
 		_zoom *= zoomFactor;
+		if (ViewModel != null) ViewModel.CurrentZoom = _zoom;
 
 		var worldAfter = ScreenToWorld(mousePos);
 		_pan = new Point(_pan.X + (worldAfter.X - worldBefore.X) * _zoom,
@@ -63,8 +64,9 @@ public class ViewportControl : Control
 		}
 		else if (point.Properties.IsLeftButtonPressed)
 		{
+			bool isCtrl = e.KeyModifiers.HasFlag(KeyModifiers.Control);
 			var worldPt = ScreenToWorld(point.Position);
-			ViewModel?.OnPointerPressed(worldPt);
+			ViewModel?.OnPointerPressed(worldPt, isCtrl);
 			InvalidateVisual();
 		}
 	}
