@@ -108,6 +108,13 @@ public class ViewportControl : Control
 		InvalidateVisual();
 	}
 
+	protected override void OnKeyUp(KeyEventArgs e)
+	{
+		base.OnKeyUp(e);
+		ViewModel?.OnKeyUp(e.Key.ToString());
+		InvalidateVisual();
+	}
+
 	private Point3D ScreenToWorld(Point screenPt)
 	{
 		var center = new Point(Bounds.Width / 2, Bounds.Height / 2);

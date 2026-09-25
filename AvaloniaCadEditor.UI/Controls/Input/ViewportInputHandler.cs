@@ -97,7 +97,8 @@ public sealed class ViewportInputHandler
                 
                 if (intersection.HasValue)
                 {
-                    handledBy2D = viewModel.OnPointerPressed(intersection.Value);
+                    bool isCtrl = e.KeyModifiers.HasFlag(KeyModifiers.Control);
+                    handledBy2D = viewModel.OnPointerPressed(intersection.Value, isCtrl);
                     requestRender();
                 }
 

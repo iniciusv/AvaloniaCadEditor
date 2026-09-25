@@ -362,7 +362,18 @@ public class CadViewModel : INotifyPropertyChanged
         });
 
         SelectTrimToolCommand = new RelayCommand(() => { CurrentMode = EditorMode.SketchEdit; CurrentTool = new TrimCommand(_geometryEngine); });
-        SelectExtrudeToolCommand = new RelayCommand(() => CurrentTool = new ExtrudeCommand());
+        SelectExtrudeToolCommand = new RelayCommand(() => 
+        {
+            var profile = _selectionService.SelectedObject as IProfile;
+            var extrudeCmd = new ExtrudeCommand();
+            CurrentTool = extrudeCmd;
+            
+            if (profile != null)
+            {
+                extrudeCmd.StartDirectExtrusion(Sketch, profile, new AvaloniaCadEditor.Domain.ValueObjects.Point3D(0, 0, 0));
+                RefreshSolidMesh(); // Force preview mesh update
+            }
+        });
         SelectBooleanCutCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Subtract, _selectionService));
         SelectBooleanFuseCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Union, _selectionService));
 
@@ -582,8 +593,10 @@ public class CadViewModel : INotifyPropertyChanged
             var hitProfile = Sketch.Profiles.FirstOrDefault(p => p.Plane.Equals(ActiveWorkPlane) && p.ContainsPoint(localRaw));
             if (hitProfile != null)
             {
-                if (isCtrlPressed)
+                System.Diagnostics.Debug.WriteLine($"[DEBUG] HitProfile: {hitProfile.Id}, Area: {hitProfile.Area:F2}");
+                if (isCtrlPressed || IsCtrlPressed)
                 {
+                    System.Diagnostics.Debug.WriteLine($"[DEBUG] Ctrl Pressed. Current Selected: {_selectionService.SelectedObject?.GetType().Name}");
                     var currentProfile = _selectionService.SelectedObject as IProfile;
                     var subs = new List<IProfile>();
                     
@@ -597,27 +610,35 @@ public class CadViewModel : INotifyPropertyChanged
                         (p.Center.DistanceTo(hitProfile.Center) < 1e-4 && Math.Abs(p.Area - hitProfile.Area) < 1e-4));
 
                     if (existing != null)
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[DEBUG] Deselecting existing profile {existing.Id}");
                         subs.Remove(existing); // Deselect
+                    }
                     else
+                    {
+                        System.Diagnostics.Debug.WriteLine($"[DEBUG] Adding new profile {hitProfile.Id} to selection");
                         subs.Add(hitProfile); // Add to selection
+                    }
 
                     _selectionService.ClearSelection(Sketch);
+                    System.Diagnostics.Debug.WriteLine($"[DEBUG] Subs count after evaluation: {subs.Count}");
 
                     if (subs.Count == 1)
                     {
-                        // Ensure we select the live profile from Sketch if possible
                         var liveProfile = Sketch.Profiles.FirstOrDefault(p => p.Id == subs[0].Id || 
                             (p.Center.DistanceTo(subs[0].Center) < 1e-4 && Math.Abs(p.Area - subs[0].Area) < 1e-4)) ?? subs[0];
                         
                         _selectionService.SelectById(Sketch, liveProfile.Id);
                         if (_selectionService.SelectedObject == null) // Fallback if ID changed
                         {
+                            System.Diagnostics.Debug.WriteLine($"[DEBUG] Fallback selection for single profile");
                             liveProfile.IsSelected = true;
                             _selectionService.SelectProfile(liveProfile);
                         }
                     }
                     else if (subs.Count > 1)
                     {
+                        System.Diagnostics.Debug.WriteLine($"[DEBUG] Creating CompoundProfile with {subs.Count} profiles");
                         var newCompound = new AvaloniaCadEditor.Domain.Profiles.CompoundProfile(subs) { IsSelected = true };
                         foreach(var sub in newCompound.SubProfiles) sub.IsSelected = true;
                         _selectionService.SelectProfile(newCompound);
@@ -625,6 +646,7 @@ public class CadViewModel : INotifyPropertyChanged
                 }
                 else
                 {
+                    System.Diagnostics.Debug.WriteLine($"[DEBUG] Single select (no Ctrl): {hitProfile.Id}");
                     _selectionService.SelectById(Sketch, hitProfile.Id);
                 }
                 
@@ -632,6 +654,10 @@ public class CadViewModel : INotifyPropertyChanged
                 // Removed RefreshProfiles() here because it destroys and recreates all profiles, 
                 // breaking selection references and IDs.
                 return true; 
+            }
+            else
+            {
+                System.Diagnostics.Debug.WriteLine($"[DEBUG] No profile hit at {localRaw}");
             }
         }
 
@@ -694,11 +720,20 @@ public class CadViewModel : INotifyPropertyChanged
         OnPropertyChanged(nameof(VcbText)); // Force update
     }
 
+    public bool IsCtrlPressed { get; set; }
+    
     public void OnKeyDown(string keyName, bool isCtrlPressed = false)
     {
         string upperKey = keyName.ToUpperInvariant();
         
-        if (isCtrlPressed)
+        if (upperKey == "LEFTCTRL" || upperKey == "RIGHTCTRL")
+        {
+            IsCtrlPressed = true;
+            CurrentTool?.OnKeyDown(Sketch, CadKey.Control);
+            return;
+        }
+        
+        if (isCtrlPressed || IsCtrlPressed)
         {
             if (upperKey == "Z")
             {
@@ -771,10 +806,15 @@ public class CadViewModel : INotifyPropertyChanged
             case "RIGHT":
                 CurrentTool?.OnKeyDown(Sketch, CadKey.ArrowRight);
                 break;
-            case "LEFTCTRL":
-            case "RIGHTCTRL":
-                CurrentTool?.OnKeyDown(Sketch, CadKey.Control);
-                break;
+        }
+    }
+    
+    public void OnKeyUp(string keyName)
+    {
+        string upperKey = keyName.ToUpperInvariant();
+        if (upperKey == "LEFTCTRL" || upperKey == "RIGHTCTRL")
+        {
+            IsCtrlPressed = false;
         }
     }
 
