@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <data name="AppTitle" xml:space="preserve"><value>Avalonia CAD Editor - 3D Parametric</value></data>
+  <data name="Selection" xml:space="preserve"><value>Selection:</value></data>
+  <data name="Volumes" xml:space="preserve"><value>Volumes</value></data>
+  <data name="Faces" xml:space="preserve"><value>Faces</value></data>
+  <data name="SelectTool" xml:space="preserve"><value>Select (Space)</value></data>
+  <data name="LineTool" xml:space="preserve"><value>Line (L)</value></data>
+  <data name="CircleTool" xml:space="preserve"><value>Circle (C)</value></data>
+  <data name="TrimTool" xml:space="preserve"><value>Trim (T)</value></data>
+  <data name="ExitSketch" xml:space="preserve"><value>Exit Sketch</value></data>
+  <data name="ImportStl" xml:space="preserve"><value>Import STL</value></data>
+  <data name="ExportStl" xml:space="preserve"><value>Export STL</value></data>
+  <data name="DeduceSolid" xml:space="preserve"><value>✨ Deduce Solid</value></data>
+  <data name="DeduceSolidTooltip" xml:space="preserve"><value>Deduces CSG geometry from the selected STL mesh</value></data>
+  <data name="ExtrudeTool" xml:space="preserve"><value>Extrude (P)</value></data>
+  <data name="CutTool" xml:space="preserve"><value>Cut (-)</value></data>
+  <data name="FuseTool" xml:space="preserve"><value>Fuse (+)</value></data>
+  <data name="WorkPlaneTool" xml:space="preserve"><value>WorkPlane (W)</value></data>
+  <data name="DeleteTool" xml:space="preserve"><value>Delete (Del)</value></data>
+  <data name="Osnap" xml:space="preserve"><value>OSnap</value></data>
+  <data name="OsnapSettings" xml:space="preserve"><value>OSnap Settings</value></data>
+  <data name="Endpoint" xml:space="preserve"><value>Endpoint</value></data>
+  <data name="Midpoint" xml:space="preserve"><value>Midpoint</value></data>
+  <data name="Center" xml:space="preserve"><value>Center</value></data>
+  <data name="Tangent" xml:space="preserve"><value>Tangent</value></data>
+  <data name="Tolerance" xml:space="preserve"><value>Tolerance:</value></data>
+  <data name="DistanceSnap" xml:space="preserve"><value>Distance Snap</value></data>
+  <data name="Increment" xml:space="preserve"><value>Increment:</value></data>
+  <data name="PolarAngleSnap" xml:space="preserve"><value>Polar Angle Snap</value></data>
+  <data name="Angle" xml:space="preserve"><value>Angle (º):</value></data>
+  <data name="ViewSettings" xml:space="preserve"><value>View Settings</value></data>
+  <data name="FaceColorByNormal" xml:space="preserve"><value>Face Color By Normal</value></data>
+  <data name="EdgeColorByAxis" xml:space="preserve"><value>Edge Color By Axis</value></data>
+  <data name="HiddenEdges" xml:space="preserve"><value>Hidden Edges</value></data>
+  <data name="TreeTab" xml:space="preserve"><value>Model</value></data>
+  <data name="CodeTab" xml:space="preserve"><value>Code</value></data>
+  <data name="IOTab" xml:space="preserve"><value>Tools</value></data>
+  <data name="LoadCode" xml:space="preserve"><value>Load (.cs)</value></data>
+  <data name="SaveCode" xml:space="preserve"><value>Save (.cs)</value></data>
+  <data name="UpdateCode" xml:space="preserve"><value>Update Code</value></data>
+  <data name="RunCode" xml:space="preserve"><value>▶ Run</value></data>
+  <data name="Measurement" xml:space="preserve"><value>Measurement:</value></data>
+</root>

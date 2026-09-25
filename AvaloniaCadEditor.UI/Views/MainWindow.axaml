@@ -5,107 +5,106 @@
         xmlns:controls="clr-namespace:AvaloniaCadEditor.UI.Controls"
         xmlns:views="clr-namespace:AvaloniaCadEditor.UI.Views"
         xmlns:vm="clr-namespace:AvaloniaCadEditor.UI.ViewModels"
+        xmlns:res="clr-namespace:AvaloniaCadEditor.UI.Resources"
         mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="700"
         x:Class="AvaloniaCadEditor.Views.MainWindow"
         x:DataType="vm:CadViewModel"
-        Title="Avalonia CAD Editor - 3D Parametric"
+        Title="{x:Static res:Strings.AppTitle}"
         Background="#1A1A1A">
 
     <Grid RowDefinitions="Auto,*,30">
-        <!-- Toolbar -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Background="#2D2D2D" Margin="4" Spacing="6">
-            <StackPanel Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" Margin="0,0,5,0">
-                <TextBlock Text="Seleção:" Foreground="LightGray" VerticalAlignment="Center" FontSize="12"/>
-                <RadioButton GroupName="SelMode" IsChecked="{Binding IsFeatureSelectionMode}" Foreground="White" VerticalAlignment="Center">
-                    <StackPanel Orientation="Horizontal" Spacing="4">
-                        <Path Data="M21,16.5C21,16.88 20.79,17.21 20.47,17.38L12.57,21.82C12.41,21.94 12.21,22 12,22C11.79,22 11.59,21.94 11.43,21.82L3.53,17.38C3.21,17.21 3,16.88 3,16.5V7.5C3,7.12 3.21,6.79 3.53,6.62L11.43,2.18C11.59,2.06 11.79,2 12,2C12.21,2 12.41,2.06 12.57,2.18L20.47,6.62C20.79,6.79 21,7.12 21,7.5V16.5M12,4.15L5,8.09L12,12.03L19,8.09L12,4.15M4.5,15.97L11.25,19.79V13.16L4.5,9.33V15.97M19.5,15.97V9.33L12.75,13.16V19.79L19.5,15.97Z" 
-                              Fill="LightGray" Stretch="Uniform" Width="14" Height="14" VerticalAlignment="Center"/>
-                        <TextBlock Text="Volumes" VerticalAlignment="Center" FontSize="12" />
-                    </StackPanel>
-                </RadioButton>
-                <RadioButton GroupName="SelMode" IsChecked="{Binding IsFaceSelectionMode}" Foreground="White" VerticalAlignment="Center">
-                    <StackPanel Orientation="Horizontal" Spacing="4">
-                        <Path Data="M12,4.15 L5,8.09 L12,12.03 L19,8.09 Z" 
-                              Stroke="LightGray" StrokeThickness="2" Fill="Transparent" Stretch="Uniform" Width="14" Height="14" VerticalAlignment="Center"/>
-                        <TextBlock Text="Faces" VerticalAlignment="Center" FontSize="12" />
-                    </StackPanel>
-                </RadioButton>
-            </StackPanel>
-
-            <Separator Width="1" Height="20" Background="#555" Margin="4,0" />
-
-            <Button Content="Select (Space)" Command="{Binding SelectSelectToolCommand}" />
-            <Button Content="Line (L)" Command="{Binding SelectLineToolCommand}" />
-            <Button Content="Circle (C)" Command="{Binding SelectCircleToolCommand}" />
-            <Button Content="Trim (T)" Command="{Binding SelectTrimToolCommand}" />
-            
-            <Button Content="Sair do Esboço" Command="{Binding ExitWorkPlaneCommand}" IsVisible="{Binding IsInCustomWorkPlane}" Background="#E74C3C" Foreground="White" FontWeight="Bold" Margin="4,0" />
-            
-            <Separator Width="1" Height="20" Background="#555" Margin="4,0" />
-
-            <!-- IO STL Buttons -->
-            <Button Content="Importar STL" Command="{Binding ImportStlCommand}" Background="#34495E" Foreground="White" />
-            <Button Content="Exportar STL" Command="{Binding ExportStlCommand}" Background="#34495E" Foreground="White" />
-            <Button Content="✨ Deduzir Sólido" Command="{Binding ReconstructMeshCommand}" Background="#8E44AD" Foreground="White" ToolTip.Tip="Deduz geometria CSG a partir da malha STL selecionada" />
-
-            <Separator Width="1" Height="20" Background="#555" Margin="4,0" />
-
-            <Button Content="Extrude (P)" Command="{Binding SelectExtrudeToolCommand}" Background="#007ACC" Foreground="White" FontWeight="Bold" />
-            <Button Content="Cut (-)" Command="{Binding SelectBooleanCutCommand}" Background="#E67E22" Foreground="White" FontWeight="Bold" />
-            <Button Content="Fuse (+)" Command="{Binding SelectBooleanFuseCommand}" Background="#27AE60" Foreground="White" FontWeight="Bold" />
-            <Button Content="WorkPlane (W)" Command="{Binding SelectSetWorkPlaneCommand}" Background="#8E44AD" Foreground="White" FontWeight="Bold" />
-            <Button Content="Delete (Del)" Command="{Binding DeleteSelectedCommand}" Background="#A83232" Foreground="White" />
-
-            <Separator Width="1" Height="20" Background="#555" Margin="4,0" />
+        <!-- Toolbar (View Settings Only) -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Background="#2D2D2D" Margin="4" Spacing="15">
             <StackPanel Orientation="Horizontal" Spacing="2">
-                <CheckBox IsChecked="{Binding OsnapEnabled}" Content="OSnap" Foreground="White" VerticalAlignment="Center"/>
+                <CheckBox IsChecked="{Binding OsnapEnabled}" Content="{x:Static res:Strings.Osnap}" Foreground="White" VerticalAlignment="Center"/>
                 <Button Content="[⚙]" Background="Transparent" Foreground="LightGray" Padding="2" VerticalAlignment="Center">
                     <Button.Flyout>
                         <Flyout>
                             <StackPanel Spacing="10" Width="260" Margin="5">
-                                <TextBlock Text="OSnap Settings" FontWeight="Bold" Margin="0,0,0,5"/>
+                                <TextBlock Text="{x:Static res:Strings.OsnapSettings}" FontWeight="Bold" Margin="0,0,0,5"/>
                                 
-                                <CheckBox IsChecked="{Binding OsnapSettings.EndpointEnabled}" Content="Endpoint" />
-                                <CheckBox IsChecked="{Binding OsnapSettings.MidpointEnabled}" Content="Midpoint" />
-                                <CheckBox IsChecked="{Binding OsnapSettings.CenterEnabled}" Content="Center" />
-                                <CheckBox IsChecked="{Binding OsnapSettings.TangentEnabled}" Content="Tangent" />
+                                <CheckBox IsChecked="{Binding OsnapSettings.EndpointEnabled}" Content="{x:Static res:Strings.Endpoint}" />
+                                <CheckBox IsChecked="{Binding OsnapSettings.MidpointEnabled}" Content="{x:Static res:Strings.Midpoint}" />
+                                <CheckBox IsChecked="{Binding OsnapSettings.CenterEnabled}" Content="{x:Static res:Strings.Center}" />
+                                <CheckBox IsChecked="{Binding OsnapSettings.TangentEnabled}" Content="{x:Static res:Strings.Tangent}" />
                                 
                                 <StackPanel Orientation="Horizontal" Spacing="5">
-                                    <TextBlock Text="Tolerance:" VerticalAlignment="Center" Width="80"/>
+                                    <TextBlock Text="{x:Static res:Strings.Tolerance}" VerticalAlignment="Center" Width="80"/>
                                     <NumericUpDown Value="{Binding OsnapSettings.SnapTolerance}" Minimum="1" Maximum="100" Increment="1" Width="140"/>
                                 </StackPanel>
 
                                 <Separator Background="#444" Height="1" Margin="0,5"/>
                                 
-                                <CheckBox IsChecked="{Binding OsnapSettings.GridSnapEnabled}" Content="Distance Snap" />
+                                <CheckBox IsChecked="{Binding OsnapSettings.GridSnapEnabled}" Content="{x:Static res:Strings.DistanceSnap}" />
                                 <StackPanel Orientation="Horizontal" Spacing="5" Margin="20,0,0,0">
-                                    <TextBlock Text="Increment:" VerticalAlignment="Center" Width="80"/>
+                                    <TextBlock Text="{x:Static res:Strings.Increment}" VerticalAlignment="Center" Width="80"/>
                                     <NumericUpDown Value="{Binding OsnapSettings.GridIncrement}" Minimum="0.1" Increment="0.1" Width="140"/>
                                 </StackPanel>
 
-                                <CheckBox IsChecked="{Binding OsnapSettings.PolarSnapEnabled}" Content="Polar Angle Snap" />
+                                <CheckBox IsChecked="{Binding OsnapSettings.PolarSnapEnabled}" Content="{x:Static res:Strings.PolarAngleSnap}" />
                                 <StackPanel Orientation="Horizontal" Spacing="5" Margin="20,0,0,0">
-                                    <TextBlock Text="Angle (º):" VerticalAlignment="Center" Width="80"/>
+                                    <TextBlock Text="{x:Static res:Strings.Angle}" VerticalAlignment="Center" Width="80"/>
                                     <NumericUpDown Value="{Binding OsnapSettings.PolarAngleIncrement}" Minimum="1" Maximum="360" Increment="5" Width="140"/>
                                 </StackPanel>
 
                                 <Separator Background="#444" Height="1" Margin="0,5"/>
-                                <TextBlock Text="View Settings" FontWeight="Bold" Margin="0,0,0,5"/>
-                                <CheckBox IsChecked="{Binding OsnapSettings.ColorFacesByNormal}" Content="Face Color By Normal" />
-                                <CheckBox IsChecked="{Binding OsnapSettings.ColorEdgesByAxis}" Content="Edge Color By Axis" />
+                                <TextBlock Text="{x:Static res:Strings.ViewSettings}" FontWeight="Bold" Margin="0,0,0,5"/>
+                                <CheckBox IsChecked="{Binding OsnapSettings.ColorFacesByNormal}" Content="{x:Static res:Strings.FaceColorByNormal}" />
+                                <CheckBox IsChecked="{Binding OsnapSettings.ColorEdgesByAxis}" Content="{x:Static res:Strings.EdgeColorByAxis}" />
                             </StackPanel>
                         </Flyout>
                     </Button.Flyout>
                 </Button>
             </StackPanel>
-            <CheckBox IsChecked="{Binding ShowInternalEdges}" Content="Arestas Ocultas" Foreground="White" VerticalAlignment="Center"/>
+            <CheckBox IsChecked="{Binding ShowInternalEdges}" Content="{x:Static res:Strings.HiddenEdges}" Foreground="White" VerticalAlignment="Center"/>
         </StackPanel>
         
-        <!-- Main Work Area (Viewport + Flexible Right Sidebar) -->
-        <Grid Grid.Row="1" ColumnDefinitions="*, 4, 320">
+        <!-- Main Work Area (Left Sidebar + Viewport + Right Sidebar) -->
+        <Grid Grid.Row="1" ColumnDefinitions="Auto, 4, *, 4, 340">
             
-            <!-- Left/Center: Viewport -->
-            <Panel Grid.Column="0" Background="Transparent"
+            <!-- Left Sidebar: Draw & Modify Tools -->
+            <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" Padding="6" Background="#252526">
+                <StackPanel Width="160" Margin="0" Spacing="6">
+                    <TextBlock Text="{x:Static res:Strings.Selection}" Foreground="LightGray" FontWeight="Bold"/>
+                    <RadioButton GroupName="SelMode" IsChecked="{Binding IsFeatureSelectionMode}" Foreground="White">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <Path Data="M21,16.5C21,16.88 20.79,17.21 20.47,17.38L12.57,21.82C12.41,21.94 12.21,22 12,22C11.79,22 11.59,21.94 11.43,21.82L3.53,17.38C3.21,17.21 3,16.88 3,16.5V7.5C3,7.12 3.21,6.79 3.53,6.62L11.43,2.18C11.59,2.06 11.79,2 12,2C12.21,2 12.41,2.06 12.57,2.18L20.47,6.62C20.79,6.79 21,7.12 21,7.5V16.5M12,4.15L5,8.09L12,12.03L19,8.09L12,4.15M4.5,15.97L11.25,19.79V13.16L4.5,9.33V15.97M19.5,15.97V9.33L12.75,13.16V19.79L19.5,15.97Z" 
+                                  Fill="LightGray" Stretch="Uniform" Width="14" Height="14" VerticalAlignment="Center"/>
+                            <TextBlock Text="{x:Static res:Strings.Volumes}" VerticalAlignment="Center" FontSize="12" />
+                        </StackPanel>
+                    </RadioButton>
+                    <RadioButton GroupName="SelMode" IsChecked="{Binding IsFaceSelectionMode}" Foreground="White">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <Path Data="M12,4.15 L5,8.09 L12,12.03 L19,8.09 Z" 
+                                  Stroke="LightGray" StrokeThickness="2" Fill="Transparent" Stretch="Uniform" Width="14" Height="14" VerticalAlignment="Center"/>
+                            <TextBlock Text="{x:Static res:Strings.Faces}" VerticalAlignment="Center" FontSize="12" />
+                        </StackPanel>
+                    </RadioButton>
+
+                    <Separator Height="1" Background="#555" Margin="0,4" />
+
+                    <Button Content="{x:Static res:Strings.SelectTool}" Command="{Binding SelectSelectToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                    <Button Content="{x:Static res:Strings.LineTool}" Command="{Binding SelectLineToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                    <Button Content="{x:Static res:Strings.CircleTool}" Command="{Binding SelectCircleToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                    <Button Content="{x:Static res:Strings.TrimTool}" Command="{Binding SelectTrimToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                    
+                    <Button Content="{x:Static res:Strings.ExitSketch}" Command="{Binding ExitWorkPlaneCommand}" IsVisible="{Binding IsInCustomWorkPlane}" Background="#E74C3C" Foreground="White" FontWeight="Bold" Margin="0,4" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                    
+                    <Separator Height="1" Background="#555" Margin="0,4" />
+
+                    <Button Content="{x:Static res:Strings.ExtrudeTool}" Command="{Binding SelectExtrudeToolCommand}" Background="#007ACC" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                    <Button Content="{x:Static res:Strings.CutTool}" Command="{Binding SelectBooleanCutCommand}" Background="#E67E22" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                    <Button Content="{x:Static res:Strings.FuseTool}" Command="{Binding SelectBooleanFuseCommand}" Background="#27AE60" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                    <Button Content="{x:Static res:Strings.WorkPlaneTool}" Command="{Binding SelectSetWorkPlaneCommand}" Background="#8E44AD" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                    <Button Content="{x:Static res:Strings.DeleteTool}" Command="{Binding DeleteSelectedCommand}" Background="#A83232" Foreground="White" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- Vertical Resizer / Splitter 1 -->
+            <GridSplitter Grid.Column="1" Width="4" Background="#141414" ResizeDirection="Columns" />
+
+            <!-- Center: Viewport -->
+            <Panel Grid.Column="2" Background="Transparent"
                    PointerPressed="Viewport_PointerPressed"
                    PointerMoved="Viewport_PointerMoved"
                    PointerReleased="Viewport_PointerReleased"
@@ -113,35 +112,42 @@
                 <controls:SilkViewportControl x:Name="ViewportControl" DataContext="{Binding}" />
             </Panel>
 
-            <!-- Vertical Resizer / Splitter -->
-            <GridSplitter Grid.Column="1" Width="4" Background="#141414" ResizeDirection="Columns" />
+            <!-- Vertical Resizer / Splitter 2 -->
+            <GridSplitter Grid.Column="3" Width="4" Background="#141414" ResizeDirection="Columns" />
 
-            <!-- Right Sidebar: Model Tree + Property Inspector -->
-            <Grid Grid.Column="2" RowDefinitions="*, 4, 1.2*" Background="#1E1E1E">
-                <!-- Top Section: Model Entity Tree & C# Code -->
+            <!-- Right Sidebar: Model Tree + Code + I/O + Property Inspector -->
+            <Grid Grid.Column="4" RowDefinitions="*, 4, 1.2*" Background="#1E1E1E">
+                <!-- Top Section: Model Entity Tree, C# Code & IO -->
                 <TabControl Grid.Row="0" Margin="0" Padding="0">
-                    <TabItem Header="Árvore" Padding="10,5">
+                    <TabItem Header="{x:Static res:Strings.TreeTab}" Padding="10,5">
                         <views:ModelTreeView DataContext="{Binding ModelTree}" />
                     </TabItem>
-                    <TabItem Header="Código C#" Padding="10,5">
+                    <TabItem Header="{x:Static res:Strings.CodeTab}" Padding="10,5">
                         <Grid RowDefinitions="Auto,*">
-                            <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="4" Margin="4" HorizontalAlignment="Right">
-                                <Button Content="Load (.cs)" Command="{Binding ScriptEditor.LoadCodeFromFileCommand}" />
-                                <Button Content="Save (.cs)" Command="{Binding ScriptEditor.SaveCodeToFileCommand}" />
-                                <Button Content="Atualizar Código" Command="{Binding ScriptEditor.GenerateCodeCommand}" />
-                                <Button Content="▶ Run" Command="{Binding ScriptEditor.RunCodeCommand}"
-                                        Background="#27AE60" Foreground="White" FontWeight="Bold" />
-                            </StackPanel>
+                            <WrapPanel Grid.Row="0" Orientation="Horizontal" Margin="4" HorizontalAlignment="Right">
+                                <Button Content="{x:Static res:Strings.LoadCode}" Command="{Binding ScriptEditor.LoadCodeFromFileCommand}" Margin="0,0,4,4"/>
+                                <Button Content="{x:Static res:Strings.SaveCode}" Command="{Binding ScriptEditor.SaveCodeToFileCommand}" Margin="0,0,4,4"/>
+                                <Button Content="{x:Static res:Strings.UpdateCode}" Command="{Binding ScriptEditor.GenerateCodeCommand}" Margin="0,0,4,4"/>
+                                <Button Content="{x:Static res:Strings.RunCode}" Command="{Binding ScriptEditor.RunCodeCommand}"
+                                        Background="#27AE60" Foreground="White" FontWeight="Bold" Margin="0,0,0,4"/>
+                            </WrapPanel>
                             <TextBox Grid.Row="1" Text="{Binding ScriptEditor.GeneratedCSharpCode, Mode=TwoWay}" 
                                      IsReadOnly="False" 
                                      FontFamily="Consolas, Fira Code, Monospace" 
                                      Background="#1E1E1E" 
                                      Foreground="#D4D4D4"
-                                     TextWrapping="NoWrap"
+                                     TextWrapping="Wrap"
                                      AcceptsReturn="True"
                                      BorderThickness="0"
                                      Margin="2"/>
                         </Grid>
+                    </TabItem>
+                    <TabItem Header="{x:Static res:Strings.IOTab}" Padding="10,5">
+                        <StackPanel Spacing="10" Margin="10">
+                            <Button Content="{x:Static res:Strings.ImportStl}" Command="{Binding ImportStlCommand}" Background="#34495E" Foreground="White" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                            <Button Content="{x:Static res:Strings.ExportStl}" Command="{Binding ExportStlCommand}" Background="#34495E" Foreground="White" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                            <Button Content="{x:Static res:Strings.DeduceSolid}" Command="{Binding ReconstructMeshCommand}" Background="#8E44AD" Foreground="White" ToolTip.Tip="{x:Static res:Strings.DeduceSolidTooltip}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                        </StackPanel>
                     </TabItem>
                 </TabControl>
 
@@ -158,7 +164,7 @@
             <Grid ColumnDefinitions="*, Auto, Auto">
                 <TextBlock Grid.Column="0" Text="{Binding StatusText}" Foreground="White" VerticalAlignment="Center" FontSize="12" />
                 
-                <TextBlock Grid.Column="1" Text="Measurement: " Foreground="LightGray" VerticalAlignment="Center" Margin="0,0,5,0" FontSize="12" />
+                <TextBlock Grid.Column="1" Text="{x:Static res:Strings.Measurement}" Foreground="LightGray" VerticalAlignment="Center" Margin="0,0,5,0" FontSize="12" />
                 <Border Grid.Column="2" Background="White" CornerRadius="2" Padding="6,2" MinWidth="100">
                     <TextBlock Text="{Binding VcbText}" Foreground="Black" TextAlignment="Right" FontWeight="Bold" FontSize="12" />
                 </Border>
