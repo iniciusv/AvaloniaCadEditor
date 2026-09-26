@@ -56,7 +56,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged
             }
             else
             {
-                _cadViewModel.StatusText = $"✗ Erro de Compilação";
+                _cadViewModel.StatusText = $"✗ Erro de Compilação: {result.ErrorMessage.Replace("\r", "").Replace("\n", " ")}";
                 Console.WriteLine("Evaluation Error:\n" + result.ErrorMessage);
             }
         });

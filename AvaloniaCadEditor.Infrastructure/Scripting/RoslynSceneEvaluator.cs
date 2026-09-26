@@ -50,13 +50,16 @@ public class RoslynSceneEvaluator : ISceneEvaluator
         }
         catch (CompilationErrorException ex)
         {
+            var errors = string.Join(Environment.NewLine, ex.Diagnostics);
+            System.IO.File.WriteAllText("script_compile_error.log", "=== CODE ===\r\n" + code + "\r\n\r\n=== ERRORS ===\r\n" + errors);
             return new SceneEvaluationResult(
                 Array.Empty<IFeature>(), 
                 false,
-                string.Join(Environment.NewLine, ex.Diagnostics));
+                errors);
         }
         catch (Exception ex)
         {
+            System.IO.File.WriteAllText("script_runtime_error.log", "=== CODE ===\r\n" + code + "\r\n\r\n=== ERROR ===\r\n" + ex.ToString());
             return new SceneEvaluationResult(
                 Array.Empty<IFeature>(), 
                 false,

@@ -127,6 +127,10 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             {
                 result = BuildBoolean(boolean, settings);
             }
+            else if (feature is FilletFeature fillet && fillet.IsEnabled)
+            {
+                result = BuildFillet(fillet, settings);
+            }
         }
         catch (Exception ex)
         {
@@ -139,6 +143,276 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         }
 
         return result;
+    }
+
+    private OcctShape CreateCylinderCutter(CylinderFeature cyl, double filletRadius, bool isTop, bool isRound, TessellationSettings settings)
+    {
+        var origin = cyl.GlobalBaseCenter;
+        var dir = cyl.GlobalDirection;
+        
+        Vector3D u;
+        if (Math.Abs(dir.X) > 0.1 || Math.Abs(dir.Y) > 0.1)
+            u = new Vector3D(-dir.Y, dir.X, 0);
+        else
+            u = new Vector3D(1, 0, 0);
+            
+        double uLen = Math.Sqrt(u.X * u.X + u.Y * u.Y + u.Z * u.Z);
+        u = new Vector3D(u.X / uLen, u.Y / uLen, u.Z / uLen);
+        
+        var points2D = new System.Collections.Generic.List<(double r, double z)>();
+        double R = cyl.Radius;
+        double H = cyl.Height;
+        double r = filletRadius;
+        
+        if (isTop)
+        {
+            points2D.Add((R - r, H + 0.1));
+            points2D.Add((R + 0.1, H + 0.1));
+            points2D.Add((R + 0.1, H - r));
+            
+            if (isRound)
+            {
+                int segments = settings.ProfileSegments > 0 ? settings.ProfileSegments / 4 : 8;
+                if (segments < 2) segments = 2;
+                for (int i = 0; i <= segments; i++)
+                {
+                    double theta = (Math.PI / 2.0) * (1.0 - (double)i / segments);
+                    double pr = (R - r) + r * Math.Cos(theta);
+                    double pz = (H - r) + r * Math.Sin(theta);
+                    points2D.Add((pr, pz));
+                }
+            }
+            else
+            {
+                points2D.Add((R, H - r));
+                points2D.Add((R - r, H));
+            }
+        }
+        else
+        {
+            points2D.Add((R - r, -0.1));
+            points2D.Add((R + 0.1, -0.1));
+            points2D.Add((R + 0.1, r));
+            
+            if (isRound)
+            {
+                int segments = settings.ProfileSegments > 0 ? settings.ProfileSegments / 4 : 8;
+                if (segments < 2) segments = 2;
+                for (int i = 0; i <= segments; i++)
+                {
+                    double theta = (Math.PI / 2.0) * ((double)i / segments);
+                    double pr = (R - r) + r * Math.Cos(theta);
+                    double pz = r - r * Math.Sin(theta);
+                    points2D.Add((pr, pz));
+                }
+            }
+            else
+            {
+                points2D.Add((R, r));
+                points2D.Add((R - r, 0));
+            }
+        }
+        
+        var vertices = new System.Collections.Generic.List<Point3D>();
+        foreach (var p in points2D)
+        {
+            vertices.Add(new Point3D(
+                origin.X + u.X * p.r + dir.X * p.z,
+                origin.Y + u.Y * p.r + dir.Y * p.z,
+                origin.Z + u.Z * p.r + dir.Z * p.z
+            ));
+        }
+        
+        // Calculate polygon normal using Newell's method to check winding order
+        double nx = 0, ny = 0, nz = 0;
+        int n = vertices.Count;
+        for (int i = 0; i < n; i++)
+        {
+            var p1 = vertices[i];
+            var p2 = vertices[(i + 1) % n];
+            nx += (p1.Y - p2.Y) * (p1.Z + p2.Z);
+            ny += (p1.Z - p2.Z) * (p1.X + p2.X);
+            nz += (p1.X - p2.X) * (p1.Y + p2.Y);
+        }
+        
+        // Cross product of u and dir gives the normal of the plane
+        var expectedNormal = new Vector3D(
+            u.Y * dir.Z - u.Z * dir.Y,
+            u.Z * dir.X - u.X * dir.Z,
+            u.X * dir.Y - u.Y * dir.X
+        );
+        
+        if (nx * expectedNormal.X + ny * expectedNormal.Y + nz * expectedNormal.Z < 0)
+        {
+            vertices.Reverse();
+        }
+        
+        var edges = new System.Collections.Generic.List<OcctEdge>();
+        for (int i = 0; i < vertices.Count; i++)
+        {
+            var p1 = vertices[i];
+            var p2 = vertices[(i + 1) % vertices.Count];
+            var edge = new OcctEdge(
+                new OcctPointCoordinates(p1.X, p1.Y, p1.Z),
+                new OcctPointCoordinates(p2.X, p2.Y, p2.Z)
+            );
+            edges.Add(edge);
+        }
+        
+        var wire = new OcctWire(edges.ToArray());
+        var face = new OcctFace(wire);
+        
+        var axis = new OcctAxis1d(
+            new OcctPointCoordinates(origin.X, origin.Y, origin.Z),
+            new OcctVector3d(dir.X, dir.Y, dir.Z)
+        );
+        
+        return face.Revolve(axis, 2.0 * Math.PI);
+    }
+
+    private OcctShape BuildFillet(FilletFeature fillet, TessellationSettings settings)
+    {
+        var currentShape = BuildShape(fillet.BaseFeature, settings);
+        if (currentShape == null || currentShape.IsNull) return null;
+
+        if (fillet.BaseFeature is CylinderFeature cyl)
+        {
+            var rad = fillet.Radius;
+            if (rad <= 0.001) return currentShape;
+            
+            bool doTop = fillet.ApplyToAllEdges || fillet.Faces.Any(f => f.FaceId == (int)FaceType.Top);
+            bool doBottom = fillet.ApplyToAllEdges || fillet.Faces.Any(f => f.FaceId == (int)FaceType.Bottom);
+            
+            bool isRound = fillet.Mode == FilletMode.Round;
+            var resultShape = currentShape;
+            
+            if (doTop)
+            {
+                var cutter = CreateCylinderCutter(cyl, rad, true, isRound, settings);
+                if (cutter != null && !cutter.IsNull) resultShape = resultShape.Cut(cutter);
+            }
+            if (doBottom)
+            {
+                var cutter = CreateCylinderCutter(cyl, rad, false, isRound, settings);
+                if (cutter != null && !cutter.IsNull) resultShape = resultShape.Cut(cutter);
+            }
+            
+            return resultShape;
+        }
+
+        var allEdges = new HashSet<EdgeReference>();
+
+        if (fillet.ApplyToAllEdges)
+        {
+            if (fillet.BaseFeature is BoxFeature box)
+            {
+                foreach (var eType in box.GetAllEdges())
+                {
+                    allEdges.Add(new EdgeReference(box, eType));
+                }
+            }
+        }
+        else
+        {
+            foreach (var edge in fillet.Edges) allEdges.Add(edge);
+
+            foreach (var face in fillet.Faces)
+            {
+                if (face.ParentFeature is BoxFeature box && Enum.IsDefined(typeof(FaceType), face.FaceId))
+                {
+                    var fType = (FaceType)face.FaceId;
+                    foreach (var eType in box.GetEdgesForFace(fType))
+                    {
+                        allEdges.Add(new EdgeReference(box, eType));
+                    }
+                }
+            }
+        }
+
+        bool isIntermediate = false;
+        var r = fillet.Radius;
+        if (r <= 0.001) return currentShape;
+
+        int segments = settings.ProfileSegments > 0 ? settings.ProfileSegments / 4 : 8;
+        if (segments < 2) segments = 2;
+
+        foreach (var edgeRef in allEdges)
+        {
+            if (edgeRef.ParentFeature is BoxFeature box)
+            {
+                var geom = box.GetEdgeGeometry(edgeRef.EdgeId);
+                var start = geom.Start;
+                var end = geom.End;
+                var n1 = geom.Normal1;
+                var n2 = geom.Normal2;
+
+                var vEdge = new Vector3D(end.X - start.X, end.Y - start.Y, end.Z - start.Z);
+                double len = Math.Sqrt(vEdge.X * vEdge.X + vEdge.Y * vEdge.Y + vEdge.Z * vEdge.Z);
+                if (len < 1e-5) continue;
+                var dEdge = new Vector3D(vEdge.X / len, vEdge.Y / len, vEdge.Z / len);
+
+                var extStart = new Point3D(start.X - dEdge.X * 0.1 * r, start.Y - dEdge.Y * 0.1 * r, start.Z - dEdge.Z * 0.1 * r);
+                double extLen = len + 0.2 * r;
+
+                var profilePoints = new List<Point3D>();
+                profilePoints.Add(Get3DPoint(extStart, n1, n2, 0.1 * r, 0.1 * r));
+                profilePoints.Add(Get3DPoint(extStart, n1, n2, -r, 0.1 * r));
+                profilePoints.Add(Get3DPoint(extStart, n1, n2, -r, 0));
+
+                if (fillet.Mode == FilletMode.Round)
+                {
+                    for (int i = 1; i < segments; i++)
+                    {
+                        double theta = (Math.PI / 2.0) * (1.0 - (double)i / segments);
+                        double x = -r + r * Math.Cos(theta);
+                        double y = -r + r * Math.Sin(theta);
+                        profilePoints.Add(Get3DPoint(extStart, n1, n2, x, y));
+                    }
+                }
+
+                profilePoints.Add(Get3DPoint(extStart, n1, n2, 0, -r));
+                profilePoints.Add(Get3DPoint(extStart, n1, n2, 0.1 * r, -r));
+
+                var edges = new List<OcctEdge>();
+                for (int i = 0; i < profilePoints.Count; i++)
+                {
+                    var p1 = profilePoints[i];
+                    var p2 = profilePoints[(i + 1) % profilePoints.Count];
+                    var occtEdge = new OcctEdge(
+                        new OcctPointCoordinates(p1.X, p1.Y, p1.Z),
+                        new OcctPointCoordinates(p2.X, p2.Y, p2.Z)
+                    );
+                    edges.Add(occtEdge);
+                }
+
+                var wire = new OcctWire(edges.ToArray());
+                var face = new OcctFace(wire);
+                var cutter = face.Extrude(new OcctVector3d(dEdge.X * extLen, dEdge.Y * extLen, dEdge.Z * extLen));
+
+                if (cutter != null && !cutter.IsNull)
+                {
+                    var cutShape = currentShape.Cut(cutter);
+                    if (cutShape != null && !cutShape.IsNull)
+                    {
+                        if (isIntermediate) currentShape.Dispose();
+                        cutter.Dispose();
+                        currentShape = cutShape;
+                        isIntermediate = true;
+                    }
+                }
+            }
+        }
+
+        return currentShape;
+    }
+
+    private Point3D Get3DPoint(Point3D origin, Vector3D n1, Vector3D n2, double x, double y)
+    {
+        return new Point3D(
+            origin.X + x * n1.X + y * n2.X,
+            origin.Y + x * n1.Y + y * n2.Y,
+            origin.Z + x * n1.Z + y * n2.Z
+        );
     }
 
     private OcctShape BuildCylinder(CylinderFeature cyl, TessellationSettings settings)
@@ -453,3 +727,5 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         return new TriangleMesh(posArr, normals.ToArray(), idxArr, featureEdges, internalEdges);
     }
 }
+
+

@@ -9,5 +9,6 @@ public enum CadKey
     ArrowRight,
     Escape,
     Control,
-    Delete
+    Delete,
+    Enter
 }

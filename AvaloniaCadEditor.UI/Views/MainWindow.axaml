@@ -101,6 +101,14 @@
                     <Button Content="{x:Static res:Strings.ExtrudeTool}" Command="{Binding SelectExtrudeToolCommand}" Background="#007ACC" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     <Button Content="{x:Static res:Strings.CutTool}" Command="{Binding SelectBooleanCutCommand}" Background="#E67E22" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     <Button Content="{x:Static res:Strings.FuseTool}" Command="{Binding SelectBooleanFuseCommand}" Background="#27AE60" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                    <Button Content="Fillet/Bevel" Background="#16A085" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
+                        <Button.Flyout>
+                            <MenuFlyout>
+                                <MenuItem Header="Fillet" Command="{Binding SelectFilletToolCommand}" CommandParameter="Fillet"/>
+                                <MenuItem Header="Bevel (Chamfer)" Command="{Binding SelectFilletToolCommand}" CommandParameter="Bevel"/>
+                            </MenuFlyout>
+                        </Button.Flyout>
+                    </Button>
                     <Button Content="{x:Static res:Strings.WorkPlaneTool}" Command="{Binding SelectSetWorkPlaneCommand}" Background="#8E44AD" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     <Button Content="{x:Static res:Strings.DeleteTool}" Command="{Binding DeleteSelectedCommand}" Background="#A83232" Foreground="White" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                 </StackPanel>

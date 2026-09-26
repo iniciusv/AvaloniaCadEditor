@@ -148,7 +148,7 @@ public class CadViewModel : INotifyPropertyChanged
 			HoveredFeatureId = null;
 			_hoverTimer?.Stop();
 
-			if (value != null && !(value is SelectTool) && !(value is MoveTool))
+			if (value != null && !(value is SelectTool) && !(value is MoveTool) && !(value is FilletTool))
 			{
 				ClearSelection();
 			}
@@ -241,6 +241,7 @@ public class CadViewModel : INotifyPropertyChanged
 	public ICommand SelectExtrudeToolCommand { get; }
 	public ICommand SelectBooleanCutCommand { get; }
 	public ICommand SelectBooleanFuseCommand { get; }
+	public ICommand SelectFilletToolCommand { get; }
 	public ICommand SelectSelectToolCommand { get; }
 	public ICommand SelectMoveToolCommand { get; }
 	public ICommand SelectSetWorkPlaneCommand { get; }
@@ -394,6 +395,21 @@ public class CadViewModel : INotifyPropertyChanged
 		});
 		SelectBooleanCutCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Subtract, _selectionService));
 		SelectBooleanFuseCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Union, _selectionService));
+		SelectFilletToolCommand = new RelayCommand<string>((modeStr) =>
+		{
+			var sel = _selectionService.SelectedObject;
+			var mode = modeStr == "Bevel" ? AvaloniaCadEditor.Domain.ValueObjects.FilletMode.Bevel : AvaloniaCadEditor.Domain.ValueObjects.FilletMode.Round;
+			var filletCmd = new FilletTool(_selectionService, mode);
+			
+			CurrentTool = filletCmd;
+
+			// Automatically switch to Face selection mode for convenience
+			CurrentSelectionMode = TargetSelectionMode.Face;
+
+			// Just store the sketch so the tool is ready.
+			// Do NOT automatically execute! The user must press Enter.
+			filletCmd.OnMouseDown(Sketch, new AvaloniaCadEditor.Domain.ValueObjects.Point3D(0, 0, 0));
+		});
 
 		SelectSelectToolCommand = new RelayCommand(() => CurrentTool = new SelectTool(_geometryEngine, _selectionService));
 		SelectMoveToolCommand = new RelayCommand(() => CurrentTool = new MoveTool());
@@ -846,6 +862,10 @@ public class CadViewModel : INotifyPropertyChanged
 				break;
 			case "RIGHT":
 				CurrentTool?.OnKeyDown(Sketch, CadKey.ArrowRight);
+				break;
+			case "ENTER":
+			case "RETURN":
+				CurrentTool?.OnKeyDown(Sketch, CadKey.Enter);
 				break;
 		}
 	}

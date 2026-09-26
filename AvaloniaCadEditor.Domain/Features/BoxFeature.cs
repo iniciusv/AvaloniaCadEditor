@@ -174,4 +174,53 @@ public class BoxFeature : FeatureBase
     }
 
     public Point3D GetVertex(BoxCorner corner) => GetVertex((int)corner);
+
+    public EdgeType[] GetEdgesForFace(FaceType faceType)
+    {
+        return faceType switch
+        {
+            FaceType.Top => new[] { EdgeType.TopFront, EdgeType.TopBack, EdgeType.TopLeft, EdgeType.TopRight },
+            FaceType.Bottom => new[] { EdgeType.BottomFront, EdgeType.BottomBack, EdgeType.BottomLeft, EdgeType.BottomRight },
+            FaceType.Front => new[] { EdgeType.TopFront, EdgeType.BottomFront, EdgeType.FrontLeft, EdgeType.FrontRight },
+            FaceType.Back => new[] { EdgeType.TopBack, EdgeType.BottomBack, EdgeType.BackLeft, EdgeType.BackRight },
+            FaceType.Left => new[] { EdgeType.TopLeft, EdgeType.BottomLeft, EdgeType.FrontLeft, EdgeType.BackLeft },
+            FaceType.Right => new[] { EdgeType.TopRight, EdgeType.BottomRight, EdgeType.FrontRight, EdgeType.BackRight },
+            _ => Array.Empty<EdgeType>()
+        };
+    }
+
+    public EdgeType[] GetAllEdges()
+    {
+        return new[] {
+            EdgeType.TopFront, EdgeType.TopBack, EdgeType.TopLeft, EdgeType.TopRight,
+            EdgeType.BottomFront, EdgeType.BottomBack, EdgeType.BottomLeft, EdgeType.BottomRight,
+            EdgeType.FrontLeft, EdgeType.FrontRight,
+            EdgeType.BackLeft, EdgeType.BackRight
+        };
+    }
+
+    public (Point3D Start, Point3D End, Vector3D Normal1, Vector3D Normal2) GetEdgeGeometry(EdgeType edgeType)
+    {
+        var verts = GetVertices();
+        Point3D start, end;
+        Vector3D n1, n2;
+
+        switch (edgeType)
+        {
+            case EdgeType.TopFront: start = verts[4]; end = verts[5]; n1 = GetFaceNormal(FaceType.Top); n2 = GetFaceNormal(FaceType.Front); break;
+            case EdgeType.TopBack: start = verts[7]; end = verts[6]; n1 = GetFaceNormal(FaceType.Top); n2 = GetFaceNormal(FaceType.Back); break;
+            case EdgeType.TopLeft: start = verts[4]; end = verts[7]; n1 = GetFaceNormal(FaceType.Top); n2 = GetFaceNormal(FaceType.Left); break;
+            case EdgeType.TopRight: start = verts[5]; end = verts[6]; n1 = GetFaceNormal(FaceType.Top); n2 = GetFaceNormal(FaceType.Right); break;
+            case EdgeType.BottomFront: start = verts[0]; end = verts[1]; n1 = GetFaceNormal(FaceType.Bottom); n2 = GetFaceNormal(FaceType.Front); break;
+            case EdgeType.BottomBack: start = verts[3]; end = verts[2]; n1 = GetFaceNormal(FaceType.Bottom); n2 = GetFaceNormal(FaceType.Back); break;
+            case EdgeType.BottomLeft: start = verts[0]; end = verts[3]; n1 = GetFaceNormal(FaceType.Bottom); n2 = GetFaceNormal(FaceType.Left); break;
+            case EdgeType.BottomRight: start = verts[1]; end = verts[2]; n1 = GetFaceNormal(FaceType.Bottom); n2 = GetFaceNormal(FaceType.Right); break;
+            case EdgeType.FrontLeft: start = verts[0]; end = verts[4]; n1 = GetFaceNormal(FaceType.Front); n2 = GetFaceNormal(FaceType.Left); break;
+            case EdgeType.FrontRight: start = verts[1]; end = verts[5]; n1 = GetFaceNormal(FaceType.Front); n2 = GetFaceNormal(FaceType.Right); break;
+            case EdgeType.BackLeft: start = verts[3]; end = verts[7]; n1 = GetFaceNormal(FaceType.Back); n2 = GetFaceNormal(FaceType.Left); break;
+            case EdgeType.BackRight: start = verts[2]; end = verts[6]; n1 = GetFaceNormal(FaceType.Back); n2 = GetFaceNormal(FaceType.Right); break;
+            default: throw new ArgumentException("Unknown EdgeType");
+        }
+        return (start, end, n1, n2);
+    }
 }

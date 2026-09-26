@@ -68,7 +68,7 @@ public sealed class ViewportInputHandler
 
                 // --- NOVA LÓGICA: Despacho por tipo de tool ---
                 
-                // Tools 3D: BooleanTool opera por seleção de feature via 3D raycast
+                // Tools 3D: BooleanTool e FilletTool operam por seleção de feature via 3D raycast
                 if (viewModel.CurrentTool is Application.Commands.BooleanTool)
                 {
                     var hit = viewModel.Raycast3D(ray);
@@ -116,7 +116,7 @@ public sealed class ViewportInputHandler
                             requestRender();
                         }
                     }
-                    else if (viewModel.CurrentTool is Application.Commands.SelectTool)
+                    else if (viewModel.CurrentTool is Application.Commands.SelectTool || viewModel.CurrentTool is Application.Commands.FilletTool)
                     {
                         var hit = viewModel.Raycast3D(ray);
                         if (hit.HasValue && hit.Value.FeatureId.HasValue)
@@ -160,8 +160,41 @@ public sealed class ViewportInputHandler
                                             selectedProfile = new AvaloniaCadEditor.Domain.Profiles.FaceProfile(baseFeature, plane, mesh);
                                         }
 
-                                        selectedProfile.IsSelected = true;
-                                        viewModel.SelectionService.SelectProfile(selectedProfile);
+                                                                                selectedProfile.IsSelected = true;
+                                        bool isCtrlPressed = (e.KeyModifiers & Avalonia.Input.KeyModifiers.Control) != 0;
+                                        if (isCtrlPressed || viewModel.IsCtrlPressed)
+                                        {
+                                            var currentSelection = viewModel.SelectionService.SelectedObject as AvaloniaCadEditor.Domain.Profiles.IProfile;
+                                            var subs = new System.Collections.Generic.List<AvaloniaCadEditor.Domain.Profiles.IProfile>();
+                                            if (currentSelection is AvaloniaCadEditor.Domain.Profiles.CompoundProfile compound)
+                                                subs.AddRange(compound.SubProfiles);
+                                            else if (currentSelection != null)
+                                                subs.Add(currentSelection);
+                                            
+                                            var existing = subs.FirstOrDefault(p => 
+                                                (p is AvaloniaCadEditor.Domain.Profiles.ParametricBoxFace pb && selectedProfile is AvaloniaCadEditor.Domain.Profiles.ParametricBoxFace spb && pb.ParentBox.Id == spb.ParentBox.Id && pb.SelectedFace == spb.SelectedFace) ||
+                                                (p is AvaloniaCadEditor.Domain.Profiles.ParametricCylinderFace pc && selectedProfile is AvaloniaCadEditor.Domain.Profiles.ParametricCylinderFace spc && pc.ParentCylinder.Id == spc.ParentCylinder.Id && pc.SelectedFace == spc.SelectedFace));
+                                            
+                                            if (existing != null)
+                                                subs.Remove(existing);
+                                            else
+                                                subs.Add(selectedProfile);
+                                            
+                                            if (subs.Count == 0)
+                                                viewModel.SelectionService.ClearSelection();
+                                            else if (subs.Count == 1)
+                                                viewModel.SelectionService.SelectProfile(subs[0]);
+                                            else
+                                            {
+                                                var newComp = new AvaloniaCadEditor.Domain.Profiles.CompoundProfile(subs) { IsSelected = true };
+                                                foreach (var s in newComp.SubProfiles) s.IsSelected = true;
+                                                viewModel.SelectionService.SelectProfile(newComp);
+                                            }
+                                        }
+                                        else
+                                        {
+                                            viewModel.SelectionService.SelectProfile(selectedProfile);
+                                        }
                                         requestRender();
                                     }
                                 }
@@ -311,7 +344,9 @@ public sealed class ViewportInputHandler
                 }
             }
             
-            if (viewModel.CurrentTool is Application.Commands.BooleanTool || viewModel.CurrentTool is Application.Commands.ExtrudeCommand)
+            if (viewModel.CurrentTool is Application.Commands.BooleanTool || 
+                viewModel.CurrentTool is Application.Commands.ExtrudeCommand || 
+                viewModel.CurrentTool is Application.Commands.FilletTool)
             {
                 viewModel.ProcessHover(ray);
             }
@@ -404,3 +439,5 @@ public sealed class ViewportInputHandler
         return new AvaloniaCadEditor.Domain.ValueObjects.WorkPlane(normal, origin);
     }
 }
+
+
