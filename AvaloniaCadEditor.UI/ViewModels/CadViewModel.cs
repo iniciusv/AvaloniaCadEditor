@@ -567,11 +567,11 @@ public class CadViewModel : INotifyPropertyChanged
             
             Sketch.Plane = value;
 
-            var existingWpf = Sketch.Features.OfType<AvaloniaCadEditor.Domain.Features.WorkPlaneFeature>().FirstOrDefault(f => f.Plane.Equals(value));
+            var existingWpf = Sketch.WorkPlanes.FirstOrDefault(f => f.Plane.Equals(value));
             
             if (existingWpf == null)
             {
-                var wpf = new AvaloniaCadEditor.Domain.Features.WorkPlaneFeature(value, $"Plano {Sketch.Features.Count(f => f is AvaloniaCadEditor.Domain.Features.WorkPlaneFeature)}");
+                var wpf = new AvaloniaCadEditor.Domain.Features.WorkPlaneFeature(value, $"Plano {Sketch.WorkPlanes.Count}");
                 Sketch.AddFeature(wpf);
             }
             
