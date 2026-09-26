@@ -47,6 +47,7 @@ public class CadViewModel : INotifyPropertyChanged
     public SceneScriptViewModel ScriptEditor { get; set; }
 
     public ISelectionService SelectionService => _selectionService;
+    public IFeature? SelectedFeature => _selectionService.SelectedObject as IFeature;
 
     private TriangleMesh _solidMesh = TriangleMesh.Empty;
     public TriangleMesh SolidMesh
@@ -486,6 +487,7 @@ public class CadViewModel : INotifyPropertyChanged
             {
                 rc.RaiseCanExecuteChanged();
             }
+            OnPropertyChanged(nameof(SelectedFeature));
         };
 
         CurrentTool = new SelectTool(_geometryEngine, _selectionService);

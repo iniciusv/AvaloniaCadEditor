@@ -6,6 +6,7 @@
         xmlns:views="clr-namespace:AvaloniaCadEditor.UI.Views"
         xmlns:vm="clr-namespace:AvaloniaCadEditor.UI.ViewModels"
         xmlns:res="clr-namespace:AvaloniaCadEditor.UI.Resources"
+        xmlns:AvaloniaEdit="https://github.com/avaloniaui/avaloniaedit"
         mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="700"
         x:Class="AvaloniaCadEditor.Views.MainWindow"
         x:DataType="vm:CadViewModel"
@@ -136,13 +137,15 @@
                                 <Button Content="{x:Static res:Strings.RunCode}" Command="{Binding ScriptEditor.RunCodeCommand}"
                                         Background="#27AE60" Foreground="White" FontWeight="Bold" Margin="0,0,0,4"/>
                             </WrapPanel>
-                            <TextBox Grid.Row="1" Text="{Binding ScriptEditor.GeneratedCSharpCode, Mode=TwoWay}" 
-                                     IsReadOnly="False" 
+                            <AvaloniaEdit:TextEditor Grid.Row="1" 
+                                     Name="CodeEditor"
+                                     SyntaxHighlighting="C#"
+                                     controls:CodeEditorBehavior.DocumentText="{Binding ScriptEditor.GeneratedCSharpCode, Mode=TwoWay}"
+                                     controls:CodeEditorBehavior.SelectedFeature="{Binding SelectedFeature}"
                                      FontFamily="Consolas, Fira Code, Monospace" 
                                      Background="#1E1E1E" 
                                      Foreground="#D4D4D4"
-                                     TextWrapping="Wrap"
-                                     AcceptsReturn="True"
+                                     ShowLineNumbers="True"
                                      BorderThickness="0"
                                      Margin="2"/>
                         </Grid>
