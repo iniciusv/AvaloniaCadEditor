@@ -124,6 +124,20 @@
                    PointerReleased="Viewport_PointerReleased"
                    PointerWheelChanged="Viewport_PointerWheelChanged">
                 <controls:SilkViewportControl x:Name="ViewportControl" DataContext="{Binding}" />
+
+                <!-- Boolean Edit Mode Banner -->
+                <Border IsVisible="{Binding IsEditingBooleanGroup}" 
+                        Background="#80D32F2F" BorderBrush="#D32F2F" BorderThickness="1" 
+                        CornerRadius="4" Padding="10,5" Margin="10"
+                        HorizontalAlignment="Center" VerticalAlignment="Top">
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="Editando Grupo Booleano:" Foreground="White" FontWeight="Bold" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding ActiveBooleanGroupName}" Foreground="White" VerticalAlignment="Center"/>
+                        <Button Content="✕" Command="{Binding ExitBooleanEditModeCommand}" 
+                                Background="Transparent" Foreground="White" BorderThickness="0" 
+                                Padding="4,0" VerticalAlignment="Center" Cursor="Hand" />
+                    </StackPanel>
+                </Border>
             </Panel>
 
             <!-- Vertical Resizer / Splitter 2 -->

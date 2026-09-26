@@ -66,6 +66,30 @@ public sealed class ViewportInputHandler
 
                 if (viewModel == null) return;
 
+                if (e.ClickCount == 2)
+                {
+                    var hit = viewModel.Raycast3D(ray);
+                    if (hit.HasValue && hit.Value.FeatureId.HasValue)
+                    {
+                        var feature = viewModel.Sketch.Features.FirstOrDefault(f => f.Id == hit.Value.FeatureId.Value) 
+                                      ?? viewModel.ActiveBooleanGroup?.ToolFeatures.FirstOrDefault(f => f.Id == hit.Value.FeatureId.Value);
+                        if (feature is AvaloniaCadEditor.Domain.Features.BooleanFeature bf)
+                        {
+                            viewModel.ActiveBooleanGroup = bf;
+                        }
+                        else
+                        {
+                            viewModel.ActiveBooleanGroup = null;
+                        }
+                    }
+                    else
+                    {
+                        viewModel.ActiveBooleanGroup = null;
+                    }
+                    requestRender();
+                    return;
+                }
+
                 // --- NOVA LÓGICA: Despacho por tipo de tool ---
                 
                 // Tools 3D: BooleanTool e FilletTool operam por seleção de feature via 3D raycast

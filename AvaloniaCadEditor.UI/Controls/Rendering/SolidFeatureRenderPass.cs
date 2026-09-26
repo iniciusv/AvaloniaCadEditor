@@ -84,10 +84,18 @@ public sealed class SolidFeatureRenderPass : IRenderPass
         gl.PolygonOffset(1.0f, 1.0f);
 
         // Render 3D Solid Features with Individual Lighting & Crisp Edges
-        var featuresToRender = new List<(IFeature Feature, bool IsPreview)>();
+        var featuresToRender = new List<(IFeature Feature, bool IsPreview, bool IsToolFeature)>();
         foreach (var f in vm.Sketch.Features)
         {
-            if (f.IsVisible) featuresToRender.Add((f, false));
+            if (f.IsVisible) featuresToRender.Add((f, false, false));
+        }
+
+        if (vm.ActiveBooleanGroup != null)
+        {
+            foreach (var tf in vm.ActiveBooleanGroup.ToolFeatures)
+            {
+                featuresToRender.Add((tf, false, true));
+            }
         }
 
         if (vm.CurrentTool is Application.Commands.ExtrudeCommand extCmd)
@@ -95,13 +103,13 @@ public sealed class SolidFeatureRenderPass : IRenderPass
             var preview = extCmd.GetPreviewFeature();
             if (preview != null)
             {
-                featuresToRender.Add((preview, true));
+                featuresToRender.Add((preview, true, false));
             }
         }
 
         var identity = context.IdentityMatrix;
 
-        foreach (var (feature, isPreview) in featuresToRender)
+        foreach (var (feature, isPreview, isToolFeature) in featuresToRender)
         {
             var mesh = vm.GetFeatureMesh(feature.Id, forceRebuild: false);
             if (mesh == null || mesh.TriangleCount == 0) continue;
@@ -117,7 +125,12 @@ public sealed class SolidFeatureRenderPass : IRenderPass
             float faceR, faceG, faceB;
             float edgeR, edgeG, edgeB;
 
-            if (isPreview)
+            if (isToolFeature)
+            {
+                faceR = 0.9f; faceG = 0.1f; faceB = 0.1f; // Transparent Red
+                edgeR = 1.0f; edgeG = 0.0f; edgeB = 0.0f;
+            }
+            else if (isPreview)
             {
                 faceR = 0.20f; faceG = 0.85f; faceB = 0.60f; // Vibrant Emerald Creation Feedback
                 edgeR = 0.05f; edgeG = 0.95f; edgeB = 0.65f;
@@ -190,8 +203,26 @@ public sealed class SolidFeatureRenderPass : IRenderPass
                 gl.UniformMatrix4(context.Uniforms.ModelLoc, 1, false, (float*)&identity);
                 gl.Uniform1(context.Uniforms.LightingLoc, 1); // Enable directional lighting for 3D faces!
                 gl.Uniform1(context.Uniforms.ColorFacesByNormalLoc, vm.OsnapSettings.ColorFacesByNormal ? 1 : 0);
+                
+                if (isToolFeature)
+                {
+                    gl.Uniform1(context.Uniforms.AlphaLoc, 0.4f);
+                    gl.DepthMask(false);
+                }
+                else
+                {
+                    gl.Uniform1(context.Uniforms.AlphaLoc, 1.0f);
+                }
+
                 gl.DrawElements(PrimitiveType.Triangles, (uint)mesh.Indices.Length, DrawElementsType.UnsignedInt, (void*)0);
+                
+                if (isToolFeature)
+                {
+                    gl.DepthMask(true);
+                }
+
                 gl.Uniform1(context.Uniforms.ColorFacesByNormalLoc, 0); // Restore to 0 for other passes just in case
+                gl.Uniform1(context.Uniforms.AlphaLoc, 1.0f);
             }
 
             // Render Edge Outlines
@@ -204,6 +235,11 @@ public sealed class SolidFeatureRenderPass : IRenderPass
             {
                 featureColor = (edgeR, edgeG, edgeB, 1.0f);
                 internalColor = (edgeR, edgeG, edgeB, 0.5f);
+            }
+            else if (isToolFeature)
+            {
+                featureColor = (edgeR, edgeG, edgeB, 0.8f);
+                internalColor = (edgeR, edgeG, edgeB, 0.4f);
             }
 
             void BuildEdgeBuffer(uint[] edgeIndices, (float R, float G, float B, float A) color, uint vao, uint vbo)

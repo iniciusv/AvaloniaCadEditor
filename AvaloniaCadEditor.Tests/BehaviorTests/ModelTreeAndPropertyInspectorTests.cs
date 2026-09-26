@@ -207,6 +207,7 @@ public class ModelTreeAndPropertyInspectorTests
 
         var circle = new CircleProfile(new Point3D(50, 50, 0), 20.0);
         vm.Sketch.AddProfile(circle);
+        vm.CurrentMode = EditorMode.SketchEdit;
 
         // Act 1: Move mouse inside circle
         vm.OnPointerMoved(new Point3D(55, 55, 0));

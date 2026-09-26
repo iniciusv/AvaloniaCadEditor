@@ -395,6 +395,7 @@ public class CadViewModel : INotifyPropertyChanged
 		});
 		SelectBooleanCutCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Subtract, _selectionService));
 		SelectBooleanFuseCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Union, _selectionService));
+		ExitBooleanEditModeCommand = new RelayCommand(() => ActiveBooleanGroup = null);
 		SelectFilletToolCommand = new RelayCommand<string>((modeStr) =>
 		{
 			var sel = _selectionService.SelectedObject;
@@ -516,9 +517,30 @@ public class CadViewModel : INotifyPropertyChanged
 		return MeshManager.GetFeatureMesh(Sketch, featureId, previewFeature, forceRebuild || isPreview);
 	}
 
+	private AvaloniaCadEditor.Domain.Features.BooleanFeature? _activeBooleanGroup;
+	public AvaloniaCadEditor.Domain.Features.BooleanFeature? ActiveBooleanGroup
+	{
+		get => _activeBooleanGroup;
+		set
+		{
+			if (_activeBooleanGroup != value)
+			{
+				_activeBooleanGroup = value;
+				OnPropertyChanged();
+				OnPropertyChanged(nameof(IsEditingBooleanGroup));
+				OnPropertyChanged(nameof(ActiveBooleanGroupName));
+			}
+		}
+	}
+
+	public bool IsEditingBooleanGroup => ActiveBooleanGroup != null;
+	public string ActiveBooleanGroupName => ActiveBooleanGroup?.Name ?? "";
+
+	public System.Windows.Input.ICommand ExitBooleanEditModeCommand { get; }
+
 	public RaycastHit? Raycast3D(Ray ray)
 	{
-		return MeshManager.Raycast3D(Sketch, ray);
+		return MeshManager.Raycast3D(Sketch, ray, f => ActiveBooleanGroup != null && ActiveBooleanGroup.ToolFeatures.Contains(f));
 	}
 
 	public void RefreshProfiles()
@@ -840,6 +862,10 @@ public class CadViewModel : INotifyPropertyChanged
 				else if (_selectionService.SelectedObject != null || _selectionService.SelectedId != null)
 				{
 					_selectionService.ClearSelection(Sketch);
+				}
+				else if (ActiveBooleanGroup != null)
+				{
+					ActiveBooleanGroup = null;
 				}
 				else if (!ActiveWorkPlane.Equals(AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.XY))
 				{

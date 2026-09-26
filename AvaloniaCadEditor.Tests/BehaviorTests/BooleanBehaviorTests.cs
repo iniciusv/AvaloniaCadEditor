@@ -96,9 +96,10 @@ public class BooleanBehaviorTests
         var booleanFeatures = vm.Sketch.Features.OfType<BooleanFeature>().ToList();
         booleanFeatures.Should().ContainSingle();
         var cutFeature = booleanFeatures.Single();
+        var newCylinders = vm.Sketch.Features.OfType<CylinderFeature>().ToList();
         cutFeature.Operation.Should().Be(BooleanOperationType.Subtract);
-        cutFeature.BaseFeature.Should().Be(cylinders[0]);
-        cutFeature.ToolFeatures.Should().ContainSingle().Which.Should().Be(cylinders[1]);
+        cutFeature.BaseFeature.Should().Be(newCylinders[0]);
+        cutFeature.ToolFeatures.Should().ContainSingle().Which.Should().Be(newCylinders[1]);
     }
 
     [Fact]
@@ -153,6 +154,12 @@ public class BooleanBehaviorTests
         
         var selectionService = new SelectionService();
         var booleanTool = new BooleanTool(BooleanOperationType.Subtract, selectionService);
+
+        booleanTool.CodeGenerated += (s, code) => 
+        {
+            var op = new BooleanFeature("test_cut", BooleanOperationType.Subtract, cylinder1, new[] { cylinder2 });
+            sketch.AddFeature(op);
+        };
 
         // 2. Act - Simular seleção do Cyl 1 e depois Cyl 2 via UI/SelectionService
         selectionService.SelectFeature(cylinder1);

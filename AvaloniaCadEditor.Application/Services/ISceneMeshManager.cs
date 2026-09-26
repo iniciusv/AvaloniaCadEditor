@@ -12,7 +12,7 @@ public interface ISceneMeshManager
 {
     TriangleMesh GetFeatureMesh(Sketch sketch, Guid featureId, IFeature? previewFeature, bool forceRebuild = false);
     void InvalidateFeatureAndDependents(Sketch sketch, Guid featureId);
-    RaycastHit? Raycast3D(Sketch sketch, Ray ray);
+    RaycastHit? Raycast3D(Sketch sketch, Ray ray, Func<IFeature, bool>? includeFilter = null);
     TriangleMesh BuildCompositeMesh(Sketch sketch, IFeature? previewFeature);
     void ClearCache();
 }

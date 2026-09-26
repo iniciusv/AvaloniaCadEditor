@@ -74,7 +74,7 @@ public class SceneMeshManager : ISceneMeshManager
         }
     }
 
-    public RaycastHit? Raycast3D(Sketch sketch, Ray ray)
+    public RaycastHit? Raycast3D(Sketch sketch, Ray ray, Func<IFeature, bool>? includeFilter = null)
     {
         if (sketch.Features.Count == 0) return null;
 
@@ -83,7 +83,8 @@ public class SceneMeshManager : ISceneMeshManager
 
         foreach (var feature in sketch.Features)
         {
-            if (!feature.IsVisible) continue;
+            bool shouldProcess = feature.IsVisible || (includeFilter != null && includeFilter(feature));
+            if (!shouldProcess) continue;
 
             if (!_featureMeshCache.TryGetValue(feature.Id, out var mesh))
             {
