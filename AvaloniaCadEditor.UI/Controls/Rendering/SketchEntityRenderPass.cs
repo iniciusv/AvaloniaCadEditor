@@ -60,7 +60,7 @@ public sealed class SketchEntityRenderPass : IRenderPass
             }
             else if (entity is CircleEntity circle)
             {
-                int segments = 128;
+                int segments = vm.ProfileSegments;
                 for (int i = 0; i < segments; i++)
                 {
                     double theta1 = 2.0 * Math.PI * i / segments;
@@ -100,7 +100,7 @@ public sealed class SketchEntityRenderPass : IRenderPass
                 }
                 else if (entity is CircleEntity circle)
                 {
-                    int segments = 128;
+                    int segments = vm.ProfileSegments;
                     for (int i = 0; i < segments; i++)
                     {
                         double theta1 = 2.0 * Math.PI * i / segments;

@@ -51,6 +51,11 @@
                                 <TextBlock Text="{x:Static res:Strings.ViewSettings}" FontWeight="Bold" Margin="0,0,0,5"/>
                                 <CheckBox IsChecked="{Binding OsnapSettings.ColorFacesByNormal}" Content="{x:Static res:Strings.FaceColorByNormal}" />
                                 <CheckBox IsChecked="{Binding OsnapSettings.ColorEdgesByAxis}" Content="{x:Static res:Strings.EdgeColorByAxis}" />
+                                
+                                <StackPanel Orientation="Horizontal" Spacing="5" Margin="0,5,0,0">
+                                    <TextBlock Text="Circle Segments:" VerticalAlignment="Center" Width="100"/>
+                                    <NumericUpDown Value="{Binding ProfileSegments}" Minimum="3" Maximum="360" Increment="1" Width="120"/>
+                                </StackPanel>
                             </StackPanel>
                         </Flyout>
                     </Button.Flyout>

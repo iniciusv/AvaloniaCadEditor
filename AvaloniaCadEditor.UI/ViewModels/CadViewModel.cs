@@ -278,6 +278,23 @@ public class CadViewModel : INotifyPropertyChanged
         }
     }
 
+    public int ProfileSegments
+    {
+        get => _settingsProvider.GetSettings().ProfileSegments;
+        set
+        {
+            var settings = _settingsProvider.GetSettings();
+            if (settings.ProfileSegments != value)
+            {
+                settings.ProfileSegments = value;
+                _settingsProvider.SaveSettings(settings);
+                OnPropertyChanged();
+                MeshManager.ClearCache();
+                RefreshSolidMesh();
+            }
+        }
+    }
+
     private readonly ITessellationSettingsProvider _settingsProvider;
     private readonly IStlService _stlService;
     private readonly IFilePickerService _filePickerService;
@@ -795,8 +812,26 @@ public class CadViewModel : INotifyPropertyChanged
             case "ESCAPE":
                 VcbService.Clear();
                 UpdateStatusText(CurrentSnappedPoint);
-                CurrentTool?.OnKeyDown(Sketch, CadKey.Escape);
-                CurrentTool?.Cancel();
+
+                if (CurrentTool is not Application.Commands.SelectTool)
+                {
+                    CurrentTool?.OnKeyDown(Sketch, CadKey.Escape);
+                    CurrentTool?.Cancel();
+                    SelectSelectToolCommand.Execute(null);
+                }
+                else if (_selectionService.SelectedObject != null || _selectionService.SelectedId != null)
+                {
+                    _selectionService.ClearSelection(Sketch);
+                }
+                else if (!ActiveWorkPlane.Equals(AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.XY))
+                {
+                    ActiveWorkPlane = AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.XY;
+                }
+                break;
+            case "F":
+                CurrentSelectionMode = CurrentSelectionMode == TargetSelectionMode.Feature 
+                    ? TargetSelectionMode.Face 
+                    : TargetSelectionMode.Feature;
                 break;
             case "UP":
                 CurrentTool?.OnKeyDown(Sketch, CadKey.ArrowUp);
