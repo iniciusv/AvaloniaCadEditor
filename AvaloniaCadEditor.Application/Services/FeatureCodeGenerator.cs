@@ -65,20 +65,24 @@ public static class FeatureCodeGenerator
                 // Recursive call without sketch to avoid deleting sketch entities yet
                 string subCode = GenerateExtrusionCode(sub, height, null);
                 
-                // Extract the variable name added to AddFeature(varName);
-                var lines = subCode.Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
-                foreach (var line in lines)
+                // Extract the variable name added to AddFeature(varName) using Roslyn
+                var tree = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(subCode);
+                var root = tree.GetRoot();
+
+                foreach (var stmt in root.DescendantNodes().OfType<Microsoft.CodeAnalysis.CSharp.Syntax.GlobalStatementSyntax>())
                 {
-                    if (line.StartsWith("AddFeature(")) continue; // We don't want to emit AddFeature for subparts immediately if we want them unioned, wait we can just add them and union them.
-                    sb.AppendLine(line);
-                }
-                
-                // Hack: Find the variable name from the last var declaration
-                var varLine = lines.LastOrDefault(l => l.StartsWith("var "));
-                if (varLine != null)
-                {
-                    var varName = varLine.Split(' ')[1];
-                    vars.Add(varName);
+                    if (stmt.Statement is Microsoft.CodeAnalysis.CSharp.Syntax.ExpressionStatementSyntax exprStmt &&
+                        exprStmt.Expression is Microsoft.CodeAnalysis.CSharp.Syntax.InvocationExpressionSyntax inv &&
+                        inv.Expression is Microsoft.CodeAnalysis.CSharp.Syntax.IdentifierNameSyntax idName &&
+                        idName.Identifier.Text == "AddFeature")
+                    {
+                        if (inv.ArgumentList.Arguments.FirstOrDefault()?.Expression is Microsoft.CodeAnalysis.CSharp.Syntax.IdentifierNameSyntax argId)
+                        {
+                            vars.Add(argId.Identifier.Text);
+                        }
+                        continue; // Do not emit AddFeature for subparts
+                    }
+                    sb.AppendLine(stmt.ToFullString());
                 }
             }
 

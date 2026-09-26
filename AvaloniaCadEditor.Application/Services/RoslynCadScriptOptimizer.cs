@@ -47,13 +47,30 @@ public class RoslynCadScriptOptimizer : CSharpSyntaxRewriter
         var variable = node.Declaration.Variables.FirstOrDefault();
         if (variable?.Initializer?.Value != null)
         {
-            var initExpr = variable.Initializer.Value.ToString().Trim();
+            var initExprSyntax = variable.Initializer.Value;
             var varName = variable.Identifier.Text;
 
-            // Check for duplicate FindFace or LinkedWorkPlane instantiations
-            if (initExpr.Contains(".FindFace(") || initExpr.StartsWith("new LinkedWorkPlane("))
+            bool isFindFace = false;
+            bool isLinkedWorkPlane = false;
+
+            if (initExprSyntax is InvocationExpressionSyntax inv &&
+                inv.Expression is MemberAccessExpressionSyntax memAccess &&
+                memAccess.Name.Identifier.Text == "FindFace")
             {
-                if (_deduplicatedExpressions.TryGetValue(initExpr, out var existingVarName))
+                isFindFace = true;
+            }
+            else if (initExprSyntax is ObjectCreationExpressionSyntax objCreation &&
+                     objCreation.Type is IdentifierNameSyntax typeId &&
+                     typeId.Identifier.Text == "LinkedWorkPlane")
+            {
+                isLinkedWorkPlane = true;
+            }
+
+            // Check for duplicate FindFace or LinkedWorkPlane instantiations
+            if (isFindFace || isLinkedWorkPlane)
+            {
+                var initExprStr = initExprSyntax.NormalizeWhitespace().ToFullString();
+                if (_deduplicatedExpressions.TryGetValue(initExprStr, out var existingVarName))
                 {
                     // Map this duplicate variable name to the first declared one
                     _deduplicatedExpressions[varName] = existingVarName;
@@ -62,7 +79,7 @@ public class RoslynCadScriptOptimizer : CSharpSyntaxRewriter
                 }
                 else
                 {
-                    _deduplicatedExpressions[initExpr] = varName;
+                    _deduplicatedExpressions[initExprStr] = varName;
                     _declaredVariables.Add(varName);
                 }
             }

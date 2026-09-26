@@ -124,4 +124,25 @@ AddFeature(prism_2);
         code.Should().Contain("new LinkedWorkPlane(");
         code.Should().Contain("box_base");
     }
+
+    [Fact]
+    public void FeatureCodeGenerator_CompoundProfile_ShouldExtractSubVariablesUsingRoslyn()
+    {
+        // Arrange
+        var sketch = new Sketch();
+        var outerRect = new RectangleProfile(new Point3D(50, 50, 0), 100, 100, 0.0, plane: WorkPlane.XY);
+        var innerHole = new CircleProfile(new Point3D(50, 50, 0), 20.0, plane: WorkPlane.XY);
+        
+        var compound = new CompoundProfile(new IProfile[] { outerRect, innerHole });
+        
+        // Act
+        var code = FeatureCodeGenerator.GenerateExtrusionCode(compound, height: 15, sketch);
+
+        // Assert
+        // We verify that the compound logic successfully extracted the box and cylinder variables from the sub-scripts
+        code.Should().Contain("BooleanFeature.CreateUnion(");
+        code.Should().Contain("box_");
+        code.Should().Contain("cylinder_");
+        code.Should().NotContain("AddFeature(box_"); // because they should be filtered out by the Roslyn traversal
+    }
 }
