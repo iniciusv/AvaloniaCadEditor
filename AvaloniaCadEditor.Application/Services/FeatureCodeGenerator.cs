@@ -144,6 +144,23 @@ public static class FeatureCodeGenerator
             }
             sb.AppendLine($"AddFeature({boxVar});");
         }
+        else if (profile is FaceProfile faceProfile && TryGetCircle(faceProfile, out var center, out var radius))
+        {
+            string parentId = string.IsNullOrEmpty(faceProfile.BaseFeature.Name)
+                ? $"feature_{faceProfile.BaseFeature.Id.ToString("N").Substring(0, 4)}"
+                : faceProfile.BaseFeature.Name;
+
+            string cylVar = $"cylinder_{id}";
+            string boolVar = $"boolOp_{id}";
+
+            var normal = CleanV(faceProfile.Normal);
+            center = CleanP(center);
+
+            sb.AppendLine($"var {cylVar} = new CylinderFeature(globalBaseCenter: new Point3D({F(center.X)}, {F(center.Y)}, {F(center.Z)}), globalDirection: new Vector3D({F(normal.X)}, {F(normal.Y)}, {F(normal.Z)}), radius: {F(radius)}, height: {heightStr}) {{ Name = \"{cylVar}\", IsTransientTool = true }};");
+            sb.AppendLine($"AddFeature({cylVar});");
+            sb.AppendLine($"var {boolVar} = new BooleanFeature(\"Push/Pull\", {(height < 0 ? "BooleanOperationType.Subtract" : "BooleanOperationType.Union")}, {parentId}, new[] {{ {cylVar} }}) {{ Name = \"{boolVar}\" }};");
+            sb.AppendLine($"AddFeature({boolVar});");
+        }
         else
         {
             // Handles PolygonProfile and general fallback
@@ -288,5 +305,30 @@ public static class FeatureCodeGenerator
         height = Clean(height);
         width = Clean(width);
         length = Clean(length);
+    }
+
+    private static bool TryGetCircle(FaceProfile faceProfile, out Point3D worldCenter, out double radius)
+    {
+        worldCenter = default;
+        radius = 0;
+        var vertices = faceProfile.GetVertices();
+        if (vertices.Count < 16) return false;
+
+        double sumX = 0, sumY = 0, sumZ = 0;
+        foreach (var v in vertices)
+        {
+            sumX += v.X; sumY += v.Y; sumZ += v.Z;
+        }
+        worldCenter = new Point3D(sumX / vertices.Count, sumY / vertices.Count, sumZ / vertices.Count);
+        radius = worldCenter.DistanceTo(vertices[0]);
+
+        foreach (var v in vertices)
+        {
+            if (Math.Abs(worldCenter.DistanceTo(v) - radius) > 1e-3)
+            {
+                return false;
+            }
+        }
+        return true;
     }
 }
