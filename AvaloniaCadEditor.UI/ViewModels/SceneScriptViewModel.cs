@@ -124,23 +124,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged
         _history.SaveState(GeneratedCSharpCode);
         if (string.IsNullOrWhiteSpace(variableName)) return;
         
-        var lines = GeneratedCSharpCode.Split(new[] { "\r\n", "\r", "\n" }, StringSplitOptions.None);
-        var newLines = new System.Collections.Generic.List<string>();
-        
-        foreach (var line in lines)
-        {
-            // Simple string matching to remove the declaration and AddFeature calls
-            // Also removes support variables like _verts, _plane, etc.
-            if (line.TrimStart().StartsWith($"var {variableName} =") || 
-                line.TrimStart().StartsWith($"var {variableName}_") ||
-                line.TrimStart().StartsWith($"AddFeature({variableName})"))
-            {
-                continue; // Skip this line
-            }
-            newLines.Add(line);
-        }
-        
-        GeneratedCSharpCode = string.Join(Environment.NewLine, newLines);
+        GeneratedCSharpCode = RoslynFeatureRemover.RemoveFeatureCode(GeneratedCSharpCode, variableName);
     }
 
     public void Undo()

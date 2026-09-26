@@ -11,6 +11,7 @@ public interface IFeature
     bool IsEnabled { get; set; }
     bool IsVisible { get; set; }
     bool IsSelected { get; set; }
+    bool IsTransientTool { get; set; }
 
     /// <summary>
     /// Gets the features that this feature depends on.
@@ -27,4 +28,19 @@ public interface IFeature
     /// Finds a face reference on this feature.
     /// </summary>
     FaceReference FindFace(int faceId, Vector3D normalHint, string? name = null);
+
+    /// <summary>
+    /// Gets all key geometric vertices of this feature in world space.
+    /// </summary>
+    IReadOnlyList<Point3D> GetVertices();
+
+    /// <summary>
+    /// Gets a specific vertex in world space by its index.
+    /// </summary>
+    Point3D GetVertex(int index);
+
+    /// <summary>
+    /// Finds a vertex reference on this feature.
+    /// </summary>
+    VertexReference FindVertex(int vertexIndex, string? name = null);
 }

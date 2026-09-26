@@ -151,4 +151,27 @@ public class BoxFeature : FeatureBase
             _ => DirectionY
         };
     }
+
+    public override IReadOnlyList<Point3D> GetVertices()
+    {
+        var v0 = BaseCorner;
+        var v1 = BaseCorner + DirectionX * Width;
+        var v2 = BaseCorner + DirectionX * Width + DirectionY * Length;
+        var v3 = BaseCorner + DirectionY * Length;
+        var up = DirectionZ * Height;
+
+        return new List<Point3D>
+        {
+            v0,
+            v1,
+            v2,
+            v3,
+            v0 + up,
+            v1 + up,
+            v2 + up,
+            v3 + up
+        }.AsReadOnly();
+    }
+
+    public Point3D GetVertex(BoxCorner corner) => GetVertex((int)corner);
 }

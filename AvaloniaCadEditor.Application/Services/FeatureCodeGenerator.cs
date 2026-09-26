@@ -37,7 +37,7 @@ public static class FeatureCodeGenerator
             string boxVar = $"box_{id}";
             string boolVar = $"boolOp_{id}";
 
-            sb.AppendLine($"var {boxVar} = new BoxFeature(baseCorner: {parentId}.GetFaceCorner(FaceType.{boxFace.SelectedFace}), width: {parentId}.GetFaceWidth(FaceType.{boxFace.SelectedFace}), length: {parentId}.GetFaceLength(FaceType.{boxFace.SelectedFace}), height: {heightStr}) {{ Name = \"{boxVar}\" }};");
+            sb.AppendLine($"var {boxVar} = new BoxFeature(baseCorner: {parentId}.GetFaceCorner(FaceType.{boxFace.SelectedFace}), width: {parentId}.GetFaceWidth(FaceType.{boxFace.SelectedFace}), length: {parentId}.GetFaceLength(FaceType.{boxFace.SelectedFace}), height: {heightStr}) {{ Name = \"{boxVar}\", IsTransientTool = true }};");
             sb.AppendLine($"{boxVar}.AlignToFace({parentId}, FaceType.{boxFace.SelectedFace});");
             sb.AppendLine($"AddFeature({boxVar});");
             sb.AppendLine($"var {boolVar} = new BooleanFeature(\"Push/Pull\", {(height < 0 ? "BooleanOperationType.Subtract" : "BooleanOperationType.Union")}, {parentId}, new[] {{ {boxVar} }}) {{ Name = \"{boolVar}\" }};");
@@ -52,7 +52,7 @@ public static class FeatureCodeGenerator
             string cylVar = $"cylinder_{id}";
             string boolVar = $"boolOp_{id}";
 
-            sb.AppendLine($"var {cylVar} = new CylinderFeature(globalBaseCenter: {parentId}.GetFaceCenter(FaceType.{cylFace.SelectedFace}), globalDirection: {parentId}.GetFaceNormal(FaceType.{cylFace.SelectedFace}), radius: {F(cylFace.ParentCylinder.Radius)}, height: {heightStr}) {{ Name = \"{cylVar}\" }};");
+            sb.AppendLine($"var {cylVar} = new CylinderFeature(globalBaseCenter: {parentId}.GetFaceCenter(FaceType.{cylFace.SelectedFace}), globalDirection: {parentId}.GetFaceNormal(FaceType.{cylFace.SelectedFace}), radius: {F(cylFace.ParentCylinder.Radius)}, height: {heightStr}) {{ Name = \"{cylVar}\", IsTransientTool = true }};");
             sb.AppendLine($"AddFeature({cylVar});");
             sb.AppendLine($"var {boolVar} = new BooleanFeature(\"Push/Pull\", {(height < 0 ? "BooleanOperationType.Subtract" : "BooleanOperationType.Union")}, {parentId}, new[] {{ {cylVar} }}) {{ Name = \"{boolVar}\" }};");
             sb.AppendLine($"AddFeature({boolVar});");
@@ -148,18 +148,30 @@ public static class FeatureCodeGenerator
             {
                 string prismVar = $"prism_{id}";
 
+                var planeToUse = profile.Plane;
+                if (!(planeToUse is LinkedWorkPlane) && sketch != null)
+                {
+                    var inferenceService = new GeometricInferenceService();
+                    var inferredPlane = inferenceService.InferLinkedPlane(sketch, planeToUse) 
+                                     ?? inferenceService.InferLinkedPlaneFromPoints(sketch, verts);
+                    if (inferredPlane != null)
+                    {
+                        planeToUse = inferredPlane;
+                    }
+                }
+
                 var pts = string.Join(", ", verts.Select(v =>
                 {
-                    var localV = CleanP(profile.Plane.ToLocalSpace(v));
+                    var localV = CleanP(planeToUse.ToLocalSpace(v));
                     return $"new Point3D({F(localV.X)}, {F(localV.Y)}, {F(localV.Z)})";
                 }));
                 sb.AppendLine($"var {prismVar}_verts = new[] {{ {pts} }};");
 
-                var o = CleanP(profile.Plane.Origin);
-                var normal = CleanV(profile.Plane.Normal);
-                var xAxis = CleanV(profile.Plane.XAxis);
+                var o = CleanP(planeToUse.Origin);
+                var normal = CleanV(planeToUse.Normal);
+                var xAxis = CleanV(planeToUse.XAxis);
 
-                if (profile.Plane is LinkedWorkPlane linkedPlane)
+                if (planeToUse is LinkedWorkPlane linkedPlane)
                 {
                     string parentFeatureVar = string.IsNullOrEmpty(linkedPlane.TargetFace.ParentFeature.Name) 
                         ? $"feature_{linkedPlane.TargetFace.ParentFeature.Id.ToString("N").Substring(0, 4)}"
@@ -183,7 +195,6 @@ public static class FeatureCodeGenerator
                     }
                     else
                     {
-                        sb.AppendLine($"// Fallback plane generation. Actual type was: {profile.Plane.GetType().FullName}");
                         sb.AppendLine($"var {prismVar}_plane = new WorkPlane(new Point3D({F(o.X)}, {F(o.Y)}, {F(o.Z)}), new Vector3D({F(normal.X)}, {F(normal.Y)}, {F(normal.Z)}), new Vector3D({F(xAxis.X)}, {F(xAxis.Y)}, {F(xAxis.Z)}));");
                         sb.AppendLine($"var {prismVar} = new PrismFeature({prismVar}_verts, height: {heightStr}, plane: {prismVar}_plane) {{ Name = \"{prismVar}\" }};");
                     }
@@ -204,7 +215,7 @@ public static class FeatureCodeGenerator
             }
         }
 
-        return sb.ToString();
+        return RoslynCadScriptOptimizer.OptimizeAndFormat(sb.ToString());
     }
 
     private static void NormalizeBox(ref Point3D corner, ref double width, ref double length, ref double height, ref Vector3D dirX, ref Vector3D dirY, ref Vector3D dirZ)

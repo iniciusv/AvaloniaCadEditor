@@ -17,4 +17,24 @@ public class PrismFeature : FeatureBase
         Plane = plane ?? WorkPlane.XY;
         Name = name ?? $"Prism ({Height:F1}mm)";
     }
+
+    public override IReadOnlyList<Point3D> GetVertices()
+    {
+        var result = new List<Point3D>();
+        var up = Plane.Normal * Height;
+
+        // Base vertices in world space
+        foreach (var v in Vertices)
+        {
+            result.Add(Plane.ToWorldSpace(v));
+        }
+
+        // Top vertices in world space
+        foreach (var v in Vertices)
+        {
+            result.Add(Plane.ToWorldSpace(v) + up);
+        }
+
+        return result.AsReadOnly();
+    }
 }

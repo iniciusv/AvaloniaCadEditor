@@ -81,4 +81,11 @@ public class CylinderFeature : FeatureBase
         if (normal.DotProduct(new Vector3D(-GlobalDirection.X, -GlobalDirection.Y, -GlobalDirection.Z)) > tol) return FaceType.Bottom;
         return null;
     }
+
+    public override IReadOnlyList<Point3D> GetVertices()
+    {
+        var bottomCenter = GetFaceCenter(FaceType.Bottom);
+        var topCenter = GetFaceCenter(FaceType.Top);
+        return new List<Point3D> { bottomCenter, topCenter }.AsReadOnly();
+    }
 }

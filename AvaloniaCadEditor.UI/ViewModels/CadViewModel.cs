@@ -398,11 +398,15 @@ public class CadViewModel : INotifyPropertyChanged
                     {
                         foreach (var tool in boolF.ToolFeatures)
                         {
-                            ScriptEditor.RemoveCodeForFeature(tool.Name);
+                            if (tool.IsTransientTool)
+                            {
+                                ScriptEditor.RemoveCodeForFeature(tool.Name);
+                            }
                         }
                     }
                     ScriptEditor.RemoveCodeForFeature(feature.Name);
                     ScriptEditor.RunCodeCommand.Execute(null);
+                    _selectionService.ClearSelection(Sketch);
                     return;
                 }
             }
