@@ -84,10 +84,23 @@ public static class CodeEditorBehavior
         if (editor.Document == null)
         {
             editor.Document = new AvaloniaEdit.Document.TextDocument();
+        }
+
+        // Hook up the TextChanged event only once using a WeakReference or a flag.
+        // But Avalonia doesn't provide an easy attached property bag for this without creating another property.
+        // We can just use an attached property to store whether we've hooked it up.
+        if (!GetIsTextChangedSubscribed(editor))
+        {
             editor.TextChanged += (s, ev) =>
             {
-                SetDocumentText(editor, editor.Document.Text);
+                var currentText = editor.Document?.Text ?? string.Empty;
+                var propText = GetDocumentText(editor);
+                if (currentText != propText)
+                {
+                    SetDocumentText(editor, currentText);
+                }
             };
+            SetIsTextChangedSubscribed(editor, true);
         }
 
         var newText = e.NewValue as string ?? string.Empty;
@@ -96,4 +109,10 @@ public static class CodeEditorBehavior
             editor.Document.Text = newText;
         }
     }
+
+    private static readonly AttachedProperty<bool> IsTextChangedSubscribedProperty =
+        AvaloniaProperty.RegisterAttached<TextEditor, bool>("IsTextChangedSubscribed", typeof(CodeEditorBehavior));
+
+    private static bool GetIsTextChangedSubscribed(AvaloniaObject element) => element.GetValue(IsTextChangedSubscribedProperty);
+    private static void SetIsTextChangedSubscribed(AvaloniaObject element, bool value) => element.SetValue(IsTextChangedSubscribedProperty, value);
 }
