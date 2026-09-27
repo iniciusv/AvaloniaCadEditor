@@ -102,6 +102,9 @@ public class ModelTreeViewModel : INotifyPropertyChanged
         var refGroup = new TreeItemNode($"Geometria de Referência", iconFolder, TreeItemCategory.FeatureGroup);
         refGroup.PropertyChanged += OnNodePropertyChanged;
         
+        int lineCount = 1;
+        int circleCount = 1;
+
         foreach (var wp in CurrentSketch.WorkPlanes)
         {
             var wpNode = new TreeItemNode(wp.Name, iconCube, TreeItemCategory.FeatureItem, wp.Id, wp);
@@ -113,69 +116,62 @@ public class ModelTreeViewModel : INotifyPropertyChanged
                 }
             };
             wpNode.PropertyChanged += OnNodePropertyChanged;
-            refGroup.Children.Add(wpNode);
-        }
 
-        // Profiles 2D Group
-        if (CurrentSketch.Profiles != null)
-        {
-            var profilesGroup = new TreeItemNode($"Perfis 2D ({CurrentSketch.Profiles.Count})", iconFolder, TreeItemCategory.ProfileGroup);
-            profilesGroup.PropertyChanged += OnNodePropertyChanged;
-            foreach (var profile in CurrentSketch.Profiles)
+            if (CurrentSketch.Profiles != null)
             {
-                string icon = profile.Classification switch
+                var profilesOnPlane = CurrentSketch.Profiles.Where(p => p.Plane.Equals(wp.Plane));
+                foreach (var profile in profilesOnPlane)
                 {
-                    ProfileClassification.Circle => iconCircle,
-                    ProfileClassification.Rectangle => iconRect,
-                    _ => iconPolygon
-                };
-                string name = $"Perfil {profile.Classification} (Área: {profile.Area:F1})";
-
-                var node = new TreeItemNode(name, icon, TreeItemCategory.ProfileItem, profile.Id, profile);
-                node.IsVisible = profile.IsVisible;
-                node.PropertyChanged += (s, e) =>
-                {
-                    if (e.PropertyName == nameof(TreeItemNode.IsVisible))
+                    string icon = profile.Classification switch
                     {
-                        profile.IsVisible = node.IsVisible;
-                        OnNodeVisibilityChanged();
-                    }
-                };
-                node.PropertyChanged += OnNodePropertyChanged;
-                profilesGroup.Children.Add(node);
+                        ProfileClassification.Circle => iconCircle,
+                        ProfileClassification.Rectangle => iconRect,
+                        _ => iconPolygon
+                    };
+                    string name = $"Perfil {profile.Classification} (Área: {profile.Area:F1})";
+    
+                    var node = new TreeItemNode(name, icon, TreeItemCategory.ProfileItem, profile.Id, profile);
+                    node.IsVisible = profile.IsVisible;
+                    node.PropertyChanged += (s, e) =>
+                    {
+                        if (e.PropertyName == nameof(TreeItemNode.IsVisible))
+                        {
+                            profile.IsVisible = node.IsVisible;
+                            OnNodeVisibilityChanged();
+                        }
+                    };
+                    node.PropertyChanged += OnNodePropertyChanged;
+                    wpNode.Children.Add(node);
+                }
             }
-            refGroup.Children.Add(profilesGroup);
-        }
 
-        // Sketch Entities 2D Group
-        if (CurrentSketch.Entities != null)
-        {
-            var entitiesGroup = new TreeItemNode($"Linhas e Entidades ({CurrentSketch.Entities.Count})", iconFolder, TreeItemCategory.EntityGroup);
-            entitiesGroup.PropertyChanged += OnNodePropertyChanged;
-            int lineCount = 1;
-            int circleCount = 1;
-            foreach (var entity in CurrentSketch.Entities)
+            if (CurrentSketch.Entities != null)
             {
-                string icon = iconPolygon;
-                string name = "Entidade";
-                if (entity is LineEntity l)
+                var entitiesOnPlane = CurrentSketch.Entities.Where(en => en.Plane.Equals(wp.Plane));
+                foreach (var entity in entitiesOnPlane)
                 {
-                    icon = iconLine;
-                    name = $"Linha {lineCount++} ({l.Length:F1}mm)";
+                    string icon = iconPolygon;
+                    string name = "Entidade";
+                    if (entity is LineEntity l)
+                    {
+                        icon = iconLine;
+                        name = $"Linha {lineCount++} ({l.Length:F1}mm)";
+                    }
+                    else if (entity is CircleEntity c)
+                    {
+                        icon = iconCircle;
+                        name = $"Círculo {circleCount++} (R={c.Radius:F1}mm)";
+                    }
+    
+                    var node = new TreeItemNode(name, icon, TreeItemCategory.EntityItem, entity.Id, entity);
+                    node.IsVisible = entity.IsVisible;
+                    node.VisibilityChanged += (s, e) => OnNodeVisibilityChanged();
+                    node.PropertyChanged += OnNodePropertyChanged;
+                    wpNode.Children.Add(node);
                 }
-                else if (entity is CircleEntity c)
-                {
-                    icon = iconCircle;
-                    name = $"Círculo {circleCount++} (R={c.Radius:F1}mm)";
-                }
-
-                var node = new TreeItemNode(name, icon, TreeItemCategory.EntityItem, entity.Id, entity);
-                node.IsVisible = entity.IsVisible;
-                node.VisibilityChanged += (s, e) => OnNodeVisibilityChanged();
-                node.PropertyChanged += OnNodePropertyChanged;
-                entitiesGroup.Children.Add(node);
             }
-            refGroup.Children.Add(entitiesGroup);
+            
+            refGroup.Children.Add(wpNode);
         }
 
         RootNodes.Add(refGroup);
@@ -229,7 +225,7 @@ public class ModelTreeViewModel : INotifyPropertyChanged
         }
     }
 
-    private TreeItemNode BuildFeatureNode(IFeature feature)
+        private TreeItemNode BuildFeatureNode(IFeature feature, string? prefix = null)
     {
         string iconCube = "M21,16.5C21,16.88 20.79,17.21 20.47,17.38L12.57,21.82C12.41,21.94 12.21,22 12,22C11.79,22 11.59,21.94 11.43,21.82L3.53,17.38C3.21,17.21 3,16.88 3,16.5V7.5C3,7.12 3.21,6.79 3.53,6.62L11.43,2.18C11.59,2.06 11.79,2 12,2C12.21,2 12.41,2.06 12.57,2.18L20.47,6.62C20.79,6.79 21,7.12 21,7.5V16.5M12,4.15L5,8.09L12,12.03L19,8.09L12,4.15M4.5,15.97L11.25,19.79V13.16L4.5,9.33V15.97M19.5,15.97V9.33L12.75,13.16V19.79L19.5,15.97Z";
         string iconCylinder = "M12,2A7,3 0 0,0 5,5C5,6.66 8.13,8 12,8C15.87,8 19,6.66 19,5C19,3.34 15.87,2 12,2M5,5V19C5,20.66 8.13,22 12,22C15.87,22 19,20.66 19,19V5C19,5 19,5 19,5C19,6.66 15.87,8 12,8C8.13,8 5,6.66 5,5Z";
@@ -251,13 +247,18 @@ public class ModelTreeViewModel : INotifyPropertyChanged
         }
         else if (feature is BooleanFeature bf)
         {
-            name = $"{bf.Operation} ({bf.Name})";
+            name = $"[{bf.Operation}] {bf.Name}";
         }
         else if (feature is WorkPlaneFeature wpf)
         {
             string iconRect = "M4,6V19H20V6H4M18,17H6V8H18V17Z";
             icon = iconRect;
             name = wpf.Name;
+        }
+
+        if (prefix != null)
+        {
+            name = $"[{prefix}] {name}";
         }
 
         var node = new TreeItemNode(name, icon, TreeItemCategory.FeatureItem, feature.Id, feature);
@@ -267,25 +268,18 @@ public class ModelTreeViewModel : INotifyPropertyChanged
 
         if (feature is BooleanFeature booleanFeature)
         {
-            // Base group
-            var baseGroup = new TreeItemNode($"Base", iconFolder, TreeItemCategory.BooleanBaseGroup, null, booleanFeature);
-            baseGroup.PropertyChanged += OnNodePropertyChanged;
             if (booleanFeature.BaseFeature != null)
             {
-                baseGroup.Children.Add(BuildFeatureNode(booleanFeature.BaseFeature));
+                node.Children.Add(BuildFeatureNode(booleanFeature.BaseFeature, "Base"));
             }
-            node.Children.Add(baseGroup);
 
-            // Tools group
-            string toolsName = booleanFeature.Operation == BooleanOperationType.Subtract ? "Ferramentas (Corte)" :
-                               booleanFeature.Operation == BooleanOperationType.Union ? "Ferramentas (União)" : "Ferramentas (Interseção)";
-            var toolsGroup = new TreeItemNode(toolsName, iconFolder, TreeItemCategory.BooleanToolGroup, null, booleanFeature);
-            toolsGroup.PropertyChanged += OnNodePropertyChanged;
+            string opPrefix = booleanFeature.Operation == BooleanOperationType.Subtract ? "-" :
+                              booleanFeature.Operation == BooleanOperationType.Union ? "+" : "n";
+
             foreach (var tool in booleanFeature.ToolFeatures)
             {
-                toolsGroup.Children.Add(BuildFeatureNode(tool));
+                node.Children.Add(BuildFeatureNode(tool, opPrefix));
             }
-            node.Children.Add(toolsGroup);
         }
 
         return node;
@@ -374,3 +368,4 @@ public class ModelTreeViewModel : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
 }
+

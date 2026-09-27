@@ -37,6 +37,8 @@ public class PureMathGeometryKernel : IGeometryKernel
         var indices = new List<uint>();
         var featureEdges = new List<uint>();
         var internalEdges = new List<uint>();
+        var featureNormals1 = new List<float>();
+        var featureNormals2 = new List<float>();
 
         uint vertexOffset = 0;
 
@@ -47,6 +49,8 @@ public class PureMathGeometryKernel : IGeometryKernel
 
             positions.AddRange(mesh.Positions);
             normals.AddRange(mesh.Normals);
+            featureNormals1.AddRange(mesh.FeatureNormals1);
+            featureNormals2.AddRange(mesh.FeatureNormals2);
 
             foreach (var idx in mesh.Indices)
             {
@@ -66,7 +70,7 @@ public class PureMathGeometryKernel : IGeometryKernel
             vertexOffset += (uint)mesh.VertexCount;
         }
 
-        return new TriangleMesh(positions.ToArray(), normals.ToArray(), indices.ToArray(), featureEdges.ToArray(), internalEdges.ToArray());
+        return new TriangleMesh(positions.ToArray(), normals.ToArray(), indices.ToArray(), featureEdges.ToArray(), internalEdges.ToArray(), featureNormals1.ToArray(), featureNormals2.ToArray());
     }
 
     private static TriangleMesh ExtrudeProfile(IProfile profile, Vector3D direction, TessellationSettings settings)
@@ -156,9 +160,12 @@ public class PureMathGeometryKernel : IGeometryKernel
 
         var posArr = positions.ToArray();
         var idxArr = indices.ToArray();
-        var (featureEdges, internalEdges) = EdgeDetector.ClassifyEdges(posArr, idxArr, settings.CreaseAngle);
+        var (featureEdges, internalEdges, n1, n2) = EdgeDetector.ClassifyEdges(posArr, idxArr, settings.CreaseAngle);
+        var featureNormals1 = new float[n1.Length * 3];
+        var featureNormals2 = new float[n2.Length * 3];
+        for (int i = 0; i < n1.Length; i++) { featureNormals1[i*3] = n1[i].X; featureNormals1[i*3+1] = n1[i].Y; featureNormals1[i*3+2] = n1[i].Z; featureNormals2[i*3] = n2[i].X; featureNormals2[i*3+1] = n2[i].Y; featureNormals2[i*3+2] = n2[i].Z; }
 
-        return new TriangleMesh(posArr, normals.ToArray(), idxArr, featureEdges, internalEdges);
+        return new TriangleMesh(posArr, normals.ToArray(), idxArr, featureEdges, internalEdges, featureNormals1, featureNormals2);
     }
 
     private static Vector3D CrossProduct(Vector3D a, Vector3D b)
@@ -170,3 +177,5 @@ public class PureMathGeometryKernel : IGeometryKernel
         );
     }
 }
+
+

@@ -30,11 +30,11 @@ public static class EdgeDetector
         public override int GetHashCode() => HashCode.Combine(V1, V2);
     }
 
-    public static (uint[] featureEdges, uint[] internalEdges) ClassifyEdges(
+    public static (uint[] featureEdges, uint[] internalEdges, Vector3[] featureNormals1, Vector3[] featureNormals2) ClassifyEdges(
         float[] positions, uint[] indices, float creaseAngleDegrees = 30.0f)
     {
         if (indices.Length == 0)
-            return (Array.Empty<uint>(), Array.Empty<uint>());
+            return (Array.Empty<uint>(), Array.Empty<uint>(), Array.Empty<Vector3>(), Array.Empty<Vector3>());
 
         // 1. Weld coincident vertices to find true topological edges
         uint[] remappedIndices = new uint[indices.Length];
@@ -96,6 +96,8 @@ public static class EdgeDetector
         // 3. Classify edges based on Crease Angle
         var featureEdges = new List<uint>();
         var internalEdges = new List<uint>();
+        var featureNormals1 = new List<Vector3>();
+        var featureNormals2 = new List<Vector3>();
         
         float thresholdCos = (float)Math.Cos(creaseAngleDegrees * Math.PI / 180.0);
 
@@ -109,6 +111,8 @@ public static class EdgeDetector
                 // Boundary edge (hole in mesh)
                 featureEdges.Add(edge.V1);
                 featureEdges.Add(edge.V2);
+                featureNormals1.Add(faceNormals[faces[0]]);
+                featureNormals2.Add(faceNormals[faces[0]]);
             }
             else if (faces.Count == 2)
             {
@@ -124,6 +128,8 @@ public static class EdgeDetector
                     // Angle is larger than threshold, so it's a sharp edge
                     featureEdges.Add(edge.V1);
                     featureEdges.Add(edge.V2);
+                    featureNormals1.Add(n1);
+                    featureNormals2.Add(n2);
                 }
                 else
                 {
@@ -137,10 +143,12 @@ public static class EdgeDetector
                 // Non-manifold geometry (>2 faces sharing an edge) - mark as feature to highlight
                 featureEdges.Add(edge.V1);
                 featureEdges.Add(edge.V2);
+                featureNormals1.Add(faceNormals[faces[0]]);
+                featureNormals2.Add(faceNormals[faces[1]]);
             }
         }
 
-        return (featureEdges.ToArray(), internalEdges.ToArray());
+        return (featureEdges.ToArray(), internalEdges.ToArray(), featureNormals1.ToArray(), featureNormals2.ToArray());
     }
 
     private static void AddFaceToEdge(Dictionary<EdgeKey, List<int>> map, uint v1, uint v2, int faceIdx)
@@ -154,3 +162,5 @@ public static class EdgeDetector
         list.Add(faceIdx);
     }
 }
+
+

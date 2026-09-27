@@ -66,6 +66,11 @@ public class FilletTool : ICommandTool, IDisposable
                     baseFeature = cylFace.ParentCylinder;
                     faceRefsCode.Add(System.FormattableString.Invariant($"    {filletVar}.Faces.Add(new FaceReference({RoslynDependencyAnalyzer.ResolveVariableName(RoslynDependencyAnalyzer.CurrentCode, baseFeature.Name)}, (int)FaceType.{cylFace.SelectedFace}, new Vector3D({cylFace.Normal.X}, {cylFace.Normal.Y}, {cylFace.Normal.Z}), \"{cylFace.SelectedFace}\"));"));
                 }
+                else if (face is AvaloniaCadEditor.Domain.Profiles.FaceProfile faceProfile)
+                {
+                    baseFeature = faceProfile.BaseFeature;
+                    faceRefsCode.Add(System.FormattableString.Invariant($"    {filletVar}.Faces.Add(new FaceReference({RoslynDependencyAnalyzer.ResolveVariableName(RoslynDependencyAnalyzer.CurrentCode, baseFeature.Name)}, -1, new Vector3D({faceProfile.Normal.X}, {faceProfile.Normal.Y}, {faceProfile.Normal.Z}), \"CustomFace\"));"));
+                }
             }
 
             if (baseFeature != null && faceRefsCode.Count > 0)
@@ -114,3 +119,4 @@ public class FilletTool : ICommandTool, IDisposable
         return $"Operação {Name}: Pressione 'F' para alternar entre Face/Sólido, selecione e pressione Enter.";
     }
 }
+

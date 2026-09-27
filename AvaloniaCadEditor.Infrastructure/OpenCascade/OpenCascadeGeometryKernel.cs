@@ -66,6 +66,8 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         var indices = new List<uint>();
         var featureEdges = new List<uint>();
         var internalEdges = new List<uint>();
+        var featureNormals1 = new List<float>();
+        var featureNormals2 = new List<float>();
         
         uint vertexOffset = 0;
 
@@ -76,6 +78,8 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
 
             positions.AddRange(mesh.Positions);
             normals.AddRange(mesh.Normals);
+            featureNormals1.AddRange(mesh.FeatureNormals1);
+            featureNormals2.AddRange(mesh.FeatureNormals2);
 
             foreach (var idx in mesh.Indices)
             {
@@ -95,7 +99,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             vertexOffset += (uint)mesh.VertexCount;
         }
 
-        return new TriangleMesh(positions.ToArray(), normals.ToArray(), indices.ToArray(), featureEdges.ToArray(), internalEdges.ToArray());
+        return new TriangleMesh(positions.ToArray(), normals.ToArray(), indices.ToArray(), featureEdges.ToArray(), internalEdges.ToArray(), featureNormals1.ToArray(), featureNormals2.ToArray());
     }
 
     private OcctShape BuildShape(IFeature feature, TessellationSettings settings)
@@ -301,103 +305,183 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         }
 
         var allEdges = new HashSet<EdgeReference>();
+        var r = fillet.Radius;
+        if (r <= 0.001) return currentShape;
+        int segments = settings.ProfileSegments > 0 ? settings.ProfileSegments / 4 : 8;
+        if (segments < 2) segments = 2;
+        bool isIntermediate = false;
 
-        if (fillet.ApplyToAllEdges)
+        // --- MESH-BASED GENERALIZED FILLET FOR ANY FEATURE (ESPECIALLY BOOLEANS) ---
+        if (!(fillet.BaseFeature is BoxFeature))
         {
-            if (fillet.BaseFeature is BoxFeature box)
+            var mesh = TessellateShape(currentShape, settings);
+            if (mesh != null && mesh.FeatureEdges.Length > 0)
             {
-                foreach (var eType in box.GetAllEdges())
+                var targetNormals = fillet.ApplyToAllEdges ? new List<Vector3D>() : fillet.Faces.Select(f => f.NormalHint).ToList();
+                for (int i = 0; i < mesh.FeatureEdges.Length; i += 2)
                 {
-                    allEdges.Add(new EdgeReference(box, eType));
+                    uint idx1 = mesh.FeatureEdges[i];
+                    uint idx2 = mesh.FeatureEdges[i + 1];
+                    var start = new Point3D(mesh.Positions[idx1 * 3], mesh.Positions[idx1 * 3 + 1], mesh.Positions[idx1 * 3 + 2]);
+                    var end = new Point3D(mesh.Positions[idx2 * 3], mesh.Positions[idx2 * 3 + 1], mesh.Positions[idx2 * 3 + 2]);
+                    
+                    var n1 = new Vector3D(mesh.FeatureNormals1[(i/2)*3], mesh.FeatureNormals1[(i/2)*3+1], mesh.FeatureNormals1[(i/2)*3+2]);
+                    var n2 = new Vector3D(mesh.FeatureNormals2[(i/2)*3], mesh.FeatureNormals2[(i/2)*3+1], mesh.FeatureNormals2[(i/2)*3+2]);
+
+                    // Filter by selected faces if applicable
+                    if (!fillet.ApplyToAllEdges && targetNormals.Count > 0)
+                    {
+                        bool match = false;
+                        foreach (var tn in targetNormals)
+                        {
+                            if (tn.DotProduct(n1) > 0.99 || tn.DotProduct(n2) > 0.99)
+                            {
+                                match = true;
+                                break;
+                            }
+                        }
+                        if (!match) continue;
+                    }
+
+                    var vEdge = new Vector3D(end.X - start.X, end.Y - start.Y, end.Z - start.Z);
+                    double len = Math.Sqrt(vEdge.X * vEdge.X + vEdge.Y * vEdge.Y + vEdge.Z * vEdge.Z);
+                    if (len < 1e-5) continue;
+                    var dEdge = new Vector3D(vEdge.X / len, vEdge.Y / len, vEdge.Z / len);
+                    var extStart = new Point3D(start.X - dEdge.X * 0.1 * r, start.Y - dEdge.Y * 0.1 * r, start.Z - dEdge.Z * 0.1 * r);
+                    double extLen = len + 0.2 * r;
+
+                    var profilePoints = new List<Point3D>();
+                    profilePoints.Add(Get3DPoint(extStart, n1, n2, 0.1 * r, 0.1 * r));
+                    profilePoints.Add(Get3DPoint(extStart, n1, n2, -r, 0.1 * r));
+                    profilePoints.Add(Get3DPoint(extStart, n1, n2, -r, 0));
+
+                    if (fillet.Mode == FilletMode.Round)
+                    {
+                        for (int k = 1; k < segments; k++)
+                        {
+                            double theta = (Math.PI / 2.0) * (1.0 - (double)k / segments);
+                            double x = -r + r * Math.Cos(theta);
+                            double y = -r + r * Math.Sin(theta);
+                            profilePoints.Add(Get3DPoint(extStart, n1, n2, x, y));
+                        }
+                    }
+
+                    profilePoints.Add(Get3DPoint(extStart, n1, n2, 0, -r));
+                    profilePoints.Add(Get3DPoint(extStart, n1, n2, 0.1 * r, -r));
+
+                    var edges = new List<OcctEdge>();
+                    for (int k = 0; k < profilePoints.Count; k++)
+                    {
+                        var p1 = profilePoints[k];
+                        var p2 = profilePoints[(k + 1) % profilePoints.Count];
+                        edges.Add(new OcctEdge(
+                            new OcctPointCoordinates(p1.X, p1.Y, p1.Z),
+                            new OcctPointCoordinates(p2.X, p2.Y, p2.Z)
+                        ));
+                    }
+
+                    var wire = new OcctWire(edges.ToArray());
+                    var face = new OcctFace(wire);
+                    var cutter = face.Extrude(new OcctVector3d(dEdge.X * extLen, dEdge.Y * extLen, dEdge.Z * extLen));
+
+                    if (cutter != null && !cutter.IsNull)
+                    {
+                        var cutShape = currentShape.Cut(cutter);
+                        if (cutShape != null && !cutShape.IsNull)
+                        {
+                            if (isIntermediate) currentShape.Dispose();
+                            cutter.Dispose();
+                            currentShape = cutShape;
+                            isIntermediate = true;
+                        }
+                    }
                 }
             }
         }
         else
         {
-            foreach (var edge in fillet.Edges) allEdges.Add(edge);
-
-            foreach (var face in fillet.Faces)
+            // --- BOX FEATURE EXACT FILLET ---
+            if (fillet.ApplyToAllEdges)
             {
-                if (face.ParentFeature is BoxFeature box && Enum.IsDefined(typeof(FaceType), face.FaceId))
+                if (fillet.BaseFeature is BoxFeature box)
                 {
-                    var fType = (FaceType)face.FaceId;
-                    foreach (var eType in box.GetEdgesForFace(fType))
+                    foreach (var eType in box.GetAllEdges()) allEdges.Add(new EdgeReference(box, eType));
+                }
+            }
+            else
+            {
+                foreach (var edge in fillet.Edges) allEdges.Add(edge);
+                foreach (var face in fillet.Faces)
+                {
+                    if (face.ParentFeature is BoxFeature box && Enum.IsDefined(typeof(FaceType), face.FaceId))
                     {
-                        allEdges.Add(new EdgeReference(box, eType));
+                        var fType = (FaceType)face.FaceId;
+                        foreach (var eType in box.GetEdgesForFace(fType)) allEdges.Add(new EdgeReference(box, eType));
                     }
                 }
             }
-        }
 
-        bool isIntermediate = false;
-        var r = fillet.Radius;
-        if (r <= 0.001) return currentShape;
-
-        int segments = settings.ProfileSegments > 0 ? settings.ProfileSegments / 4 : 8;
-        if (segments < 2) segments = 2;
-
-        foreach (var edgeRef in allEdges)
-        {
-            if (edgeRef.ParentFeature is BoxFeature box)
+            foreach (var edgeRef in allEdges)
             {
-                var geom = box.GetEdgeGeometry(edgeRef.EdgeId);
-                var start = geom.Start;
-                var end = geom.End;
-                var n1 = geom.Normal1;
-                var n2 = geom.Normal2;
-
-                var vEdge = new Vector3D(end.X - start.X, end.Y - start.Y, end.Z - start.Z);
-                double len = Math.Sqrt(vEdge.X * vEdge.X + vEdge.Y * vEdge.Y + vEdge.Z * vEdge.Z);
-                if (len < 1e-5) continue;
-                var dEdge = new Vector3D(vEdge.X / len, vEdge.Y / len, vEdge.Z / len);
-
-                var extStart = new Point3D(start.X - dEdge.X * 0.1 * r, start.Y - dEdge.Y * 0.1 * r, start.Z - dEdge.Z * 0.1 * r);
-                double extLen = len + 0.2 * r;
-
-                var profilePoints = new List<Point3D>();
-                profilePoints.Add(Get3DPoint(extStart, n1, n2, 0.1 * r, 0.1 * r));
-                profilePoints.Add(Get3DPoint(extStart, n1, n2, -r, 0.1 * r));
-                profilePoints.Add(Get3DPoint(extStart, n1, n2, -r, 0));
-
-                if (fillet.Mode == FilletMode.Round)
+                if (edgeRef.ParentFeature is BoxFeature box)
                 {
-                    for (int i = 1; i < segments; i++)
+                    var geom = box.GetEdgeGeometry(edgeRef.EdgeId);
+                    var start = geom.Start;
+                    var end = geom.End;
+                    var n1 = geom.Normal1;
+                    var n2 = geom.Normal2;
+
+                    var vEdge = new Vector3D(end.X - start.X, end.Y - start.Y, end.Z - start.Z);
+                    double len = Math.Sqrt(vEdge.X * vEdge.X + vEdge.Y * vEdge.Y + vEdge.Z * vEdge.Z);
+                    if (len < 1e-5) continue;
+                    var dEdge = new Vector3D(vEdge.X / len, vEdge.Y / len, vEdge.Z / len);
+                    var extStart = new Point3D(start.X - dEdge.X * 0.1 * r, start.Y - dEdge.Y * 0.1 * r, start.Z - dEdge.Z * 0.1 * r);
+                    double extLen = len + 0.2 * r;
+
+                    var profilePoints = new List<Point3D>();
+                    profilePoints.Add(Get3DPoint(extStart, n1, n2, 0.1 * r, 0.1 * r));
+                    profilePoints.Add(Get3DPoint(extStart, n1, n2, -r, 0.1 * r));
+                    profilePoints.Add(Get3DPoint(extStart, n1, n2, -r, 0));
+
+                    if (fillet.Mode == FilletMode.Round)
                     {
-                        double theta = (Math.PI / 2.0) * (1.0 - (double)i / segments);
-                        double x = -r + r * Math.Cos(theta);
-                        double y = -r + r * Math.Sin(theta);
-                        profilePoints.Add(Get3DPoint(extStart, n1, n2, x, y));
+                        for (int i = 1; i < segments; i++)
+                        {
+                            double theta = (Math.PI / 2.0) * (1.0 - (double)i / segments);
+                            double x = -r + r * Math.Cos(theta);
+                            double y = -r + r * Math.Sin(theta);
+                            profilePoints.Add(Get3DPoint(extStart, n1, n2, x, y));
+                        }
                     }
-                }
 
-                profilePoints.Add(Get3DPoint(extStart, n1, n2, 0, -r));
-                profilePoints.Add(Get3DPoint(extStart, n1, n2, 0.1 * r, -r));
+                    profilePoints.Add(Get3DPoint(extStart, n1, n2, 0, -r));
+                    profilePoints.Add(Get3DPoint(extStart, n1, n2, 0.1 * r, -r));
 
-                var edges = new List<OcctEdge>();
-                for (int i = 0; i < profilePoints.Count; i++)
-                {
-                    var p1 = profilePoints[i];
-                    var p2 = profilePoints[(i + 1) % profilePoints.Count];
-                    var occtEdge = new OcctEdge(
-                        new OcctPointCoordinates(p1.X, p1.Y, p1.Z),
-                        new OcctPointCoordinates(p2.X, p2.Y, p2.Z)
-                    );
-                    edges.Add(occtEdge);
-                }
-
-                var wire = new OcctWire(edges.ToArray());
-                var face = new OcctFace(wire);
-                var cutter = face.Extrude(new OcctVector3d(dEdge.X * extLen, dEdge.Y * extLen, dEdge.Z * extLen));
-
-                if (cutter != null && !cutter.IsNull)
-                {
-                    var cutShape = currentShape.Cut(cutter);
-                    if (cutShape != null && !cutShape.IsNull)
+                    var edges = new List<OcctEdge>();
+                    for (int i = 0; i < profilePoints.Count; i++)
                     {
-                        if (isIntermediate) currentShape.Dispose();
-                        cutter.Dispose();
-                        currentShape = cutShape;
-                        isIntermediate = true;
+                        var p1 = profilePoints[i];
+                        var p2 = profilePoints[(i + 1) % profilePoints.Count];
+                        edges.Add(new OcctEdge(
+                            new OcctPointCoordinates(p1.X, p1.Y, p1.Z),
+                            new OcctPointCoordinates(p2.X, p2.Y, p2.Z)
+                        ));
+                    }
+
+                    var wire = new OcctWire(edges.ToArray());
+                    var face = new OcctFace(wire);
+                    var cutter = face.Extrude(new OcctVector3d(dEdge.X * extLen, dEdge.Y * extLen, dEdge.Z * extLen));
+
+                    if (cutter != null && !cutter.IsNull)
+                    {
+                        var cutShape = currentShape.Cut(cutter);
+                        if (cutShape != null && !cutShape.IsNull)
+                        {
+                            if (isIntermediate) currentShape.Dispose();
+                            cutter.Dispose();
+                            currentShape = cutShape;
+                            isIntermediate = true;
+                        }
                     }
                 }
             }
@@ -722,10 +806,18 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
 
         var posArr = positions.ToArray();
         var idxArr = indices.ToArray();
-        var (featureEdges, internalEdges) = EdgeDetector.ClassifyEdges(posArr, idxArr, settings.CreaseAngle);
+        var (featureEdges, internalEdges, n1, n2) = EdgeDetector.ClassifyEdges(posArr, idxArr, settings.CreaseAngle);
+        var featureNormals1 = new float[n1.Length * 3];
+        var featureNormals2 = new float[n2.Length * 3];
+        for (int i = 0; i < n1.Length; i++) { featureNormals1[i*3] = n1[i].X; featureNormals1[i*3+1] = n1[i].Y; featureNormals1[i*3+2] = n1[i].Z; featureNormals2[i*3] = n2[i].X; featureNormals2[i*3+1] = n2[i].Y; featureNormals2[i*3+2] = n2[i].Z; }
 
-        return new TriangleMesh(posArr, normals.ToArray(), idxArr, featureEdges, internalEdges);
+        return new TriangleMesh(posArr, normals.ToArray(), idxArr, featureEdges, internalEdges, featureNormals1, featureNormals2);
     }
 }
+
+
+
+
+
 
 
