@@ -431,7 +431,7 @@ public class CadViewModel : INotifyPropertyChanged
 		});
 		SelectBooleanCutCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Subtract, _selectionService));
 		SelectBooleanFuseCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Union, _selectionService));
-		ExitBooleanEditModeCommand = new RelayCommand(() => ActiveBooleanGroup = null);
+		ExitBooleanEditModeCommand = new RelayCommand(() => ActiveBooleanGroupName = null);
 		SelectFilletToolCommand = new RelayCommand<string>((modeStr) =>
 		{
 			var sel = _selectionService.SelectedObject;
@@ -553,24 +553,26 @@ public class CadViewModel : INotifyPropertyChanged
 		return MeshManager.GetFeatureMesh(Sketch, featureId, previewFeature, forceRebuild || isPreview);
 	}
 
-	private AvaloniaCadEditor.Domain.Features.BooleanFeature? _activeBooleanGroup;
-	public AvaloniaCadEditor.Domain.Features.BooleanFeature? ActiveBooleanGroup
+	private string? _activeBooleanGroupName;
+	public string? ActiveBooleanGroupName
 	{
-		get => _activeBooleanGroup;
+		get => _activeBooleanGroupName;
 		set
 		{
-			if (_activeBooleanGroup != value)
+			if (_activeBooleanGroupName != value)
 			{
-				_activeBooleanGroup = value;
+				_activeBooleanGroupName = value;
 				OnPropertyChanged();
 				OnPropertyChanged(nameof(IsEditingBooleanGroup));
-				OnPropertyChanged(nameof(ActiveBooleanGroupName));
+				OnPropertyChanged(nameof(ActiveBooleanGroup));
 			}
 		}
 	}
 
-	public bool IsEditingBooleanGroup => ActiveBooleanGroup != null;
-	public string ActiveBooleanGroupName => ActiveBooleanGroup?.Name ?? "";
+	public AvaloniaCadEditor.Domain.Features.BooleanFeature? ActiveBooleanGroup => 
+        Sketch.Features.OfType<AvaloniaCadEditor.Domain.Features.BooleanFeature>().FirstOrDefault(f => f.Name == _activeBooleanGroupName);
+
+	public bool IsEditingBooleanGroup => !string.IsNullOrEmpty(_activeBooleanGroupName);
 
 	public System.Windows.Input.ICommand ExitBooleanEditModeCommand { get; }
 
@@ -901,7 +903,7 @@ public class CadViewModel : INotifyPropertyChanged
 				}
 				else if (ActiveBooleanGroup != null)
 				{
-					ActiveBooleanGroup = null;
+					ActiveBooleanGroupName = null;
 				}
 				else if (!ActiveWorkPlane.Equals(AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.XY))
 				{

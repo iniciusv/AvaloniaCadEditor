@@ -24,6 +24,9 @@ public class MoveTool : ICommandTool
     
     private AxisConstraint _constraint = AxisConstraint.None;
 
+    public IEnumerable<Domain.Features.IFeature> DraggedFeatures => _currentState == State.WaitingForTargetPoint ? _selectedFeatures : Enumerable.Empty<Domain.Features.IFeature>();
+    public Vector3D CurrentTranslation => _currentState == State.WaitingForTargetPoint ? _currentMouse - _basePoint : new Vector3D(0, 0, 0);
+
     public void OnMouseDown(Sketch sketch, Point3D point)
     {
         if (_currentState == State.WaitingForBasePoint)

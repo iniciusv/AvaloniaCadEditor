@@ -75,16 +75,16 @@ public sealed class ViewportInputHandler
                                       ?? viewModel.ActiveBooleanGroup?.ToolFeatures.FirstOrDefault(f => f.Id == hit.Value.FeatureId.Value);
                         if (feature is AvaloniaCadEditor.Domain.Features.BooleanFeature bf)
                         {
-                            viewModel.ActiveBooleanGroup = bf;
+                            viewModel.ActiveBooleanGroupName = bf.Name;
                         }
                         else
                         {
-                            viewModel.ActiveBooleanGroup = null;
+                            viewModel.ActiveBooleanGroupName = null;
                         }
                     }
                     else
                     {
-                        viewModel.ActiveBooleanGroup = null;
+                        viewModel.ActiveBooleanGroupName = null;
                     }
                     requestRender();
                     return;

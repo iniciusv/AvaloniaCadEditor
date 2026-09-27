@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.Linq;
 using AvaloniaCadEditor.Domain.Features;
 using Silk.NET.OpenGL;
 
@@ -200,7 +201,14 @@ public sealed class SolidFeatureRenderPass : IRenderPass
 
             unsafe
             {
-                gl.UniformMatrix4(context.Uniforms.ModelLoc, 1, false, (float*)&identity);
+                var transform = identity;
+                if (vm.CurrentTool is Application.Commands.MoveTool moveTool && moveTool.DraggedFeatures.Contains(feature) && moveTool.CurrentTranslation.Length > 0)
+                {
+                    var t = moveTool.CurrentTranslation;
+                    transform = transform * System.Numerics.Matrix4x4.CreateTranslation((float)t.X, (float)t.Y, (float)t.Z);
+                }
+                
+                gl.UniformMatrix4(context.Uniforms.ModelLoc, 1, false, (float*)&transform);
                 gl.Uniform1(context.Uniforms.LightingLoc, 1); // Enable directional lighting for 3D faces!
                 gl.Uniform1(context.Uniforms.ColorFacesByNormalLoc, vm.OsnapSettings.ColorFacesByNormal ? 1 : 0);
                 
