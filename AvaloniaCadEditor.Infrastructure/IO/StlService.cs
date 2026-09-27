@@ -68,7 +68,7 @@ public class StlService : IStlService
             reader.ReadUInt16();
         }
 
-        return new TriangleMesh(positions.ToArray(), normals.ToArray(), indices.ToArray());
+        return new TriangleMesh(CenterPositions(positions.ToArray()), normals.ToArray(), indices.ToArray());
     }
 
     private TriangleMesh ReadAscii(StreamReader reader)
@@ -114,7 +114,33 @@ public class StlService : IStlService
             }
         }
         
-        return new TriangleMesh(positions.ToArray(), normals.ToArray(), indices.ToArray());
+        return new TriangleMesh(CenterPositions(positions.ToArray()), normals.ToArray(), indices.ToArray());
+    }
+
+    private float[] CenterPositions(float[] positions)
+    {
+        if (positions.Length == 0) return positions;
+        float minX = float.MaxValue, minY = float.MaxValue, minZ = float.MaxValue;
+        float maxX = float.MinValue, maxY = float.MinValue, maxZ = float.MinValue;
+        for (int i = 0; i < positions.Length; i += 3)
+        {
+            if (positions[i] < minX) minX = positions[i];
+            if (positions[i] > maxX) maxX = positions[i];
+            if (positions[i+1] < minY) minY = positions[i+1];
+            if (positions[i+1] > maxY) maxY = positions[i+1];
+            if (positions[i+2] < minZ) minZ = positions[i+2];
+            if (positions[i+2] > maxZ) maxZ = positions[i+2];
+        }
+        float cx = (minX + maxX) / 2f;
+        float cy = (minY + maxY) / 2f;
+        float cz = (minZ + maxZ) / 2f;
+        for (int i = 0; i < positions.Length; i += 3)
+        {
+            positions[i] -= cx;
+            positions[i+1] -= cy;
+            positions[i+2] -= cz;
+        }
+        return positions;
     }
 
     public async Task ExportAsync(TriangleMesh mesh, string filePath, bool asBinary = true)
