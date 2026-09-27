@@ -1,6 +1,8 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Media;
 using AvaloniaEdit;
+using AvaloniaEdit.Highlighting;
 using AvaloniaCadEditor.Application.Services;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.UI.Controls.Rendering;
@@ -72,8 +74,48 @@ public static class CodeEditorBehavior
 
     static CodeEditorBehavior()
     {
+        ApplyVSDarkThemeToCSharp();
         SelectedFeatureProperty.Changed.AddClassHandler<TextEditor>((editor, e) => HandleSelectedFeatureChanged(editor, e));
         DocumentTextProperty.Changed.AddClassHandler<TextEditor>((editor, e) => HandleDocumentTextChanged(editor, e));
+    }
+
+    private static void ApplyVSDarkThemeToCSharp()
+    {
+        var def = HighlightingManager.Instance.GetDefinition("C#");
+        if (def == null) return;
+
+        void SetColor(string name, string hex)
+        {
+            var color = def.GetNamedColor(name);
+            if (color != null && Color.TryParse(hex, out var parsedColor))
+            {
+                color.Foreground = new SimpleHighlightingBrush(parsedColor);
+            }
+        }
+
+        SetColor("Comment", "#57A64A");
+        SetColor("String", "#D69D85");
+        SetColor("StringInterpolation", "#D69D85");
+        SetColor("Char", "#D69D85");
+        SetColor("Preprocessor", "#9B9B9B");
+        SetColor("Punctuation", "#DCDCDC");
+        SetColor("NumberLiteral", "#B5CEA8");
+        SetColor("MethodCall", "#DCDCAA");
+        
+        SetColor("TypeKeywords", "#4EC9B0");
+        SetColor("SemanticKeywords", "#4EC9B0");
+        
+        string[] blueKeywords = {
+            "ValueTypeKeywords", "ReferenceTypeKeywords", "ThisOrBaseReference", "NullOrValueKeywords",
+            "Keywords", "GotoKeywords", "ContextKeywords", "ExceptionKeywords", "CheckedKeyword",
+            "UnsafeKeywords", "OperatorKeywords", "ParameterModifiers", "Modifiers", "Visibility",
+            "NamespaceKeywords", "GetSetAddRemove", "TrueFalse"
+        };
+
+        foreach (var kw in blueKeywords)
+        {
+            SetColor(kw, "#569CD6");
+        }
     }
 
     public static string GetDocumentText(AvaloniaObject element) => element.GetValue(DocumentTextProperty);
