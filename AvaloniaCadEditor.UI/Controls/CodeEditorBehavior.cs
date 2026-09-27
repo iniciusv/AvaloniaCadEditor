@@ -32,16 +32,18 @@ public static class CodeEditorBehavior
         if (newFeature != null && editor.Document != null)
         {
             var code = editor.Document.Text;
-            var span = _highlighter.FindFeatureSpan(code, newFeature.Name);
-            System.Diagnostics.Debug.WriteLine($"[DEBUG-HIGHLIGHT] Feature {newFeature.Name} found span: {span}");
+            var spans = _highlighter.FindFeatureSpans(code, newFeature.Name);
+            System.Diagnostics.Debug.WriteLine($"[DEBUG-HIGHLIGHT] Feature {newFeature.Name} found {spans.Count} spans");
 
-            colorizer.HighlightSpan = span;
+            colorizer.HighlightSpans = spans;
             
-            if (span.HasValue)
+            // Scroll to the main target node specifically
+            var targetSpan = _highlighter.FindFeatureSpan(code, newFeature.Name);
+            if (targetSpan.HasValue)
             {
                 try 
                 {
-                    var line = editor.Document.GetLineByOffset(span.Value.Start);
+                    var line = editor.Document.GetLineByOffset(targetSpan.Value.Start);
                     System.Diagnostics.Debug.WriteLine($"[DEBUG-HIGHLIGHT] Scrolling to line {line.LineNumber}");
                     editor.ScrollToLine(line.LineNumber);
                 } 
@@ -50,7 +52,7 @@ public static class CodeEditorBehavior
         }
         else
         {
-            colorizer.HighlightSpan = null;
+            colorizer.HighlightSpans.Clear();
         }
 
         editor.TextArea.TextView.Redraw();

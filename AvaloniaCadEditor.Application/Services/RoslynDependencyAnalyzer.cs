@@ -11,8 +11,21 @@ public class RoslynDependencyAnalyzer
 {
     public IEnumerable<string> GetRootVariableNames(string csharpScript, string targetVariableName)
     {
+        return AnalyzeDependencies(csharpScript, targetVariableName).roots;
+    }
+
+    public IEnumerable<string> GetFullDependencyGraph(string csharpScript, string targetVariableName)
+    {
+        return AnalyzeDependencies(csharpScript, targetVariableName).visited;
+    }
+
+    private (HashSet<string> roots, HashSet<string> visited) AnalyzeDependencies(string csharpScript, string targetVariableName)
+    {
+        var roots = new HashSet<string>();
+        var visited = new HashSet<string>();
+
         if (string.IsNullOrWhiteSpace(csharpScript) || string.IsNullOrWhiteSpace(targetVariableName))
-            return Enumerable.Empty<string>();
+            return (roots, visited);
 
         var tree = CSharpSyntaxTree.ParseText(csharpScript);
         var root = tree.GetRoot();
@@ -22,10 +35,7 @@ public class RoslynDependencyAnalyzer
             .OfType<VariableDeclaratorSyntax>()
             .ToDictionary(v => v.Identifier.Text, v => v);
 
-        var roots = new HashSet<string>();
-        var visited = new HashSet<string>();
         var queue = new Queue<string>();
-
         queue.Enqueue(targetVariableName);
 
         while (queue.Count > 0)
@@ -63,6 +73,6 @@ public class RoslynDependencyAnalyzer
             }
         }
 
-        return roots;
+        return (roots, visited);
     }
 }

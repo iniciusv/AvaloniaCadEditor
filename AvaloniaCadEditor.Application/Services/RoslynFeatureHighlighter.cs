@@ -78,4 +78,35 @@ public class RoslynFeatureHighlighter
 
         return currentSpan;
     }
+
+    public System.Collections.Generic.List<TextSpan> FindFeatureSpans(string code, string featureName)
+    {
+        var spans = new System.Collections.Generic.List<TextSpan>();
+        if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(featureName))
+            return spans;
+
+        var analyzer = new RoslynDependencyAnalyzer();
+        var dagNodes = analyzer.GetFullDependencyGraph(code, featureName);
+
+        foreach (var node in dagNodes)
+        {
+            var span = FindFeatureSpan(code, node);
+            if (span.HasValue)
+            {
+                spans.Add(span.Value);
+            }
+        }
+
+        // Always include the target node even if it's not a standard variable declaration (e.g. fallback)
+        if (!System.Linq.Enumerable.Contains(dagNodes, featureName))
+        {
+            var span = FindFeatureSpan(code, featureName);
+            if (span.HasValue)
+            {
+                spans.Add(span.Value);
+            }
+        }
+
+        return spans;
+    }
 }
