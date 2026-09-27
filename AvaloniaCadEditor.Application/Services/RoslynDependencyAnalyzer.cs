@@ -9,14 +9,68 @@ namespace AvaloniaCadEditor.Application.Services;
 
 public class RoslynDependencyAnalyzer
 {
+    public static string CurrentCode { get; set; } = string.Empty;
+
+    public static string ResolveVariableName(string code, string featureName)
+    {
+        if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(featureName))
+            return featureName;
+
+        var tree = CSharpSyntaxTree.ParseText(code);
+        var root = tree.GetRoot();
+
+        // 1. Direct variable name match (fallback)
+        var declarator = root.DescendantNodes()
+            .OfType<VariableDeclaratorSyntax>()
+            .FirstOrDefault(v => v.Identifier.Text == featureName);
+        if (declarator != null)
+            return featureName;
+
+        // 2. Argument literal match (e.g., passed to constructor or method)
+        var literal = root.DescendantNodes()
+            .OfType<LiteralExpressionSyntax>()
+            .FirstOrDefault(l => l.Token.ValueText == featureName);
+
+        if (literal != null)
+        {
+            var decl = literal.FirstAncestorOrSelf<VariableDeclaratorSyntax>();
+            if (decl != null)
+            {
+                return decl.Identifier.Text;
+            }
+        }
+
+        // 3. Property assignment match (e.g., x.Name = "featureName")
+        var propAssignment = root.DescendantNodes()
+            .OfType<AssignmentExpressionSyntax>()
+            .FirstOrDefault(a => a.Left is IdentifierNameSyntax id && id.Identifier.Text == "Name" &&
+                                 a.Right is LiteralExpressionSyntax lit && lit.Token.ValueText == featureName);
+
+        if (propAssignment != null)
+        {
+            var statement = propAssignment.FirstAncestorOrSelf<ExpressionStatementSyntax>();
+            if (statement?.Expression is AssignmentExpressionSyntax assign)
+            {
+                if (assign.Left is MemberAccessExpressionSyntax memberAccess && memberAccess.Expression is IdentifierNameSyntax objId)
+                {
+                    return objId.Identifier.Text;
+                }
+            }
+        }
+
+        return featureName;
+    }
+
     public IEnumerable<string> GetRootVariableNames(string csharpScript, string targetVariableName)
     {
-        return AnalyzeDependencies(csharpScript, targetVariableName).roots;
+        string resolvedName = ResolveVariableName(csharpScript, targetVariableName);
+        return AnalyzeDependencies(csharpScript, resolvedName).roots;
     }
 
     public IEnumerable<string> GetFullDependencyGraph(string csharpScript, string targetVariableName)
     {
-        return AnalyzeDependencies(csharpScript, targetVariableName).visited;
+        string resolvedName = ResolveVariableName(csharpScript, targetVariableName);
+        return AnalyzeDependencies(csharpScript, resolvedName).visited;
     }
 
     private (HashSet<string> roots, HashSet<string> visited) AnalyzeDependencies(string csharpScript, string targetVariableName)

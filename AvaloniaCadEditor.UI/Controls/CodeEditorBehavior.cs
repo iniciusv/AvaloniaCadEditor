@@ -8,6 +8,7 @@ using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.UI.Controls.Rendering;
 using Microsoft.CodeAnalysis.Text;
 using System;
+using System.Linq;
 
 namespace AvaloniaCadEditor.UI.Controls;
 
@@ -38,12 +39,12 @@ public static class CodeEditorBehavior
             colorizer.HighlightSpans = spans;
             
             // Scroll to the main target node specifically
-            var targetSpan = _highlighter.FindFeatureSpan(code, newFeature.Name);
-            if (targetSpan.HasValue)
+            var targetSpan = _highlighter.GetFeatureSpans(code, newFeature.Name).FirstOrDefault();
+            if (targetSpan != default)
             {
                 try 
                 {
-                    var line = editor.Document.GetLineByOffset(targetSpan.Value.Start);
+                    var line = editor.Document.GetLineByOffset(targetSpan.Start);
                     System.Diagnostics.Debug.WriteLine($"[DEBUG-HIGHLIGHT] Scrolling to line {line.LineNumber}");
                     editor.ScrollToLine(line.LineNumber);
                 } 

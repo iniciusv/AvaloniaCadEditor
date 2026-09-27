@@ -66,7 +66,7 @@ public class BooleanTool : ICommandTool, IDisposable
         {
             string id = Guid.NewGuid().ToString("N").Substring(0, 4);
             string boolVar = $"boolOp_{id}";
-            string code = $"var {boolVar} = new BooleanFeature(name: \"{boolVar}\", operation: BooleanOperationType.{_operationType}, baseFeature: {_baseFeature.Name}, toolFeatures: new IFeature[] {{ {_toolFeature.Name} }});\r\nAddFeature({boolVar});";
+            string code = $"var {boolVar} = new BooleanFeature(name: \"{boolVar}\", operation: BooleanOperationType.{_operationType}, baseFeature: {RoslynDependencyAnalyzer.ResolveVariableName(RoslynDependencyAnalyzer.CurrentCode, _baseFeature.Name)}, toolFeatures: new IFeature[] {{ {RoslynDependencyAnalyzer.ResolveVariableName(RoslynDependencyAnalyzer.CurrentCode, _toolFeature.Name)} }});\r\nAddFeature({boolVar});";
             
             CodeGenerated?.Invoke(this, code);
             Cancel();

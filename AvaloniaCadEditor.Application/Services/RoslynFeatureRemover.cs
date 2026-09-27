@@ -24,10 +24,14 @@ public class RoslynFeatureRemover : CSharpSyntaxRewriter
 
         try
         {
+            var targetVar = RoslynDependencyAnalyzer.ResolveVariableName(csharpScript, featureName);
+            if (string.IsNullOrWhiteSpace(targetVar))
+                return csharpScript;
+
             var tree = CSharpSyntaxTree.ParseText(csharpScript);
             var root = tree.GetRoot();
 
-            var variablesToRemove = new HashSet<string> { featureName };
+            var variablesToRemove = new HashSet<string> { targetVar };
             
             bool changed;
             do

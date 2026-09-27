@@ -40,7 +40,24 @@ public class SceneMeshManager : ISceneMeshManager
             return mesh;
         }
 
-        var feature = sketch.Features.FirstOrDefault(f => f.Id == featureId);
+        IFeature? FindFeature(System.Collections.Generic.IEnumerable<IFeature> features)
+        {
+            foreach (var f in features)
+            {
+                if (f.Id == featureId) return f;
+                if (f is AvaloniaCadEditor.Domain.Features.BooleanFeature bf)
+                {
+                    var foundBase = FindFeature(new[] { bf.BaseFeature });
+                    if (foundBase != null) return foundBase;
+                    var foundTool = FindFeature(bf.ToolFeatures);
+                    if (foundTool != null) return foundTool;
+                }
+            }
+            return null;
+        }
+
+        var feature = FindFeature(sketch.Features);
+        
         if (feature == null && previewFeature != null && previewFeature.Id == featureId)
         {
             feature = previewFeature;

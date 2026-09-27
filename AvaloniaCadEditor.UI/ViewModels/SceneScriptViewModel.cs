@@ -99,7 +99,12 @@ public class SceneScriptViewModel : INotifyPropertyChanged
     public string GeneratedCSharpCode
     {
         get => _generatedCSharpCode;
-        set { _generatedCSharpCode = value; OnPropertyChanged(); }
+        set 
+        { 
+            _generatedCSharpCode = value; 
+            AvaloniaCadEditor.Application.Services.RoslynDependencyAnalyzer.CurrentCode = value;
+            OnPropertyChanged(); 
+        }
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
