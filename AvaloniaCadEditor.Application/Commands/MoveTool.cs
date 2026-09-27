@@ -7,7 +7,8 @@ namespace AvaloniaCadEditor.Application.Commands;
 
 public class MoveTool : ICommandTool
 {
-    public event EventHandler<string>? CodeGenerated;
+    public event System.EventHandler<string>? CodeGenerated;
+    public event System.Action<Vector3D, IEnumerable<Domain.Features.IFeature>>? FeaturesMoved;
     public string Name => "Move";
 
     private enum State { WaitingForBasePoint, WaitingForTargetPoint }
@@ -19,6 +20,9 @@ public class MoveTool : ICommandTool
     
     private List<Entity> _previewClones = new List<Entity>();
     private List<Entity> _selectedOriginals = new List<Entity>();
+    private List<Domain.Features.IFeature> _selectedFeatures = new();
+    
+    private AxisConstraint _constraint = AxisConstraint.None;
 
     public void OnMouseDown(Sketch sketch, Point3D point)
     {
@@ -30,11 +34,14 @@ public class MoveTool : ICommandTool
             _selectedOriginals = sketch.Entities.Where(e => e.IsSelected).ToList();
             _previewClones = _selectedOriginals.Select(e => e.Clone()).ToList();
             
+            _selectedFeatures = sketch.Features.Where(f => f.IsSelected).ToList();
+            
             _currentState = State.WaitingForTargetPoint;
         }
         else if (_currentState == State.WaitingForTargetPoint)
         {
-            var vector = point - _basePoint;
+            var constrainedPoint = AxisConstraintHelper.Apply(point, _basePoint, _constraint);
+            var vector = constrainedPoint - _basePoint;
             ApplyMove(sketch, vector);
         }
     }
@@ -56,16 +63,29 @@ public class MoveTool : ICommandTool
             {
                 entity.Translate(vector);
             }
+            
+            if (_selectedFeatures.Any())
+            {
+                FeaturesMoved?.Invoke(vector, _selectedFeatures);
+            }
         }
 
         _currentState = State.WaitingForBasePoint;
         _previewClones.Clear();
         _selectedOriginals.Clear();
+        _selectedFeatures.Clear();
     }
 
     public void OnMouseMove(Sketch sketch, Point3D point)
     {
-        _currentMouse = point;
+        if (_currentState == State.WaitingForTargetPoint)
+        {
+            _currentMouse = AxisConstraintHelper.Apply(point, _basePoint, _constraint);
+        }
+        else
+        {
+            _currentMouse = point;
+        }
     }
 
     public void Cancel()
@@ -73,6 +93,8 @@ public class MoveTool : ICommandTool
         _currentState = State.WaitingForBasePoint;
         _previewClones.Clear();
         _selectedOriginals.Clear();
+        _selectedFeatures.Clear();
+        _constraint = AxisConstraint.None;
     }
 
     public void OnKeyDown(Sketch sketch, CadKey key)
@@ -81,13 +103,19 @@ public class MoveTool : ICommandTool
         {
             IsCopyMode = !IsCopyMode;
         }
+        else if (_currentState == State.WaitingForTargetPoint)
+        {
+            _constraint = AxisConstraintHelper.ToggleConstraint(key, _constraint);
+            _currentMouse = AxisConstraintHelper.Apply(_currentMouse, _basePoint, _constraint);
+        }
     }
 
     public void OnValueEntered(Sketch sketch, double value)
     {
         if (_currentState == State.WaitingForTargetPoint)
         {
-            var currentVector = _currentMouse - _basePoint;
+            var constrainedPoint = AxisConstraintHelper.Apply(_currentMouse, _basePoint, _constraint);
+            var currentVector = constrainedPoint - _basePoint;
             if (currentVector.Length > 0)
             {
                 var direction = currentVector.Normalize();

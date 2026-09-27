@@ -12,7 +12,6 @@ public class DrawLineCommand : ICommandTool
     private AvaloniaCadEditor.Domain.ValueObjects.WorkPlane? _currentPlane;
     private State _currentState = State.WaitingForStartPoint;
 
-    private enum AxisConstraint { None, X, Y, Z }
     private AxisConstraint _constraint = AxisConstraint.None;
 
     private double? _lengthConstraint = null;
@@ -68,28 +67,7 @@ public class DrawLineCommand : ICommandTool
     {
         if (_currentState == State.WaitingForEndPoint)
         {
-            AxisConstraint newConstraint = _constraint;
-
-            switch (key)
-            {
-                case CadKey.ArrowRight:
-                    newConstraint = AxisConstraint.X;
-                    break;
-                case CadKey.ArrowLeft:
-                    newConstraint = AxisConstraint.Y;
-                    break;
-                case CadKey.ArrowUp:
-                    newConstraint = AxisConstraint.Z;
-                    break;
-            }
-
-            // Toggle off if same key pressed
-            if (_constraint == newConstraint)
-                _constraint = AxisConstraint.None;
-            else
-                _constraint = newConstraint;
-                
-            // Reapply constraint to mouse position
+            _constraint = AxisConstraintHelper.ToggleConstraint(key, _constraint);
             _currentMousePosition = ApplyConstraint(_currentMousePosition);
         }
     }
@@ -116,13 +94,7 @@ public class DrawLineCommand : ICommandTool
 
         if (_constraint != AxisConstraint.None)
         {
-            axisConstrainedPoint = _constraint switch
-            {
-                AxisConstraint.X => new Point3D(point.X, _startPoint.Y, _startPoint.Z),
-                AxisConstraint.Y => new Point3D(_startPoint.X, point.Y, _startPoint.Z),
-                AxisConstraint.Z => new Point3D(_startPoint.X, _startPoint.Y, point.Z),
-                _ => point
-            };
+            axisConstrainedPoint = AxisConstraintHelper.Apply(point, _startPoint, _constraint);
         }
 
         if (_lengthConstraint.HasValue)

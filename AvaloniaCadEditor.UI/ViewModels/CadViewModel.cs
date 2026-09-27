@@ -133,6 +133,7 @@ public class CadViewModel : INotifyPropertyChanged
 			if (_currentTool != null)
 			{
 				_currentTool.CodeGenerated -= CurrentTool_CodeGenerated;
+				if (_currentTool is MoveTool oldMove) oldMove.FeaturesMoved -= MoveTool_FeaturesMoved;
 				_currentTool.Cancel();
 			}
 
@@ -141,6 +142,7 @@ public class CadViewModel : INotifyPropertyChanged
 			if (_currentTool != null)
 			{
 				_currentTool.CodeGenerated += CurrentTool_CodeGenerated;
+				if (_currentTool is MoveTool newMove) newMove.FeaturesMoved += MoveTool_FeaturesMoved;
 			}
 
 			VcbService.Clear();
@@ -157,6 +159,40 @@ public class CadViewModel : INotifyPropertyChanged
 			OnPropertyChanged(nameof(IsDrawingMode));
 
 			UpdateStatusText(CurrentSnappedPoint);
+		}
+	}
+
+	private async void MoveTool_FeaturesMoved(AvaloniaCadEditor.Domain.ValueObjects.Vector3D vector, System.Collections.Generic.IEnumerable<AvaloniaCadEditor.Domain.Features.IFeature> features)
+	{
+		var analyzer = new AvaloniaCadEditor.Application.Services.RoslynDependencyAnalyzer();
+		var rootVariableNames = new System.Collections.Generic.HashSet<string>();
+        
+        var selectedFeatureNames = new System.Collections.Generic.List<string>();
+
+		foreach (var feature in features)
+		{
+            selectedFeatureNames.Add(feature.Name);
+			var rootsForFeature = analyzer.GetRootVariableNames(ScriptEditor.GeneratedCSharpCode, feature.Name);
+			foreach (var root in rootsForFeature)
+			{
+				rootVariableNames.Add(root);
+			}
+		}
+
+		if (rootVariableNames.Count > 0)
+		{
+			ScriptEditor.MutateCoordinates(rootVariableNames, vector);
+			await ScriptEditor.RunCodeAsync();
+            
+            // Restore selection
+            foreach (var featureName in selectedFeatureNames)
+            {
+                var newFeature = Sketch.Features.FirstOrDefault(f => f.Name == featureName);
+                if (newFeature != null)
+                {
+                    _selectionService.SelectById(Sketch, newFeature.Id);
+                }
+            }
 		}
 	}
 

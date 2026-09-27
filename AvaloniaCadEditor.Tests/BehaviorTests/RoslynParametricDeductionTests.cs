@@ -145,4 +145,43 @@ AddFeature(prism_2);
         code.Should().Contain("cylinder_");
         code.Should().NotContain("AddFeature(box_"); // because they should be filtered out by the Roslyn traversal
     }
+
+    [Fact]
+    public void RoslynDependencyAnalyzer_ShouldFindRootsCorrectly()
+    {
+        // Arrange
+        string script = @"
+var base_box = new BoxFeature(new Point3D(0, 0, 0), width: 20, length: 20, height: 20) { Name = ""base_box"" };
+var tool_cyl = new CylinderFeature(new Point3D(0, 0, 0), new Vector3D(0, 0, 1), 10, 20) { Name = ""tool_cyl"" };
+var uniao = BooleanFeature.CreateUnion(""uniao"", base_box, tool_cyl);
+AddFeature(uniao);
+";
+
+        var analyzer = new RoslynDependencyAnalyzer();
+
+        // Act
+        var roots = analyzer.GetRootVariableNames(script, "uniao").ToList();
+
+        // Assert
+        roots.Should().HaveCount(2);
+        roots.Should().Contain("base_box");
+        roots.Should().Contain("tool_cyl");
+    }
+
+    [Fact]
+    public void RoslynCoordinateMutator_ShouldShiftPoint3DForVariables()
+    {
+        // Arrange
+        string script = @"var base_box = new BoxFeature(new Point3D(10, -5, 2), width: 20, length: 20, height: 20);";
+        
+        // Act
+        var result = RoslynCoordinateMutator.MutateCoordinates(
+            script, 
+            new[] { "base_box" }, 
+            new Vector3D(10, 10, -2)
+        );
+
+        // Assert
+        result.Should().Contain("new Point3D(20,5,0)");
+    }
 }

@@ -32,35 +32,8 @@ public class SceneScriptViewModel : INotifyPropertyChanged
         {
             // O gerador foi castrado. O código agora é a fonte da verdade.
         });
-        RunCodeCommand = new RelayCommand(async () =>
-        {
-            if (_sceneEvaluator == null)
-            {
-                _cadViewModel.StatusText = "Aviso: Evaluator não configurado.";
-                return;
-            }
-            _cadViewModel.StatusText = "Avaliando código...";
-            var result = await _sceneEvaluator.EvaluateAsync(GeneratedCSharpCode);
-            if (result.Success)
-            {
-                _cadViewModel.MeshManager.ClearCache();
-                _cadViewModel.Sketch.ClearFeatures();
-                foreach (var feature in result.Features)
-                {
-                    _cadViewModel.Sketch.AddFeature(feature);
-                }
-                _cadViewModel.ModelTree.RebuildTree();
-                _cadViewModel.RefreshProfiles();
-                _cadViewModel.RefreshSolidMesh();
-                _cadViewModel.StatusText = $"✓ Código executado: {result.Features.Count} feature(s)";
-            }
-            else
-            {
-                _cadViewModel.StatusText = $"✗ Erro de Compilação: {result.ErrorMessage.Replace("\r", "").Replace("\n", " ")}";
-                Console.WriteLine("Evaluation Error:\n" + result.ErrorMessage);
-            }
-        });
-
+        RunCodeCommand = new RelayCommand(async () => await RunCodeAsync());
+        
         LoadCodeFromFileCommand = new RelayCommand(async () =>
         {
             if (_filePickerService == null) return;
@@ -77,10 +50,6 @@ public class SceneScriptViewModel : INotifyPropertyChanged
         SaveCodeToFileCommand = new RelayCommand(async () =>
         {
             if (_filePickerService == null) return;
-            if (GenerateCodeCommand != null && GenerateCodeCommand.CanExecute(null))
-            {
-                GenerateCodeCommand.Execute(null);
-            }
             var path = await _filePickerService.SaveFileAsync("Salvar Modelo como C#", ".cs", "Model.cs");
             if (!string.IsNullOrEmpty(path))
             {
@@ -89,6 +58,37 @@ public class SceneScriptViewModel : INotifyPropertyChanged
             }
         });
     }
+
+    public async System.Threading.Tasks.Task RunCodeAsync()
+    {
+        if (_sceneEvaluator == null)
+        {
+            _cadViewModel.StatusText = "Aviso: Evaluator não configurado.";
+            return;
+        }
+        _cadViewModel.StatusText = "Avaliando código...";
+        var result = await _sceneEvaluator.EvaluateAsync(GeneratedCSharpCode);
+        if (result.Success)
+        {
+            _cadViewModel.MeshManager.ClearCache();
+            _cadViewModel.Sketch.ClearFeatures();
+            foreach (var feature in result.Features)
+            {
+                _cadViewModel.Sketch.AddFeature(feature);
+            }
+            _cadViewModel.ModelTree.RebuildTree();
+            _cadViewModel.RefreshProfiles();
+            _cadViewModel.RefreshSolidMesh();
+            _cadViewModel.StatusText = $"✓ Código executado: {result.Features.Count} feature(s)";
+        }
+        else
+        {
+            _cadViewModel.StatusText = $"✗ Erro de Compilação: {result.ErrorMessage.Replace("\r", "").Replace("\n", " ")}";
+            Console.WriteLine("Evaluation Error:\n" + result.ErrorMessage);
+        }
+    }
+
+
 
     public ICommand GenerateCodeCommand { get; }
     public ICommand RunCodeCommand { get; }
@@ -125,6 +125,12 @@ public class SceneScriptViewModel : INotifyPropertyChanged
         if (string.IsNullOrWhiteSpace(variableName)) return;
         
         GeneratedCSharpCode = RoslynFeatureRemover.RemoveFeatureCode(GeneratedCSharpCode, variableName);
+    }
+
+    public void MutateCoordinates(System.Collections.Generic.IEnumerable<string> rootVariables, AvaloniaCadEditor.Domain.ValueObjects.Vector3D translation)
+    {
+        _history.SaveState(GeneratedCSharpCode);
+        GeneratedCSharpCode = RoslynCoordinateMutator.MutateCoordinates(GeneratedCSharpCode, rootVariables, translation);
     }
 
     public void Undo()
