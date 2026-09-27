@@ -138,6 +138,17 @@ public class SceneScriptViewModel : INotifyPropertyChanged
         GeneratedCSharpCode = RoslynCoordinateMutator.MutateCoordinates(GeneratedCSharpCode, rootVariables, translation);
     }
 
+    /// <summary>
+    /// Aplica um código gerado por fonte externa (ex.: o chat de IA) como o script vigente,
+    /// preservando o histórico de Undo/Redo, e o executa imediatamente.
+    /// </summary>
+    public async Task ApplyExternalCode(string code)
+    {
+        _history.SaveState(GeneratedCSharpCode);
+        GeneratedCSharpCode = code;
+        await RunCodeAsync();
+    }
+
     public void Undo()
     {
         if (_history.TryUndo(GeneratedCSharpCode, out var previousCode))

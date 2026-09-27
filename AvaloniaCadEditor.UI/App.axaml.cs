@@ -45,7 +45,10 @@ public partial class App : Avalonia.Application
 			
 			var scriptEditor = new SceneScriptViewModel(viewModel, evaluator, filePicker);
 			viewModel.ScriptEditor = scriptEditor;
-			
+
+			var aiSettingsProvider = new AvaloniaCadEditor.Infrastructure.Settings.JsonAiSettingsProvider();
+			viewModel.AiChat = new AvaloniaCadEditor.UI.ViewModels.AiChatViewModel(viewModel, scriptEditor, evaluator, aiSettingsProvider);
+
 			desktop.MainWindow.DataContext = viewModel;
 		}
 

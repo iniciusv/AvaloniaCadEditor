@@ -64,10 +64,17 @@
             </StackPanel>
             <CheckBox IsChecked="{Binding ShowInternalEdges}" Content="{x:Static res:Strings.HiddenEdges}" Foreground="White" VerticalAlignment="Center"/>
         </StackPanel>
-        
+
         <!-- Main Work Area (Left Sidebar + Viewport + Right Sidebar) -->
-        <Grid Grid.Row="1" ColumnDefinitions="Auto, 4, *, 4, 340">
-            
+        <Grid Grid.Row="1" x:Name="MainWorkGrid">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="4" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="4" />
+                <ColumnDefinition Width="340" />
+            </Grid.ColumnDefinitions>
+
             <!-- Left Sidebar: Draw & Modify Tools -->
             <ScrollViewer Grid.Column="0" VerticalScrollBarVisibility="Auto" Padding="6" Background="#252526">
                 <StackPanel Width="160" Margin="0" Spacing="6">
@@ -143,15 +150,20 @@
             <!-- Vertical Resizer / Splitter 2 -->
             <GridSplitter Grid.Column="3" Width="4" Background="#141414" ResizeDirection="Columns" />
 
-            <!-- Right Sidebar: Model Tree + Code + I/O + Property Inspector -->
-            <Grid Grid.Column="4" RowDefinitions="*, 4, 1.2*" Background="#1E1E1E">
-                <!-- Top Section: Model Entity Tree, C# Code & IO -->
-                <TabControl Grid.Row="0" Margin="0" Padding="0">
+            <!-- Right Sidebar: Model Tree (+ Properties) / Code (+ AI Chat) / I-O -->
+            <Grid Grid.Column="4" Background="#1E1E1E">
+                <TabControl Margin="0" Padding="0">
                     <TabItem Header="{x:Static res:Strings.TreeTab}" Padding="10,5">
-                        <views:ModelTreeView DataContext="{Binding ModelTree}" />
+                        <!-- Model Entity Tree on top, Parametric Property Inspector below -->
+                        <Grid RowDefinitions="*, 4, 1.2*">
+                            <views:ModelTreeView Grid.Row="0" DataContext="{Binding ModelTree}" />
+                            <GridSplitter Grid.Row="1" Height="4" Background="#141414" ResizeDirection="Rows" />
+                            <views:PropertyInspectorView Grid.Row="2" DataContext="{Binding PropertyInspector}" />
+                        </Grid>
                     </TabItem>
                     <TabItem Header="{x:Static res:Strings.CodeTab}" Padding="10,5">
-                        <Grid RowDefinitions="Auto,*">
+                        <!-- C# Code editor on top, AI Chat below -->
+                        <Grid RowDefinitions="Auto,*,4,1.2*">
                             <WrapPanel Grid.Row="0" Orientation="Horizontal" Margin="4" HorizontalAlignment="Right">
                                 <Button Content="{x:Static res:Strings.LoadCode}" Command="{Binding ScriptEditor.LoadCodeFromFileCommand}" Margin="0,0,4,4"/>
                                 <Button Content="{x:Static res:Strings.SaveCode}" Command="{Binding ScriptEditor.SaveCodeToFileCommand}" Margin="0,0,4,4"/>
@@ -159,17 +171,19 @@
                                 <Button Content="{x:Static res:Strings.RunCode}" Command="{Binding ScriptEditor.RunCodeCommand}"
                                         Background="#27AE60" Foreground="White" FontWeight="Bold" Margin="0,0,0,4"/>
                             </WrapPanel>
-                            <AvaloniaEdit:TextEditor Grid.Row="1" 
+                            <AvaloniaEdit:TextEditor Grid.Row="1"
                                      Name="CodeEditor"
                                      SyntaxHighlighting="C#"
                                      controls:CodeEditorBehavior.DocumentText="{Binding ScriptEditor.GeneratedCSharpCode, Mode=TwoWay}"
                                      controls:CodeEditorBehavior.SelectedFeature="{Binding SelectedFeature}"
-                                     FontFamily="Consolas, Fira Code, Monospace" 
-                                     Background="#1E1E1E" 
+                                     FontFamily="Consolas, Fira Code, Monospace"
+                                     Background="#1E1E1E"
                                      Foreground="#D4D4D4"
                                      ShowLineNumbers="True"
                                      BorderThickness="0"
                                      Margin="2"/>
+                            <GridSplitter Grid.Row="2" Height="4" Background="#141414" ResizeDirection="Rows" />
+                            <views:AiChatView Grid.Row="3" DataContext="{Binding AiChat}" />
                         </Grid>
                     </TabItem>
                     <TabItem Header="{x:Static res:Strings.IOTab}" Padding="10,5">
@@ -180,12 +194,6 @@
                         </StackPanel>
                     </TabItem>
                 </TabControl>
-
-                <!-- Horizontal Resizer / Splitter inside Sidebar -->
-                <GridSplitter Grid.Row="1" Height="4" Background="#141414" ResizeDirection="Rows" />
-
-                <!-- Bottom Section: Parametric Property Inspector -->
-                <views:PropertyInspectorView Grid.Row="2" DataContext="{Binding PropertyInspector}" />
             </Grid>
         </Grid>
 

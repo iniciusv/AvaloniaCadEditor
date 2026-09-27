@@ -1,0 +1,164 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:AvaloniaCadEditor.UI.ViewModels"
+             xmlns:controls="clr-namespace:AvaloniaCadEditor.UI.Controls"
+             xmlns:AvaloniaEdit="https://github.com/avaloniaui/avaloniaedit"
+             mc:Ignorable="d" d:DesignWidth="360" d:DesignHeight="640"
+             x:Class="AvaloniaCadEditor.UI.Views.AiChatView"
+             x:DataType="vm:AiChatViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="Border.userBubble">
+            <Setter Property="Background" Value="#264A6E" />
+        </Style>
+        <Style Selector="Border.assistantBubble">
+            <Setter Property="Background" Value="#2A2A2A" />
+        </Style>
+        <Style Selector="TextBlock.validationOk">
+            <Setter Property="Foreground" Value="#6EDB8F" />
+        </Style>
+        <Style Selector="TextBlock.validationFail">
+            <Setter Property="Foreground" Value="#FF8080" />
+        </Style>
+    </UserControl.Styles>
+
+    <Border Background="#1E1E1E" BorderBrush="#333333" BorderThickness="1,0,0,0">
+        <Grid RowDefinitions="Auto,Auto,*,Auto">
+
+            <!-- Header -->
+            <Border Grid.Row="0" Background="#282828" Padding="8,6">
+                <Grid ColumnDefinitions="*,Auto,Auto">
+                    <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
+                        <Path Data="M17.5 15.5C17.5 16.61 16.61 17.5 15.5 17.5S13.5 16.61 13.5 15.5 14.4 13.5 15.5 13.5 17.5 14.4 17.5 15.5M8.5 13.5C7.4 13.5 6.5 14.4 6.5 15.5S7.4 17.5 8.5 17.5 10.5 16.61 10.5 15.5 9.61 13.5 8.5 13.5M23 15V18C23 18.55 22.55 19 22 19H21V20C21 21.11 20.11 22 19 22H5C3.9 22 3 21.11 3 20V19H2C1.45 19 1 18.55 1 18V15C1 14.45 1.45 14 2 14H3C3 10.13 6.13 7 10 7H11V5.73C10.4 5.39 10 4.74 10 4C10 2.9 10.9 2 12 2S14 2.9 14 4C14 4.74 13.6 5.39 13 5.73V7H14C17.87 7 21 10.13 21 14H22C22.55 14 23 14.45 23 15M21 16H19V14C19 11.24 16.76 9 14 9H10C7.24 9 5 11.24 5 14V16H3V17H5V20H19V17H21V16Z"
+                              Fill="#999999" Stretch="Uniform" Width="14" Height="14" VerticalAlignment="Center" />
+                        <TextBlock Text="AI Chat" FontWeight="Bold" Foreground="#DDDDDD" FontSize="13" VerticalAlignment="Center" />
+                        <TextBlock Text="{Binding ModelName}" Foreground="#888888" FontSize="10" VerticalAlignment="Center" />
+                    </StackPanel>
+                    <Button Grid.Column="1" Content="⚙" Command="{Binding ToggleSettingsCommand}"
+                            ToolTip.Tip="AI settings (API key, model, base URL)"
+                            FontSize="12" Padding="6,2" Margin="0,0,4,0" />
+                    <Button Grid.Column="2" Content="New chat" Command="{Binding NewConversationCommand}" FontSize="10" Padding="6,2" />
+                </Grid>
+            </Border>
+
+            <!-- Settings panel (chave de API, modelo, URL base — persistidos entre execuções) -->
+            <Border Grid.Row="1" Background="#232323" BorderBrush="#333333" BorderThickness="0,0,0,1"
+                    Padding="10" IsVisible="{Binding IsSettingsOpen}">
+                <StackPanel Spacing="6">
+                    <TextBlock Text="DeepSeek API settings" FontWeight="Bold" Foreground="#DDDDDD" FontSize="11" />
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="API key" Foreground="#999999" FontSize="10" />
+                        <TextBox Text="{Binding ApiKeyInput}" PasswordChar="•" Watermark="sk-..." FontSize="11" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Model" Foreground="#999999" FontSize="10" />
+                        <ComboBox ItemsSource="{Binding ModelOptions}" SelectedItem="{Binding SelectedModelOption}"
+                                  HorizontalAlignment="Stretch" FontSize="11">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate x:DataType="vm:AiModelOption">
+                                    <TextBlock Text="{Binding DisplayName}" />
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
+                    </StackPanel>
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Base URL" Foreground="#999999" FontSize="10" />
+                        <TextBox Text="{Binding BaseUrlInput}" Watermark="https://api.deepseek.com/ (default)" FontSize="11" />
+                    </StackPanel>
+
+                    <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                        <TextBlock Grid.Column="0" Text="Saved locally in %AppData%\AvaloniaCadEditor\ai_settings.json"
+                                   Foreground="#777777" FontSize="9" TextWrapping="Wrap" VerticalAlignment="Center" />
+                        <Button Grid.Column="1" Content="Save" Command="{Binding SaveSettingsCommand}"
+                                Background="#007ACC" Foreground="White" FontWeight="Bold" FontSize="11" Padding="10,4" />
+                    </Grid>
+                </StackPanel>
+            </Border>
+
+            <!-- Config error (chave de API não configurada) -->
+            <Border Grid.Row="2" Background="#3A2020" CornerRadius="4" Padding="12" Margin="8" VerticalAlignment="Top"
+                    IsVisible="{Binding !IsAvailable}">
+                <TextBlock Text="{Binding ConfigError}" Foreground="#FF8080" TextWrapping="Wrap" FontSize="11" />
+            </Border>
+
+            <!-- Messages -->
+            <ScrollViewer Grid.Row="2" x:Name="MessagesScrollViewer" Padding="8"
+                          VerticalScrollBarVisibility="Auto"
+                          IsVisible="{Binding IsAvailable}">
+                <ItemsControl ItemsSource="{Binding Messages}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:AiChatMessageItem">
+                            <Border Classes.userBubble="{Binding IsUser}"
+                                    Classes.assistantBubble="{Binding !IsUser}"
+                                    CornerRadius="6" Padding="8" Margin="0,0,0,10">
+                                <StackPanel Spacing="6">
+                                    <TextBlock Text="{Binding Text}" Foreground="#EEEEEE" TextWrapping="Wrap" FontSize="12" />
+
+                                    <Expander Header="Reasoning" IsVisible="{Binding HasReasoning}" FontSize="10" Padding="0">
+                                        <TextBlock Text="{Binding Reasoning}" Foreground="#999999" TextWrapping="Wrap" FontSize="10" Margin="4" />
+                                    </Expander>
+
+                                    <Border IsVisible="{Binding HasCode}" Background="#1E1E1E" CornerRadius="4"
+                                            BorderBrush="#3C3C3C" BorderThickness="1">
+                                        <Grid RowDefinitions="Auto,Auto">
+                                            <AvaloniaEdit:TextEditor Grid.Row="0"
+                                                SyntaxHighlighting="C#"
+                                                IsReadOnly="True"
+                                                controls:CodeEditorBehavior.DocumentText="{Binding Code}"
+                                                FontFamily="Consolas, Fira Code, Monospace"
+                                                FontSize="11"
+                                                Background="#1E1E1E"
+                                                Foreground="#D4D4D4"
+                                                ShowLineNumbers="False"
+                                                MaxHeight="220"
+                                                Margin="4" />
+
+                                            <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto" Margin="4,0,4,4">
+                                                <TextBlock Grid.Column="0" Text="{Binding ValidationText}"
+                                                           Classes.validationOk="{Binding IsValidCode}"
+                                                           FontSize="10" VerticalAlignment="Center" TextWrapping="Wrap" />
+                                                <Button Grid.Column="1" Content="Copy" Click="OnCopyCodeClick"
+                                                        FontSize="10" Padding="6,2" Margin="0,0,4,0" />
+                                                <Button Grid.Column="2" Content="Apply" Command="{Binding ApplyCommand}"
+                                                        IsVisible="{Binding !IsApplied}" IsEnabled="{Binding IsValidCode}"
+                                                        Background="#27AE60" Foreground="White" FontWeight="Bold"
+                                                        FontSize="10" Padding="6,2" />
+                                                <Border Grid.Column="2" IsVisible="{Binding IsApplied}"
+                                                        Background="#1B5E20" CornerRadius="3" Padding="6,2">
+                                                    <TextBlock Text="✓ Applied" Foreground="White" FontSize="10" />
+                                                </Border>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+            </ScrollViewer>
+
+            <!-- Input -->
+            <Grid Grid.Row="3" RowDefinitions="Auto,Auto" Margin="8" IsVisible="{Binding IsAvailable}">
+                <TextBlock Grid.Row="0" Text="Thinking..." Foreground="#888888" FontSize="11"
+                           IsVisible="{Binding IsBusy}" Margin="0,0,0,4" />
+                <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto">
+                    <TextBox Grid.Column="0" x:Name="InputBox" Text="{Binding InputText, Mode=TwoWay}"
+                             Watermark="Describe what you want to model or change... (Ctrl+Enter to send)"
+                             AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="90"
+                             IsEnabled="{Binding !IsBusy}"
+                             KeyDown="OnInputKeyDown" />
+                    <Button Grid.Column="1" Content="Cancel" Command="{Binding CancelCommand}"
+                            IsVisible="{Binding IsBusy}" Margin="4,0,0,0" VerticalAlignment="Bottom" />
+                    <Button Grid.Column="2" Content="Send" Command="{Binding SendCommand}"
+                            IsVisible="{Binding !IsBusy}" Margin="4,0,0,0" VerticalAlignment="Bottom"
+                            Background="#007ACC" Foreground="White" FontWeight="Bold" />
+                </Grid>
+            </Grid>
+        </Grid>
+    </Border>
+</UserControl>

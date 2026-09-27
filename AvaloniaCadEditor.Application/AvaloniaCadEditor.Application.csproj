@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AvaloniaCadEditor.Domain\AvaloniaCadEditor.Domain.csproj" />
+    <ProjectReference Include="..\AiCore\AiCore.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -45,6 +45,7 @@ public class CadViewModel : INotifyPropertyChanged
 	public ModelTreeViewModel ModelTree { get; }
 	public PropertyInspectorViewModel PropertyInspector { get; }
 	public SceneScriptViewModel ScriptEditor { get; set; }
+	public AiChatViewModel? AiChat { get; set; }
 
 	public ISelectionService SelectionService => _selectionService;
 	public IFeature? SelectedFeature => _selectionService.SelectedObject as IFeature;
