@@ -52,4 +52,10 @@ public static class Strings
     public static string AnalyzeGuides => ResourceManager.GetString("AnalyzeGuides") ?? "Analyze";
     public static string GuidesAnalyzing => ResourceManager.GetString("GuidesAnalyzing") ?? "Analyzing...";
     public static string GuidesStale => ResourceManager.GetString("GuidesStale") ?? "Outdated";
+    public static string ViewTop => ResourceManager.GetString("ViewTop") ?? "Top";
+    public static string ViewFront => ResourceManager.GetString("ViewFront") ?? "Front";
+    public static string ViewRight => ResourceManager.GetString("ViewRight") ?? "Right";
+    public static string ViewIso => ResourceManager.GetString("ViewIso") ?? "Iso";
+    public static string ProjectionOrtho => ResourceManager.GetString("ProjectionOrtho") ?? "Ortho";
+    public static string ProjectionOrthoTip => ResourceManager.GetString("ProjectionOrthoTip") ?? "Toggle perspective / orthographic projection";
 }

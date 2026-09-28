@@ -45,6 +45,23 @@ public partial class MainWindow : Window
         ViewportControl.HandlePointerWheelChanged(e);
     }
 
+    private void StandardView_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is Button { Tag: string tag } &&
+            System.Enum.TryParse<AvaloniaCadEditor.Domain.Entities.StandardView>(tag, out var view))
+        {
+            ViewportControl.SetStandardView(view);
+        }
+    }
+
+    private void Projection_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is Avalonia.Controls.Primitives.ToggleButton toggle)
+        {
+            ViewportControl.SetOrthographic(toggle.IsChecked == true);
+        }
+    }
+
     protected override void OnKeyDown(Avalonia.Input.KeyEventArgs e)
     {
         base.OnKeyDown(e);

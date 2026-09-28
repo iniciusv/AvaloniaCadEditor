@@ -45,4 +45,10 @@
   <data name="AnalyzeGuides" xml:space="preserve"><value>Analyze</value></data>
   <data name="GuidesAnalyzing" xml:space="preserve"><value>Analyzing...</value></data>
   <data name="GuidesStale" xml:space="preserve"><value>Outdated</value></data>
+  <data name="ViewTop" xml:space="preserve"><value>Top</value></data>
+  <data name="ViewFront" xml:space="preserve"><value>Front</value></data>
+  <data name="ViewRight" xml:space="preserve"><value>Right</value></data>
+  <data name="ViewIso" xml:space="preserve"><value>Iso</value></data>
+  <data name="ProjectionOrtho" xml:space="preserve"><value>Ortho</value></data>
+  <data name="ProjectionOrthoTip" xml:space="preserve"><value>Toggle perspective / orthographic projection</value></data>
 </root>

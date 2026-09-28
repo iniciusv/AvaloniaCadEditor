@@ -27,7 +27,14 @@ public class CameraState
         }
     }
 
-    public Vector3 Up => Vector3.UnitZ;
+    public bool IsOrthographic { get; set; }
+
+    // Derivative of Position w.r.t. Elevation: always orthogonal to the view direction, so it stays
+    // well-defined even looking straight down (Top view), where a fixed +Z up would degenerate.
+    public Vector3 Up => new Vector3(
+        -MathF.Sin(Elevation) * MathF.Sin(Azimuth),
+        -MathF.Sin(Elevation) * MathF.Cos(Azimuth),
+        MathF.Cos(Elevation));
 
     public Matrix4x4 GetViewMatrix()
     {
@@ -36,7 +43,37 @@ public class CameraState
 
     public Matrix4x4 GetProjectionMatrix()
     {
+        if (IsOrthographic)
+        {
+            // Same framing as the perspective view at the Target plane, so wheel zoom (Distance) still works.
+            // Negative near plane keeps geometry behind the eye visible when zoomed in.
+            float height = 2f * Distance * MathF.Tan(Fov / 2f);
+            return Matrix4x4.CreateOrthographic(height * AspectRatio, height, -FarPlane, FarPlane);
+        }
         return Matrix4x4.CreatePerspectiveFieldOfView(Fov, AspectRatio, NearPlane, FarPlane);
+    }
+
+    public void SetStandardView(StandardView view)
+    {
+        switch (view)
+        {
+            case StandardView.Front:
+                Azimuth = MathF.PI;
+                Elevation = 0f;
+                break;
+            case StandardView.Right:
+                Azimuth = MathF.PI / 2f;
+                Elevation = 0f;
+                break;
+            case StandardView.Top:
+                Azimuth = MathF.PI;
+                Elevation = MathF.PI / 2f;
+                break;
+            case StandardView.Isometric:
+                Azimuth = 3f * MathF.PI / 4f;
+                Elevation = MathF.Atan(1f / MathF.Sqrt(2f)); // true isometric (~35.26°)
+                break;
+        }
     }
 
     public void Orbit(float deltaAzimuth, float deltaElevation)

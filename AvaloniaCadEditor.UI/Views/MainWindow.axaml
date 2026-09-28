@@ -15,8 +15,31 @@
         Background="#1A1A1A">
 
     <Grid RowDefinitions="Auto,*,30">
-        <!-- Toolbar (View Settings Only) -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Background="#2D2D2D" Margin="4" Spacing="15">
+        <!-- Toolbar: standard views (center) + view settings (right) -->
+        <Grid Grid.Row="0" ColumnDefinitions="*,Auto,*" Background="#2D2D2D" Margin="4">
+        <Grid.Styles>
+            <Style Selector="Button.viewBtn, ToggleButton.viewBtn">
+                <Setter Property="Background" Value="Transparent"/>
+                <Setter Property="Foreground" Value="LightGray"/>
+                <Setter Property="Padding" Value="10,3"/>
+                <Setter Property="FontSize" Value="12"/>
+                <Setter Property="MinWidth" Value="44"/>
+                <Setter Property="HorizontalContentAlignment" Value="Center"/>
+                <Setter Property="VerticalAlignment" Value="Center"/>
+            </Style>
+        </Grid.Styles>
+
+        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+            <Button Classes="viewBtn" Content="{x:Static res:Strings.ViewTop}" Tag="Top" Click="StandardView_Click"/>
+            <Button Classes="viewBtn" Content="{x:Static res:Strings.ViewFront}" Tag="Front" Click="StandardView_Click"/>
+            <Button Classes="viewBtn" Content="{x:Static res:Strings.ViewRight}" Tag="Right" Click="StandardView_Click"/>
+            <Button Classes="viewBtn" Content="{x:Static res:Strings.ViewIso}" Tag="Isometric" Click="StandardView_Click"/>
+            <Border Width="1" Background="#555" Margin="6,4"/>
+            <ToggleButton Classes="viewBtn" Content="{x:Static res:Strings.ProjectionOrtho}"
+                          ToolTip.Tip="{x:Static res:Strings.ProjectionOrthoTip}" Click="Projection_Click"/>
+        </StackPanel>
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="15" HorizontalAlignment="Right" Margin="0,0,6,0">
             <StackPanel Orientation="Horizontal" Spacing="2">
                 <CheckBox IsChecked="{Binding OsnapEnabled}" Content="{x:Static res:Strings.Osnap}" Foreground="White" VerticalAlignment="Center"/>
                 <Button Content="[⚙]" Background="Transparent" Foreground="LightGray" Padding="2" VerticalAlignment="Center">
@@ -75,6 +98,7 @@
                            IsVisible="{Binding ReferenceGuides.IsStale}"/>
             </StackPanel>
         </StackPanel>
+        </Grid>
 
         <!-- Main Work Area (Left Sidebar + Viewport + Right Sidebar) -->
         <Grid Grid.Row="1" x:Name="MainWorkGrid">

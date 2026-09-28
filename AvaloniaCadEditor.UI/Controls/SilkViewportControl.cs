@@ -169,6 +169,18 @@ public class SilkViewportControl : OpenGlControlBase
         FrameRendered?.Invoke();
     }
 
+    public void SetStandardView(StandardView view)
+    {
+        _camera.SetStandardView(view);
+        RequestNextFrameRendering();
+    }
+
+    public void SetOrthographic(bool orthographic)
+    {
+        _camera.IsOrthographic = orthographic;
+        RequestNextFrameRendering();
+    }
+
     public void HandlePointerWheelChanged(PointerWheelEventArgs e)
     {
         _inputHandler.HandlePointerWheelChanged(e, _camera, RequestNextFrameRendering);
