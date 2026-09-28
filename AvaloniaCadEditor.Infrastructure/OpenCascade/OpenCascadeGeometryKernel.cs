@@ -637,10 +637,19 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
 
         var positions = new List<float>();
         var normals = new List<float>();
-        var indices = new List<uint>();
 
         var verts = occtMesh.Vertices;
-        var triIndices = occtMesh.TriangleIndices;
+
+        // Corrige a orientação dos triângulos ANTES de calcular normais/volume. Uma heurística
+        // "a normal deve apontar para longe do centróide de TODOS os vértices" (usada antes
+        // aqui) só funciona para sólidos convexos e de um corpo só — ela inverte triângulos
+        // silenciosamente em qualquer peça côncava, com furo, ou resultado de boolean com mais
+        // de um sólido (o centro médio dos vértices não é "dentro" do sólido nesses casos). O
+        // jeito robusto é propagar a orientação pelas arestas compartilhadas (vizinhos devem
+        // percorrer a aresta em sentidos opostos) e, por componente conexo, corrigir com o
+        // sinal do volume (teorema da divergência) qual das duas orientações relativas é a de
+        // fora.
+        var triIndices = FixTriangleWinding(occtMesh);
 
         var normalArrays = new float[verts.Count * 3];
 
@@ -651,26 +660,13 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             positions.Add((float)verts[i].Z);
         }
 
-        double cx = 0, cy = 0, cz = 0;
-        if (verts.Count > 0)
-        {
-            for (int i = 0; i < verts.Count; i++)
-            {
-                cx += verts[i].X;
-                cy += verts[i].Y;
-                cz += verts[i].Z;
-            }
-            cx /= verts.Count;
-            cy /= verts.Count;
-            cz /= verts.Count;
-        }
-
         // Calculate flat normals since OcctMeshVertex doesn't provide them
-        for (int i = 0; i < triIndices.Count; i += 3)
+        // (a orientação já foi corrigida por FixTriangleWinding, então basta o produto vetorial)
+        for (int i = 0; i < triIndices.Length; i += 3)
         {
-            uint i1 = (uint)triIndices[i];
-            uint i2 = (uint)triIndices[i + 1];
-            uint i3 = (uint)triIndices[i + 2];
+            uint i1 = triIndices[i];
+            uint i2 = triIndices[i + 1];
+            uint i3 = triIndices[i + 2];
 
             var p1 = verts[(int)i1];
             var p2 = verts[(int)i2];
@@ -688,26 +684,6 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             var nx = (uy * vz) - (uz * vy);
             var ny = (uz * vx) - (ux * vz);
             var nz = (ux * vy) - (uy * vx);
-
-            // Centroid heuristic: normal should point away from the solid's center
-            var tcx = (p1.X + p2.X + p3.X) / 3.0 - cx;
-            var tcy = (p1.Y + p2.Y + p3.Y) / 3.0 - cy;
-            var tcz = (p1.Z + p2.Z + p3.Z) / 3.0 - cz;
-            
-            if (nx * tcx + ny * tcy + nz * tcz < 0)
-            {
-                nx = -nx;
-                ny = -ny;
-                nz = -nz;
-                // Swap i2 and i3 to fix winding order
-                uint temp = i2;
-                i2 = i3;
-                i3 = temp;
-            }
-
-            indices.Add(i1);
-            indices.Add(i2);
-            indices.Add(i3);
 
             // Normalize face normal
             var len = Math.Sqrt(nx * nx + ny * ny + nz * nz);
@@ -727,6 +703,8 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
                 normalArrays[idx + 2] += (float)nz;
             }
         }
+
+        var indices = new List<uint>(triIndices);
 
         // Pre-normalize the accumulated normals so we have pure directions for comparison
         for (int i = 0; i < normalArrays.Length; i += 3)
@@ -812,6 +790,161 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         for (int i = 0; i < n1.Length; i++) { featureNormals1[i*3] = n1[i].X; featureNormals1[i*3+1] = n1[i].Y; featureNormals1[i*3+2] = n1[i].Z; featureNormals2[i*3] = n2[i].X; featureNormals2[i*3+1] = n2[i].Y; featureNormals2[i*3+2] = n2[i].Z; }
 
         return new TriangleMesh(posArr, normals.ToArray(), idxArr, featureEdges, internalEdges, featureNormals1, featureNormals2);
+    }
+
+    /// <summary>
+    /// Corrige a orientação (sentido de giro) de cada triângulo tesselado pelo OCCT, garantindo
+    /// que todas as normais de um mesmo sólido apontem consistentemente para fora — mesmo em
+    /// peças côncavas, com furos, ou resultantes de um boolean com vários corpos.
+    ///
+    /// Funciona em duas etapas por componente conexo (grupo de triângulos ligados por arestas
+    /// compartilhadas — cada "casca" de um sólido, mesmo que a malha tenha vários sólidos
+    /// desconexos de uma vez):
+    ///  1. Propaga a orientação por BFS: dois triângulos vizinhos que compartilham uma aresta
+    ///     (exatamente 2 usuários — arestas de borda ou não-manifold ficam de fora) devem
+    ///     percorrê-la em sentidos opostos entre si. Isso já deixa a casca inteira consistente
+    ///     entre si, mas ainda pode estar "de dentro para fora" como um todo.
+    ///  2. Calcula o volume com sinal (teorema da divergência) da casca já consistente; se vier
+    ///     negativo, inverte todos os triângulos do componente de uma vez.
+    /// </summary>
+    private static uint[] FixTriangleWinding(OcctMesh occtMesh)
+    {
+        var verts = occtMesh.Vertices;
+        var rawIndices = occtMesh.TriangleIndices;
+        int triCount = rawIndices.Count / 3;
+
+        // 1. Agrupa vértices coincidentes (a tesselação do OCCT duplica vértices entre faces
+        //    adjacentes) num id canônico, para achar vizinhança por aresta.
+        var canonicalId = new int[verts.Count];
+        var canonicalMap = new Dictionary<(long, long, long), int>();
+        const double weldScale = 10000.0; // 4 casas decimais
+        for (int i = 0; i < verts.Count; i++)
+        {
+            var key = (
+                (long)Math.Round(verts[i].X * weldScale),
+                (long)Math.Round(verts[i].Y * weldScale),
+                (long)Math.Round(verts[i].Z * weldScale));
+            if (!canonicalMap.TryGetValue(key, out var id))
+            {
+                id = canonicalMap.Count;
+                canonicalMap[key] = id;
+            }
+            canonicalId[i] = id;
+        }
+
+        var triCanon = new (int A, int B, int C)[triCount];
+        for (int t = 0; t < triCount; t++)
+        {
+            triCanon[t] = (
+                canonicalId[rawIndices[t * 3]],
+                canonicalId[rawIndices[t * 3 + 1]],
+                canonicalId[rawIndices[t * 3 + 2]]);
+        }
+
+        // 2. Para cada aresta (não direcionada, em ids canônicos), guarda quem a usa e em que
+        //    sentido (a direção original, ainda sem nenhuma correção aplicada).
+        var edgeUsers = new Dictionary<(int, int), List<(int Triangle, int From, int To)>>();
+        void AddEdge(int t, int u, int v)
+        {
+            var key = u < v ? (u, v) : (v, u);
+            if (!edgeUsers.TryGetValue(key, out var list))
+            {
+                list = new List<(int, int, int)>();
+                edgeUsers[key] = list;
+            }
+            list.Add((t, u, v));
+        }
+        for (int t = 0; t < triCount; t++)
+        {
+            var (a, b, c) = triCanon[t];
+            AddEdge(t, a, b);
+            AddEdge(t, b, c);
+            AddEdge(t, c, a);
+        }
+
+        var flipped = new bool[triCount];
+        var visited = new bool[triCount];
+        var queue = new Queue<int>();
+
+        for (int seed = 0; seed < triCount; seed++)
+        {
+            if (visited[seed]) continue;
+            visited[seed] = true;
+            var component = new List<int> { seed };
+            queue.Enqueue(seed);
+
+            while (queue.Count > 0)
+            {
+                int t = queue.Dequeue();
+                var (a, b, c) = triCanon[t];
+
+                foreach (var (u, v) in new[] { (a, b), (b, c), (c, a) })
+                {
+                    var key = u < v ? (u, v) : (v, u);
+                    var users = edgeUsers[key];
+                    if (users.Count != 2) continue; // borda ou não-manifold: não propaga por aqui
+
+                    // Direção efetiva de t nessa aresta, já considerando se t foi invertido.
+                    bool effectiveFromIsU = !flipped[t];
+                    int effectiveFrom = effectiveFromIsU ? u : v;
+                    int effectiveTo = effectiveFromIsU ? v : u;
+
+                    foreach (var (otherT, origFrom, origTo) in users)
+                    {
+                        if (otherT == t || visited[otherT]) continue;
+
+                        // Quer que a direção efetiva de otherT seja a OPOSTA (effectiveTo -> effectiveFrom).
+                        // origFrom/origTo é a direção original (sem flip) de otherT nessa mesma aresta.
+                        flipped[otherT] = origFrom == effectiveFrom;
+                        visited[otherT] = true;
+                        component.Add(otherT);
+                        queue.Enqueue(otherT);
+                    }
+                }
+            }
+
+            // 3. Corrige a orientação global do componente pelo sinal do volume.
+            double signedVolume = 0;
+            foreach (var t in component)
+            {
+                signedVolume += SignedTetrahedronVolume(verts, rawIndices, t, flipped[t]);
+            }
+
+            if (signedVolume < 0)
+            {
+                foreach (var t in component) flipped[t] = !flipped[t];
+            }
+        }
+
+        var result = new uint[rawIndices.Count];
+        for (int t = 0; t < triCount; t++)
+        {
+            uint i1 = (uint)rawIndices[t * 3];
+            uint i2 = (uint)rawIndices[t * 3 + 1];
+            uint i3 = (uint)rawIndices[t * 3 + 2];
+            if (flipped[t]) { (i2, i3) = (i3, i2); }
+
+            result[t * 3] = i1;
+            result[t * 3 + 1] = i2;
+            result[t * 3 + 2] = i3;
+        }
+        return result;
+    }
+
+    private static double SignedTetrahedronVolume(IReadOnlyList<OcctMeshVertex> verts, IReadOnlyList<int> rawIndices, int triangle, bool flipped)
+    {
+        int i1 = rawIndices[triangle * 3];
+        int i2 = rawIndices[triangle * 3 + 1];
+        int i3 = rawIndices[triangle * 3 + 2];
+        if (flipped) { (i2, i3) = (i3, i2); }
+
+        var p1 = verts[i1];
+        var p2 = verts[i2];
+        var p3 = verts[i3];
+
+        return (p1.X * (p2.Y * p3.Z - p2.Z * p3.Y)
+              + p1.Y * (p2.Z * p3.X - p2.X * p3.Z)
+              + p1.Z * (p2.X * p3.Y - p2.Y * p3.X)) / 6.0;
     }
 }
 

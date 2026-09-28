@@ -37,11 +37,24 @@ public class ShapeReconstructionService : IShapeReconstructionService
 
         foreach (var tolerance in tolerances)
         {
-            // Roda todos os algoritmos em paralelo com a tolerância atual
-            var tasks = _algorithms.Select(a => a.ReconstructAsync(mesh, tolerance)).ToList();
-            await Task.WhenAll(tasks);
-            
-            var validResults = tasks.Select(t => t.Result).Where(r => r != null).ToList();
+            // Roda todos os algoritmos em paralelo com a tolerância atual.
+            // Algoritmos "multi-candidato" (ex.: varredura por eixo) contribuem com várias
+            // hipóteses de uma só vez; os demais contribuem com uma única hipótese.
+            var singleTasks = _algorithms
+                .Where(a => a is not IMultiCandidateReconstructionAlgorithm)
+                .Select(a => a.ReconstructAsync(mesh, tolerance))
+                .ToList();
+            var multiTasks = _algorithms
+                .OfType<IMultiCandidateReconstructionAlgorithm>()
+                .Select(a => a.ReconstructCandidatesAsync(mesh, tolerance))
+                .ToList();
+
+            await Task.WhenAll(singleTasks.Cast<Task>().Concat(multiTasks));
+
+            var validResults = singleTasks.Select(t => t.Result)
+                .Where(r => r != null)
+                .Concat(multiTasks.SelectMany(t => t.Result).Where(r => r != null))
+                .ToList();
 
             // Pós-processamento: Volumetria com Voxels (IoU - Intersection over Union)
             foreach (var result in validResults)
