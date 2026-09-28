@@ -49,6 +49,9 @@ public partial class App : Avalonia.Application
 			var aiSettingsProvider = new AvaloniaCadEditor.Infrastructure.Settings.JsonAiSettingsProvider();
 			viewModel.AiChat = new AvaloniaCadEditor.UI.ViewModels.AiChatViewModel(viewModel, scriptEditor, evaluator, aiSettingsProvider);
 
+			var referenceGuideService = new AvaloniaCadEditor.Application.ReferenceGuides.ReferenceGuideService();
+			viewModel.ReferenceGuides = new AvaloniaCadEditor.UI.ReferenceGuides.ReferenceGuidesViewModel(referenceGuideService, () => viewModel.Sketch.Features);
+
 			desktop.MainWindow.DataContext = viewModel;
 		}
 

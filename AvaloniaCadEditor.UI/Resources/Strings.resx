@@ -41,4 +41,8 @@
   <data name="UpdateCode" xml:space="preserve"><value>Update Code</value></data>
   <data name="RunCode" xml:space="preserve"><value>▶ Run</value></data>
   <data name="Measurement" xml:space="preserve"><value>Measurement:</value></data>
+  <data name="ReferenceGuides" xml:space="preserve"><value>Guides</value></data>
+  <data name="AnalyzeGuides" xml:space="preserve"><value>Analyze</value></data>
+  <data name="GuidesAnalyzing" xml:space="preserve"><value>Analyzing...</value></data>
+  <data name="GuidesStale" xml:space="preserve"><value>Outdated</value></data>
 </root>

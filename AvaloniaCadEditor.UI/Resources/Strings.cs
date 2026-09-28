@@ -48,4 +48,8 @@ public static class Strings
     public static string UpdateCode => ResourceManager.GetString("UpdateCode") ?? "Update Code";
     public static string RunCode => ResourceManager.GetString("RunCode") ?? "▶ Run";
     public static string Measurement => ResourceManager.GetString("Measurement") ?? "Measurement:";
+    public static string ReferenceGuides => ResourceManager.GetString("ReferenceGuides") ?? "Guides";
+    public static string AnalyzeGuides => ResourceManager.GetString("AnalyzeGuides") ?? "Analyze";
+    public static string GuidesAnalyzing => ResourceManager.GetString("GuidesAnalyzing") ?? "Analyzing...";
+    public static string GuidesStale => ResourceManager.GetString("GuidesStale") ?? "Outdated";
 }

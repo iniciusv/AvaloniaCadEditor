@@ -3,6 +3,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:controls="clr-namespace:AvaloniaCadEditor.UI.Controls"
+        xmlns:refguides="clr-namespace:AvaloniaCadEditor.UI.ReferenceGuides"
         xmlns:views="clr-namespace:AvaloniaCadEditor.UI.Views"
         xmlns:vm="clr-namespace:AvaloniaCadEditor.UI.ViewModels"
         xmlns:res="clr-namespace:AvaloniaCadEditor.UI.Resources"
@@ -63,6 +64,16 @@
                 </Button>
             </StackPanel>
             <CheckBox IsChecked="{Binding ShowInternalEdges}" Content="{x:Static res:Strings.HiddenEdges}" Foreground="White" VerticalAlignment="Center"/>
+
+            <StackPanel Orientation="Horizontal" Spacing="4">
+                <CheckBox IsChecked="{Binding ReferenceGuides.IsVisible}" Content="{x:Static res:Strings.ReferenceGuides}" Foreground="White" VerticalAlignment="Center"/>
+                <Button Content="{x:Static res:Strings.AnalyzeGuides}" Command="{Binding ReferenceGuides.AnalyzeCommand}"
+                        IsVisible="{Binding ReferenceGuides.IsVisible}" Padding="6,2" VerticalAlignment="Center"/>
+                <TextBlock Text="{x:Static res:Strings.GuidesAnalyzing}" Foreground="LightGray" VerticalAlignment="Center" FontStyle="Italic"
+                           IsVisible="{Binding ReferenceGuides.IsAnalyzing}"/>
+                <TextBlock Text="{x:Static res:Strings.GuidesStale}" Foreground="Orange" VerticalAlignment="Center" FontStyle="Italic"
+                           IsVisible="{Binding ReferenceGuides.IsStale}"/>
+            </StackPanel>
         </StackPanel>
 
         <!-- Main Work Area (Left Sidebar + Viewport + Right Sidebar) -->
@@ -131,6 +142,7 @@
                    PointerReleased="Viewport_PointerReleased"
                    PointerWheelChanged="Viewport_PointerWheelChanged">
                 <controls:SilkViewportControl x:Name="ViewportControl" DataContext="{Binding}" />
+                <refguides:GuideLabelsOverlay x:Name="GuideLabelsOverlay" />
 
                 <!-- Boolean Edit Mode Banner -->
                 <Border IsVisible="{Binding IsEditingBooleanGroup}" 

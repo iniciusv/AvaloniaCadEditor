@@ -7,7 +7,9 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        
+
+        GuideLabelsOverlay.AttachTo(ViewportControl);
+
         this.DataContextChanged += (s, e) =>
         {
             if (DataContext is AvaloniaCadEditor.UI.ViewModels.CadViewModel vm)

@@ -22,6 +22,14 @@ public class SilkViewportControl : OpenGlControlBase
 
     public CadViewModel? ViewModel => DataContext as CadViewModel;
 
+    /// <summary>Exposed so overlays outside the GL surface (e.g. reference-guide labels) can
+    /// project world points to screen space using the same camera used for rendering.</summary>
+    public CameraState Camera => _camera;
+
+    /// <summary>Raised after each GL frame, so screen-space overlays can reposition themselves
+    /// exactly when the camera/viewport actually changed, without polling.</summary>
+    public event System.Action? FrameRendered;
+
     public SilkViewportControl()
     {
         _camera = new CameraState();
@@ -38,7 +46,8 @@ public class SilkViewportControl : OpenGlControlBase
             new SolidFeatureRenderPass(),
             new GridRenderPass(),
             new ProfileFaceRenderPass(),
-            new SketchEntityRenderPass()
+            new SketchEntityRenderPass(),
+            new AvaloniaCadEditor.UI.ReferenceGuides.ReferenceGuideRenderPass()
         };
 
         Focusable = true;
@@ -156,6 +165,8 @@ public class SilkViewportControl : OpenGlControlBase
         {
             pass.Render(_gl, context);
         }
+
+        FrameRendered?.Invoke();
     }
 
     public void HandlePointerWheelChanged(PointerWheelEventArgs e)

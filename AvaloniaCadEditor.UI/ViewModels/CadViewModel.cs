@@ -46,6 +46,7 @@ public class CadViewModel : INotifyPropertyChanged
 	public PropertyInspectorViewModel PropertyInspector { get; }
 	public SceneScriptViewModel ScriptEditor { get; set; }
 	public AiChatViewModel? AiChat { get; set; }
+	public AvaloniaCadEditor.UI.ReferenceGuides.ReferenceGuidesViewModel? ReferenceGuides { get; set; }
 
 	public ISelectionService SelectionService => _selectionService;
 	public IFeature? SelectedFeature => _selectionService.SelectedObject as IFeature;
@@ -608,6 +609,11 @@ public class CadViewModel : INotifyPropertyChanged
 		}
 
 		SolidMesh = MeshManager.BuildCompositeMesh(Sketch, previewFeature);
+
+		// The scene changed: the last guide analysis (if any) is now out of date. It is not
+		// recomputed here - that only happens when the user explicitly asks for it - so this
+		// never adds cost to the hot edit/rebuild loop.
+		ReferenceGuides?.MarkStale();
 
 		if (!skipCodeGeneration && ScriptEditor.GenerateCodeCommand != null && ScriptEditor.GenerateCodeCommand.CanExecute(null))
 		{
