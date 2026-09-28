@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using AvaloniaCadEditor.Domain.Features;
@@ -201,6 +202,13 @@ public sealed class ReferenceGuideService : IReferenceGuideService
         public double Top;
         public List<Guid> HoleFeatureIds = new();
         public List<Guid> WallFeatureIds = new();
+
+        /// <summary>Raw candidate count backing this cluster (vertices/edge-endpoints/hole
+        /// centers), before deduplicating by feature. Used only to tell a well-supported
+        /// coordinate from a lone outlier when reporting a near-miss - never to decide which
+        /// side is "correct", since that depends on design intent this service can't see.</summary>
+        public int MemberCount;
+
         public IReadOnlyList<Guid> AllFeatureIds => HoleFeatureIds.Concat(WallFeatureIds).Distinct().ToList();
     }
 
@@ -234,11 +242,18 @@ public sealed class ReferenceGuideService : IReferenceGuideService
         var xClusters = ClusterAxis(xCandidates, opts);
         var yClusters = ClusterAxis(yCandidates, opts);
 
-        EmitAxisLines(xClusters.Tight, isXAxis: true, plane, top1, opts, lines);
-        EmitAxisLines(yClusters.Tight, isXAxis: false, plane, top1, opts, lines);
+        // Clusters caught in a near-miss get their own full-span red line from EmitNearMisses
+        // instead of a normal-colored one here, so the conflict is what the user actually sees
+        // (two near-overlapping red lines), not two ordinary-looking lines plus an easy-to-miss
+        // stub between them.
+        var xAmbiguous = new HashSet<TightCluster>(xClusters.AmbiguousNeighborhoods.SelectMany(n => n));
+        var yAmbiguous = new HashSet<TightCluster>(yClusters.AmbiguousNeighborhoods.SelectMany(n => n));
 
-        EmitNearMisses(xClusters.AmbiguousNeighborhoods, isXAxis: true, plane, top1, lines, dimensions);
-        EmitNearMisses(yClusters.AmbiguousNeighborhoods, isXAxis: false, plane, top1, lines, dimensions);
+        EmitAxisLines(xClusters.Tight.Where(c => !xAmbiguous.Contains(c)).ToList(), isXAxis: true, plane, top1, opts, lines);
+        EmitAxisLines(yClusters.Tight.Where(c => !yAmbiguous.Contains(c)).ToList(), isXAxis: false, plane, top1, opts, lines);
+
+        EmitNearMisses(xClusters.AmbiguousNeighborhoods, isXAxis: true, plane, top1, opts, lines, dimensions);
+        EmitNearMisses(yClusters.AmbiguousNeighborhoods, isXAxis: false, plane, top1, opts, lines, dimensions);
 
         EmitRowDimensions(xClusters.Tight, isXAxis: true, plane, top1, opts, dimensions);
         EmitRowDimensions(yClusters.Tight, isXAxis: false, plane, top1, opts, dimensions);
@@ -351,27 +366,116 @@ public sealed class ReferenceGuideService : IReferenceGuideService
 
             if (continuesRun) continue;
 
-            if (runStart >= 0) FinalizeRun(runStart, i - 1, centers, radii, opts, result);
+            if (runStart >= 0) FinalizeRun(runStart, i - 1, centers, local, opts, result);
             runStart = centers[i] != null ? i : -1;
         }
-        if (runStart >= 0) FinalizeRun(runStart, n - 2, centers, radii, opts, result);
+        if (runStart >= 0) FinalizeRun(runStart, n - 2, centers, local, opts, result);
 
         return result;
     }
 
-    private static void FinalizeRun(int start, int end, Point3D?[] centers, double[] radii, ReferenceGuideOptions opts, List<ArcInfo> result)
+    /// <summary>
+    /// Turns a confirmed run of matching circumcenters into a single (center, radius). Rather
+    /// than averaging the per-triple circumcenters - which is numerically unstable right where
+    /// the arc is nearly tangent to a straight edge, since those triples are close to collinear
+    /// - this refits a circle by least squares over every vertex actually spanned by the run.
+    /// That is far less sensitive to the 3-decimal rounding of the input vertices, so two arcs
+    /// that are meant to share a center (e.g. both ends of a slot) reliably compute to centers
+    /// within a thousandth of each other instead of drifting into a spurious near-miss.
+    /// </summary>
+    private static void FinalizeRun(int start, int end, Point3D?[] centers, List<Point3D> local, ReferenceGuideOptions opts, List<ArcInfo> result)
     {
         int count = end - start + 1;
         if (count < opts.MinArcRunLength) return;
 
-        double cu = 0, cv = 0, r = 0;
-        for (int i = start; i <= end; i++)
+        // The run's vertices span one wider than [start, end]: centers[i] is the circumcenter
+        // of local[i-1..i+1], so the run actually covers local[start-1 .. end+1].
+        int firstVertex = Math.Max(0, start - 1);
+        int lastVertex = Math.Min(local.Count - 1, end + 1);
+        var points = local.GetRange(firstVertex, lastVertex - firstVertex + 1);
+
+        var fit = FitCircleLeastSquares(points);
+        if (fit == null)
         {
-            cu += centers[i]!.Value.X;
-            cv += centers[i]!.Value.Y;
-            r += radii[i];
+            // Degenerate fit (shouldn't happen for a real arc): fall back to the old average.
+            double cu0 = 0, cv0 = 0, r0 = 0;
+            for (int i = start; i <= end; i++)
+            {
+                cu0 += centers[i]!.Value.X;
+                cv0 += centers[i]!.Value.Y;
+                r0 += Distance2D(centers[i]!.Value, local[i]);
+            }
+            result.Add(new ArcInfo(cu0 / count, cv0 / count, r0 / count));
+            return;
         }
-        result.Add(new ArcInfo(cu / count, cv / count, r / count));
+
+        result.Add(new ArcInfo(fit.Value.CenterU, fit.Value.CenterV, fit.Value.Radius));
+    }
+
+    /// <summary>Algebraic (Kása) least-squares circle fit: solves the linear system for
+    /// x²+y²+Dx+Ey+F=0 over all given points, then center=(-D/2,-E/2), radius from F. Far more
+    /// stable than averaging circumcenters of individual point triples.</summary>
+    private static (double CenterU, double CenterV, double Radius)? FitCircleLeastSquares(IReadOnlyList<Point3D> points)
+    {
+        if (points.Count < 3) return null;
+
+        double sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0, sxz = 0, syz = 0, sz = 0;
+        int n = points.Count;
+        foreach (var p in points)
+        {
+            double x = p.X, y = p.Y, z = x * x + y * y;
+            sx += x; sy += y; sxx += x * x; syy += y * y; sxy += x * y;
+            sxz += x * z; syz += y * z; sz += z;
+        }
+
+        // Normal equations for [D, E, F] minimizing sum (x²+y² + Dx + Ey + F)².
+        double m00 = sxx, m01 = sxy, m02 = sx, b0 = -sxz;
+        double m10 = sxy, m11 = syy, m12 = sy, b1 = -syz;
+        double m20 = sx, m21 = sy, m22 = n, b2 = -sz;
+
+        if (!Solve3x3(m00, m01, m02, b0, m10, m11, m12, b1, m20, m21, m22, b2, out double d, out double e, out double f))
+        {
+            return null;
+        }
+
+        double centerU = -d / 2.0;
+        double centerV = -e / 2.0;
+        double radiusSquared = (d * d + e * e) / 4.0 - f;
+        if (radiusSquared <= 0) return null;
+
+        return (centerU, centerV, Math.Sqrt(radiusSquared));
+    }
+
+    private static bool Solve3x3(
+        double a00, double a01, double a02, double b0,
+        double a10, double a11, double a12, double b1,
+        double a20, double a21, double a22, double b2,
+        out double x, out double y, out double z)
+    {
+        double det = a00 * (a11 * a22 - a12 * a21)
+                   - a01 * (a10 * a22 - a12 * a20)
+                   + a02 * (a10 * a21 - a11 * a20);
+
+        if (Math.Abs(det) < 1e-9)
+        {
+            x = y = z = 0;
+            return false;
+        }
+
+        double detX = b0 * (a11 * a22 - a12 * a21)
+                    - a01 * (b1 * a22 - a12 * b2)
+                    + a02 * (b1 * a21 - a11 * b2);
+        double detY = a00 * (b1 * a22 - a12 * b2)
+                    - b0 * (a10 * a22 - a12 * a20)
+                    + a02 * (a10 * b2 - b1 * a20);
+        double detZ = a00 * (a11 * b2 - b1 * a21)
+                    - a01 * (a10 * b2 - b1 * a20)
+                    + b0 * (a10 * a21 - a11 * a20);
+
+        x = detX / det;
+        y = detY / det;
+        z = detZ / det;
+        return true;
     }
 
     private static double Distance2D(Point3D a, Point3D b)
@@ -466,7 +570,8 @@ public sealed class ReferenceGuideService : IReferenceGuideService
         CrossMax = members.Max(m => m.Cross),
         Top = members.Max(m => m.Top),
         HoleFeatureIds = members.Where(m => m.Kind == CandidateKind.Hole).Select(m => m.FeatureId).Distinct().ToList(),
-        WallFeatureIds = members.Where(m => m.Kind == CandidateKind.Wall).Select(m => m.FeatureId).Distinct().ToList()
+        WallFeatureIds = members.Where(m => m.Kind == CandidateKind.Wall).Select(m => m.FeatureId).Distinct().ToList(),
+        MemberCount = members.Count
     };
 
     // --- Emitting lines/dimensions --------------------------------------------
@@ -498,12 +603,26 @@ public sealed class ReferenceGuideService : IReferenceGuideService
         bool isXAxis,
         WorkPlane plane,
         double top,
+        ReferenceGuideOptions opts,
         List<GuideLine> lines,
         List<GuideDimension> dimensions)
     {
         foreach (var neighborhood in neighborhoods)
         {
             var sorted = neighborhood.OrderBy(c => c.Coordinate).ToList();
+
+            // Draw a full-span red line for every cluster in the conflict, not just a stub
+            // between the two points - the stub's length is the mismatch itself (often well
+            // under a millimeter at scene scale), so on its own it is effectively invisible.
+            foreach (var cluster in sorted)
+            {
+                double crossMin = cluster.CrossMin - opts.LineMargin;
+                double crossMax = cluster.CrossMax + opts.LineMargin;
+                var start = MakePoint(cluster.Coordinate, crossMin, top, isXAxis, plane);
+                var end = MakePoint(cluster.Coordinate, crossMax, top, isXAxis, plane);
+                lines.Add(new GuideLine(GuideKind.NearMiss, start, end, cluster.Coordinate, cluster.AllFeatureIds));
+            }
+
             for (int i = 1; i < sorted.Count; i++)
             {
                 var a = sorted[i - 1];
@@ -515,10 +634,13 @@ public sealed class ReferenceGuideService : IReferenceGuideService
                 var pb = MakePoint(b.Coordinate, cross, top, isXAxis, plane);
                 var ids = a.AllFeatureIds.Concat(b.AllFeatureIds).Distinct().ToList();
 
-                lines.Add(new GuideLine(GuideKind.NearMiss, pa, pb, diff, ids));
-                dimensions.Add(new GuideDimension(
-                    GuideKind.NearMiss, pa, pb, diff,
-                    $"{a.Coordinate:0.###} ≠ {b.Coordinate:0.###}", ids));
+                // Report how many vertices/edges support each side, but never which one is
+                // "right" - that depends on design intent this service can't see.
+                string axisLabel = isXAxis ? "X" : "Y";
+                string label = FormattableString.Invariant(
+                    $"{axisLabel}: {a.Coordinate:0.###} (×{a.MemberCount}) vs {b.Coordinate:0.###} (×{b.MemberCount})  Δ{diff:0.###}");
+
+                dimensions.Add(new GuideDimension(GuideKind.NearMiss, pa, pb, diff, label, ids));
             }
         }
     }
@@ -542,7 +664,7 @@ public sealed class ReferenceGuideService : IReferenceGuideService
             double cross = OverlapMidpoint(a, b);
             var pa = MakePoint(a.Coordinate, cross, top, isXAxis, plane);
             var pb = MakePoint(b.Coordinate, cross, top, isXAxis, plane);
-            dimensions.Add(new GuideDimension(GuideKind.HoleRow, pa, pb, step, step.ToString("0.###"),
+            dimensions.Add(new GuideDimension(GuideKind.HoleRow, pa, pb, step, step.ToString("0.###", CultureInfo.InvariantCulture),
                 a.AllFeatureIds.Concat(b.AllFeatureIds).Distinct().ToList()));
         }
 
@@ -555,7 +677,7 @@ public sealed class ReferenceGuideService : IReferenceGuideService
             var pb = MakePoint(last.Coordinate, cross, top, isXAxis, plane);
             var allIds = rows.SelectMany(r => r.AllFeatureIds).Distinct().ToList();
             dimensions.Add(new GuideDimension(GuideKind.HoleRow, pa, pb, steps[0],
-                $"{steps.Count}× {steps[0]:0.###}", allIds));
+                FormattableString.Invariant($"{steps.Count}× {steps[0]:0.###}"), allIds));
         }
 
         if (walls.Count == 0) return;
@@ -568,7 +690,7 @@ public sealed class ReferenceGuideService : IReferenceGuideService
             double cross = OverlapMidpoint(row, nearestWall);
             var pa = MakePoint(row.Coordinate, cross, top, isXAxis, plane);
             var pb = MakePoint(nearestWall.Coordinate, cross, top, isXAxis, plane);
-            dimensions.Add(new GuideDimension(GuideKind.Wall, pa, pb, dist, dist.ToString("0.###"),
+            dimensions.Add(new GuideDimension(GuideKind.Wall, pa, pb, dist, dist.ToString("0.###", CultureInfo.InvariantCulture),
                 row.AllFeatureIds.Concat(nearestWall.AllFeatureIds).Distinct().ToList()));
         }
     }

@@ -5,8 +5,11 @@ namespace AvaloniaCadEditor.Application.ReferenceGuides;
 /// </summary>
 public sealed class ReferenceGuideOptions
 {
-    /// <summary>Two coordinates within this distance are considered "the same" (a real alignment).</summary>
-    public double AlignTolerance { get; init; } = 1e-3;
+    /// <summary>Two coordinates within this distance are considered "the same" (a real alignment).
+    /// Left a bit looser than pure floating-point equality on purpose: derived values (like an
+    /// arc center refit from rounded input vertices) carry a little numeric noise of their own,
+    /// and this tolerance needs to absorb that without opening up towards <see cref="NearMissTolerance"/>.</summary>
+    public double AlignTolerance { get; init; } = 3e-3;
 
     /// <summary>
     /// Two coordinates farther apart than <see cref="AlignTolerance"/> but within this distance are

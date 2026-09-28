@@ -115,7 +115,58 @@ public class ReferenceGuideServiceTests
 
         result.Dimensions.Should().Contain(d =>
             d.Kind == GuideKind.NearMiss &&
-            Math.Abs(d.Value - 0.142) < 1e-2);
+            Math.Abs(d.Value - 0.142) < 1e-2 &&
+            d.Label.StartsWith("X:") && d.Label.Contains("10.858") && d.Label.Contains("11"));
+    }
+
+    [Fact]
+    public void Analyze_ParedeComPequenoDesalinhamento_AsDuasLinhasEnvolvidasDevemFicarVermelhas()
+    {
+        var result = new ReferenceGuideService().Analyze(BuildDrilledPlateScene());
+
+        // O usuário reportou que era difícil enxergar o que estava em conflito: a única pista
+        // era um traço vermelho de 0.142 de comprimento. Agora as duas linhas conflitantes
+        // (10.858 e 11 no eixo X - uma linha "vertical", com Start.X ≈ End.X) devem aparecer
+        // inteiras e em vermelho, não em laranja (Wall) normal. Restrito ao eixo X porque
+        // Y=11 é, coincidentemente, uma fileira de furos legítima nesta cena.
+        result.Lines.Should().NotContain(l =>
+            (l.Kind == GuideKind.Wall || l.Kind == GuideKind.HoleRow) &&
+            (IsVerticalLineAt(l, 10.858) || IsVerticalLineAt(l, 11)));
+
+        result.Lines.Should().Contain(l => l.Kind == GuideKind.NearMiss && IsVerticalLineAt(l, 10.858));
+        result.Lines.Should().Contain(l => l.Kind == GuideKind.NearMiss && IsVerticalLineAt(l, 11));
+    }
+
+    private static bool IsVerticalLineAt(GuideLine line, double x) =>
+        Math.Abs(line.Start.X - line.End.X) < 1e-6 && Math.Abs(line.Coordinate - x) < 1e-2;
+
+    [Fact]
+    public void Analyze_CentrosDosDoisArcosArredondados_NaoDevemGerarFalsoQuaseAlinhamento()
+    {
+        // Reproduz o relato do usuário: analisando só a extrusão (sem furos), os centros dos
+        // arcos do topo (Y=21) e da base (Y=-9) deveriam computar para o mesmo X=4.858. Antes
+        // do ajuste de círculo por mínimos quadrados, ruído numérico do cálculo do centro do
+        // arco fazia os dois caírem em 4.857/4.858 e virar um falso "quase-alinhamento".
+        var poly1 = new PolygonProfile(new List<Point3D>
+        {
+            new(-1.142, -9, -4), new(-1.142, -3, -4), new(-11, -3, -4), new(-11, 15, -4),
+            new(-1.142, 15, -4), new(-1.142, 21, -4), new(-0.938, 22.553, -4), new(-0.338, 24, -4),
+            new(0.615, 25.243, -4), new(1.858, 26.196, -4), new(3.305, 26.796, -4), new(4.858, 27, -4),
+            new(6.411, 26.796, -4), new(7.858, 26.196, -4), new(9.101, 25.243, -4), new(10.054, 24, -4),
+            new(10.653, 22.553, -4), new(10.858, 21, -4), new(10.858, 15, -4), new(11, -3, -4),
+            new(10.858, -9, -4), new(10.653, -10.553, -4), new(10.054, -12, -4), new(9.101, -13.243, -4),
+            new(7.858, -14.196, -4), new(6.411, -14.796, -4), new(4.858, -15, -4), new(3.305, -14.796, -4),
+            new(1.858, -14.196, -4), new(0.615, -13.243, -4), new(-0.338, -12, -4), new(-0.938, -10.553, -4)
+        });
+        var extrude = new ExtrudeFeature(poly1, 8, new Vector3D(0, 0, 8), "Extrusão do Contorno Base");
+
+        var result = new ReferenceGuideService().Analyze(new List<IFeature> { extrude });
+
+        result.Lines.Should().NotContain(l => l.Kind == GuideKind.NearMiss && Math.Abs(l.Coordinate - 4.858) < 0.05);
+        result.Dimensions.Should().NotContain(d => d.Kind == GuideKind.NearMiss && d.Label.Contains("4.85"));
+
+        var arcCenters = result.Lines.Where(l => l.Kind == GuideKind.ArcCenter).Select(l => l.Coordinate).ToList();
+        arcCenters.Should().Contain(c => Math.Abs(c - 4.858) < 0.01);
     }
 
     [Fact]
