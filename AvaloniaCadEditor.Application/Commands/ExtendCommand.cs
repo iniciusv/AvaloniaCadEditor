@@ -13,7 +13,7 @@ public class ExtendCommand : ICommandTool
 {
     public event EventHandler<string>? CodeGenerated;
     private readonly IGeometryEngine _geometryEngine;
-    private const double HitTolerance = 5.0;
+    public double HitTolerance { get; set; } = 5.0;
 
     public string Name => "Extend";
 

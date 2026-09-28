@@ -9,21 +9,30 @@ public class MathGeometryEngine : IGeometryEngine
 {
     public Entity? HitTest(IEnumerable<Entity> entities, Point3D point, double tolerance)
     {
+        // Nearest entity within tolerance wins; on a tie the last-drawn one (iterated first) is kept.
+        Entity? best = null;
+        double bestDistance = double.MaxValue;
         foreach (var entity in entities.Reverse())
         {
+            double distance;
             if (entity is LineEntity line)
             {
-                if (DistancePointToLine(point, line) <= tolerance)
-                    return entity;
+                distance = DistancePointToLine(point, line);
             }
             else if (entity is CircleEntity circle)
             {
                 var d = Math.Sqrt(Math.Pow(point.X - circle.Center.X, 2) + Math.Pow(point.Y - circle.Center.Y, 2));
-                if (Math.Abs(d - circle.Radius) <= tolerance)
-                    return entity;
+                distance = Math.Abs(d - circle.Radius);
+            }
+            else continue;
+
+            if (distance <= tolerance && distance < bestDistance)
+            {
+                best = entity;
+                bestDistance = distance;
             }
         }
-        return null;
+        return best;
     }
 
     public IEnumerable<(Point3D Point, SnapPointType Type)> GetSnapPoints(Entity entity, Point3D? referencePoint = null)

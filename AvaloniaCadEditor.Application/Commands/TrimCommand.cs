@@ -10,6 +10,8 @@ public class TrimCommand : ICommandTool
     private readonly IGeometryEngine _geometryEngine;
     public string Name => "Trim";
 
+    public double HitTolerance { get; set; } = 5.0;
+
     public TrimCommand(IGeometryEngine geometryEngine)
     {
         _geometryEngine = geometryEngine;
@@ -17,9 +19,7 @@ public class TrimCommand : ICommandTool
 
     public void OnMouseDown(Sketch sketch, Point3D point)
     {
-        double hitTolerance = 5.0; // Arbitrary hit tolerance for clicking
-        
-        var hitEntity = _geometryEngine.HitTest(sketch.Entities, point, hitTolerance);
+        var hitEntity = _geometryEngine.HitTest(sketch.Entities, point, HitTolerance);
         if (hitEntity == null) return;
 
         // Find all intersections of this entity with others in the sketch

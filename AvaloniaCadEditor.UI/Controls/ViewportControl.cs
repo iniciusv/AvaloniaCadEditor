@@ -42,7 +42,7 @@ public class ViewportControl : Control
 		var worldBefore = ScreenToWorld(mousePos);
 
 		_zoom *= zoomFactor;
-		if (ViewModel != null) ViewModel.CurrentZoom = _zoom;
+		if (ViewModel != null) ViewModel.WorldUnitsPerPixel = 1.0 / _zoom;
 
 		var worldAfter = ScreenToWorld(mousePos);
 		_pan = new Point(_pan.X + (worldAfter.X - worldBefore.X) * _zoom,

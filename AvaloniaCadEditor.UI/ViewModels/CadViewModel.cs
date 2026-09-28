@@ -266,11 +266,31 @@ public class CadViewModel : INotifyPropertyChanged
 
 	public bool IsInCustomWorkPlane => !ActiveWorkPlane.Equals(WorkPlane.XY);
 
-	private double _currentZoom = 1.0;
-	public double CurrentZoom
+	/// <summary>Pick radius around the cursor, in screen pixels, for sketch entity hit-testing.</summary>
+	private const double HitTolerancePixels = 6.0;
+
+	/// <summary>Size of one screen pixel in world units at the cursor, measured on the active work plane by the viewport.</summary>
+	public double WorldUnitsPerPixel { get; set; } = 1.0;
+
+	private double HitTolerance => HitTolerancePixels * WorldUnitsPerPixel;
+
+	private void ApplyHitTolerance()
 	{
-		get => _currentZoom;
-		set { _currentZoom = value; OnPropertyChanged(); }
+		switch (CurrentTool)
+		{
+			case SelectTool t: t.HitTolerance = HitTolerance; break;
+			case TrimCommand t: t.HitTolerance = HitTolerance; break;
+			case ExtendCommand t: t.HitTolerance = HitTolerance; break;
+		}
+	}
+
+	private IProfile? FindRegionAtPoint(Point3D localPoint)
+	{
+		// Smallest containing region wins, so a hole nested in an outer profile stays pickable.
+		return Sketch.Profiles
+			.Where(p => p.Plane.Equals(ActiveWorkPlane) && p.ContainsPoint(localPoint))
+			.OrderBy(p => p.Area)
+			.FirstOrDefault();
 	}
 
 	public ICommand SelectLineToolCommand { get; }
@@ -692,18 +712,12 @@ public class CadViewModel : INotifyPropertyChanged
 		var localRaw = ActiveWorkPlane.ToLocalSpace(worldPoint);
 		localRaw = new Point3D(localRaw.X, localRaw.Y, 0.0);
 
-		// Reduced 10x as requested (0.5 visual pixels)
-		double dynamicTolerance = 0.5 / CurrentZoom;
-
-		if (CurrentTool is SelectTool selTool)
-		{
-			selTool.HitTolerance = dynamicTolerance;
-		}
+		ApplyHitTolerance();
 
 		if (CurrentTool is SelectTool && CurrentMode == EditorMode.SketchEdit)
 		{
 			// Use localRaw for HitTest so magnetic snapping doesn't force line selection
-			var hitEntity = _geometryEngine.HitTest(Sketch.Entities.Where(e => e.IsVisible), localRaw, dynamicTolerance);
+			var hitEntity = _geometryEngine.HitTest(Sketch.Entities.Where(e => e.IsVisible), localRaw, HitTolerance);
 			if (hitEntity != null)
 			{
 				_selectionService.SelectById(Sketch, hitEntity.Id);
@@ -711,7 +725,7 @@ public class CadViewModel : INotifyPropertyChanged
 				return true;
 			}
 
-			var hitProfile = Sketch.Profiles.FirstOrDefault(p => p.Plane.Equals(ActiveWorkPlane) && p.ContainsPoint(localRaw));
+			var hitProfile = FindRegionAtPoint(localRaw);
 			if (hitProfile != null)
 			{
 				System.Diagnostics.Debug.WriteLine($"[DEBUG] HitProfile: {hitProfile.Id}, Area: {hitProfile.Area:F2}");
@@ -812,6 +826,7 @@ public class CadViewModel : INotifyPropertyChanged
 		var snappedWorld = _osnapService.GetSnappedPoint(Sketch, worldPoint, refPt != null ? ActiveWorkPlane.ToWorldSpace(refPt.Value) : null, SolidMesh);
 		var localSnapped = ActiveWorkPlane.ToLocalSpace(snappedWorld);
 		CurrentSnappedPoint = localSnapped;
+		ApplyHitTolerance();
 		CurrentTool?.OnMouseMove(Sketch, localSnapped);
 
 		if (CurrentTool is ExtrudeCommand)
@@ -821,8 +836,7 @@ public class CadViewModel : INotifyPropertyChanged
 
 		if (CurrentMode == EditorMode.SketchEdit)
 		{
-			var hitProfile = Sketch.Profiles.FirstOrDefault(p => p.ContainsPoint(localSnapped));
-			HoveredProfile = hitProfile;
+			HoveredProfile = FindRegionAtPoint(localSnapped);
 		}
 		else
 		{

@@ -121,6 +121,7 @@ public sealed class ViewportInputHandler
                 
                 if (intersection.HasValue)
                 {
+                    UpdateWorldUnitsPerPixel(viewModel, camera, point.Position, bounds, planeNormal, planeOrigin, intersection.Value);
                     bool isCtrl = e.KeyModifiers.HasFlag(KeyModifiers.Control);
                     handledBy2D = viewModel.OnPointerPressed(intersection.Value, isCtrl);
                     requestRender();
@@ -364,6 +365,7 @@ public sealed class ViewportInputHandler
                 var intersection = ray.IntersectPlane(planeNormal, planeOrigin);
                 if (intersection.HasValue)
                 {
+                    UpdateWorldUnitsPerPixel(viewModel, camera, point.Position, bounds, planeNormal, planeOrigin, intersection.Value);
                     viewModel.OnPointerMoved(intersection.Value);
                 }
             }
@@ -389,6 +391,24 @@ public sealed class ViewportInputHandler
             _isOrbiting = false;
             _lastMousePos = null;
         }
+    }
+
+    /// <summary>
+    /// Measures how many world units one screen pixel spans on the work plane at the cursor, by casting a
+    /// second ray one pixel to the side. Works for perspective and orthographic cameras at any orientation.
+    /// </summary>
+    private static void UpdateWorldUnitsPerPixel(
+        CadViewModel viewModel, CameraState camera, Point screenPos, Size bounds,
+        Vector3 planeNormal, Vector3 planeOrigin, AvaloniaCadEditor.Domain.ValueObjects.Point3D hitAtCursor)
+    {
+        var viewport = new Vector2((float)bounds.Width, (float)bounds.Height);
+        var neighborRay = camera.ScreenPointToRay(new Vector2((float)screenPos.X + 1f, (float)screenPos.Y), viewport);
+        var neighbor = neighborRay.IntersectPlane(planeNormal, planeOrigin);
+        if (!neighbor.HasValue) return;
+
+        double unitsPerPixel = hitAtCursor.DistanceTo(neighbor.Value);
+        if (unitsPerPixel > 0 && double.IsFinite(unitsPerPixel))
+            viewModel.WorldUnitsPerPixel = unitsPerPixel;
     }
 
     private AvaloniaCadEditor.Domain.ValueObjects.WorkPlane GetStableWorkPlane(CadViewModel viewModel, AvaloniaCadEditor.Domain.ValueObjects.RaycastHit hit)
