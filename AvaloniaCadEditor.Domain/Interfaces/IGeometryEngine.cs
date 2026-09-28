@@ -1,4 +1,5 @@
 using AvaloniaCadEditor.Domain.Entities;
+using AvaloniaCadEditor.Domain.Profiles;
 using AvaloniaCadEditor.Domain.ValueObjects;
 
 namespace AvaloniaCadEditor.Domain.Interfaces;
@@ -39,4 +40,25 @@ public interface IGeometryEngine
     /// Recebe as entidades 2D do Sketch e gera a representação de um sólido 3D (extrusão).
     /// </summary>
     object Extrude(IEnumerable<Entity> entities, double thickness);
+
+    /// <summary>
+    /// Prolonga a ponta de 'entity' mais próxima de 'clickPoint' até a primeira entidade
+    /// de 'boundaries' encontrada nessa direção. Retorna null se nenhuma fronteira for atingida
+    /// ou se a entidade não puder ser estendida.
+    /// </summary>
+    Entity? ExtendEntity(Entity entity, IEnumerable<Entity> boundaries, Point3D clickPoint);
+
+    /// <summary>
+    /// Calcula a interseção das retas (ou entidades) infinitas suportando 'a' e 'b',
+    /// ignorando se o ponto cai dentro dos segmentos reais. Usado pelo Extend para
+    /// formar "cantos" entre duas linhas que não se tocam.
+    /// </summary>
+    Point3D? GetApparentIntersection(Entity a, Entity b);
+
+    /// <summary>
+    /// Cria um contorno paralelo (offset) de uma região fechada (perfil). 'distance' positivo
+    /// expande a região, negativo a contrai. Retorna uma lista vazia se o offset for inválido
+    /// (ex.: contração maior que a própria região).
+    /// </summary>
+    IEnumerable<Entity> OffsetProfile(IProfile profile, double distance);
 }

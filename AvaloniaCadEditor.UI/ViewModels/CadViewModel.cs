@@ -275,7 +275,10 @@ public class CadViewModel : INotifyPropertyChanged
 
 	public ICommand SelectLineToolCommand { get; }
 	public ICommand SelectCircleToolCommand { get; }
+	public ICommand SelectPolygonToolCommand { get; }
 	public ICommand SelectTrimToolCommand { get; }
+	public ICommand SelectExtendToolCommand { get; }
+	public ICommand SelectOffsetToolCommand { get; }
 	public ICommand SelectExtrudeToolCommand { get; }
 	public ICommand SelectBooleanCutCommand { get; }
 	public ICommand SelectBooleanFuseCommand { get; }
@@ -418,7 +421,19 @@ public class CadViewModel : INotifyPropertyChanged
 			CurrentTool = new DrawCircleCommand();
 		});
 
+		SelectPolygonToolCommand = new RelayCommand(() =>
+		{
+			if (_selectionService.SelectedObject is IProfile faceProfile && faceProfile.Plane != null)
+			{
+				ActiveWorkPlane = faceProfile.Plane;
+			}
+			CurrentMode = EditorMode.SketchEdit;
+			CurrentTool = new DrawPolygonCommand();
+		});
+
 		SelectTrimToolCommand = new RelayCommand(() => { CurrentMode = EditorMode.SketchEdit; CurrentTool = new TrimCommand(_geometryEngine); });
+		SelectExtendToolCommand = new RelayCommand(() => { CurrentMode = EditorMode.SketchEdit; CurrentTool = new ExtendCommand(_geometryEngine); });
+		SelectOffsetToolCommand = new RelayCommand(() => { CurrentMode = EditorMode.SketchEdit; CurrentTool = new OffsetCommand(_geometryEngine); });
 		SelectExtrudeToolCommand = new RelayCommand(() =>
 		{
 			var profile = _selectionService.SelectedObject as IProfile;
@@ -626,7 +641,7 @@ public class CadViewModel : INotifyPropertyChanged
 		CurrentMode = EditorMode.SketchEdit;
 		SetActiveWorkPlane(wpf);
 		// By default, when entering sketch mode, grab the Select tool or Line tool
-		if (!(CurrentTool is DrawLineCommand) && !(CurrentTool is DrawCircleCommand) && !(CurrentTool is TrimCommand))
+		if (!(CurrentTool is DrawLineCommand) && !(CurrentTool is DrawCircleCommand) && !(CurrentTool is DrawPolygonCommand) && !(CurrentTool is TrimCommand) && !(CurrentTool is ExtendCommand) && !(CurrentTool is OffsetCommand))
 		{
 			SelectSelectToolCommand.Execute(null);
 		}
@@ -774,7 +789,7 @@ public class CadViewModel : INotifyPropertyChanged
 
 		UpdateStatusText(localSnapped);
 
-		if (CurrentTool is DrawLineCommand || CurrentTool is DrawCircleCommand || CurrentTool is TrimCommand)
+		if (CurrentTool is DrawLineCommand || CurrentTool is DrawCircleCommand || CurrentTool is DrawPolygonCommand || CurrentTool is TrimCommand || CurrentTool is ExtendCommand || CurrentTool is OffsetCommand)
 		{
 			RefreshProfiles();
 		}
@@ -871,12 +886,21 @@ public class CadViewModel : INotifyPropertyChanged
 			case "C":
 				SelectCircleToolCommand.Execute(null);
 				break;
+			case "G":
+				SelectPolygonToolCommand.Execute(null);
+				break;
 			case "P":
 			case "E":
 				SelectExtrudeToolCommand.Execute(null);
 				break;
 			case "T":
 				SelectTrimToolCommand.Execute(null);
+				break;
+			case "X":
+				SelectExtendToolCommand.Execute(null);
+				break;
+			case "O":
+				SelectOffsetToolCommand.Execute(null);
 				break;
 			case "M":
 				SelectMoveToolCommand.Execute(null);

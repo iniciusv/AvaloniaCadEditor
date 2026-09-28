@@ -1,5 +1,6 @@
 using AvaloniaCadEditor.Domain.Entities;
 using AvaloniaCadEditor.Domain.Interfaces;
+using AvaloniaCadEditor.Domain.Profiles;
 using AvaloniaCadEditor.Domain.ValueObjects;
 
 namespace AvaloniaCadEditor.Infrastructure.Engines;
@@ -122,6 +123,198 @@ public class MathGeometryEngine : IGeometryEngine
         return new { Type = "Extrusion3D", Entities = entities, Thickness = thickness };
     }
 
+    public Entity? ExtendEntity(Entity entity, IEnumerable<Entity> boundaries, Point3D clickPoint)
+    {
+        if (entity is not LineEntity line) return null;
+
+        // Escolhe a ponta mais próxima do clique como a extremidade "móvel".
+        bool extendingStart = clickPoint.DistanceTo(line.StartPoint) < clickPoint.DistanceTo(line.EndPoint);
+        var origin = extendingStart ? line.StartPoint : line.EndPoint;
+        var anchor = extendingStart ? line.EndPoint : line.StartPoint;
+
+        var direction = (origin - anchor);
+        if (direction.Length < 1e-9) return null;
+        direction = direction.Normalize();
+
+        double bestT = double.PositiveInfinity;
+        Point3D? bestPoint = null;
+
+        foreach (var boundary in boundaries)
+        {
+            if (boundary == entity) continue;
+
+            if (boundary is LineEntity otherLine)
+            {
+                var hit = RayLineIntersection(origin, direction, otherLine.StartPoint, otherLine.EndPoint);
+                if (hit == null) continue;
+
+                var (rayT, u) = hit.Value;
+                if (rayT > 1e-6 && u >= -1e-6 && u <= 1 + 1e-6 && rayT < bestT)
+                {
+                    bestT = rayT;
+                    bestPoint = new Point3D(origin.X + direction.X * rayT, origin.Y + direction.Y * rayT, 0);
+                }
+            }
+            else if (boundary is CircleEntity circle)
+            {
+                foreach (var t in RayCircleIntersections(origin, direction, circle))
+                {
+                    if (t > 1e-6 && t < bestT)
+                    {
+                        bestT = t;
+                        bestPoint = new Point3D(origin.X + direction.X * t, origin.Y + direction.Y * t, 0);
+                    }
+                }
+            }
+        }
+
+        if (bestPoint == null) return null;
+
+        var newLine = extendingStart
+            ? new LineEntity(bestPoint.Value, anchor)
+            : new LineEntity(anchor, bestPoint.Value);
+        newLine.Plane = line.Plane;
+        return newLine;
+    }
+
+    public Point3D? GetApparentIntersection(Entity a, Entity b)
+    {
+        if (a is LineEntity lineA && b is LineEntity lineB)
+        {
+            var (point, _, _) = IntersectInfiniteLines(lineA.StartPoint, lineA.EndPoint, lineB.StartPoint, lineB.EndPoint);
+            return point;
+        }
+        return null;
+    }
+
+    public IEnumerable<Entity> OffsetProfile(IProfile profile, double distance)
+    {
+        if (profile is CircleProfile circleProfile)
+        {
+            double newRadius = circleProfile.Radius + distance;
+            if (newRadius <= 1e-6) return Enumerable.Empty<Entity>();
+
+            var circle = new CircleEntity(circleProfile.Center, newRadius) { Plane = circleProfile.Plane };
+            return new List<Entity> { circle };
+        }
+
+        // Polígono genérico (Polygon, Rectangle, etc.): usa os vértices locais na ordem do perfil.
+        var localVerts = profile.GetVertices().Select(profile.Plane.ToLocalSpace).ToList();
+        if (localVerts.Count < 3) return Enumerable.Empty<Entity>();
+
+        double signedArea = SignedArea(localVerts);
+        if (Math.Abs(signedArea) < 1e-9) return Enumerable.Empty<Entity>();
+
+        // Sentido anti-horário (área com sinal positiva) => normal externa de uma aresta (p1->p2) aponta para a direita da aresta.
+        double orientation = signedArea > 0 ? 1.0 : -1.0;
+        int n = localVerts.Count;
+
+        var offsetLinesStart = new Point3D[n];
+        var offsetLinesEnd = new Point3D[n];
+
+        for (int i = 0; i < n; i++)
+        {
+            var p1 = localVerts[i];
+            var p2 = localVerts[(i + 1) % n];
+            var edge = (p2 - p1);
+            if (edge.Length < 1e-9) return Enumerable.Empty<Entity>();
+            edge = edge.Normalize();
+
+            // Normal externa da aresta (rotaciona -90° para CCW): (edge.Y, -edge.X)
+            var normal = new Vector3D(edge.Y * orientation, -edge.X * orientation, 0);
+
+            offsetLinesStart[i] = p1 + normal * distance;
+            offsetLinesEnd[i] = p2 + normal * distance;
+        }
+
+        var newVertices = new List<Point3D>(n);
+        for (int i = 0; i < n; i++)
+        {
+            int prev = (i - 1 + n) % n;
+            var (point, _, _) = IntersectInfiniteLines(offsetLinesStart[prev], offsetLinesEnd[prev], offsetLinesStart[i], offsetLinesEnd[i]);
+            newVertices.Add(point ?? offsetLinesStart[i]);
+        }
+
+        // Se alguma aresta "virou do avesso" (o offset interno ultrapassou o centro da região),
+        // a direção da aresta resultante fica oposta à da aresta original. Checar isso aresta a
+        // aresta é mais robusto do que comparar apenas o sinal da área total: num retângulo, por
+        // exemplo, uma contração maior que a metade de AMBAS as dimensões inverte os dois eixos
+        // simultaneamente e a área com sinal "se corrige" sozinha, escondendo o problema.
+        for (int i = 0; i < n; i++)
+        {
+            var originalEdge = localVerts[(i + 1) % n] - localVerts[i];
+            var newEdge = newVertices[(i + 1) % n] - newVertices[i];
+            if (originalEdge.DotProduct(newEdge) <= 0)
+            {
+                return Enumerable.Empty<Entity>();
+            }
+        }
+
+        // LineEntity armazena pontos em espaço local do plano do sketch (mesma convenção usada
+        // ao construir entidades a partir de cliques do mouse), então newVertices (já locais) é usado direto.
+        var result = new List<Entity>(n);
+        for (int i = 0; i < n; i++)
+        {
+            var p1 = newVertices[i];
+            var p2 = newVertices[(i + 1) % n];
+            result.Add(new LineEntity(p1, p2) { Plane = profile.Plane });
+        }
+        return result;
+    }
+
+    private static double SignedArea(IReadOnlyList<Point3D> verts)
+    {
+        double area = 0;
+        for (int i = 0; i < verts.Count; i++)
+        {
+            var p1 = verts[i];
+            var p2 = verts[(i + 1) % verts.Count];
+            area += p1.X * p2.Y - p2.X * p1.Y;
+        }
+        return area / 2.0;
+    }
+
+    /// <summary>
+    /// Resolve origin + t*direction = segStart + u*(segEnd-segStart) para t (ao longo do raio)
+    /// e u (ao longo do segmento). Retorna null se raio e segmento forem paralelos.
+    /// </summary>
+    private (double t, double u)? RayLineIntersection(Point3D origin, Vector3D direction, Point3D segStart, Point3D segEnd)
+    {
+        double segDx = segEnd.X - segStart.X;
+        double segDy = segEnd.Y - segStart.Y;
+
+        double det = segDx * direction.Y - segDy * direction.X;
+        if (Math.Abs(det) < 1e-10) return null; // Paralelas
+
+        double dx0 = segStart.X - origin.X;
+        double dy0 = segStart.Y - origin.Y;
+
+        double t = (segDx * dy0 - segDy * dx0) / det;
+        double u = (direction.X * dy0 - direction.Y * dx0) / det;
+
+        return (t, u);
+    }
+
+    private IEnumerable<double> RayCircleIntersections(Point3D origin, Vector3D direction, CircleEntity circle)
+    {
+        double ox = origin.X - circle.Center.X;
+        double oy = origin.Y - circle.Center.Y;
+
+        double a = direction.X * direction.X + direction.Y * direction.Y;
+        double b = 2 * (ox * direction.X + oy * direction.Y);
+        double c = ox * ox + oy * oy - circle.Radius * circle.Radius;
+
+        double discriminant = b * b - 4 * a * c;
+        if (discriminant < 0 || a < 1e-12) yield break;
+
+        double sqrtDisc = Math.Sqrt(discriminant);
+        double t1 = (-b - sqrtDisc) / (2 * a);
+        double t2 = (-b + sqrtDisc) / (2 * a);
+
+        yield return t1;
+        yield return t2;
+    }
+
     private double DistancePointToLine(Point3D p, LineEntity line)
     {
         var v = line.EndPoint - line.StartPoint;
@@ -141,18 +334,31 @@ public class MathGeometryEngine : IGeometryEngine
 
     private Point3D? IntersectLines(Point3D p1, Point3D p2, Point3D p3, Point3D p4)
     {
+        var (point, t, u) = IntersectInfiniteLines(p1, p2, p3, p4);
+        if (point == null) return null;
+
+        if (t >= 0 && t <= 1 && u >= 0 && u <= 1)
+        {
+            return point;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Interseção das retas infinitas suportadas por p1-p2 e p3-p4, junto com os parâmetros
+    /// t (ao longo de p1-p2) e u (ao longo de p3-p4). point é null se as retas forem paralelas.
+    /// </summary>
+    private (Point3D? point, double t, double u) IntersectInfiniteLines(Point3D p1, Point3D p2, Point3D p3, Point3D p4)
+    {
         double denominator = (p1.X - p2.X) * (p3.Y - p4.Y) - (p1.Y - p2.Y) * (p3.X - p4.X);
-        if (Math.Abs(denominator) < 1e-10) return null; // Paralelas
+        if (Math.Abs(denominator) < 1e-10) return (null, 0, 0); // Paralelas
 
         double t = ((p1.X - p3.X) * (p3.Y - p4.Y) - (p1.Y - p3.Y) * (p3.X - p4.X)) / denominator;
         double u = ((p1.X - p3.X) * (p1.Y - p2.Y) - (p1.Y - p3.Y) * (p1.X - p2.X)) / denominator;
 
-        if (t >= 0 && t <= 1 && u >= 0 && u <= 1)
-        {
-            return new Point3D(p1.X + t * (p2.X - p1.X), p1.Y + t * (p2.Y - p1.Y), 0);
-        }
-
-        return null;
+        var point = new Point3D(p1.X + t * (p2.X - p1.X), p1.Y + t * (p2.Y - p1.Y), 0);
+        return (point, t, u);
     }
 
     private bool IsPointOnSegment(Point3D p, Point3D a, Point3D b)

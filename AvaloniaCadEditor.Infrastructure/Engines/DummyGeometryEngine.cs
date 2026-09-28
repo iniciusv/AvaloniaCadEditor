@@ -1,5 +1,6 @@
 using AvaloniaCadEditor.Domain.Entities;
 using AvaloniaCadEditor.Domain.Interfaces;
+using AvaloniaCadEditor.Domain.Profiles;
 using AvaloniaCadEditor.Domain.ValueObjects;
 
 namespace AvaloniaCadEditor.Infrastructure.Engines;
@@ -60,5 +61,23 @@ public class DummyGeometryEngine : IGeometryEngine
     {
         // Dummy
         return new object();
+    }
+
+    public Entity? ExtendEntity(Entity entity, IEnumerable<Entity> boundaries, Point3D clickPoint)
+    {
+        // Dummy: não estende
+        return null;
+    }
+
+    public Point3D? GetApparentIntersection(Entity a, Entity b)
+    {
+        // Dummy: sem interseção
+        return null;
+    }
+
+    public IEnumerable<Entity> OffsetProfile(IProfile profile, double distance)
+    {
+        // Dummy: sem offset
+        return Enumerable.Empty<Entity>();
     }
 }

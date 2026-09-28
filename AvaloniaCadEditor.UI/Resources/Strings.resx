@@ -7,7 +7,10 @@
   <data name="SelectTool" xml:space="preserve"><value>Select (Space)</value></data>
   <data name="LineTool" xml:space="preserve"><value>Line (L)</value></data>
   <data name="CircleTool" xml:space="preserve"><value>Circle (C)</value></data>
+  <data name="PolygonTool" xml:space="preserve"><value>Polygon (G)</value></data>
   <data name="TrimTool" xml:space="preserve"><value>Trim (T)</value></data>
+  <data name="ExtendTool" xml:space="preserve"><value>Extend (X)</value></data>
+  <data name="OffsetTool" xml:space="preserve"><value>Offset (O)</value></data>
   <data name="ExitSketch" xml:space="preserve"><value>Exit Sketch</value></data>
   <data name="ImportStl" xml:space="preserve"><value>Import STL</value></data>
   <data name="ExportStl" xml:space="preserve"><value>Export STL</value></data>

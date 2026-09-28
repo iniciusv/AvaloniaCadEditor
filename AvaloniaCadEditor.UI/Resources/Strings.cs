@@ -14,7 +14,10 @@ public static class Strings
     public static string SelectTool => ResourceManager.GetString("SelectTool") ?? "Select (Space)";
     public static string LineTool => ResourceManager.GetString("LineTool") ?? "Line (L)";
     public static string CircleTool => ResourceManager.GetString("CircleTool") ?? "Circle (C)";
+    public static string PolygonTool => ResourceManager.GetString("PolygonTool") ?? "Polygon (G)";
     public static string TrimTool => ResourceManager.GetString("TrimTool") ?? "Trim (T)";
+    public static string ExtendTool => ResourceManager.GetString("ExtendTool") ?? "Extend (X)";
+    public static string OffsetTool => ResourceManager.GetString("OffsetTool") ?? "Offset (O)";
     public static string ExitSketch => ResourceManager.GetString("ExitSketch") ?? "Exit Sketch";
     public static string ImportStl => ResourceManager.GetString("ImportStl") ?? "Import STL";
     public static string ExportStl => ResourceManager.GetString("ExportStl") ?? "Export STL";

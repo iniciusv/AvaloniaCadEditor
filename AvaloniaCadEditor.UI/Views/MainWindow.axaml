@@ -134,7 +134,10 @@
                     <Button Content="{x:Static res:Strings.SelectTool}" Command="{Binding SelectSelectToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     <Button Content="{x:Static res:Strings.LineTool}" Command="{Binding SelectLineToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     <Button Content="{x:Static res:Strings.CircleTool}" Command="{Binding SelectCircleToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                    <Button Content="{x:Static res:Strings.PolygonTool}" Command="{Binding SelectPolygonToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     <Button Content="{x:Static res:Strings.TrimTool}" Command="{Binding SelectTrimToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                    <Button Content="{x:Static res:Strings.ExtendTool}" Command="{Binding SelectExtendToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                    <Button Content="{x:Static res:Strings.OffsetTool}" Command="{Binding SelectOffsetToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     
                     <Button Content="{x:Static res:Strings.ExitSketch}" Command="{Binding ExitWorkPlaneCommand}" IsVisible="{Binding IsInCustomWorkPlane}" Background="#E74C3C" Foreground="White" FontWeight="Bold" Margin="0,4" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     
