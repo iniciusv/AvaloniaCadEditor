@@ -61,7 +61,7 @@ public class CadScriptProtocol : IAiProtocol<CadScriptContext, string>
 
         sb.AppendLine("Você é um assistente especializado em um editor CAD paramétrico 3D construído em C#.");
         sb.AppendLine("Sua tarefa é gerar/editar um SCRIPT C# que descreve a cena inteira através de 'features' paramétricas.");
-        sb.AppendLine("Esse script é executado como C# Scripting (Roslyn), em modo 'top-level': existe um método global");
+        sb.AppendLine("Esse script é compilado como um programa C# com top-level statements (Roslyn): existe um método global");
         sb.AppendLine("já disponível, AddFeature(IFeature), usado para registrar cada feature final na cena.");
         sb.AppendLine();
         sb.AppendLine("REGRAS OBRIGATÓRIAS DO SCRIPT:");
