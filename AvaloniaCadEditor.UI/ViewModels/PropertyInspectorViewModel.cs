@@ -1,6 +1,11 @@
 using System;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Globalization;
+using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Windows.Input;
+using AvaloniaCadEditor.Application.Scenes;
 using AvaloniaCadEditor.Application.Services;
 using AvaloniaCadEditor.Domain.Entities;
 using AvaloniaCadEditor.Domain.Features;
@@ -13,13 +18,48 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
 {
     private readonly ISelectionService _selectionService;
     private readonly Action _onModelParametricModified;
+    private readonly Func<IPartCodeEditor?> _partCodeEditor;
 
-    public PropertyInspectorViewModel(ISelectionService selectionService, Action onModelParametricModified)
+    /// <param name="partCodeEditor">
+    /// Acesso ao editor de código, usado para ler e reescrever os parâmetros de peças. É uma função
+    /// porque o editor é criado depois do inspector.
+    /// </param>
+    public PropertyInspectorViewModel(ISelectionService selectionService, Action onModelParametricModified,
+        Func<IPartCodeEditor?>? partCodeEditor = null)
     {
         _selectionService = selectionService;
         _onModelParametricModified = onModelParametricModified;
+        _partCodeEditor = partCodeEditor ?? (() => null);
         _selectionService.SelectionChanged += RefreshProperties;
+        OpenPartDefinitionCommand = new RelayCommand(() =>
+        {
+            if (_selectionService.SelectedObject is PartInstance instance)
+            {
+                _partCodeEditor()?.GoToPartDefinition(instance.PartTypeName);
+            }
+        });
     }
+
+    // --- Peças paramétricas ---
+    private bool _isPartInstance;
+    public bool IsPartInstance
+    {
+        get => _isPartInstance;
+        private set { _isPartInstance = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>Parâmetros da peça selecionada; editar e apertar Enter reescreve o código.</summary>
+    public ObservableCollection<PartParameterItem> PartParameters { get; } = new();
+
+    private string _partNote = "";
+    /// <summary>De onde a instância veio no código e quantas instâncias a mesma linha cria.</summary>
+    public string PartNote
+    {
+        get => _partNote;
+        private set { _partNote = value; OnPropertyChanged(); }
+    }
+
+    public ICommand OpenPartDefinitionCommand { get; }
 
     private bool _hasSelection;
     public bool HasSelection
@@ -197,6 +237,12 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
     private void RefreshProperties()
     {
         var obj = _selectionService.SelectedObject;
+        if (obj is not PartInstance)
+        {
+            IsPartInstance = false;
+            PartParameters.Clear();
+            PartNote = "";
+        }
         if (obj == null)
         {
             HasSelection = false;
@@ -271,15 +317,11 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
             _centerX = origin.X;
             _centerY = origin.Y;
             _centerZ = origin.Z;
+            DirectionText = "";
+            AdditionalInfo = "";
 
-            var lines = new System.Collections.Generic.List<string>();
-            foreach (var parameter in instance.Part.GetParameters())
-            {
-                lines.Add(parameter.ToString());
-            }
-            lines.Add($"Origem: ({origin.X:F1}, {origin.Y:F1}, {origin.Z:F1})");
-            AdditionalInfo = string.Join("\n", lines);
-
+            LoadPartParameters(instance);
+            IsPartInstance = true;
             NotifyAllFields();
         }
         else if (obj is IProfile profile)
@@ -344,6 +386,60 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
             NotifyAllFields();
         }
     }
+
+    private void LoadPartParameters(PartInstance instance)
+    {
+        PartParameters.Clear();
+        var editor = _partCodeEditor();
+        var arguments = editor?.ReadPartArguments(instance);
+        var sourceOrigin = AvaloniaCadEditor.Domain.Scripting.FeatureOrigin.Of(instance);
+
+        foreach (var parameter in instance.Part.GetParameters())
+        {
+            var argument = arguments?.FirstOrDefault(a => a.Name == parameter.Name);
+            bool typeOk = PartSourceEditor.IsEditableType(parameter.Type);
+            bool editable = editor != null && arguments != null && typeOk && argument?.IsEditable != false;
+
+            string? hint;
+            if (argument is { IsEditable: false })
+                hint = $"calculado no código: {argument.Expression}";
+            else if (!typeOk)
+                hint = "edite no código";
+            else if (parameter.Range != null)
+                hint = $"entre {Format(parameter.Range.Minimum)} e {Format(parameter.Range.Maximum)}";
+            else
+                hint = null;
+
+            PartParameters.Add(new PartParameterItem(
+                parameter.Name,
+                parameter.Type.Name,
+                Format(parameter.Value),
+                editable,
+                hint,
+                (name, text) => editor != null
+                    ? editor.SetPartParameterAsync(instance, name, text)
+                    : System.Threading.Tasks.Task.FromResult<string?>("Editor de código indisponível.")));
+        }
+
+        var notes = new System.Collections.Generic.List<string>();
+        if (sourceOrigin != null && sourceOrigin.Line > 0)
+        {
+            notes.Add($"Criada em {sourceOrigin.FilePath}, linha {sourceOrigin.Line}.");
+        }
+        int siblings = editor?.CountInstancesFromSameCall(instance) ?? 1;
+        if (siblings > 1)
+        {
+            notes.Add($"Esta linha cria {siblings} instâncias: a mudança vale para todas.");
+        }
+        if (editor != null && arguments == null)
+        {
+            notes.Add("Não achei a chamada Add(...) no código; edite os parâmetros no editor.");
+        }
+        PartNote = string.Join(" ", notes);
+    }
+
+    private static string Format(object? value) =>
+        value is IFormattable f ? f.ToString(null, CultureInfo.InvariantCulture) : value?.ToString() ?? "";
 
     private void ApplyRadiusModification()
     {

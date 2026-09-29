@@ -81,6 +81,7 @@ public static class CodeEditorBehavior
         SelectedFeatureProperty.Changed.AddClassHandler<TextEditor>((editor, e) => HandleSelectedFeatureChanged(editor, e));
         ErrorLinesProperty.Changed.AddClassHandler<TextEditor>((editor, e) => HandleErrorLinesChanged(editor, e));
         DocumentTextProperty.Changed.AddClassHandler<TextEditor>((editor, e) => HandleDocumentTextChanged(editor, e));
+        RevealLineProperty.Changed.AddClassHandler<TextEditor>((editor, e) => HandleRevealLineChanged(editor, e));
     }
 
     private static void ApplyVSDarkThemeToCSharp()
@@ -156,6 +157,31 @@ public static class CodeEditorBehavior
             }
         }
         editor.TextArea.TextView.Redraw();
+    }
+
+    /// <summary>Linha que o editor deve mostrar (rola até ela e põe o cursor no início).</summary>
+    public static readonly AttachedProperty<AvaloniaCadEditor.UI.ViewModels.EditorLineRequest?> RevealLineProperty =
+        AvaloniaProperty.RegisterAttached<TextEditor, AvaloniaCadEditor.UI.ViewModels.EditorLineRequest?>("RevealLine", typeof(CodeEditorBehavior));
+
+    public static AvaloniaCadEditor.UI.ViewModels.EditorLineRequest? GetRevealLine(AvaloniaObject element) => element.GetValue(RevealLineProperty);
+    public static void SetRevealLine(AvaloniaObject element, AvaloniaCadEditor.UI.ViewModels.EditorLineRequest? value) => element.SetValue(RevealLineProperty, value);
+
+    private static void HandleRevealLineChanged(TextEditor editor, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is not AvaloniaCadEditor.UI.ViewModels.EditorLineRequest request) return;
+
+        // Adiado: o pedido costuma chegar junto com a troca de arquivo ou de aba, antes do layout.
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            if (editor.Document == null || request.Line < 1 || request.Line > editor.Document.LineCount) return;
+            try
+            {
+                editor.TextArea.Caret.Line = request.Line;
+                editor.TextArea.Caret.Column = 1;
+                editor.ScrollToLine(request.Line);
+            }
+            catch (ArgumentOutOfRangeException) { /* documento trocou no meio do caminho */ }
+        }, Avalonia.Threading.DispatcherPriority.Loaded);
     }
 
     public static string GetDocumentText(AvaloniaObject element) => element.GetValue(DocumentTextProperty);

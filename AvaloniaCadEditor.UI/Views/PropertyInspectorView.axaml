@@ -39,17 +39,52 @@
                             <Grid ColumnDefinitions="*,*,*" Margin="0,2,0,0">
                                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
                                     <TextBlock Text="X:" Foreground="#FF6B6B" FontWeight="Bold" VerticalAlignment="Center" FontSize="11"/>
-                                    <NumericUpDown Value="{Binding CenterX, Mode=TwoWay}" ShowButtonSpinner="False" FormatString="F2" Increment="1" Width="65" Height="26" FontSize="11" />
+                                    <NumericUpDown Value="{Binding CenterX, Mode=TwoWay}" IsReadOnly="{Binding IsPartInstance}" ShowButtonSpinner="False" FormatString="F2" Increment="1" Width="65" Height="26" FontSize="11" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
                                     <TextBlock Text="Y:" Foreground="#51CF66" FontWeight="Bold" VerticalAlignment="Center" FontSize="11"/>
-                                    <NumericUpDown Value="{Binding CenterY, Mode=TwoWay}" ShowButtonSpinner="False" FormatString="F2" Increment="1" Width="65" Height="26" FontSize="11" />
+                                    <NumericUpDown Value="{Binding CenterY, Mode=TwoWay}" IsReadOnly="{Binding IsPartInstance}" ShowButtonSpinner="False" FormatString="F2" Increment="1" Width="65" Height="26" FontSize="11" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
                                     <TextBlock Text="Z:" Foreground="#339AF0" FontWeight="Bold" VerticalAlignment="Center" FontSize="11"/>
-                                    <NumericUpDown Value="{Binding CenterZ, Mode=TwoWay}" ShowButtonSpinner="False" FormatString="F2" Increment="1" Width="65" Height="26" FontSize="11" />
+                                    <NumericUpDown Value="{Binding CenterZ, Mode=TwoWay}" IsReadOnly="{Binding IsPartInstance}" ShowButtonSpinner="False" FormatString="F2" Increment="1" Width="65" Height="26" FontSize="11" />
                                 </StackPanel>
                             </Grid>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Parâmetros de peça: editar + Enter reescreve a chamada Add(...) no código e reexecuta -->
+                    <Border Background="#262626" CornerRadius="4" Padding="8" IsVisible="{Binding IsPartInstance}">
+                        <StackPanel Spacing="6">
+                            <Grid ColumnDefinitions="*,Auto">
+                                <TextBlock Text="🧩 Parâmetros da peça" FontWeight="SemiBold" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" />
+                                <Button Grid.Column="1" Content="Abrir definição" Command="{Binding OpenPartDefinitionCommand}"
+                                        FontSize="11" Padding="6,2" ToolTip.Tip="Abre o arquivo onde o record da peça é declarado" />
+                            </Grid>
+                            <ItemsControl ItemsSource="{Binding PartParameters}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="vm:PartParameterItem">
+                                        <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,Auto" Margin="0,2">
+                                            <TextBlock Grid.Column="0" Text="{Binding Name}" ToolTip.Tip="{Binding TypeName}"
+                                                       Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" />
+                                            <TextBox Grid.Column="1" Text="{Binding Text, Mode=TwoWay}" IsReadOnly="{Binding !IsEditable}"
+                                                     Height="26" FontSize="11" ToolTip.Tip="Enter aplica no código">
+                                                <TextBox.KeyBindings>
+                                                    <KeyBinding Gesture="Enter" Command="{Binding ApplyCommand}" />
+                                                </TextBox.KeyBindings>
+                                            </TextBox>
+                                            <StackPanel Grid.Row="1" Grid.Column="1" Spacing="1">
+                                                <TextBlock Text="{Binding Hint}" Foreground="#888888" FontSize="10" TextWrapping="Wrap"
+                                                           IsVisible="{Binding Hint, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                                <TextBlock Text="{Binding Error}" Foreground="#FF6B6B" FontSize="10" TextWrapping="Wrap"
+                                                           IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                            <TextBlock Text="{Binding PartNote}" Foreground="#888888" FontSize="10" TextWrapping="Wrap"
+                                       IsVisible="{Binding PartNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                         </StackPanel>
                     </Border>
 
@@ -87,7 +122,7 @@
                     </Border>
 
                     <!-- Analytical Metrics (Area & Volume) -->
-                    <Border Background="#262626" CornerRadius="4" Padding="8">
+                    <Border Background="#262626" CornerRadius="4" Padding="8" IsVisible="{Binding !IsPartInstance}">
                         <StackPanel Spacing="4">
                             <TextBlock Text="📐 Propriedades Físicas e Geométricas" FontWeight="SemiBold" Foreground="#AAAAAA" FontSize="11" />
                             

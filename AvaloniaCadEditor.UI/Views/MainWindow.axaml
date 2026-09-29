@@ -206,7 +206,7 @@
 
             <!-- Right Sidebar: Model Tree (+ Properties) / Code (+ AI Chat) / I-O -->
             <Grid Grid.Column="4" Background="#1E1E1E">
-                <TabControl Margin="0" Padding="0">
+                <TabControl Margin="0" Padding="0" SelectedIndex="{Binding SidebarTabIndex, Mode=TwoWay}">
                     <TabItem Header="{x:Static res:Strings.TreeTab}" Padding="10,5">
                         <!-- Model Entity Tree on top, Parametric Property Inspector below -->
                         <Grid RowDefinitions="*, 4, 1.2*">
@@ -218,10 +218,19 @@
                     <TabItem Header="{x:Static res:Strings.CodeTab}" Padding="10,5">
                         <!-- C# Code editor on top, AI Chat below -->
                         <Grid RowDefinitions="Auto,*,4,1.2*">
-                            <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="4">
-                                <!-- Seletor de arquivos + novo arquivo: só aparecem quando uma cena (pasta com .csproj) está aberta -->
-                                <Grid Grid.Column="0" ColumnDefinitions="*,Auto,Auto" IsVisible="{Binding ScriptEditor.IsProjectOpen}"
-                                      VerticalAlignment="Top" Margin="0,0,8,4">
+                            <!-- Barra do editor: botões (quebram linha quando o painel é estreito, Run primeiro),
+                                 depois arquivos da cena e inserção de peças (só com uma cena aberta / peças declaradas) -->
+                            <StackPanel Grid.Row="0" Margin="4" Spacing="4">
+                                <WrapPanel Orientation="Horizontal">
+                                    <Button Content="{x:Static res:Strings.RunCode}" Command="{Binding ScriptEditor.RunCodeCommand}"
+                                            Background="#27AE60" Foreground="White" FontWeight="Bold" Margin="0,0,4,4"/>
+                                    <Button Content="{x:Static res:Strings.NewScene}" Command="{Binding ScriptEditor.NewSceneCommand}" Margin="0,0,4,4"/>
+                                    <Button Content="{x:Static res:Strings.OpenScene}" Command="{Binding ScriptEditor.OpenSceneCommand}" Margin="0,0,4,4"/>
+                                    <Button Content="{x:Static res:Strings.LoadCode}" Command="{Binding ScriptEditor.LoadCodeFromFileCommand}" Margin="0,0,4,4"/>
+                                    <Button Content="{x:Static res:Strings.SaveCode}" Command="{Binding ScriptEditor.SaveCodeToFileCommand}" Margin="0,0,4,4"/>
+                                    <Button Content="{x:Static res:Strings.UpdateCode}" Command="{Binding ScriptEditor.GenerateCodeCommand}" Margin="0,0,4,4"/>
+                                </WrapPanel>
+                                <Grid ColumnDefinitions="*,Auto,Auto" IsVisible="{Binding ScriptEditor.IsProjectOpen}">
                                     <ComboBox Grid.Column="0"
                                               ItemsSource="{Binding ScriptEditor.ProjectFiles}"
                                               SelectedItem="{Binding ScriptEditor.ActiveFile, Mode=TwoWay}"
@@ -234,22 +243,23 @@
                                     <Button Grid.Column="2" Content="+" Command="{Binding ScriptEditor.CreateFileCommand}"
                                             ToolTip.Tip="{x:Static res:Strings.NewFileTooltip}" Margin="4,0,0,0"/>
                                 </Grid>
-                                <WrapPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
-                                    <Button Content="{x:Static res:Strings.NewScene}" Command="{Binding ScriptEditor.NewSceneCommand}" Margin="0,0,4,4"/>
-                                    <Button Content="{x:Static res:Strings.OpenScene}" Command="{Binding ScriptEditor.OpenSceneCommand}" Margin="0,0,4,4"/>
-                                    <Button Content="{x:Static res:Strings.LoadCode}" Command="{Binding ScriptEditor.LoadCodeFromFileCommand}" Margin="0,0,4,4"/>
-                                    <Button Content="{x:Static res:Strings.SaveCode}" Command="{Binding ScriptEditor.SaveCodeToFileCommand}" Margin="0,0,4,4"/>
-                                    <Button Content="{x:Static res:Strings.UpdateCode}" Command="{Binding ScriptEditor.GenerateCodeCommand}" Margin="0,0,4,4"/>
-                                    <Button Content="{x:Static res:Strings.RunCode}" Command="{Binding ScriptEditor.RunCodeCommand}"
-                                            Background="#27AE60" Foreground="White" FontWeight="Bold" Margin="0,0,0,4"/>
-                                </WrapPanel>
-                            </Grid>
+                                <Grid ColumnDefinitions="*,Auto" IsVisible="{Binding ScriptEditor.HasPartTypes}">
+                                    <ComboBox Grid.Column="0"
+                                              ItemsSource="{Binding ScriptEditor.PartTypes}"
+                                              SelectedItem="{Binding ScriptEditor.SelectedPartType, Mode=TwoWay}"
+                                              PlaceholderText="{x:Static res:Strings.PartTypePlaceholder}"
+                                              HorizontalAlignment="Stretch" MinWidth="120"/>
+                                    <Button Grid.Column="1" Content="{x:Static res:Strings.InsertPart}" Command="{Binding ScriptEditor.InsertPartCommand}"
+                                            ToolTip.Tip="{x:Static res:Strings.InsertPartTooltip}" Margin="4,0,0,0"/>
+                                </Grid>
+                            </StackPanel>
                             <AvaloniaEdit:TextEditor Grid.Row="1"
                                      Name="CodeEditor"
                                      SyntaxHighlighting="C#"
                                      controls:CodeEditorBehavior.DocumentText="{Binding ScriptEditor.GeneratedCSharpCode, Mode=TwoWay}"
                                      controls:CodeEditorBehavior.SelectedFeature="{Binding SelectedFeature}"
                                      controls:CodeEditorBehavior.ErrorLines="{Binding ScriptEditor.ActiveFileErrorLines}"
+                                     controls:CodeEditorBehavior.RevealLine="{Binding ScriptEditor.RevealLine}"
                                      FontFamily="Consolas, Fira Code, Monospace"
                                      Background="#1E1E1E"
                                      Foreground="#D4D4D4"

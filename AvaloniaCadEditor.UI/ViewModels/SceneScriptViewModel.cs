@@ -25,7 +25,7 @@ namespace AvaloniaCadEditor.UI.ViewModels;
 /// feitas fora do app (ex.: por uma IA externa) recarregam e reexecutam a cena.</item>
 /// </list>
 /// </summary>
-public class SceneScriptViewModel : INotifyPropertyChanged
+public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor
 {
     private const int ReloadDebounceMs = 300;
 
@@ -90,6 +90,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged
         OpenSceneCommand = new RelayCommand(async () => await OpenSceneAsync());
         CreateFileCommand = new RelayCommand(async () => await CreateFileAsync());
         GoToFirstErrorCommand = new RelayCommand(GoToFirstError);
+        InsertPartCommand = new RelayCommand(async () => await InsertPartAsync(SelectedPartType));
     }
 
     public ICommand GenerateCodeCommand { get; }
@@ -100,6 +101,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged
     public ICommand OpenSceneCommand { get; }
     public ICommand CreateFileCommand { get; }
     public ICommand GoToFirstErrorCommand { get; }
+    public ICommand InsertPartCommand { get; }
 
     // ---------------------------------------------------------------- Erros da última execução
 
@@ -390,17 +392,29 @@ public class SceneScriptViewModel : INotifyPropertyChanged
         await RunCodeAsync();
     }
 
-    /// <summary>Mostra no editor o arquivo onde a feature foi registrada (quando é outro arquivo da cena).</summary>
+    /// <summary>
+    /// Mostra no editor onde a feature foi registrada: troca de arquivo (numa cena com vários) e,
+    /// para instâncias de peça, rola até a linha do <c>Add(...)</c>.
+    /// </summary>
     public void RevealFeature(IFeature? feature)
     {
-        if (_project == null || feature == null) return;
+        if (feature == null) return;
         var origin = FeatureOrigin.Of(feature);
         if (origin == null || string.IsNullOrEmpty(origin.FilePath)) return;
 
-        string file = _project.ToRelativePath(origin.FilePath);
-        if (_documents.ContainsKey(file) && !string.Equals(file, _activeFile, StringComparison.OrdinalIgnoreCase))
+        if (_project != null)
         {
-            SwitchActiveFile(file);
+            string file = _project.ToRelativePath(origin.FilePath);
+            if (!_documents.ContainsKey(file)) return;
+            if (!string.Equals(file, _activeFile, StringComparison.OrdinalIgnoreCase))
+            {
+                SwitchActiveFile(file);
+            }
+        }
+
+        if (feature is PartInstance && origin.Line > 0)
+        {
+            RevealLine = new EditorLineRequest(origin.Line);
         }
     }
 
@@ -546,6 +560,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged
                 ? $"✓ {_project.Name}: {result.Features.Count} feature(s) em {_documents.Count} arquivo(s)"
                 : $"✓ Código executado: {result.Features.Count} feature(s)";
             SetErrors(Array.Empty<ScriptDiagnostic>());
+            RefreshPartTypes();
         }
         else
         {
@@ -559,6 +574,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged
                 errors.Add(new ScriptDiagnostic(string.Empty, 0, 0, ScriptDiagnosticSeverity.Error, "CAD0000", error));
             }
             SetErrors(errors);
+            RefreshPartTypes();
         }
     }
 
@@ -567,6 +583,237 @@ public class SceneScriptViewModel : INotifyPropertyChanged
     {
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
     }
+
+    // ---------------------------------------------------------------- Peças: parâmetros, definição e inserção
+
+    private IReadOnlyList<PartTypeInfo> _partTypeInfos = Array.Empty<PartTypeInfo>();
+    private string? _selectedPartType;
+    private EditorLineRequest? _revealLine;
+
+    /// <summary>Tipos de peça declarados nos arquivos da cena (records que herdam de Part).</summary>
+    public ObservableCollection<string> PartTypes { get; } = new();
+
+    public bool HasPartTypes => PartTypes.Count > 0;
+
+    /// <summary>Peça escolhida para o botão "Inserir".</summary>
+    public string? SelectedPartType
+    {
+        get => _selectedPartType;
+        set { _selectedPartType = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>Linha que o editor deve mostrar (definição de uma peça, chamada de uma instância).</summary>
+    public EditorLineRequest? RevealLine
+    {
+        get => _revealLine;
+        private set { _revealLine = value; OnPropertyChanged(); }
+    }
+
+    public IReadOnlyList<PartArgument>? ReadPartArguments(PartInstance instance)
+    {
+        var origin = FeatureOrigin.Of(instance);
+        if (origin == null) return null;
+        string? source = GetDocumentText(SourceFileOf(origin));
+        if (source == null) return null;
+
+        var names = instance.Part.GetParameters().Select(p => p.Name).ToList();
+        return PartSourceEditor.ReadArguments(source, origin.Line, names);
+    }
+
+    public int CountInstancesFromSameCall(PartInstance instance)
+    {
+        var origin = FeatureOrigin.Of(instance);
+        if (origin == null) return 1;
+        return _cadViewModel.Sketch.Features
+            .OfType<PartInstance>()
+            .Count(other => FeatureOrigin.Of(other) is { } o && o.Line == origin.Line &&
+                            string.Equals(o.FilePath, origin.FilePath, StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>
+    /// Troca o valor de um parâmetro no código que criou a instância e reexecuta a cena.
+    /// Quando a chamada está num laço, todas as instâncias criadas por ela mudam juntas: o
+    /// inspector edita o código, não uma cópia solta da peça.
+    /// </summary>
+    public async Task<string?> SetPartParameterAsync(PartInstance instance, string parameterName, string text)
+    {
+        var origin = FeatureOrigin.Of(instance);
+        if (origin == null) return "Não sei de onde esta instância veio no código.";
+
+        var parameters = instance.Part.GetParameters();
+        int index = parameters.Select(p => p.Name).ToList().IndexOf(parameterName);
+        if (index < 0) return $"{instance.PartTypeName} não tem o parâmetro {parameterName}.";
+        var parameter = parameters[index];
+
+        if (!PartSourceEditor.IsEditableType(parameter.Type))
+            return $"Parâmetros do tipo {parameter.Type.Name} só podem ser editados no código.";
+        if (!PartSourceEditor.TryParseValue(parameter.Type, text, out var value, out var parseError))
+            return parseError;
+        if (parameter.Range != null && !parameter.Range.IsValid(value))
+            return $"{parameterName} deve ficar entre {FormatInvariant(parameter.Range.Minimum)} e {FormatInvariant(parameter.Range.Maximum)}.";
+
+        string file = SourceFileOf(origin);
+        string? source = GetDocumentText(file);
+        if (source == null) return $"O arquivo {file} não faz parte da cena aberta.";
+
+        string valueCode = PartSourceEditor.FormatValue(value!);
+        string updated;
+        try
+        {
+            updated = PartSourceEditor.SetArgument(source, origin.Line, parameterName, index, valueCode);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message;
+        }
+        if (updated == source) return null;
+
+        string instanceName = instance.Name;
+        SetDocumentText(file, updated);
+        await RunCodeAsync();
+        if (HasErrors) return ErrorSummary;
+
+        SelectFeatureByName(instanceName);
+        _cadViewModel.StatusText = $"✓ {instance.PartTypeName}.{parameterName} = {valueCode}  ({file}, linha {origin.Line})";
+        return null;
+    }
+
+    public bool GoToPartDefinition(string typeName)
+    {
+        var type = PartSourceEditor.FindPartTypes(CurrentDocuments()).FirstOrDefault(t => t.Name == typeName);
+        if (type == null)
+        {
+            _cadViewModel.StatusText = $"Não achei a declaração de {typeName} nos arquivos da cena.";
+            return false;
+        }
+
+        if (_project != null && !string.Equals(type.FilePath, _activeFile, StringComparison.OrdinalIgnoreCase))
+        {
+            SwitchActiveFile(type.FilePath);
+        }
+        _cadViewModel.SidebarTabIndex = CadViewModel.CodeTabIndex;
+        RevealLine = new EditorLineRequest(type.Line);
+        _cadViewModel.StatusText = $"{typeName}: {type.FilePath}, linha {type.Line}";
+        return true;
+    }
+
+    /// <summary>Acrescenta ao arquivo de entrada uma instância da peça, ao lado do que já existe, e executa.</summary>
+    public async Task InsertPartAsync(string? typeName)
+    {
+        var type = _partTypeInfos.FirstOrDefault(t => t.Name == typeName);
+        if (type == null)
+        {
+            _cadViewModel.StatusText = "Escolha uma peça declarada na cena (record que herda de Part).";
+            return;
+        }
+
+        EnsureEntryDocumentActive();
+        string statement = PartSourceEditor.BuildAddStatement(type, NextFreeX());
+        string current = GeneratedCSharpCode.StartsWith("// Pressione") ? string.Empty : GeneratedCSharpCode;
+
+        _history.SaveState(GeneratedCSharpCode);
+        GeneratedCSharpCode = PartSourceEditor.InsertTopLevelStatement(current, statement);
+        if (_project != null && _activeFile != null) _documents[_activeFile] = GeneratedCSharpCode;
+
+        await RunCodeAsync();
+        if (HasErrors) return;
+
+        var inserted = _cadViewModel.Sketch.Features.OfType<PartInstance>().LastOrDefault(i => i.PartTypeName == type.Name);
+        if (inserted != null)
+        {
+            _cadViewModel.SelectionService.SelectFeature(inserted);
+        }
+        _cadViewModel.StatusText = $"✓ Inserido: {statement}";
+    }
+
+    private void RefreshPartTypes()
+    {
+        _partTypeInfos = PartSourceEditor.FindPartTypes(CurrentDocuments());
+        var names = _partTypeInfos.Select(t => t.Name).Distinct().ToList();
+        if (!names.SequenceEqual(PartTypes))
+        {
+            PartTypes.Clear();
+            foreach (var name in names) PartTypes.Add(name);
+            OnPropertyChanged(nameof(HasPartTypes));
+        }
+        if (SelectedPartType == null || !PartTypes.Contains(SelectedPartType))
+        {
+            SelectedPartType = PartTypes.FirstOrDefault();
+        }
+    }
+
+    /// <summary>Fontes atuais da cena (com o texto ainda não salvo do editor).</summary>
+    private IReadOnlyList<ScriptDocument> CurrentDocuments()
+    {
+        if (_project == null)
+        {
+            return new[] { new ScriptDocument(ScriptDocument.DefaultSceneFile, GeneratedCSharpCode) };
+        }
+        SyncActiveDocument();
+        return _documents
+            .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(kv => new ScriptDocument(kv.Key, kv.Value))
+            .ToList();
+    }
+
+    private string SourceFileOf(SourceOrigin origin) =>
+        _project != null ? _project.ToRelativePath(origin.FilePath) : ScriptDocument.DefaultSceneFile;
+
+    private string? GetDocumentText(string file)
+    {
+        if (_project == null)
+        {
+            return string.Equals(file, ScriptDocument.DefaultSceneFile, StringComparison.OrdinalIgnoreCase) ? GeneratedCSharpCode : null;
+        }
+        if (string.Equals(file, _activeFile, StringComparison.OrdinalIgnoreCase)) return GeneratedCSharpCode;
+        return _documents.TryGetValue(file, out var text) ? text : null;
+    }
+
+    private void SetDocumentText(string file, string text)
+    {
+        if (_project == null || string.Equals(file, _activeFile, StringComparison.OrdinalIgnoreCase))
+        {
+            _history.SaveState(GeneratedCSharpCode);
+            GeneratedCSharpCode = text;
+        }
+        if (_project != null)
+        {
+            _documents[file] = text;
+        }
+    }
+
+    private void SelectFeatureByName(string name)
+    {
+        var feature = _cadViewModel.Sketch.Features.FirstOrDefault(f => f.Name == name);
+        if (feature != null)
+        {
+            _cadViewModel.SelectionService.SelectFeature(feature);
+        }
+    }
+
+    /// <summary>X livre à direita do modelo atual, para a peça nova não nascer sobreposta.</summary>
+    private double NextFreeX()
+    {
+        double maxX = double.NegativeInfinity;
+        try
+        {
+            foreach (var feature in _cadViewModel.Sketch.Features)
+            {
+                if (!feature.IsVisible || feature.IsTransientTool) continue;
+                foreach (var v in feature.GetVertices()) maxX = Math.Max(maxX, v.X);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Só uma heurística de posição: se alguma feature não souber listar vértices, usa a origem.
+            Console.WriteLine("Não foi possível medir a cena para posicionar a peça: " + ex.Message);
+            return 0;
+        }
+        return double.IsNegativeInfinity(maxX) ? 0 : Math.Ceiling((maxX + 50) / 10) * 10;
+    }
+
+    private static string FormatInvariant(object? value) =>
+        value is IFormattable f ? f.ToString(null, System.Globalization.CultureInfo.InvariantCulture) : value?.ToString() ?? "?";
 
     // ---------------------------------------------------------------- Edições geradas pelo app
 

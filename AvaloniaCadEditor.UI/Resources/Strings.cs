@@ -52,6 +52,9 @@ public static class Strings
     public static string NewFileTooltip => ResourceManager.GetString("NewFileTooltip") ?? "Create Pecas/<name>.cs with a part template (e.g. Bracket or Pecas/Bracket)";
     public static string SceneErrorTitle => ResourceManager.GetString("SceneErrorTitle") ?? "⚠ Scene error: showing the last model that ran successfully";
     public static string GoToError => ResourceManager.GetString("GoToError") ?? "Go to error";
+    public static string InsertPart => ResourceManager.GetString("InsertPart") ?? "Insert part";
+    public static string InsertPartTooltip => ResourceManager.GetString("InsertPartTooltip") ?? "Add an instance of the chosen part to the scene entry file";
+    public static string PartTypePlaceholder => ResourceManager.GetString("PartTypePlaceholder") ?? "Part type";
     public static string LoadCode => ResourceManager.GetString("LoadCode") ?? "Load (.cs)";
     public static string SaveCode => ResourceManager.GetString("SaveCode") ?? "Save (.cs)";
     public static string UpdateCode => ResourceManager.GetString("UpdateCode") ?? "Update Code";

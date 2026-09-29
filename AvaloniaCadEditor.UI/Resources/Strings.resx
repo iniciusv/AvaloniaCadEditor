@@ -45,6 +45,9 @@
   <data name="NewFileTooltip" xml:space="preserve"><value>Create Pecas/&lt;name&gt;.cs with a part template (e.g. Bracket or Pecas/Bracket)</value></data>
   <data name="SceneErrorTitle" xml:space="preserve"><value>⚠ Scene error: showing the last model that ran successfully</value></data>
   <data name="GoToError" xml:space="preserve"><value>Go to error</value></data>
+  <data name="InsertPart" xml:space="preserve"><value>Insert part</value></data>
+  <data name="InsertPartTooltip" xml:space="preserve"><value>Add an instance of the chosen part to the scene entry file</value></data>
+  <data name="PartTypePlaceholder" xml:space="preserve"><value>Part type</value></data>
   <data name="LoadCode" xml:space="preserve"><value>Load (.cs)</value></data>
   <data name="SaveCode" xml:space="preserve"><value>Save (.cs)</value></data>
   <data name="UpdateCode" xml:space="preserve"><value>Update Code</value></data>

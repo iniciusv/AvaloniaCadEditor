@@ -51,6 +51,17 @@ public class CadViewModel : INotifyPropertyChanged
 	public ISelectionService SelectionService => _selectionService;
 	public IFeature? SelectedFeature => _selectionService.SelectedObject as IFeature;
 
+	/// <summary>Índice da aba "Código" no painel da direita.</summary>
+	public const int CodeTabIndex = 1;
+
+	private int _sidebarTabIndex;
+	/// <summary>Aba visível no painel da direita (0 = Modelo, 1 = Código, 2 = Ferramentas).</summary>
+	public int SidebarTabIndex
+	{
+		get => _sidebarTabIndex;
+		set { if (_sidebarTabIndex != value) { _sidebarTabIndex = value; OnPropertyChanged(); } }
+	}
+
 	private TriangleMesh _solidMesh = TriangleMesh.Empty;
 	public TriangleMesh SolidMesh
 	{
@@ -417,7 +428,7 @@ public class CadViewModel : INotifyPropertyChanged
 			}
 			RefreshSolidMesh();
 			ModelTree.RebuildTree();
-		});
+		}, () => ScriptEditor);
 
 		ModelTree.BindSketch(Sketch);
 
