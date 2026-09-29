@@ -139,7 +139,8 @@
                     <Button Content="{x:Static res:Strings.ExtendTool}" Command="{Binding SelectExtendToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     <Button Content="{x:Static res:Strings.OffsetTool}" Command="{Binding SelectOffsetToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     <Button Content="{x:Static res:Strings.MoveTool}" Command="{Binding SelectMoveToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
-                    
+                    <Button Content="{x:Static res:Strings.RotateTool}" Command="{Binding SelectRotateToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+
                     <Button Content="{x:Static res:Strings.ExitSketch}" Command="{Binding ExitWorkPlaneCommand}" IsVisible="{Binding IsInCustomWorkPlane}" Background="#E74C3C" Foreground="White" FontWeight="Bold" Margin="0,4" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     
                     <Separator Height="1" Background="#555" Margin="0,4" />

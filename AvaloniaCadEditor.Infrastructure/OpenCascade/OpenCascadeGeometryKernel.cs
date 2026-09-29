@@ -118,9 +118,17 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         return new TriangleMesh(positions.ToArray(), normals.ToArray(), indices.ToArray(), featureEdges.ToArray(), internalEdges.ToArray(), featureNormals1.ToArray(), featureNormals2.ToArray());
     }
 
-    private OcctShape BuildShape(IFeature feature, TessellationSettings settings)
+    /// <summary>
+    /// Constrói (ou reaproveita do cache) o sólido de uma feature. <paramref name="transform"/> é
+    /// usado só para reconstruir uma instância de peça girada (veja <see cref="BuildInstanceShape"/>):
+    /// nesse caso o sólido é único daquela instância, então não entra no cache por
+    /// <see cref="IFeature.Id"/> (que é compartilhado pela definição da peça entre instâncias iguais).
+    /// </summary>
+    private OcctShape BuildShape(IFeature feature, TessellationSettings settings, Placement? transform = null)
     {
-        if (_shapeCache.TryGetValue(feature.Id, out var cached) && cached != null && !cached.IsNull)
+        bool useCache = transform == null || transform.IsIdentity;
+
+        if (useCache && _shapeCache.TryGetValue(feature.Id, out var cached) && cached != null && !cached.IsNull)
         {
             return cached;
         }
@@ -129,31 +137,44 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         try {
             if (feature is ExtrudeFeature extrude && extrude.IsEnabled)
             {
-                result = BuildExtrude(extrude, settings);
+                result = BuildExtrude(extrude, settings, transform);
             }
             else if (feature is CylinderFeature cyl && cyl.IsEnabled)
             {
-                result = BuildCylinder(cyl, settings);
+                result = BuildCylinder(cyl, settings, transform);
             }
             else if (feature is BoxFeature box && box.IsEnabled)
             {
-                result = BuildBox(box, settings);
+                result = BuildBox(box, settings, transform);
             }
             else if (feature is PrismFeature prism && prism.IsEnabled)
             {
-                result = BuildPrism(prism, settings);
+                result = BuildPrism(prism, settings, transform);
             }
             else if (feature is BooleanFeature boolean && boolean.IsEnabled)
             {
-                result = BuildBoolean(boolean, settings);
+                result = BuildBoolean(boolean, settings, transform);
             }
             else if (feature is FilletFeature fillet && fillet.IsEnabled)
             {
+                if (transform != null && transform.HasRotation)
+                {
+                    // O fillet depende das arestas/malha do sólido base já construído; não dá para
+                    // "girar" essa receita sem refazer o corte em cima de arestas que não existem
+                    // nessa orientação. EnsureCanBeBooleanOperand já barra isso mais cedo; isto é
+                    // uma segunda trava, para qualquer outro caminho que chegue aqui girado.
+                    throw new NotSupportedException(
+                        $"O fillet de '{feature.Name}' não pode ser reconstruído girado (depende das arestas do sólido base).");
+                }
                 result = BuildFillet(fillet, settings);
             }
             else if (feature is PartInstance instance && instance.IsEnabled)
             {
-                result = BuildInstanceShape(instance, settings);
+                result = BuildInstanceShape(instance, settings, transform);
+            }
+            else if (feature is TransformedFeature transformedFeature && transformedFeature.IsEnabled)
+            {
+                result = BuildTransformedShape(transformedFeature, settings, transform);
             }
         }
         catch (Exception ex)
@@ -161,7 +182,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             Console.WriteLine($"[BuildShape Error] {ex}");
         }
 
-        if (result != null && !result.IsNull)
+        if (useCache && result != null && !result.IsNull)
         {
             _shapeCache[feature.Id] = result;
         }
@@ -170,23 +191,53 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
     }
 
     /// <summary>
-    /// Sólido de uma instância de peça no mundo, para uso em operações booleanas. A definição é
-    /// construída uma vez (cache por Id) e a instância recebe uma cópia transladada. Rotação não é
-    /// suportada pelo OcctNet.Wrapper (a validação em BooleanFeature impede chegar aqui girada).
+    /// Sólido de uma instância de peça no mundo, para uso em operações booleanas.
+    /// <list type="bullet">
+    /// <item>só translação: a definição é construída uma vez (cache por Id, compartilhado entre
+    /// instâncias iguais) e a instância recebe uma cópia transladada pelo OcctNet.Wrapper;</item>
+    /// <item>com rotação: o wrapper só sabe transladar sólidos, então o sólido é reconstruído do
+    /// zero já em coordenadas do mundo (vértices e direções passam pelo <see cref="Placement"/>
+    /// antes de virar B-Rep). Não entra no cache da definição - cada instância girada tem sua
+    /// própria forma - mas o chamador (<see cref="BuildShape"/>) ainda cacheia o resultado final
+    /// por Id da instância.</item>
+    /// </list>
     /// </summary>
-    private OcctShape BuildInstanceShape(PartInstance instance, TessellationSettings settings)
+    private OcctShape BuildInstanceShape(PartInstance instance, TessellationSettings settings, Placement? outer = null)
     {
-        if (instance.Placement.HasRotation)
+        var effective = outer == null ? instance.Placement : instance.Placement.Then(outer);
+
+        if (effective.HasRotation)
         {
-            Console.WriteLine($"[BuildShape] Instância girada '{instance.Name}' não tem sólido B-Rep (OcctNet.Wrapper só translada).");
-            return null;
+            return BuildShape(instance.Definition, settings, effective);
         }
 
         var local = BuildShape(instance.Definition, settings);
         if (local == null || local.IsNull) return null;
 
-        var t = instance.Placement.Translation;
+        var t = effective.Translation;
         // Sempre uma cópia: o sólido local continua no cache da definição, e cada entrada é descartada uma vez.
+        return local.Translate(new OcctVector3d(t.X, t.Y, t.Z));
+    }
+
+    /// <summary>
+    /// Sólido de uma feature qualquer já transformada (<see cref="TransformedFeature"/>) — usada para
+    /// copiar/girar/mover uma feature solta do script sem reescrever suas coordenadas. Mesmo padrão de
+    /// <see cref="BuildInstanceShape"/>: só translação reaproveita o sólido de <c>Source</c> (cache) e
+    /// translada uma cópia; com rotação, reconstrói já em coordenadas do mundo.
+    /// </summary>
+    private OcctShape BuildTransformedShape(TransformedFeature transformed, TessellationSettings settings, Placement? outer = null)
+    {
+        var effective = outer == null ? transformed.Placement : transformed.Placement.Then(outer);
+
+        if (effective.HasRotation)
+        {
+            return BuildShape(transformed.Source, settings, effective);
+        }
+
+        var local = BuildShape(transformed.Source, settings);
+        if (local == null || local.IsNull) return null;
+
+        var t = effective.Translation;
         return local.Translate(new OcctVector3d(t.X, t.Y, t.Z));
     }
 
@@ -540,15 +591,15 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         );
     }
 
-    private OcctShape BuildCylinder(CylinderFeature cyl, TessellationSettings settings)
+    private OcctShape BuildCylinder(CylinderFeature cyl, TessellationSettings settings, Placement? transform = null)
     {
         var plane = new WorkPlane(cyl.GlobalDirection, cyl.GlobalBaseCenter);
         var profile = new AvaloniaCadEditor.Domain.Profiles.CircleProfile(Point3D.Origin, cyl.Radius, plane: plane);
         var extrude = new ExtrudeFeature(profile, cyl.Height, cyl.GlobalDirection * cyl.Height);
-        return BuildExtrude(extrude, settings);
+        return BuildExtrude(extrude, settings, transform);
     }
 
-    private OcctShape BuildBox(BoxFeature box, TessellationSettings settings)
+    private OcctShape BuildBox(BoxFeature box, TessellationSettings settings, Placement? transform = null)
     {
         Point3D bottomCenter = new Point3D(
             box.BaseCorner.X + box.DirectionX.X * (box.Width / 2.0) + box.DirectionY.X * (box.Length / 2.0),
@@ -558,24 +609,32 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         var plane = new WorkPlane(bottomCenter, box.DirectionZ, box.DirectionX);
         var profile = new AvaloniaCadEditor.Domain.Profiles.RectangleProfile(Point3D.Origin, box.Width, box.Length, 0.0, box.DirectionZ, null, plane);
         var extrude = new ExtrudeFeature(profile, box.Height, box.DirectionZ * box.Height);
-        return BuildExtrude(extrude, settings);
+        return BuildExtrude(extrude, settings, transform);
     }
 
-    private OcctShape BuildPrism(PrismFeature prism, TessellationSettings settings)
+    private OcctShape BuildPrism(PrismFeature prism, TessellationSettings settings, Placement? transform = null)
     {
         var profile = new AvaloniaCadEditor.Domain.Profiles.PolygonProfile(prism.Vertices, plane: prism.Plane);
         var extrude = new ExtrudeFeature(profile, prism.Height, prism.Plane.Normal * prism.Height);
-        return BuildExtrude(extrude, settings);
+        return BuildExtrude(extrude, settings, transform);
     }
 
-    private OcctShape BuildExtrude(ExtrudeFeature extrude, TessellationSettings settings)
+    private OcctShape BuildExtrude(ExtrudeFeature extrude, TessellationSettings settings, Placement? transform = null)
     {
         var verticesReadOnly = extrude.Profile.GetVertices(settings.ProfileSegments);
         if (verticesReadOnly == null || verticesReadOnly.Count < 3) return null;
 
         var vertices = new List<Point3D>(verticesReadOnly);
-
         var dir = extrude.Direction;
+
+        if (transform != null && !transform.IsIdentity)
+        {
+            // Instância de peça girada: leva o perfil local e a direção da extrusão para o mundo
+            // antes de montar o B-Rep, já que o OcctNet.Wrapper só sabe transladar sólidos prontos.
+            for (int i = 0; i < vertices.Count; i++) vertices[i] = transform.Apply(vertices[i]);
+            dir = transform.ApplyVector(dir);
+        }
+
         var vec = new OcctVector3d(dir.X, dir.Y, dir.Z);
 
         // Calculate polygon normal using Newell's method to check winding order
@@ -631,13 +690,13 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         return face.Extrude(vec);
     }
     
-    private OcctShape BuildBoolean(BooleanFeature boolean, TessellationSettings settings)
+    private OcctShape BuildBoolean(BooleanFeature boolean, TessellationSettings settings, Placement? transform = null)
     {
-        var baseShape = BuildShape(boolean.BaseFeature, settings);
+        var baseShape = BuildShape(boolean.BaseFeature, settings, transform);
         if (baseShape == null || baseShape.IsNull) return null;
 
         var toolShapes = boolean.ToolFeatures
-                               .Select(f => BuildShape(f, settings))
+                               .Select(f => BuildShape(f, settings, transform))
                                .Where(s => s != null && !s.IsNull)
                                .ToList();
 

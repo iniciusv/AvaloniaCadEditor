@@ -184,4 +184,62 @@ AddFeature(uniao);
         // Assert
         result.Should().Contain("new Point3D(20,5,0)");
     }
+
+    // --- Regressão: mover (M) uma feature "furo" só movia o furo, não o contorno ---
+    // GetRootVariableNames só devolve as variáveis-raiz do grafo (ex.: "base_z" e "cyl3" no script
+    // abaixo); "poly1", que tem o contorno inteiro, depende de "base_z" e ficava de fora. O Move
+    // agora usa GetMovableVariableNames, que pega toda variável do grafo com Point3D próprio.
+
+    private const string PecaComFuroScript = @"
+var base_z = 0;
+var poly1 = new PolygonProfile(new System.Collections.Generic.List<Point3D> { new Point3D(-4, -3.293, base_z), new Point3D(-4, 3.293, base_z), new Point3D(4, 3.293, base_z), new Point3D(4, -3.293, base_z) });
+var extrude2 = new ExtrudeFeature(poly1, 400, new Vector3D(0, 0, 100), ""Extrusão do Contorno Base"");
+var cyl3 = new CylinderFeature(new Point3D(0, 0, -201), new Vector3D(0, 0, 1), 3, 402, ""Furo Cilíndrico Deduzido 1"");
+var boolOp4 = BooleanFeature.CreateDifference(""Base Extrudada com Furos"", extrude2, cyl3);
+
+AddFeature(boolOp4);
+";
+
+    [Fact]
+    public void GetMovableVariableNames_IncluiVariaveisIntermediariasComPoint3DProprio()
+    {
+        var analyzer = new RoslynDependencyAnalyzer();
+
+        var movable = analyzer.GetMovableVariableNames(PecaComFuroScript, "boolOp4").ToList();
+
+        movable.Should().Contain("poly1");
+        movable.Should().Contain("cyl3");
+        movable.Should().NotContain("base_z", "base_z não tem nenhum new Point3D no próprio inicializador");
+        movable.Should().NotContain("extrude2", "extrude2 não cria Point3D diretamente, só referencia poly1");
+        movable.Should().NotContain("boolOp4");
+    }
+
+    [Fact]
+    public void MoverPecaComFuro_DeslocaContornoEFuroJuntos()
+    {
+        var analyzer = new RoslynDependencyAnalyzer();
+        var movable = analyzer.GetMovableVariableNames(PecaComFuroScript, "boolOp4");
+
+        var moved = RoslynCoordinateMutator.MutateCoordinates(PecaComFuroScript, movable, new Vector3D(5, 0, 0));
+
+        moved.Should().Contain("new Point3D(1,-3.293,base_z)"); // -4 + 5
+        moved.Should().Contain("new Point3D(9,-3.293,base_z)"); // 4 + 5
+        moved.Should().Contain("new Point3D(5,0,-201)"); // centro do cilindro: 0 + 5
+        moved.Should().Contain("var base_z = 0;", "base_z não tem Point3D próprio e não deve mudar");
+    }
+
+    [Fact]
+    public void MoverPecaComFuroEmZ_DesviaBaseZSemPerderAExpressao()
+    {
+        var analyzer = new RoslynDependencyAnalyzer();
+        var movable = analyzer.GetMovableVariableNames(PecaComFuroScript, "boolOp4");
+
+        var moved = RoslynCoordinateMutator.MutateCoordinates(PecaComFuroScript, movable, new Vector3D(0, 0, 3));
+        moved = RoslynCoordinateMutator.MutateCoordinates(moved, analyzer.GetMovableVariableNames(moved, "boolOp4"), new Vector3D(0, 0, 3));
+
+        // O Z de poly1 é a variável "base_z", não um literal: precisa virar "base_z+6", não ficar parado.
+        moved.Should().Contain("base_z+6");
+        // O centro do cilindro (literal -201) some direto para -195.
+        moved.Should().Contain("new Point3D(0,0,-195)");
+    }
 }

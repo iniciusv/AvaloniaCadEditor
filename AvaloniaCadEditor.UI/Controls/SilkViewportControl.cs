@@ -47,7 +47,8 @@ public class SilkViewportControl : OpenGlControlBase
             new GridRenderPass(),
             new ProfileFaceRenderPass(),
             new SketchEntityRenderPass(),
-            new AvaloniaCadEditor.UI.ReferenceGuides.ReferenceGuideRenderPass()
+            new AvaloniaCadEditor.UI.ReferenceGuides.ReferenceGuideRenderPass(),
+            new ToolGuideRenderPass()
         };
 
         Focusable = true;

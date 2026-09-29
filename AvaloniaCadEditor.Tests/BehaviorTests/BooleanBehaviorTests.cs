@@ -6,9 +6,11 @@ using AvaloniaCadEditor.Domain.Entities;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.Interfaces;
 using AvaloniaCadEditor.Domain.Profiles;
+using AvaloniaCadEditor.Domain.Scripting;
 using AvaloniaCadEditor.Domain.ValueObjects;
 using AvaloniaCadEditor.Infrastructure.OpenCascade;
 using AvaloniaCadEditor.Tests.Extensions;
+using AvaloniaCadEditor.Tests.Scenes;
 using AvaloniaCadEditor.UI.ViewModels;
 using FluentAssertions;
 using Moq;
@@ -18,6 +20,79 @@ namespace AvaloniaCadEditor.Tests.BehaviorTests;
 
 public class BooleanBehaviorTests
 {
+    /// <summary>Peça de teste cuja definição usa fillet — não pode virar operando de booleana girada.</summary>
+    private sealed record PlacaComFillet(double Largura) : Part
+    {
+        protected override IFeature Build()
+        {
+            var box = new BoxFeature(Point3D.Origin, Largura, Largura, 10);
+            return new FilletFeature("filete", box, 2) { ApplyToAllEdges = true };
+        }
+    }
+
+    [Fact]
+    public void BooleanFeature_AceitaInstanciaDePecaGirada()
+    {
+        // Regressão: instâncias giradas eram sempre recusadas como operando de booleana, mesmo
+        // quando a definição é uma extrusão simples que o kernel sabe reconstruir já girada.
+        using var _ = SceneHost.Begin(new SceneBuilder());
+        var girada = Scene.Add(new Placa(20), at: Placement.RotationAbout(Point3D.Origin, Vector3D.UnitZ, 45));
+        var ferramenta = new BoxFeature(new Point3D(-100, -100, -100), 5, 5, 5);
+
+        Action act = () => BooleanFeature.CreateDifference("corte", girada, ferramenta);
+
+        act.Should().NotThrow();
+    }
+
+    [Fact]
+    public void BooleanFeature_RecusaInstanciaGiradaComFillet()
+    {
+        // O kernel reconstrói extrusões/caixas/cilindros girados, mas não um fillet (depende das
+        // arestas do sólido base não-girado) — esse caso continua bloqueado, com mensagem clara.
+        using var _ = SceneHost.Begin(new SceneBuilder());
+        var girada = Scene.Add(new PlacaComFillet(20), at: Placement.RotationAbout(Point3D.Origin, Vector3D.UnitZ, 45));
+        var ferramenta = new BoxFeature(new Point3D(-100, -100, -100), 5, 5, 5);
+
+        Action act = () => BooleanFeature.CreateDifference("corte", girada, ferramenta);
+
+        act.Should().Throw<NotSupportedException>().WithMessage("*girada*fillet*");
+    }
+
+    [Fact]
+    public void BooleanCut_ComOperandoGirado_KernelReconstroiOSolidoJaGirado()
+    {
+        using var _ = SceneHost.Begin(new SceneBuilder());
+        // Placa(20): BoxFeature local Width=20 (X), Length=40 (Y), Height=5 (Z), canto em (0,0,0).
+        var placa = Scene.Add(new Placa(20), at: Placement.RotationAbout(Point3D.Origin, Vector3D.UnitZ, 90));
+        var ferramentaLonge = new BoxFeature(new Point3D(1000, 1000, 1000), 1, 1, 1);
+
+        var corte = BooleanFeature.CreateDifference("corte", placa, ferramentaLonge);
+        var kernel = new OpenCascadeGeometryKernel();
+
+        var mesh = kernel.BuildFeatureMesh(corte);
+
+        mesh.VertexCount.Should().BeGreaterThan(0);
+        double volume = MeshVolumeCalculator.ComputeVolume(mesh);
+        volume.Should().BeApproximately(20 * 40 * 5, 20 * 40 * 5 * 0.02);
+
+        double minX = double.MaxValue, maxX = double.MinValue, minY = double.MaxValue, maxY = double.MinValue;
+        for (int i = 0; i < mesh.VertexCount; i++)
+        {
+            minX = Math.Min(minX, mesh.Positions[i * 3]);
+            maxX = Math.Max(maxX, mesh.Positions[i * 3]);
+            minY = Math.Min(minY, mesh.Positions[i * 3 + 1]);
+            maxY = Math.Max(maxY, mesh.Positions[i * 3 + 1]);
+        }
+
+        // A peça local ocupa X:[0,20] Y:[0,40]; girada 90° em Z (mão direita) em torno da origem,
+        // passa a ocupar X:[-40,0] Y:[0,20] - confirma que o sólido saiu do kernel já girado, e não
+        // só a caixa envolvente movida/intacta.
+        minX.Should().BeApproximately(-40, 0.5);
+        maxX.Should().BeApproximately(0, 0.5);
+        minY.Should().BeApproximately(0, 0.5);
+        maxY.Should().BeApproximately(20, 0.5);
+    }
+
     [Fact]
     public void BooleanCut_Dominio_DeveGerarMalhaValida()
     {

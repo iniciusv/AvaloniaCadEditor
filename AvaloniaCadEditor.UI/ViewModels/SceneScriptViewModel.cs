@@ -688,18 +688,22 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
     }
 
     /// <summary>
-    /// Move instâncias de peça reescrevendo o <c>at:</c> da chamada que as criou (uma edição por
-    /// chamada, mesmo que ela crie várias instâncias num laço). Não reexecuta; devolve true se
-    /// algum código mudou.
+    /// Aplica <paramref name="edit"/> à chamada (Add/AddFeature) de cada feature, agrupando por
+    /// (arquivo, linha) para não repetir a edição quando várias features vêm da mesma linha (ex.:
+    /// um laço). Não reexecuta; devolve true se algum código mudou.
     /// </summary>
-    public bool MovePartInstances(IEnumerable<PartInstance> instances, AvaloniaCadEditor.Domain.ValueObjects.Vector3D offset)
+    /// <param name="bottomUp">
+    /// Cópias: processa de baixo para cima, para a instrução inserida por uma cópia não deslocar as
+    /// linhas das chamadas que ainda faltam no mesmo arquivo.
+    /// </param>
+    private bool EditFeatureCalls(IEnumerable<IFeature> features, Func<string, int, string> edit, bool bottomUp = false)
     {
-        var calls = instances
+        var origins = features
             .Select(FeatureOrigin.Of)
             .Where(o => o != null && o.Line > 0)
             .Select(o => (File: SourceFileOf(o!), o!.Line))
-            .Distinct()
-            .ToList();
+            .Distinct();
+        var calls = (bottomUp ? origins.OrderByDescending(c => c.Line) : origins).ToList();
 
         bool changed = false;
         foreach (var (file, line) in calls)
@@ -708,7 +712,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
             if (source == null) continue;
             try
             {
-                string updated = PartSourceEditor.TranslateInstance(source, line, offset.X, offset.Y, offset.Z);
+                string updated = edit(source, line);
                 if (updated == source) continue;
                 SetDocumentText(file, updated);
                 changed = true;
@@ -720,6 +724,51 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         }
         return changed;
     }
+
+    /// <summary>
+    /// Move instâncias de peça reescrevendo o <c>at:</c> da chamada que as criou (uma edição por
+    /// chamada, mesmo que ela crie várias instâncias num laço). Não reexecuta; devolve true se
+    /// algum código mudou.
+    /// </summary>
+    public bool MovePartInstances(IEnumerable<PartInstance> instances, AvaloniaCadEditor.Domain.ValueObjects.Vector3D offset) =>
+        EditFeatureCalls(instances, (source, line) => PartSourceEditor.TranslateInstance(source, line, offset.X, offset.Y, offset.Z));
+
+    /// <summary>
+    /// Gira instâncias de peça em torno de <paramref name="pivot"/>/<paramref name="axis"/>,
+    /// reescrevendo o <c>at:</c> da chamada que as criou (mesmo padrão de <see cref="MovePartInstances"/>).
+    /// </summary>
+    public bool RotatePartInstances(IEnumerable<PartInstance> instances, AvaloniaCadEditor.Domain.ValueObjects.Point3D pivot, AvaloniaCadEditor.Domain.ValueObjects.Vector3D axis, double degrees) =>
+        EditFeatureCalls(instances, (source, line) => PartSourceEditor.RotateInstance(source, line, pivot, axis, degrees));
+
+    /// <summary>
+    /// Copia instâncias de peça: duplica a chamada <c>Add(...)</c> de cada uma e aplica
+    /// <paramref name="placeCopy"/> (ex.: <see cref="PartSourceEditor.TranslateInstance"/>) só na cópia.
+    /// </summary>
+    public bool CopyPartInstances(IEnumerable<PartInstance> instances, Func<string, int, string> placeCopy) =>
+        EditFeatureCalls(instances, (source, line) =>
+        {
+            var (duplicated, copyLine) = PartSourceEditor.DuplicateInstance(source, line);
+            return placeCopy(duplicated, copyLine);
+        }, bottomUp: true);
+
+    /// <summary>
+    /// Move uma feature solta (registrada por <c>AddFeature(x)</c>, não <c>Add(...)</c>), envolvendo
+    /// (ou somando a) um <c>x.Transformed(Placement.Translate(...))</c> — sem reescrever as
+    /// coordenadas originais de <c>x</c>. Mesmo padrão de <see cref="MovePartInstances"/>.
+    /// </summary>
+    public bool MoveLooseFeatures(IEnumerable<IFeature> features, AvaloniaCadEditor.Domain.ValueObjects.Vector3D offset) =>
+        EditFeatureCalls(features, (source, line) => PartSourceEditor.TranslateFeature(source, line, offset.X, offset.Y, offset.Z));
+
+    /// <summary>Gira uma feature solta em torno de <paramref name="pivot"/>/<paramref name="axis"/> (ver <see cref="MoveLooseFeatures"/>).</summary>
+    public bool RotateLooseFeatures(IEnumerable<IFeature> features, AvaloniaCadEditor.Domain.ValueObjects.Point3D pivot, AvaloniaCadEditor.Domain.ValueObjects.Vector3D axis, double degrees) =>
+        EditFeatureCalls(features, (source, line) => PartSourceEditor.RotateFeature(source, line, pivot, axis, degrees));
+
+    /// <summary>
+    /// Copia uma feature solta: acrescenta <c>var nome = x.Transformed(placementCode, name: "nome"); AddFeature(nome);</c>
+    /// logo depois da instrução original (ver <see cref="PartSourceEditor.CopyFeature"/>).
+    /// </summary>
+    public bool CopyLooseFeatures(IEnumerable<IFeature> features, string placementCode) =>
+        EditFeatureCalls(features, (source, line) => PartSourceEditor.CopyFeature(source, line, placementCode).Source, bottomUp: true);
 
     public bool GoToPartDefinition(string typeName)
     {

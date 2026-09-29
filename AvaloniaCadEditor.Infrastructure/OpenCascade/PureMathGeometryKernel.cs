@@ -18,6 +18,10 @@ public class PureMathGeometryKernel : IGeometryKernel
         {
             return BuildFeatureMesh(instance.Definition, settings).Transform(instance.Placement);
         }
+        if (feature is TransformedFeature transformed)
+        {
+            return BuildFeatureMesh(transformed.Source, settings).Transform(transformed.Placement);
+        }
         if (feature is ExtrudeFeature extrude && extrude.IsEnabled)
         {
             return ExtrudeProfile(extrude.Profile, extrude.Direction, settings);

@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using AvaloniaCadEditor.Application.Interfaces;
+using AvaloniaCadEditor.Domain.ValueObjects;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 using Microsoft.CodeAnalysis.CSharp.Syntax;
@@ -207,24 +208,323 @@ public static class PartSourceEditor
         }
 
         // E.Then(Placement.Translate(new Vector3D(a, b, c))): soma no deslocamento que já existe.
-        if (at.Expression is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Then" } } then &&
-            then.ArgumentList.Arguments.Count == 1 &&
-            then.ArgumentList.Arguments[0].Expression is InvocationExpressionSyntax translate &&
-            MethodName(translate.Expression) == "Translate" &&
-            translate.ArgumentList.Arguments.Count == 1 &&
-            translate.ArgumentList.Arguments[0].Expression is BaseObjectCreationExpressionSyntax vector &&
-            vector.ArgumentList is { Arguments.Count: 3 } &&
-            vector.ArgumentList.Arguments.All(a => a.NameColon == null))
+        if (TryMergeTranslate(at.Expression, dx, dy, dz, edits))
         {
-            var coords = vector.ArgumentList.Arguments;
-            double[] deltas = { dx, dy, dz };
-            for (int i = 0; i < 3; i++) OffsetExpression(coords[i].Expression, deltas[i], edits);
             return Apply(source, edits);
         }
 
         string target = NeedsParentheses(at.Expression) ? $"({at.Expression})" : at.Expression.ToString();
-        string offset = FormattableString.Invariant($"Placement.Translate(new Vector3D({Number(dx)}, {Number(dy)}, {Number(dz)}))");
-        return Replace(source, at.Expression.Span, $"{target}.Then({offset})");
+        return Replace(source, at.Expression.Span, $"{target}.Then({TranslationCall(dx, dy, dz)})");
+    }
+
+    // ---------------------------------------------------------------- Copiar uma instância
+
+    /// <summary>
+    /// Duplica a chamada <c>Add(...)</c> da linha dada numa instrução nova logo depois da instrução
+    /// original (sem <c>var x =</c> e sem <c>name:</c>, para não repetir variável nem nome) e devolve
+    /// o código e a linha da cópia — use-a com <see cref="TranslateInstance"/> / <see cref="RotateInstance"/>.
+    /// </summary>
+    public static (string Source, int Line) DuplicateInstance(string source, int line)
+    {
+        var root = Parse(source);
+        var call = FindAddCall(root, line)
+            ?? throw new InvalidOperationException($"Não achei a chamada Add(...) na linha {line}.");
+        var statement = call.FirstAncestorOrSelf<StatementSyntax>()
+            ?? throw new InvalidOperationException($"A chamada Add(...) da linha {line} não está numa instrução.");
+
+        var args = call.ArgumentList.Arguments;
+        var nameArg = args.FirstOrDefault(a => a.NameColon?.Name.Identifier.ValueText == "name");
+        var copy = nameArg == null ? call : call.WithArgumentList(call.ArgumentList.WithArguments(args.Remove(nameArg)));
+
+        string newline = LineBreakOf(source, statement);
+        string indent = IndentOf(source, statement);
+
+        string updated = Insert(source, statement.Span.End, $"{newline}{indent}{copy.WithoutTrivia()};");
+        return (updated, LineOf(statement.GetLastToken()) + 1);
+    }
+
+    // ---------------------------------------------------------------- Girar uma instância
+
+    /// <summary>
+    /// Gira a instância criada pela chamada <c>Add(...)</c> da linha dada em torno de
+    /// <paramref name="pivot"/> e <paramref name="axis"/>, somando ao argumento <c>at:</c>:
+    /// <list type="bullet">
+    /// <item>sem <c>at:</c>: acrescenta <c>at: Placement.RotationAbout(pivot, axis, graus)</c>;</item>
+    /// <item><c>Placement.RotationAbout(mesmo pivô, mesmo eixo, d)</c>, direto ou no fim de um
+    /// <c>.Then(...)</c>: soma no ângulo existente em vez de encadear mais um Then;</item>
+    /// <item>qualquer outro posicionamento: acrescenta
+    /// <c>.Then(Placement.RotationAbout(pivot, axis, graus))</c>.</item>
+    /// </list>
+    /// </summary>
+    public static string RotateInstance(string source, int line, Point3D pivot, Vector3D axis, double degrees)
+    {
+        var root = Parse(source);
+        var call = FindAddCall(root, line)
+            ?? throw new InvalidOperationException($"Não achei a chamada Add(...) na linha {line}.");
+
+        var args = call.ArgumentList.Arguments;
+        var at = args.FirstOrDefault(a => a.NameColon?.Name.Identifier.ValueText == "at")
+            ?? (args.Count > 1 && args[1].NameColon == null ? args[1] : null);
+
+        if (at == null)
+        {
+            return Insert(source, call.ArgumentList.CloseParenToken.SpanStart, $", at: {RotationCall(pivot, axis, degrees)}");
+        }
+
+        if (TryMergeRotation(at.Expression, pivot, axis, degrees, out string? merged))
+        {
+            return Replace(source, at.Expression.Span, merged!);
+        }
+
+        string target = NeedsParentheses(at.Expression) ? $"({at.Expression})" : at.Expression.ToString();
+        return Replace(source, at.Expression.Span, $"{target}.Then({RotationCall(pivot, axis, degrees)})");
+    }
+
+    /// <summary>
+    /// Se <paramref name="expression"/> já é (ou termina num <c>.Then</c> de)
+    /// <c>Placement.RotationAbout(pivot, axis, d)</c> com o mesmo pivô e eixo, devolve o texto com
+    /// o ângulo somado.
+    /// </summary>
+    private static bool TryMergeRotation(ExpressionSyntax expression, Point3D pivot, Vector3D axis, double degrees, out string? merged)
+    {
+        merged = null;
+
+        if (expression is InvocationExpressionSyntax direct &&
+            MethodName(direct.Expression) == "RotationAbout" &&
+            TryMatchRotation(direct, pivot, axis, out double existingDirect))
+        {
+            merged = RotationCall(pivot, axis, existingDirect + degrees);
+            return true;
+        }
+
+        if (expression is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Then" } } then &&
+            then.ArgumentList.Arguments.Count == 1 &&
+            then.ArgumentList.Arguments[0].Expression is InvocationExpressionSyntax rotation &&
+            MethodName(rotation.Expression) == "RotationAbout" &&
+            TryMatchRotation(rotation, pivot, axis, out double existingThen))
+        {
+            var baseExpr = ((MemberAccessExpressionSyntax)then.Expression).Expression;
+            merged = $"{baseExpr}.Then({RotationCall(pivot, axis, existingThen + degrees)})";
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryMatchRotation(InvocationExpressionSyntax rotationCall, Point3D pivot, Vector3D axis, out double existingDegrees)
+    {
+        existingDegrees = 0;
+        var rotArgs = rotationCall.ArgumentList.Arguments;
+        if (rotArgs.Count != 3) return false;
+        if (!TryPoint3D(rotArgs[0].Expression, out var existingPivot)) return false;
+        if (!TryVector3D(rotArgs[1].Expression, out var existingAxis)) return false;
+        if (!TryNumber(rotArgs[2].Expression, out existingDegrees)) return false;
+        return existingPivot.Equals(pivot) && existingAxis.Equals(axis);
+    }
+
+    public static string RotationCall(Point3D pivot, Vector3D axis, double degrees) =>
+        FormattableString.Invariant($"Placement.RotationAbout({PointText(pivot)}, {AxisText(axis)}, {Number(degrees)})");
+
+    private static string PointText(Point3D p) =>
+        FormattableString.Invariant($"new Point3D({Number(p.X)}, {Number(p.Y)}, {Number(p.Z)})");
+
+    private static string AxisText(Vector3D axis)
+    {
+        if (axis.Equals(Vector3D.UnitX)) return "Vector3D.UnitX";
+        if (axis.Equals(Vector3D.UnitY)) return "Vector3D.UnitY";
+        if (axis.Equals(Vector3D.UnitZ)) return "Vector3D.UnitZ";
+        return FormattableString.Invariant($"new Vector3D({Number(axis.X)}, {Number(axis.Y)}, {Number(axis.Z)})");
+    }
+
+    private static bool TryPoint3D(ExpressionSyntax expression, out Point3D point)
+    {
+        point = default;
+        if (expression is not BaseObjectCreationExpressionSyntax { ArgumentList.Arguments.Count: 3 } creation) return false;
+        var a = creation.ArgumentList!.Arguments;
+        if (!TryNumber(a[0].Expression, out double x) || !TryNumber(a[1].Expression, out double y) || !TryNumber(a[2].Expression, out double z))
+            return false;
+        point = new Point3D(x, y, z);
+        return true;
+    }
+
+    private static bool TryVector3D(ExpressionSyntax expression, out Vector3D vector)
+    {
+        vector = default;
+        switch (expression)
+        {
+            case MemberAccessExpressionSyntax { Name.Identifier.ValueText: "UnitX" }: vector = Vector3D.UnitX; return true;
+            case MemberAccessExpressionSyntax { Name.Identifier.ValueText: "UnitY" }: vector = Vector3D.UnitY; return true;
+            case MemberAccessExpressionSyntax { Name.Identifier.ValueText: "UnitZ" }: vector = Vector3D.UnitZ; return true;
+            case BaseObjectCreationExpressionSyntax { ArgumentList.Arguments.Count: 3 } creation:
+                var a = creation.ArgumentList!.Arguments;
+                if (TryNumber(a[0].Expression, out double x) && TryNumber(a[1].Expression, out double y) && TryNumber(a[2].Expression, out double z))
+                {
+                    vector = new Vector3D(x, y, z);
+                    return true;
+                }
+                return false;
+            default:
+                return false;
+        }
+    }
+
+    // ---------------------------------------------------------------- Mover/girar/copiar uma feature solta
+
+    /// <summary>
+    /// Move a feature solta registrada por <c>AddFeature(x)</c> na linha dada, sem reescrever as
+    /// coordenadas originais de <c>x</c> (diferente de uma instância, que tem um <c>at:</c> dedicado):
+    /// <list type="bullet">
+    /// <item>ainda não é <c>x.Transformed(...)</c>: vira <c>x.Transformed(Placement.Translate(new Vector3D(dx, dy, dz)))</c>;</item>
+    /// <item>já é, com <c>Placement.Translate(...)</c> direto ou no fim de um <c>.Then</c>: soma no deslocamento existente;</item>
+    /// <item>qualquer outro placement: acrescenta <c>.Then(Placement.Translate(...))</c> dentro do Transformed.</item>
+    /// </list>
+    /// </summary>
+    public static string TranslateFeature(string source, int line, double dx, double dy, double dz) =>
+        EditTransformedFeature(source, line, TranslationCall(dx, dy, dz),
+            placement => { var edits = new List<TextChange>(); return TryMergeTranslate(placement, dx, dy, dz, edits) ? Apply(source, edits) : null; });
+
+    /// <summary>
+    /// Gira a feature solta registrada por <c>AddFeature(x)</c> na linha dada em torno de
+    /// <paramref name="pivot"/>/<paramref name="axis"/>, seguindo o mesmo padrão de <see cref="TranslateFeature"/>
+    /// (e de <see cref="RotateInstance"/>: mesmo pivô/eixo soma o ângulo).
+    /// </summary>
+    public static string RotateFeature(string source, int line, Point3D pivot, Vector3D axis, double degrees) =>
+        EditTransformedFeature(source, line, RotationCall(pivot, axis, degrees),
+            placement => TryMergeRotation(placement, pivot, axis, degrees, out string? merged) ? Replace(source, placement.Span, merged!) : null);
+
+    /// <summary>
+    /// Aplica um novo placement à feature solta de <c>AddFeature(x)</c> na linha dada: tenta fundir
+    /// com um <c>x.Transformed(...)</c> já existente via <paramref name="tryMerge"/>; sem isso,
+    /// encadeia um <c>.Then</c> dentro do Transformed existente, ou cria um novo.
+    /// </summary>
+    private static string EditTransformedFeature(string source, int line, string newPlacementCode, Func<ExpressionSyntax, string?> tryMerge)
+    {
+        var root = Parse(source);
+        var call = FindAddFeatureCall(root, line)
+            ?? throw new InvalidOperationException($"Não achei a chamada AddFeature(...) na linha {line}.");
+        var expr = call.ArgumentList.Arguments[0].Expression;
+
+        if (expr is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Transformed" } } transformed &&
+            transformed.ArgumentList.Arguments.Count >= 1)
+        {
+            var placementArg = transformed.ArgumentList.Arguments[0].Expression;
+            var merged = tryMerge(placementArg);
+            if (merged != null) return merged;
+
+            string placementTarget = NeedsParentheses(placementArg) ? $"({placementArg})" : placementArg.ToString();
+            return Replace(source, placementArg.Span, $"{placementTarget}.Then({newPlacementCode})");
+        }
+
+        string target = NeedsParentheses(expr) ? $"({expr})" : expr.ToString();
+        return Replace(source, expr.Span, $"{target}.Transformed({newPlacementCode})");
+    }
+
+    /// <summary>
+    /// Copia a feature solta registrada por <c>AddFeature(x)</c> na linha dada: acrescenta
+    /// <c>var nome = x.Transformed(placementCode, name: "nome"); AddFeature(nome);</c> logo depois
+    /// da instrução original (<paramref name="placementCode"/> normalmente vem de
+    /// <see cref="RotationCall"/> ou de um deslocamento equivalente a <see cref="TranslateFeature"/>),
+    /// e devolve o código e a linha do novo <c>AddFeature</c>.
+    /// </summary>
+    public static (string Source, int Line) CopyFeature(string source, int line, string placementCode)
+    {
+        var root = Parse(source);
+        var call = FindAddFeatureCall(root, line)
+            ?? throw new InvalidOperationException($"Não achei a chamada AddFeature(...) na linha {line}.");
+        var statement = call.FirstAncestorOrSelf<StatementSyntax>()
+            ?? throw new InvalidOperationException($"A chamada AddFeature(...) da linha {line} não está numa instrução.");
+        var expr = call.ArgumentList.Arguments[0].Expression;
+
+        // "Base" do nome: a origem, mesmo que já esteja copiada (x.Transformed(...)) - evita
+        // encadear "_copia1_copia2_copia3" em cópias sucessivas.
+        var baseExpr = expr is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Transformed" } transformedMember }
+            ? transformedMember.Expression
+            : expr;
+        string baseName = baseExpr is IdentifierNameSyntax id ? id.Identifier.ValueText : "copia";
+
+        var existingNames = root.DescendantTokens().Select(t => t.ValueText).ToHashSet(StringComparer.Ordinal);
+        string copyName = $"{baseName}_copia1";
+        for (int n = 2; existingNames.Contains(copyName); n++)
+        {
+            copyName = $"{baseName}_copia{n}";
+        }
+
+        string newline = LineBreakOf(source, statement);
+        string indent = IndentOf(source, statement);
+        string insertion =
+            $"{newline}{indent}var {copyName} = {expr.WithoutTrivia()}.Transformed({placementCode}, name: \"{copyName}\");" +
+            $"{newline}{indent}AddFeature({copyName});";
+
+        string updated = Insert(source, statement.Span.End, insertion);
+        return (updated, LineOf(statement.GetLastToken()) + 2);
+    }
+
+    /// <summary>Chamada AddFeature(x) cujo nome está na linha dada (ou que atravessa essa linha).</summary>
+    private static InvocationExpressionSyntax? FindAddFeatureCall(SyntaxNode root, int line)
+    {
+        var calls = root.DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .Where(i => MethodName(i.Expression) == "AddFeature" && i.ArgumentList.Arguments.Count > 0)
+            .ToList();
+
+        return calls.FirstOrDefault(i => LineOf(NameToken(i.Expression)) == line)
+            ?? calls.FirstOrDefault(i => LineOf(i.GetFirstToken()) <= line && LineOf(i.GetLastToken()) >= line);
+    }
+
+    /// <summary>
+    /// Se <paramref name="expression"/> é <c>Placement.Translate(new Vector3D(x, y, z))</c>, direto
+    /// ou no fim de um <c>.Then(...)</c>, registra as edições que somam o deslocamento e devolve true.
+    /// </summary>
+    private static bool TryMergeTranslate(ExpressionSyntax expression, double dx, double dy, double dz, List<TextChange> edits)
+    {
+        InvocationExpressionSyntax? translate = null;
+
+        if (expression is InvocationExpressionSyntax bare && MethodName(bare.Expression) == "Translate")
+        {
+            translate = bare;
+        }
+        else if (expression is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Then" } } then &&
+                 then.ArgumentList.Arguments.Count == 1 &&
+                 then.ArgumentList.Arguments[0].Expression is InvocationExpressionSyntax inner &&
+                 MethodName(inner.Expression) == "Translate")
+        {
+            translate = inner;
+        }
+
+        if (translate == null ||
+            translate.ArgumentList.Arguments.Count != 1 ||
+            translate.ArgumentList.Arguments[0].Expression is not BaseObjectCreationExpressionSyntax vector ||
+            vector.ArgumentList is not { Arguments.Count: 3 } ||
+            !vector.ArgumentList.Arguments.All(a => a.NameColon == null))
+        {
+            return false;
+        }
+
+        var coords = vector.ArgumentList.Arguments;
+        double[] deltas = { dx, dy, dz };
+        for (int i = 0; i < 3; i++) OffsetExpression(coords[i].Expression, deltas[i], edits);
+        return true;
+    }
+
+    public static string TranslationCall(double dx, double dy, double dz) =>
+        FormattableString.Invariant($"Placement.Translate(new Vector3D({Number(dx)}, {Number(dy)}, {Number(dz)}))");
+
+    /// <summary>Quebra de linha usada por <paramref name="statement"/> (arquivos colados podem misturar \n e \r\n).</summary>
+    private static string LineBreakOf(string source, StatementSyntax statement)
+    {
+        var text = SourceText.From(source);
+        var endLine = text.Lines.GetLineFromPosition(statement.Span.End);
+        return endLine.EndIncludingLineBreak > endLine.End
+            ? text.ToString(TextSpan.FromBounds(endLine.End, endLine.EndIncludingLineBreak))
+            : (source.Contains("\r\n") ? "\r\n" : "\n");
+    }
+
+    /// <summary>Indentação (espaços/tabs no início da linha) de <paramref name="statement"/>.</summary>
+    private static string IndentOf(string source, StatementSyntax statement)
+    {
+        var text = SourceText.From(source);
+        var statementLine = text.Lines.GetLineFromPosition(statement.SpanStart);
+        return new string(text.ToString(statementLine.Span).TakeWhile(char.IsWhiteSpace).ToArray());
     }
 
     /// <summary>Trecho da instrução que registrou uma feature (para destacar no editor).</summary>

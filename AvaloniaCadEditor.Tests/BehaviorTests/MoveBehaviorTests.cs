@@ -121,4 +121,41 @@ public class MoveBehaviorTests
         // Cópia transladada 10 em Y
         entities[1].BeEquivalentToCadLine(new LineEntity(new Point3D(0, 10), new Point3D(10, 10)));
     }
+    [Fact]
+    public void MoveTool_EmPlanoInclinado_DeslocamentoDasFeaturesSaiNoMundo()
+    {
+        var sketch = new Sketch();
+        sketch.AddFeature(new AvaloniaCadEditor.Domain.Features.BoxFeature(Point3D.Origin, 10, 10, 10) { IsSelected = true });
+        // Normal X: X local -> Y do mundo.
+        var moveTool = new MoveTool { Plane = new WorkPlane(Vector3D.UnitX, new Point3D(10, 0, 0)) };
+
+        Vector3D? recebido = null;
+        moveTool.FeaturesMoved += (vector, features) => recebido = vector;
+
+        moveTool.OnMouseDown(sketch, new Point3D(0, 0, 0));
+        moveTool.OnMouseDown(sketch, new Point3D(5, 0, 0));
+
+        recebido.Should().Be(new Vector3D(0, 5, 0));
+    }
+
+    [Fact]
+    public void MoveTool_ComControl_FeaturesViramCopiaEmVezDeMover()
+    {
+        var sketch = new Sketch();
+        sketch.AddFeature(new AvaloniaCadEditor.Domain.Features.BoxFeature(Point3D.Origin, 10, 10, 10) { IsSelected = true });
+        var moveTool = new MoveTool();
+
+        bool moveu = false;
+        Vector3D? copia = null;
+        moveTool.FeaturesMoved += (vector, features) => moveu = true;
+        moveTool.FeaturesCopied += (vector, features) => copia = vector;
+
+        moveTool.OnMouseDown(sketch, new Point3D(0, 0, 0));
+        moveTool.OnKeyDown(sketch, CadKey.Control);
+        moveTool.IsCopyPreview.Should().BeTrue();
+        moveTool.OnMouseDown(sketch, new Point3D(7, 0, 0));
+
+        moveu.Should().BeFalse();
+        copia.Should().Be(new Vector3D(7, 0, 0));
+    }
 }

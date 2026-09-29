@@ -12,6 +12,7 @@
   <data name="ExtendTool" xml:space="preserve"><value>Extend (X)</value></data>
   <data name="OffsetTool" xml:space="preserve"><value>Offset (O)</value></data>
   <data name="MoveTool" xml:space="preserve"><value>Move (M)</value></data>
+  <data name="RotateTool" xml:space="preserve"><value>Rotate (R)</value></data>
   <data name="GoToDefinition" xml:space="preserve"><value>Go to definition</value></data>
   <data name="FindReferences" xml:space="preserve"><value>Find references</value></data>
   <data name="RenameSymbol" xml:space="preserve"><value>Rename...</value></data>

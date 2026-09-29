@@ -71,6 +71,38 @@ public class RoslynDependencyAnalyzer
         return AnalyzeDependencies(csharpScript, resolvedName).visited;
     }
 
+    /// <summary>
+    /// Variáveis do grafo de dependências (não só as raízes) cujo inicializador contém
+    /// diretamente um <c>new Point3D(...)</c> — são as que <see cref="RoslynCoordinateMutator"/>
+    /// sabe deslocar. Usado pelo Move: reescrever só as raízes deixa de fora variáveis
+    /// intermediárias (ex.: um perfil que depende de uma variável de altura) que também têm
+    /// coordenadas próprias e precisam se mover junto.
+    /// </summary>
+    public IEnumerable<string> GetMovableVariableNames(string csharpScript, string targetVariableName)
+    {
+        string resolvedName = ResolveVariableName(csharpScript, targetVariableName);
+        var (_, visited) = AnalyzeDependencies(csharpScript, resolvedName);
+
+        if (visited.Count == 0 || string.IsNullOrWhiteSpace(csharpScript))
+            return Enumerable.Empty<string>();
+
+        var tree = CSharpSyntaxTree.ParseText(csharpScript);
+        var root = tree.GetRoot();
+
+        var declarators = root.DescendantNodes()
+            .OfType<VariableDeclaratorSyntax>()
+            .Where(v => visited.Contains(v.Identifier.Text))
+            .ToList();
+
+        return declarators
+            .Where(v => v.Initializer?.Value is ExpressionSyntax rhs &&
+                        rhs.DescendantNodesAndSelf()
+                            .OfType<ObjectCreationExpressionSyntax>()
+                            .Any(o => o.Type is IdentifierNameSyntax { Identifier.Text: "Point3D" }))
+            .Select(v => v.Identifier.Text)
+            .ToList();
+    }
+
     private (HashSet<string> roots, HashSet<string> visited) AnalyzeDependencies(string csharpScript, string targetVariableName)
     {
         var roots = new HashSet<string>();

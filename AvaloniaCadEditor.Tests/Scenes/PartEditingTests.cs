@@ -137,6 +137,104 @@ public class PartEditingTests
         PartSourceEditor.TranslateInstance(code, 1, dx, dy, dz).Should().Be(expected);
     }
 
+    // ------------------------------------------------------------ Girar instâncias
+
+    [Theory]
+    // Sem "at:": acrescenta.
+    [InlineData("Add(new Chapa(100));", 0, 0, 0, 0, 0, 1, 90,
+        "Add(new Chapa(100), at: Placement.RotationAbout(new Point3D(0, 0, 0), Vector3D.UnitZ, 90));")]
+    // "at:" com outro tipo de posicionamento: acrescenta .Then(...).
+    [InlineData("Add(new Chapa(100), at: Placement.At(150, 0, 0));", 150, 0, 0, 0, 0, 1, 90,
+        "Add(new Chapa(100), at: Placement.At(150, 0, 0).Then(Placement.RotationAbout(new Point3D(150, 0, 0), Vector3D.UnitZ, 90)));")]
+    // RotationAbout já existente, mesmo pivô/eixo: soma o ângulo em vez de encadear outro Then.
+    [InlineData("Add(new Chapa(100), at: Placement.RotationAbout(new Point3D(0, 0, 0), Vector3D.UnitZ, 90));", 0, 0, 0, 0, 0, 1, 45,
+        "Add(new Chapa(100), at: Placement.RotationAbout(new Point3D(0, 0, 0), Vector3D.UnitZ, 135));")]
+    // RotationAbout já existente, pivô diferente: não funde, encadeia mais um Then.
+    [InlineData("Add(new Chapa(100), at: Placement.RotationAbout(new Point3D(0, 0, 0), Vector3D.UnitZ, 90));", 10, 0, 0, 0, 0, 1, 45,
+        "Add(new Chapa(100), at: Placement.RotationAbout(new Point3D(0, 0, 0), Vector3D.UnitZ, 90).Then(Placement.RotationAbout(new Point3D(10, 0, 0), Vector3D.UnitZ, 45)));")]
+    // .Then(RotationAbout(mesmo pivô/eixo)) no fim de um posicionamento qualquer: funde dentro do Then.
+    [InlineData("Add(new Chapa(100), at: Placement.At(150, 0, 0).Then(Placement.RotationAbout(new Point3D(150, 0, 0), Vector3D.UnitZ, 90)));", 150, 0, 0, 0, 0, 1, 30,
+        "Add(new Chapa(100), at: Placement.At(150, 0, 0).Then(Placement.RotationAbout(new Point3D(150, 0, 0), Vector3D.UnitZ, 120)));")]
+    // Eixo que não é X/Y/Z: escreve o Vector3D por extenso.
+    [InlineData("Add(new Chapa(100));", 0, 0, 0, 0, 0, -1, 10,
+        "Add(new Chapa(100), at: Placement.RotationAbout(new Point3D(0, 0, 0), new Vector3D(0, 0, -1), 10));")]
+    public void RotateInstance_SomaNoAtSemPerderALogica(string code, double px, double py, double pz, double ax, double ay, double az, double degrees, string expected)
+    {
+        var pivot = new Point3D(px, py, pz);
+        var axis = new Vector3D(ax, ay, az);
+
+        PartSourceEditor.RotateInstance(code, 1, pivot, axis, degrees).Should().Be(expected);
+    }
+
+    [Fact]
+    public async Task RotarInstancia_ReescreveOAt_EAGiraNoModelo()
+    {
+        var vm = CreateViewModel();
+        vm.ScriptEditor.GeneratedCSharpCode =
+            "var base1 = Add(new Chapa(80), at: Placement.At(100, 0, 0));\n\n" + ChapaRecord;
+        await vm.ScriptEditor.RunCodeAsync();
+        var instance = vm.Sketch.Features.OfType<PartInstance>().Single();
+
+        bool changed = vm.ScriptEditor.RotatePartInstances(new[] { instance }, new Point3D(0, 0, 0), Vector3D.UnitZ, 90);
+        await vm.ScriptEditor.RunCodeAsync();
+
+        changed.Should().BeTrue();
+        vm.ScriptEditor.GeneratedCSharpCode.Should().StartWith(
+            "var base1 = Add(new Chapa(80), at: Placement.At(100, 0, 0).Then(Placement.RotationAbout(new Point3D(0, 0, 0), Vector3D.UnitZ, 90)));");
+
+        var rotated = vm.Sketch.Features.OfType<PartInstance>().Single();
+        rotated.Placement.HasRotation.Should().BeTrue();
+        // (100, 0, 0) girado 90° em Z em torno da origem do mundo vai para (0, 100, 0).
+        rotated.Placement.Translation.X.Should().BeApproximately(0, 1e-6);
+        rotated.Placement.Translation.Y.Should().BeApproximately(100, 1e-6);
+    }
+
+    // ------------------------------------------------------------ Copiar instâncias (Ctrl)
+
+    [Fact]
+    public void DuplicateInstance_CriaChamadaNovaSemVariavelNemNome_EDevolveALinhaDaCopia()
+    {
+        string code = "var a = Add(new Chapa(100), at: Placement.At(10, 0, 0), name: \"base\");\nvar b = 1;";
+
+        var (source, line) = PartSourceEditor.DuplicateInstance(code, 1);
+
+        source.Should().Be("var a = Add(new Chapa(100), at: Placement.At(10, 0, 0), name: \"base\");\nAdd(new Chapa(100), at: Placement.At(10, 0, 0));\nvar b = 1;");
+        line.Should().Be(2);
+        PartSourceEditor.TranslateInstance(source, line, 50, 0, 0).Should().Be(
+            "var a = Add(new Chapa(100), at: Placement.At(10, 0, 0), name: \"base\");\nAdd(new Chapa(100), at: Placement.At(60, 0, 0));\nvar b = 1;");
+    }
+
+    [Fact]
+    public async Task CopiarInstancias_MantemOsOriginaisECriaAsCopiasPosicionadas()
+    {
+        var vm = CreateViewModel();
+        vm.ScriptEditor.GeneratedCSharpCode =
+            "Add(new Chapa(80), at: Placement.At(0, 0, 0));\n" +
+            "Add(new Chapa(60), at: Placement.At(0, 100, 0));\n\n" + ChapaRecord;
+        await vm.ScriptEditor.RunCodeAsync();
+        var originais = vm.Sketch.Features.OfType<PartInstance>().ToList();
+
+        bool changed = vm.ScriptEditor.CopyPartInstances(originais,
+            (source, line) => PartSourceEditor.TranslateInstance(source, line, 200, 0, 0));
+        await vm.ScriptEditor.RunCodeAsync();
+
+        changed.Should().BeTrue();
+        vm.ScriptEditor.GeneratedCSharpCode.Should().StartWith(
+            "Add(new Chapa(80), at: Placement.At(0, 0, 0));\n" +
+            "Add(new Chapa(80), at: Placement.At(200, 0, 0));\n" +
+            "Add(new Chapa(60), at: Placement.At(0, 100, 0));\n" +
+            "Add(new Chapa(60), at: Placement.At(200, 100, 0));\n");
+        vm.Sketch.Features.OfType<PartInstance>().Should().HaveCount(4);
+    }
+
+    [Fact]
+    public void RotateInstance_LinhaSemAddCall_Lanca()
+    {
+        Action act = () => PartSourceEditor.RotateInstance("var a = 1;", 1, Point3D.Origin, Vector3D.UnitZ, 90);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*linha 1*");
+    }
+
     [Fact]
     public void FindStatementSpan_AchaAInstrucaoDoAddNaLinha()
     {
@@ -167,6 +265,150 @@ public class PartEditingTests
         var moved = vm.Sketch.Features.OfType<PartInstance>().ToList();
         moved[0].Placement.Translation.X.Should().Be(100);
         moved[1].Placement.Translation.Z.Should().Be(10);
+    }
+
+    // ------------------------------------------------------------ Mover/girar/copiar feature solta (Transformed)
+
+    [Theory]
+    // Ainda não é Transformed: envolve.
+    [InlineData("AddFeature(prism);", 5, 0, 0,
+        "AddFeature(prism.Transformed(Placement.Translate(new Vector3D(5, 0, 0))));")]
+    // Já é Transformed(Placement.Translate(...)): soma no deslocamento existente.
+    [InlineData("AddFeature(prism.Transformed(Placement.Translate(new Vector3D(5, 0, 0))));", 2, 0, 0,
+        "AddFeature(prism.Transformed(Placement.Translate(new Vector3D(7, 0, 0))));")]
+    // Já é Transformed com outro tipo de placement: encadeia .Then.
+    [InlineData("AddFeature(prism.Transformed(Placement.RotationAbout(new Point3D(0, 0, 0), Vector3D.UnitZ, 90)));", 5, 0, 0,
+        "AddFeature(prism.Transformed(Placement.RotationAbout(new Point3D(0, 0, 0), Vector3D.UnitZ, 90).Then(Placement.Translate(new Vector3D(5, 0, 0)))));")]
+    public void TranslateFeature_SomaNoTransformedSemPerderALogica(string code, double dx, double dy, double dz, string expected)
+    {
+        PartSourceEditor.TranslateFeature(code, 1, dx, dy, dz).Should().Be(expected);
+    }
+
+    [Theory]
+    [InlineData("AddFeature(prism);", 90,
+        "AddFeature(prism.Transformed(Placement.RotationAbout(new Point3D(0, 0, 0), Vector3D.UnitZ, 90)));")]
+    [InlineData("AddFeature(prism.Transformed(Placement.RotationAbout(new Point3D(0, 0, 0), Vector3D.UnitZ, 90)));", 45,
+        "AddFeature(prism.Transformed(Placement.RotationAbout(new Point3D(0, 0, 0), Vector3D.UnitZ, 135)));")]
+    public void RotateFeature_SomaNoTransformedSemPerderALogica(string code, double degrees, string expected)
+    {
+        PartSourceEditor.RotateFeature(code, 1, new Point3D(0, 0, 0), Vector3D.UnitZ, degrees).Should().Be(expected);
+    }
+
+    [Fact]
+    public void CopyFeature_AcrescentaVarETransformedComNomeUnico()
+    {
+        string code = "AddFeature(prism);";
+
+        var (updated, line) = PartSourceEditor.CopyFeature(code, 1, "Placement.Translate(new Vector3D(5, 0, 0))");
+
+        updated.Should().Be(
+            "AddFeature(prism);\n" +
+            "var prism_copia1 = prism.Transformed(Placement.Translate(new Vector3D(5, 0, 0)), name: \"prism_copia1\");\n" +
+            "AddFeature(prism_copia1);");
+        line.Should().Be(3);
+    }
+
+    [Fact]
+    public void CopyFeature_NomeJaExistente_UsaOProximoDisponivel()
+    {
+        string code = "AddFeature(prism);\nvar prism_copia1 = 1;";
+
+        var (updated, _) = PartSourceEditor.CopyFeature(code, 1, "Placement.Translate(new Vector3D(1, 0, 0))");
+
+        updated.Should().Contain("var prism_copia2 = prism.Transformed(");
+    }
+
+    [Fact]
+    public void CopyFeature_DeUmaCopia_UsaONomeDaOrigemComoBase()
+    {
+        string code = "AddFeature(prism.Transformed(Placement.Translate(new Vector3D(5, 0, 0)), name: \"prism_copia1\"));";
+
+        var (updated, _) = PartSourceEditor.CopyFeature(code, 1, "Placement.Translate(new Vector3D(1, 0, 0))");
+
+        updated.Should().Contain("var prism_copia2 = prism.Transformed(Placement.Translate(new Vector3D(5, 0, 0)), name: \"prism_copia1\").Transformed(Placement.Translate(new Vector3D(1, 0, 0)), name: \"prism_copia2\");");
+    }
+
+    [Fact]
+    public void TranslateFeature_LinhaSemAddFeature_Lanca()
+    {
+        Action act = () => PartSourceEditor.TranslateFeature("var a = 1;", 1, 1, 0, 0);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*linha 1*");
+    }
+
+    [Fact]
+    public async Task CopiarRotacionandoFeatureSolta_ComPlanoProprio_CriaACopiaEMantemOOriginal()
+    {
+        // Regressão: girar com Ctrl (copiar) o prism_60e9 do usuário (PrismFeature com WorkPlane
+        // próprio) mostrava a projeção, mas nada era criado, porque só instâncias de peça (Add(...))
+        // podiam ser copiadas/giradas - features soltas (AddFeature) eram sempre ignoradas.
+        var vm = CreateViewModel();
+        vm.ScriptEditor.GeneratedCSharpCode = """
+            var prism_60e9_verts = new[]
+            {
+                new Point3D(40, 10, 0),
+                new Point3D(40, 15, 0),
+                new Point3D(0, 15, 0),
+                new Point3D(0, 5, 0),
+                new Point3D(10, 5, 0),
+                new Point3D(40, 5, 0)
+            };
+            var prism_60e9_plane = new WorkPlane(new Point3D(-20, 0, 20), new Vector3D(0, 0, 1), new Vector3D(1, 0, 0));
+            var prism_60e9 = new PrismFeature(prism_60e9_verts, height: 4, plane: prism_60e9_plane)
+            {
+                Name = "prism_60e9"
+            };
+            AddFeature(prism_60e9);
+            """;
+        await vm.ScriptEditor.RunCodeAsync();
+        vm.ScriptEditor.HasErrors.Should().BeFalse(vm.ScriptEditor.ErrorSummary);
+        var original = vm.Sketch.Features.Single();
+
+        bool changed = vm.ScriptEditor.CopyLooseFeatures(new[] { original },
+            PartSourceEditor.RotationCall(new Point3D(20, 10, 20), Vector3D.UnitZ, 90));
+        await vm.ScriptEditor.RunCodeAsync();
+
+        changed.Should().BeTrue();
+        vm.ScriptEditor.HasErrors.Should().BeFalse(vm.ScriptEditor.ErrorSummary);
+        vm.Sketch.Features.Should().HaveCount(2);
+        vm.Sketch.Features.Should().Contain(f => f.Name == "prism_60e9");
+        vm.Sketch.Features.Should().Contain(f => f.Name == "prism_60e9_copia1");
+        vm.ScriptEditor.GeneratedCSharpCode.Should().Contain("prism_60e9.Transformed(Placement.RotationAbout(");
+        vm.ScriptEditor.GeneratedCSharpCode.Should().Contain("AddFeature(prism_60e9_copia1);");
+
+        // O original continua exatamente onde estava.
+        var originalDepois = vm.Sketch.Features.Single(f => f.Name == "prism_60e9");
+        originalDepois.GetVertices().Should().BeEquivalentTo(original.GetVertices());
+    }
+
+    [Fact]
+    public async Task MoverFeatureSolta_ComPlanoProprio_DeslocaOsVerticesExatamenteNoMundo()
+    {
+        // Regressão: mover (sem cópia) reescrevia coordenadas locais ao plano como se fossem do
+        // mundo, deslocando a peça errado. Transformed aplica sobre os vértices já no mundo
+        // (Prism.GetVertices()), então funciona igual para qualquer feature.
+        var vm = CreateViewModel();
+        vm.ScriptEditor.GeneratedCSharpCode = """
+            var verts = new[] { new Point3D(0, 0, 0), new Point3D(10, 0, 0), new Point3D(10, 5, 0), new Point3D(0, 5, 0) };
+            var plane = new WorkPlane(new Point3D(20, 0, 0), new Vector3D(1, 0, 0), new Vector3D(0, 1, 0));
+            var prism = new PrismFeature(verts, height: 3, plane: plane) { Name = "prism" };
+            AddFeature(prism);
+            """;
+        await vm.ScriptEditor.RunCodeAsync();
+        vm.ScriptEditor.HasErrors.Should().BeFalse(vm.ScriptEditor.ErrorSummary);
+        var before = vm.Sketch.Features.Single().GetVertices().ToList();
+
+        bool changed = vm.ScriptEditor.MoveLooseFeatures(vm.Sketch.Features.ToList(), new Vector3D(5, 0, 0));
+        await vm.ScriptEditor.RunCodeAsync();
+
+        changed.Should().BeTrue();
+        vm.ScriptEditor.HasErrors.Should().BeFalse(vm.ScriptEditor.ErrorSummary);
+        var after = vm.Sketch.Features.Single().GetVertices().ToList();
+        after.Should().HaveCount(before.Count);
+        for (int i = 0; i < before.Count; i++)
+        {
+            after[i].Should().Be(before[i] + new Vector3D(5, 0, 0));
+        }
     }
 
     // ------------------------------------------------------------ Inspector e editor

@@ -58,7 +58,7 @@ public class RoslynCoordinateMutator : CSharpSyntaxRewriter
             if (node.ArgumentList != null && node.ArgumentList.Arguments.Count >= 2)
             {
                 var args = node.ArgumentList.Arguments;
-                
+
                 var xArg = args.Count > 0 ? args[0] : null;
                 var yArg = args.Count > 1 ? args[1] : null;
                 var zArg = args.Count > 2 ? args[2] : null;
@@ -82,11 +82,20 @@ public class RoslynCoordinateMutator : CSharpSyntaxRewriter
         return base.VisitObjectCreationExpression(node);
     }
 
+    private static string FormatNumber(double value)
+    {
+        // Avoid .00000000001 precision issues, standardizing to a nice readable text
+        return Math.Abs(value % 1) <= (Double.Epsilon * 100) ?
+            Math.Round(value).ToString(CultureInfo.InvariantCulture) :
+            value.ToString("0.###", CultureInfo.InvariantCulture);
+    }
+
     private ArgumentSyntax? TryMutateArgument(ArgumentSyntax? arg, double delta)
     {
         if (arg == null) return null;
+        if (Math.Abs(delta) < 1e-12) return arg;
 
-        if (arg.Expression is LiteralExpressionSyntax literal && 
+        if (arg.Expression is LiteralExpressionSyntax literal &&
             (literal.IsKind(SyntaxKind.NumericLiteralExpression)))
         {
             double value = 0;
@@ -95,11 +104,7 @@ public class RoslynCoordinateMutator : CSharpSyntaxRewriter
             else if (double.TryParse(literal.Token.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed)) value = parsed;
 
             double newValue = value + delta;
-            
-            // Format to avoid .00000000001 precision issues, standardizing to a nice readable text
-            string newText = Math.Abs(newValue % 1) <= (Double.Epsilon * 100) ? 
-                Math.Round(newValue).ToString(CultureInfo.InvariantCulture) : 
-                newValue.ToString("0.###", CultureInfo.InvariantCulture);
+            string newText = FormatNumber(newValue);
 
             var newLiteral = SyntaxFactory.LiteralExpression(
                 SyntaxKind.NumericLiteralExpression,
@@ -108,8 +113,8 @@ public class RoslynCoordinateMutator : CSharpSyntaxRewriter
 
             return arg.WithExpression(newLiteral);
         }
-        else if (arg.Expression is PrefixUnaryExpressionSyntax prefix && 
-                 prefix.IsKind(SyntaxKind.UnaryMinusExpression) && 
+        else if (arg.Expression is PrefixUnaryExpressionSyntax prefix &&
+                 prefix.IsKind(SyntaxKind.UnaryMinusExpression) &&
                  prefix.Operand is LiteralExpressionSyntax negLiteral)
         {
             // Handle negative numbers e.g. -10
@@ -119,10 +124,7 @@ public class RoslynCoordinateMutator : CSharpSyntaxRewriter
             else if (double.TryParse(negLiteral.Token.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed)) value = -parsed;
 
             double newValue = value + delta;
-
-            string newText = Math.Abs(newValue % 1) <= (Double.Epsilon * 100) ? 
-                Math.Round(Math.Abs(newValue)).ToString(CultureInfo.InvariantCulture) : 
-                Math.Abs(newValue).ToString("0.###", CultureInfo.InvariantCulture);
+            string newText = FormatNumber(Math.Abs(newValue));
 
             ExpressionSyntax newExpr;
             if (newValue < 0)
@@ -146,8 +148,63 @@ public class RoslynCoordinateMutator : CSharpSyntaxRewriter
             newExpr = newExpr.WithTriviaFrom(prefix);
             return arg.WithExpression(newExpr);
         }
+        else if (arg.Expression is BinaryExpressionSyntax binary &&
+                 (binary.IsKind(SyntaxKind.AddExpression) || binary.IsKind(SyntaxKind.SubtractExpression)) &&
+                 binary.Right is LiteralExpressionSyntax rightLiteral &&
+                 rightLiteral.IsKind(SyntaxKind.NumericLiteralExpression))
+        {
+            // "expr + literal" or "expr - literal" (e.g. base_z + 5): sum the delta into the literal
+            // instead of chaining another "+ delta", so repeated moves don't pile up terms.
+            double value = 0;
+            if (rightLiteral.Token.Value is double d) value = d;
+            else if (rightLiteral.Token.Value is int i) value = i;
+            else if (double.TryParse(rightLiteral.Token.Text, NumberStyles.Any, CultureInfo.InvariantCulture, out var parsed)) value = parsed;
 
-        // Fallback (if the argument is a variable itself, we can't easily mutate it here, return as is)
-        return arg;
+            double signedValue = binary.IsKind(SyntaxKind.SubtractExpression) ? -value : value;
+            double newSignedValue = signedValue + delta;
+
+            if (Math.Abs(newSignedValue) < 1e-9)
+            {
+                // The literal term cancels out entirely: just "expr".
+                return arg.WithExpression(binary.Left.WithTriviaFrom(binary));
+            }
+
+            var op = newSignedValue < 0 ? SyntaxKind.SubtractExpression : SyntaxKind.AddExpression;
+            var opToken = newSignedValue < 0 ? SyntaxFactory.Token(SyntaxKind.MinusToken) : SyntaxFactory.Token(SyntaxKind.PlusToken);
+            string newText = FormatNumber(Math.Abs(newSignedValue));
+
+            var newRight = SyntaxFactory.LiteralExpression(
+                SyntaxKind.NumericLiteralExpression,
+                SyntaxFactory.Literal(newText, Math.Abs(newSignedValue)));
+
+            var newBinary = SyntaxFactory.BinaryExpression(op, binary.Left, opToken, newRight)
+                .WithTriviaFrom(binary);
+            return arg.WithExpression(newBinary);
+        }
+        else
+        {
+            // The argument is an arbitrary expression (a variable, a method call, ...): we can't fold
+            // the delta into a literal, so wrap it as "expr + delta" (or "expr - delta") instead of
+            // silently dropping the offset.
+            bool needsParens = arg.Expression is BinaryExpressionSyntax or ConditionalExpressionSyntax
+                or AssignmentExpressionSyntax or LambdaExpressionSyntax or CastExpressionSyntax
+                or PrefixUnaryExpressionSyntax or PostfixUnaryExpressionSyntax;
+
+            ExpressionSyntax baseExpr = needsParens
+                ? SyntaxFactory.ParenthesizedExpression(arg.Expression.WithoutTrivia())
+                : arg.Expression.WithoutTrivia();
+
+            var op = delta < 0 ? SyntaxKind.SubtractExpression : SyntaxKind.AddExpression;
+            var opToken = delta < 0 ? SyntaxFactory.Token(SyntaxKind.MinusToken) : SyntaxFactory.Token(SyntaxKind.PlusToken);
+            string newText = FormatNumber(Math.Abs(delta));
+
+            var deltaLiteral = SyntaxFactory.LiteralExpression(
+                SyntaxKind.NumericLiteralExpression,
+                SyntaxFactory.Literal(newText, Math.Abs(delta)));
+
+            var newBinary = SyntaxFactory.BinaryExpression(op, baseExpr, opToken, deltaLiteral)
+                .WithTriviaFrom(arg.Expression);
+            return arg.WithExpression(newBinary);
+        }
     }
 }

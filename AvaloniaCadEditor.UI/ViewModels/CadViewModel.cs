@@ -146,7 +146,16 @@ public class CadViewModel : INotifyPropertyChanged
 			if (_currentTool != null)
 			{
 				_currentTool.CodeGenerated -= CurrentTool_CodeGenerated;
-				if (_currentTool is MoveTool oldMove) oldMove.FeaturesMoved -= MoveTool_FeaturesMoved;
+				if (_currentTool is MoveTool oldMove)
+				{
+					oldMove.FeaturesMoved -= MoveTool_FeaturesMoved;
+					oldMove.FeaturesCopied -= MoveTool_FeaturesCopied;
+				}
+				if (_currentTool is RotateTool oldRotate)
+				{
+					oldRotate.FeaturesRotated -= RotateTool_FeaturesRotated;
+					oldRotate.FeaturesCopied -= RotateTool_FeaturesCopied;
+				}
 				_currentTool.Cancel();
 			}
 
@@ -155,7 +164,16 @@ public class CadViewModel : INotifyPropertyChanged
 			if (_currentTool != null)
 			{
 				_currentTool.CodeGenerated += CurrentTool_CodeGenerated;
-				if (_currentTool is MoveTool newMove) newMove.FeaturesMoved += MoveTool_FeaturesMoved;
+				if (_currentTool is MoveTool newMove)
+				{
+					newMove.FeaturesMoved += MoveTool_FeaturesMoved;
+					newMove.FeaturesCopied += MoveTool_FeaturesCopied;
+				}
+				if (_currentTool is RotateTool newRotate)
+				{
+					newRotate.FeaturesRotated += RotateTool_FeaturesRotated;
+					newRotate.FeaturesCopied += RotateTool_FeaturesCopied;
+				}
 			}
 
 			VcbService.Clear();
@@ -163,7 +181,7 @@ public class CadViewModel : INotifyPropertyChanged
 			HoveredFeatureId = null;
 			_hoverTimer?.Stop();
 
-			if (value != null && !(value is SelectTool) && !(value is MoveTool) && !(value is FilletTool))
+			if (value != null && !(value is SelectTool) && !(value is MoveTool) && !(value is RotateTool) && !(value is FilletTool))
 			{
 				ClearSelection();
 			}
@@ -175,30 +193,22 @@ public class CadViewModel : INotifyPropertyChanged
 		}
 	}
 
+	/// <summary>
+	/// Instâncias de peça movem o "at:" do Add(...); demais features (soltas, via AddFeature) ganham
+	/// (ou somam a) um x.Transformed(Placement.Translate(...)) — sem reescrever suas coordenadas
+	/// originais, então funciona para qualquer feature (prisma com plano próprio, booleana, etc.).
+	/// </summary>
 	private async void MoveTool_FeaturesMoved(AvaloniaCadEditor.Domain.ValueObjects.Vector3D vector, System.Collections.Generic.IEnumerable<AvaloniaCadEditor.Domain.Features.IFeature> features)
 	{
 		var moved = features.ToList();
 		var selectedFeatureNames = moved.Select(f => f.Name).ToList();
 
-		// Instâncias de peça: o código muda o "at:" da chamada Add(...) que as criou.
 		var instances = moved.OfType<PartInstance>().ToList();
-		bool changed = instances.Count > 0 && ScriptEditor.MovePartInstances(instances, vector);
+		var loose = moved.Where(f => f is not PartInstance).ToList();
 
-		// Demais features: as coordenadas das variáveis de que elas dependem.
-		var analyzer = new AvaloniaCadEditor.Application.Services.RoslynDependencyAnalyzer();
-		var rootVariableNames = new System.Collections.Generic.HashSet<string>();
-		foreach (var feature in moved.Where(f => f is not PartInstance))
-		{
-			foreach (var root in analyzer.GetRootVariableNames(ScriptEditor.GeneratedCSharpCode, feature.Name))
-			{
-				rootVariableNames.Add(root);
-			}
-		}
-		if (rootVariableNames.Count > 0)
-		{
-			ScriptEditor.MutateCoordinates(rootVariableNames, vector);
-			changed = true;
-		}
+		bool changed = false;
+		if (instances.Count > 0) changed |= ScriptEditor.MovePartInstances(instances, vector);
+		if (loose.Count > 0) changed |= ScriptEditor.MoveLooseFeatures(loose, vector);
 
 		if (!changed) return;
 
@@ -212,6 +222,95 @@ public class CadViewModel : INotifyPropertyChanged
 			{
 				_selectionService.SelectById(Sketch, newFeature.Id);
 			}
+		}
+	}
+
+	/// <summary>Mesma ideia de <see cref="MoveTool_FeaturesMoved"/>, para girar em torno de um pivô/eixo.</summary>
+	private async void RotateTool_FeaturesRotated(AvaloniaCadEditor.Domain.ValueObjects.Point3D pivot, AvaloniaCadEditor.Domain.ValueObjects.Vector3D axis, double degrees, System.Collections.Generic.IEnumerable<AvaloniaCadEditor.Domain.Features.IFeature> features)
+	{
+		if (Math.Abs(degrees) < 1e-9) return;
+
+		var rotated = features.ToList();
+		if (rotated.Count == 0)
+		{
+			StatusText = "✗ Rotacionar: nada selecionado.";
+			return;
+		}
+
+		var selectedFeatureNames = rotated.Select(f => f.Name).ToList();
+		var instances = rotated.OfType<PartInstance>().ToList();
+		var loose = rotated.Where(f => f is not PartInstance).ToList();
+
+		bool changed = false;
+		if (instances.Count > 0) changed |= ScriptEditor.RotatePartInstances(instances, pivot, axis, degrees);
+		if (loose.Count > 0) changed |= ScriptEditor.RotateLooseFeatures(loose, pivot, axis, degrees);
+
+		if (!changed) return;
+
+		await ScriptEditor.RunCodeAsync();
+
+		foreach (var featureName in selectedFeatureNames)
+		{
+			var newFeature = Sketch.Features.FirstOrDefault(f => f.Name == featureName);
+			if (newFeature != null)
+			{
+				_selectionService.SelectById(Sketch, newFeature.Id);
+			}
+		}
+	}
+
+	private void MoveTool_FeaturesCopied(AvaloniaCadEditor.Domain.ValueObjects.Vector3D vector, System.Collections.Generic.IEnumerable<AvaloniaCadEditor.Domain.Features.IFeature> features)
+	{
+		CopyFeatures(features,
+			instances => ScriptEditor.CopyPartInstances(instances, (source, line) =>
+				AvaloniaCadEditor.Application.Scenes.PartSourceEditor.TranslateInstance(source, line, vector.X, vector.Y, vector.Z)),
+			loose => ScriptEditor.CopyLooseFeatures(loose,
+				AvaloniaCadEditor.Application.Scenes.PartSourceEditor.TranslationCall(vector.X, vector.Y, vector.Z)));
+	}
+
+	private void RotateTool_FeaturesCopied(AvaloniaCadEditor.Domain.ValueObjects.Point3D pivot, AvaloniaCadEditor.Domain.ValueObjects.Vector3D axis, double degrees, System.Collections.Generic.IEnumerable<AvaloniaCadEditor.Domain.Features.IFeature> features)
+	{
+		CopyFeatures(features,
+			instances => ScriptEditor.CopyPartInstances(instances, (source, line) =>
+				AvaloniaCadEditor.Application.Scenes.PartSourceEditor.RotateInstance(source, line, pivot, axis, degrees)),
+			loose => ScriptEditor.CopyLooseFeatures(loose,
+				AvaloniaCadEditor.Application.Scenes.PartSourceEditor.RotationCall(pivot, axis, degrees)));
+	}
+
+	/// <summary>
+	/// Modo cópia (Ctrl) do Mover/Rotacionar: instâncias de peça duplicam a chamada Add(...);
+	/// features soltas ganham uma AddFeature(x.Transformed(...)) nova. Depois de reexecutar, as
+	/// cópias ficam selecionadas.
+	/// </summary>
+	private async void CopyFeatures(
+		System.Collections.Generic.IEnumerable<AvaloniaCadEditor.Domain.Features.IFeature> features,
+		Func<System.Collections.Generic.List<PartInstance>, bool> copyInstances,
+		Func<System.Collections.Generic.List<AvaloniaCadEditor.Domain.Features.IFeature>, bool> copyLoose)
+	{
+		var all = features.ToList();
+		if (all.Count == 0)
+		{
+			StatusText = "✗ Copiar: nada selecionado.";
+			return;
+		}
+
+		var instances = all.OfType<PartInstance>().ToList();
+		var loose = all.Where(f => f is not PartInstance).ToList();
+
+		var existingNames = Sketch.Features.Select(f => f.Name).ToHashSet();
+
+		bool changed = false;
+		if (instances.Count > 0) changed |= copyInstances(instances);
+		if (loose.Count > 0) changed |= copyLoose(loose);
+
+		if (!changed) return;
+
+		await ScriptEditor.RunCodeAsync();
+
+		_selectionService.ClearSelection(Sketch);
+		foreach (var copy in Sketch.Features.Where(f => !existingNames.Contains(f.Name)))
+		{
+			_selectionService.SelectById(Sketch, copy.Id);
 		}
 	}
 
@@ -322,6 +421,7 @@ public class CadViewModel : INotifyPropertyChanged
 	public ICommand SelectFilletToolCommand { get; }
 	public ICommand SelectSelectToolCommand { get; }
 	public ICommand SelectMoveToolCommand { get; }
+	public ICommand SelectRotateToolCommand { get; }
 	public ICommand SelectSetWorkPlaneCommand { get; }
 	public ICommand DeleteSelectedCommand { get; }
 	public ICommand ExitWorkPlaneCommand { get; }
@@ -503,7 +603,8 @@ public class CadViewModel : INotifyPropertyChanged
 		});
 
 		SelectSelectToolCommand = new RelayCommand(() => CurrentTool = new SelectTool(_geometryEngine, _selectionService));
-		SelectMoveToolCommand = new RelayCommand(() => CurrentTool = new MoveTool());
+		SelectMoveToolCommand = new RelayCommand(() => CurrentTool = new MoveTool { Plane = ActiveWorkPlane });
+		SelectRotateToolCommand = new RelayCommand(() => CurrentTool = new RotateTool { WorldUnitsPerPixel = WorldUnitsPerPixel, Plane = ActiveWorkPlane });
 		SelectSetWorkPlaneCommand = new RelayCommand(() => CurrentTool = new SetWorkPlaneCommand());
 
 		ExitWorkPlaneCommand = new RelayCommand(() =>
@@ -723,6 +824,7 @@ public class CadViewModel : INotifyPropertyChanged
 
 	public bool OnPointerPressed(Point3D worldPoint, bool isCtrlPressed = false)
 	{
+		SyncToolPlane();
 		var refPt = CurrentTool?.GetReferencePoint();
 		var snappedWorld = _osnapService.GetSnappedPoint(Sketch, worldPoint, refPt != null ? ActiveWorkPlane.ToWorldSpace(refPt.Value) : null, SolidMesh);
 		var localSnapped = ActiveWorkPlane.ToLocalSpace(snappedWorld);
@@ -841,11 +943,13 @@ public class CadViewModel : INotifyPropertyChanged
 
 	public void OnPointerMoved(Point3D worldPoint)
 	{
+		SyncToolPlane();
 		var refPt = CurrentTool?.GetReferencePoint();
 		var snappedWorld = _osnapService.GetSnappedPoint(Sketch, worldPoint, refPt != null ? ActiveWorkPlane.ToWorldSpace(refPt.Value) : null, SolidMesh);
 		var localSnapped = ActiveWorkPlane.ToLocalSpace(snappedWorld);
 		CurrentSnappedPoint = localSnapped;
 		ApplyHitTolerance();
+		if (CurrentTool is RotateTool rotateTool) rotateTool.WorldUnitsPerPixel = WorldUnitsPerPixel;
 		CurrentTool?.OnMouseMove(Sketch, localSnapped);
 
 		if (CurrentTool is ExtrudeCommand)
@@ -863,6 +967,17 @@ public class CadViewModel : INotifyPropertyChanged
 		}
 
 		UpdateStatusText(localSnapped);
+	}
+
+	/// <summary>
+	/// Move e Rotate recebem pontos locais do plano ativo e precisam dele para levar o resultado
+	/// (vetor, pivô, eixo) às coordenadas do mundo. Atualizado a cada evento, então trocar de plano
+	/// com a ferramenta ativa também funciona.
+	/// </summary>
+	private void SyncToolPlane()
+	{
+		if (CurrentTool is RotateTool rotate) rotate.Plane = ActiveWorkPlane;
+		else if (CurrentTool is MoveTool move) move.Plane = ActiveWorkPlane;
 	}
 
 	private void UpdateStatusText(Point3D snapped)
@@ -937,6 +1052,9 @@ public class CadViewModel : INotifyPropertyChanged
 				break;
 			case "M":
 				SelectMoveToolCommand.Execute(null);
+				break;
+			case "R":
+				SelectRotateToolCommand.Execute(null);
 				break;
 			case "W":
 				SelectSetWorkPlaneCommand.Execute(null);

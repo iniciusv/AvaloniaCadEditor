@@ -44,20 +44,46 @@ public class SceneEditingTests
         MinX(comFuro).Should().BeApproximately(200f, 1e-3f, "o sólido foi movido junto com a instância");
     }
 
-    [Fact]
-    public void InstanciaGirada_EmOperacaoBooleana_FalhaComMensagemClara()
+    /// <summary>Peça de teste cuja definição usa fillet — não pode virar operando de booleana girada
+    /// (o kernel reconstrói extrusões/caixas/cilindros girados, mas não um fillet).</summary>
+    private sealed record PlacaComFillet(double Lado) : Part
     {
+        protected override IFeature Build()
+        {
+            var box = new BoxFeature(Point3D.Origin, Lado, Lado, 5);
+            return new FilletFeature("filete", box, 1) { ApplyToAllEdges = true };
+        }
+    }
+
+    [Fact]
+    public void InstanciaGirada_SemFilletOuMalha_PodeSerOperandoBooleano()
+    {
+        // O kernel reconstrói o sólido já em coordenadas do mundo (rotação inclusa) para
+        // extrusões/caixas/cilindros/booleanas comuns, então uma instância girada de uma peça
+        // assim pode ser operando normalmente.
         using var _ = SceneHost.Begin(new SceneBuilder());
         var girada = Scene.Add(new Placa(100), at: Placement.At(0, 0, 0, rotationZDegrees: 45));
         var furo = new CylinderFeature(Point3D.Origin, Vector3D.UnitZ, 5, 10);
 
         Action act = () => BooleanFeature.CreateDifference("x", girada, furo);
 
-        act.Should().Throw<NotSupportedException>().WithMessage("*Placa_1*girada*");
+        act.Should().NotThrow();
     }
 
     [Fact]
-    public async Task InstanciaGiradaNoScript_ErroApontaALinhaDaOperacao()
+    public void InstanciaGiradaComFillet_EmOperacaoBooleana_FalhaComMensagemClara()
+    {
+        using var _ = SceneHost.Begin(new SceneBuilder());
+        var girada = Scene.Add(new PlacaComFillet(100), at: Placement.At(0, 0, 0, rotationZDegrees: 45));
+        var furo = new CylinderFeature(Point3D.Origin, Vector3D.UnitZ, 5, 10);
+
+        Action act = () => BooleanFeature.CreateDifference("x", girada, furo);
+
+        act.Should().Throw<NotSupportedException>().WithMessage("*PlacaComFillet_1*girada*fillet*");
+    }
+
+    [Fact]
+    public async Task InstanciaGiradaComFilletNoScript_ErroApontaALinhaDaOperacao()
     {
         string code = """
             var p = Add(new Chapa(50), at: Placement.At(0, 0, 0, rotationZDegrees: 45));
@@ -67,14 +93,18 @@ public class SceneEditingTests
 
             public sealed record Chapa(double Lado) : Part
             {
-                protected override IFeature Build() => new BoxFeature(Point3D.Origin, Lado, Lado, 5);
+                protected override IFeature Build()
+                {
+                    var box = new BoxFeature(Point3D.Origin, Lado, Lado, 5);
+                    return new FilletFeature("filete", box, 1) { ApplyToAllEdges = true };
+                }
             }
             """;
 
         var result = await new RoslynSceneEvaluator().EvaluateAsync(code);
 
         result.Success.Should().BeFalse();
-        result.ErrorMessage.Should().Contain("Cena.cs(4,").And.Contain("girada");
+        result.ErrorMessage.Should().Contain("Cena.cs(4,").And.Contain("girada").And.Contain("fillet");
     }
 
     // ------------------------------------------------------------ Novo arquivo de peça

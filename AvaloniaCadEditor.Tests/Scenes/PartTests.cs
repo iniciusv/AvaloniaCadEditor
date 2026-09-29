@@ -97,6 +97,26 @@ public class PartTests
     }
 
     [Fact]
+    public void RotationAbout_GiraEmTornoDoPivoSemMoveloDoLugar()
+    {
+        var pivot = new Point3D(10, 5, 0);
+
+        // O próprio pivô fica parado.
+        Placement.RotationAbout(pivot, Vector3D.UnitZ, 90).Apply(pivot).Should().Be(pivot);
+
+        // Um ponto a +X do pivô vai para +Y do pivô depois de girar 90° em Z (mão direita).
+        Placement.RotationAbout(pivot, Vector3D.UnitZ, 90).Apply(pivot + Vector3D.UnitX)
+            .Should().Be(pivot + Vector3D.UnitY);
+    }
+
+    [Fact]
+    public void RotationAbout_EquivaleARotationQuandoOPivoEAOrigem()
+    {
+        Placement.RotationAbout(Point3D.Origin, Vector3D.UnitX, 37).Apply(new Point3D(0, 2, 0))
+            .Should().Be(Placement.Rotation(Vector3D.UnitX, 37).Apply(new Point3D(0, 2, 0)));
+    }
+
+    [Fact]
     public void World_ConvertePortaDaPecaParaCoordenadasDoMundo()
     {
         using var _ = SceneHost.Begin(new SceneBuilder());

@@ -19,6 +19,7 @@ public static class Strings
     public static string ExtendTool => ResourceManager.GetString("ExtendTool") ?? "Extend (X)";
     public static string OffsetTool => ResourceManager.GetString("OffsetTool") ?? "Offset (O)";
     public static string MoveTool => ResourceManager.GetString("MoveTool") ?? "Move (M)";
+    public static string RotateTool => ResourceManager.GetString("RotateTool") ?? "Rotate (R)";
     public static string GoToDefinition => ResourceManager.GetString("GoToDefinition") ?? "Go to definition";
     public static string FindReferences => ResourceManager.GetString("FindReferences") ?? "Find references";
     public static string RenameSymbol => ResourceManager.GetString("RenameSymbol") ?? "Rename...";

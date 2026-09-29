@@ -108,6 +108,17 @@ public sealed class SolidFeatureRenderPass : IRenderPass
             }
         }
 
+        // Modo cópia (Ctrl no Mover/Rotacionar): o original continua desenhado no lugar e uma cópia
+        // fantasma (cor de preview) é que acompanha o mouse.
+        var previewTool = vm.CurrentTool as Application.Commands.ITransformPreviewTool;
+        if (previewTool is { IsCopyPreview: true })
+        {
+            foreach (var dragged in previewTool.DraggedFeatures)
+            {
+                featuresToRender.Add((dragged, true, false));
+            }
+        }
+
         var identity = context.IdentityMatrix;
 
         foreach (var (feature, isPreview, isToolFeature) in featuresToRender)
@@ -202,10 +213,9 @@ public sealed class SolidFeatureRenderPass : IRenderPass
             unsafe
             {
                 var transform = identity;
-                if (vm.CurrentTool is Application.Commands.MoveTool moveTool && moveTool.DraggedFeatures.Contains(feature) && moveTool.CurrentTranslation.Length > 0)
+                if (previewTool != null && previewTool.DraggedFeatures.Contains(feature) && (!previewTool.IsCopyPreview || isPreview))
                 {
-                    var t = moveTool.CurrentTranslation;
-                    transform = transform * System.Numerics.Matrix4x4.CreateTranslation((float)t.X, (float)t.Y, (float)t.Z);
+                    transform = transform * previewTool.PreviewTransform;
                 }
                 
                 gl.UniformMatrix4(context.Uniforms.ModelLoc, 1, false, (float*)&transform);

@@ -5,10 +5,12 @@ using AvaloniaCadEditor.Domain.ValueObjects;
 
 namespace AvaloniaCadEditor.Application.Commands;
 
-public class MoveTool : ICommandTool
+public class MoveTool : ICommandTool, ITransformPreviewTool
 {
     public event System.EventHandler<string>? CodeGenerated;
     public event System.Action<Vector3D, IEnumerable<Domain.Features.IFeature>>? FeaturesMoved;
+    /// <summary>Como <see cref="FeaturesMoved"/>, mas no modo cópia (Ctrl): o original fica onde está.</summary>
+    public event System.Action<Vector3D, IEnumerable<Domain.Features.IFeature>>? FeaturesCopied;
     public string Name => "Move";
 
     private enum State { WaitingForBasePoint, WaitingForTargetPoint }
@@ -17,6 +19,7 @@ public class MoveTool : ICommandTool
     private Point3D _basePoint;
     private Point3D _currentMouse;
     public bool IsCopyMode { get; private set; } = false;
+    public bool IsCopyPreview => IsCopyMode;
     
     private List<Entity> _previewClones = new List<Entity>();
     private List<Entity> _selectedOriginals = new List<Entity>();
@@ -26,6 +29,24 @@ public class MoveTool : ICommandTool
 
     public IEnumerable<Domain.Features.IFeature> DraggedFeatures => _currentState == State.WaitingForTargetPoint ? _selectedFeatures : Enumerable.Empty<Domain.Features.IFeature>();
     public Vector3D CurrentTranslation => _currentState == State.WaitingForTargetPoint ? _currentMouse - _basePoint : new Vector3D(0, 0, 0);
+
+    /// <summary>
+    /// Plano de trabalho ativo. Os pontos chegam em coordenadas locais desse plano: as entidades do
+    /// sketch (que vivem no plano) são transladadas no local, mas o deslocamento das features 3D
+    /// (FeaturesMoved e o preview) é convertido para o mundo.
+    /// </summary>
+    public WorkPlane Plane { get; set; } = WorkPlane.XY;
+
+    private Vector3D ToWorld(Vector3D v) => Plane.XAxis * v.X + Plane.YAxis * v.Y + Plane.Normal * v.Z;
+
+    public System.Numerics.Matrix4x4 PreviewTransform
+    {
+        get
+        {
+            var t = ToWorld(CurrentTranslation);
+            return System.Numerics.Matrix4x4.CreateTranslation((float)t.X, (float)t.Y, (float)t.Z);
+        }
+    }
 
     public void OnMouseDown(Sketch sketch, Point3D point)
     {
@@ -59,6 +80,11 @@ public class MoveTool : ICommandTool
                 clone.Translate(vector);
                 sketch.AddEntity(clone);
             }
+
+            if (_selectedFeatures.Any())
+            {
+                FeaturesCopied?.Invoke(ToWorld(vector), _selectedFeatures);
+            }
         }
         else
         {
@@ -69,7 +95,7 @@ public class MoveTool : ICommandTool
             
             if (_selectedFeatures.Any())
             {
-                FeaturesMoved?.Invoke(vector, _selectedFeatures);
+                FeaturesMoved?.Invoke(ToWorld(vector), _selectedFeatures);
             }
         }
 

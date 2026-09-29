@@ -116,4 +116,41 @@ public class OpenCascadeKernelTests
 
         volume.Should().BeApproximately(1760.0, 1760.0 * 0.01);
     }
+
+    // --- TransformedFeature: copiar/girar/mover uma feature solta (ver prism_60e9 do usuário) ---
+
+    [Fact]
+    public void TransformedFeature_PrismaComPlanoProprio_Girado_MantemOVolume()
+    {
+        // Regressão: um PrismFeature com WorkPlane próprio (vértices locais ao plano, não ao mundo)
+        // precisa girar corretamente via Transformed, sem duplicar nem perder volume.
+        var verts = new List<Point3D> { new(0, 0, 0), new(20, 0, 0), new(20, 10, 0), new(0, 10, 0) };
+        var plane = new WorkPlane(new Point3D(20, 0, 0), Vector3D.UnitX, Vector3D.UnitY);
+        var prism = new PrismFeature(verts, height: 4, plane: plane);
+        var kernel = new OpenCascadeGeometryKernel();
+
+        double originalVolume = MeshVolumeCalculator.ComputeVolume(kernel.BuildFeatureMesh(prism));
+        originalVolume.Should().BeApproximately(800.0, 800.0 * 0.02);
+
+        var girado = prism.Transformed(Placement.RotationAbout(new Point3D(20, 0, 0), Vector3D.UnitZ, 90));
+        var mesh = kernel.BuildFeatureMesh(girado);
+
+        mesh.VertexCount.Should().BeGreaterThan(0);
+        MeshVolumeCalculator.ComputeVolume(mesh).Should().BeApproximately(originalVolume, Math.Abs(originalVolume) * 0.02);
+    }
+
+    [Fact]
+    public void TransformedFeature_TranslacaoDeFeatureComFillet_GeraMalhaValida()
+    {
+        // Só translação reaproveita o sólido da Source (cache) e translada uma cópia - funciona até
+        // para features que não podem ser reconstruídas giradas (fillet depende de arestas fixas).
+        var box = new BoxFeature(Point3D.Origin, 10, 10, 10);
+        var comFillet = new FilletFeature("filete", box, 1) { ApplyToAllEdges = true };
+        var kernel = new OpenCascadeGeometryKernel();
+
+        var movido = comFillet.Transformed(Placement.Translate(new Vector3D(5, 0, 0)));
+        var mesh = kernel.BuildFeatureMesh(movido);
+
+        mesh.VertexCount.Should().BeGreaterThan(0);
+    }
 }

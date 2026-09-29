@@ -39,19 +39,44 @@ public abstract class PartInstance : FeatureBase
         Definition.GetVertices().Select(Placement.Apply).ToList();
 
     /// <summary>
-    /// Instâncias só transladadas podem ser operandos de <see cref="BooleanFeature"/>: o kernel move o
-    /// sólido da peça. Rotação não é suportada porque o OcctNet.Wrapper só expõe translação de sólidos.
+    /// Instâncias transladadas e giradas podem ser operandos de <see cref="BooleanFeature"/>: o kernel
+    /// reconstrói o sólido já em coordenadas do mundo (o OcctNet.Wrapper só expõe translação de sólidos
+    /// prontos, então uma instância girada refaz a extrusão/box/etc. com os pontos já transformados).
+    /// A única exceção é quando a definição depende de arestas ou malha de um sólido não-girado
+    /// (<see cref="FilletFeature"/>, <see cref="ImportedMeshFeature"/>): esses não podem ser refeitos
+    /// girados, então continuam bloqueados.
     /// </summary>
     internal static void EnsureCanBeBooleanOperand(IFeature feature)
     {
-        if (feature is PartInstance instance && instance.Placement.HasRotation)
+        if (feature is PartInstance instance && instance.Placement.HasRotation && DependsOnFixedGeometry(instance.Definition))
         {
             throw new NotSupportedException(
                 $"A instância '{instance.Name}' ({instance.PartTypeName}) está girada e não pode ser operando de uma " +
-                "operação booleana: o kernel atual (OcctNet.Wrapper) só consegue mover sólidos, não girá-los. " +
-                "Faça a operação dentro da peça (no Build) ou use uma instância sem rotação.");
+                "operação booleana: a definição usa fillet ou malha importada, que dependem das arestas/malha do sólido " +
+                "não-girado e não podem ser reconstruídos girados. Faça a operação dentro da peça (no Build) ou use uma " +
+                "instância sem rotação.");
+        }
+
+        if (feature is TransformedFeature transformed && transformed.Placement.HasRotation && DependsOnFixedGeometry(transformed.Source))
+        {
+            throw new NotSupportedException(
+                $"'{transformed.Name}' está girada (Transformed) e não pode ser operando de uma operação booleana: " +
+                "depende de fillet ou malha importada, que dependem das arestas/malha do sólido não-girado e não podem " +
+                "ser reconstruídos girados. Use uma transformação sem rotação, ou aplique o fillet depois da booleana.");
         }
     }
+
+    /// <summary>True se, em algum ponto da árvore de features, houver um fillet ou uma malha importada.</summary>
+    private static bool DependsOnFixedGeometry(IFeature feature) => feature switch
+    {
+        FilletFeature => true,
+        ImportedMeshFeature => true,
+        BooleanFeature boolean => DependsOnFixedGeometry(boolean.BaseFeature) ||
+                                   boolean.ToolFeatures.Any(DependsOnFixedGeometry),
+        PartInstance nested => DependsOnFixedGeometry(nested.Definition),
+        TransformedFeature transformed => DependsOnFixedGeometry(transformed.Source),
+        _ => false
+    };
 }
 
 /// <summary>Instância tipada: dá acesso às propriedades da peça (ex.: portas) sem cast.</summary>

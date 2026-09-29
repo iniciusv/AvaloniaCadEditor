@@ -58,6 +58,12 @@ public sealed class Placement
 
     public static Placement RotationZ(double degrees) => Rotation(Vector3D.UnitZ, degrees);
 
+    /// <summary>Rotação em torno de um eixo que passa por <paramref name="pivot"/> (regra da mão direita).</summary>
+    public static Placement RotationAbout(Point3D pivot, Vector3D axis, double degrees) =>
+        Translate(new Vector3D(-pivot.X, -pivot.Y, -pivot.Z))
+            .Then(Rotation(axis, degrees))
+            .Then(Translate(new Vector3D(pivot.X, pivot.Y, pivot.Z)));
+
     /// <summary>Rotação em torno de um eixo que passa pela origem da peça (regra da mão direita).</summary>
     public static Placement Rotation(Vector3D axis, double degrees)
     {
