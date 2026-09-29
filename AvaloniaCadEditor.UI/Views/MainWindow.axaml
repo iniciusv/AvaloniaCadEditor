@@ -252,6 +252,40 @@
                                     <Button Grid.Column="1" Content="{x:Static res:Strings.InsertPart}" Command="{Binding ScriptEditor.InsertPartCommand}"
                                             ToolTip.Tip="{x:Static res:Strings.InsertPartTooltip}" Margin="4,0,0,0"/>
                                 </Grid>
+                                <!-- Renomear (F2 no editor) -->
+                                <Border IsVisible="{Binding ScriptEditor.IsRenaming}" Background="#252526"
+                                        BorderBrush="#007ACC" BorderThickness="1" CornerRadius="3" Padding="6">
+                                    <StackPanel Spacing="4">
+                                        <TextBlock Text="{Binding ScriptEditor.RenameTitle}" Foreground="#CCCCCC" FontSize="11" TextWrapping="Wrap"/>
+                                        <Grid ColumnDefinitions="*,Auto,Auto">
+                                            <TextBox Grid.Column="0" Text="{Binding ScriptEditor.RenameText, Mode=TwoWay}"
+                                                     controls:CodeEditorBehavior.FocusWhen="{Binding ScriptEditor.IsRenaming}">
+                                                <TextBox.KeyBindings>
+                                                    <KeyBinding Gesture="Enter" Command="{Binding ScriptEditor.ConfirmRenameCommand}"/>
+                                                    <KeyBinding Gesture="Escape" Command="{Binding ScriptEditor.CancelRenameCommand}"/>
+                                                </TextBox.KeyBindings>
+                                            </TextBox>
+                                            <Button Grid.Column="1" Content="OK" Command="{Binding ScriptEditor.ConfirmRenameCommand}" Margin="4,0,0,0"/>
+                                            <Button Grid.Column="2" Content="✕" Command="{Binding ScriptEditor.CancelRenameCommand}" Margin="4,0,0,0"/>
+                                        </Grid>
+                                        <TextBlock Text="{Binding ScriptEditor.RenameError}" Foreground="#FF6B6B" FontSize="11" TextWrapping="Wrap"
+                                                   IsVisible="{Binding ScriptEditor.RenameError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                                    </StackPanel>
+                                </Border>
+                                <!-- Referências (Shift+F12 no editor): clicar abre o arquivo na linha -->
+                                <Border IsVisible="{Binding ScriptEditor.HasReferences}" Background="#252526"
+                                        BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="3" Padding="6">
+                                    <StackPanel Spacing="4">
+                                        <Grid ColumnDefinitions="*,Auto">
+                                            <TextBlock Text="{Binding ScriptEditor.ReferencesTitle}" Foreground="#CCCCCC" FontSize="11"
+                                                       TextWrapping="Wrap" VerticalAlignment="Center"/>
+                                            <Button Grid.Column="1" Content="✕" Command="{Binding ScriptEditor.CloseReferencesCommand}" Padding="6,0"/>
+                                        </Grid>
+                                        <ListBox ItemsSource="{Binding ScriptEditor.References}"
+                                                 SelectedItem="{Binding ScriptEditor.SelectedReference, Mode=TwoWay}"
+                                                 MaxHeight="160" FontSize="11" FontFamily="Consolas, Monospace"/>
+                                    </StackPanel>
+                                </Border>
                             </StackPanel>
                             <AvaloniaEdit:TextEditor Grid.Row="1"
                                      Name="CodeEditor"
@@ -260,6 +294,7 @@
                                      controls:CodeEditorBehavior.SelectedFeature="{Binding SelectedFeature}"
                                      controls:CodeEditorBehavior.ErrorLines="{Binding ScriptEditor.ActiveFileErrorLines}"
                                      controls:CodeEditorBehavior.RevealLine="{Binding ScriptEditor.RevealLine}"
+                                     controls:CodeEditorBehavior.CodeCommands="{Binding ScriptEditor}"
                                      FontFamily="Consolas, Fira Code, Monospace"
                                      Background="#1E1E1E"
                                      Foreground="#D4D4D4"

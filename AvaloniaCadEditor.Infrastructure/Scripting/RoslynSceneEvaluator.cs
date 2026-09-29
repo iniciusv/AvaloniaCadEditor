@@ -53,30 +53,45 @@ public class RoslynSceneEvaluator : ISceneEvaluator
         return EvaluateCoreAsync(documents, cancellationToken);
     }
 
-    private static async Task<SceneEvaluationResult> EvaluateCoreAsync(
+    /// <summary>
+    /// Compilação da cena (sem emitir nem executar), com as mesmas referências e usings globais
+    /// da execução. Também serve à navegação no código (definição, referências, renomear).
+    /// </summary>
+    /// <param name="userTrees">Árvores dos arquivos da cena, na ordem de <paramref name="documents"/>.</param>
+    public static CSharpCompilation CreateCompilation(
         IReadOnlyList<ScriptDocument> documents,
-        CancellationToken cancellationToken)
+        out IReadOnlyList<SyntaxTree> userTrees,
+        CancellationToken cancellationToken = default)
     {
-        var userTrees = documents
+        var trees = documents
             .Select(d => CSharpSyntaxTree.ParseText(
                 SourceText.From(d.Text ?? string.Empty, Encoding.UTF8),
                 ParseOptions,
                 path: d.FilePath,
                 cancellationToken: cancellationToken))
             .ToList();
+        userTrees = trees;
 
-        bool hasEntryPoint = userTrees.Any(t =>
+        bool hasEntryPoint = trees.Any(t =>
             ((CompilationUnitSyntax)t.GetRoot(cancellationToken)).Members.OfType<GlobalStatementSyntax>().Any());
 
-        var compilation = CSharpCompilation.Create(
+        return CSharpCompilation.Create(
             assemblyName: "CadScene_" + Guid.NewGuid().ToString("N"),
-            syntaxTrees: userTrees.Prepend(GlobalUsingsTree.Value),
+            syntaxTrees: trees.Prepend(GlobalUsingsTree.Value),
             references: References.Value,
             options: new CSharpCompilationOptions(
                 hasEntryPoint ? OutputKind.ConsoleApplication : OutputKind.DynamicallyLinkedLibrary,
                 optimizationLevel: OptimizationLevel.Debug,
                 nullableContextOptions: NullableContextOptions.Disable,
                 concurrentBuild: true));
+    }
+
+    private static async Task<SceneEvaluationResult> EvaluateCoreAsync(
+        IReadOnlyList<ScriptDocument> documents,
+        CancellationToken cancellationToken)
+    {
+        var compilation = CreateCompilation(documents, out _, cancellationToken);
+        bool hasEntryPoint = compilation.Options.OutputKind == OutputKind.ConsoleApplication;
 
         // Sem top-level statements não há o que executar (ex.: só comentários): cena vazia,
         // mas os erros de compilação dos tipos declarados ainda são reportados.

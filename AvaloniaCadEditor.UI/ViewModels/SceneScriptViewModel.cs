@@ -25,7 +25,7 @@ namespace AvaloniaCadEditor.UI.ViewModels;
 /// feitas fora do app (ex.: por uma IA externa) recarregam e reexecutam a cena.</item>
 /// </list>
 /// </summary>
-public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor
+public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICodeEditorCommands
 {
     private const int ReloadDebounceMs = 300;
 
@@ -34,6 +34,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor
     private readonly CadViewModel _cadViewModel;
     private readonly CodeHistoryManager _history = new();
     private readonly Action<Action> _uiInvoker;
+    private readonly ISceneCodeNavigator _codeNavigator;
 
     // Modo projeto: texto de cada arquivo em memória e o último conteúdo visto em disco.
     private SceneProject? _project;
@@ -48,8 +49,10 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor
         CadViewModel cadViewModel,
         ISceneEvaluator? sceneEvaluator,
         IFilePickerService? filePickerService,
-        Action<Action>? uiInvoker = null)
+        Action<Action>? uiInvoker = null,
+        ISceneCodeNavigator? codeNavigator = null)
     {
+        _codeNavigator = codeNavigator ?? new AvaloniaCadEditor.Infrastructure.Scripting.RoslynCodeNavigator();
         _cadViewModel = cadViewModel;
         _sceneEvaluator = sceneEvaluator;
         _filePickerService = filePickerService;
@@ -91,6 +94,9 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor
         CreateFileCommand = new RelayCommand(async () => await CreateFileAsync());
         GoToFirstErrorCommand = new RelayCommand(GoToFirstError);
         InsertPartCommand = new RelayCommand(async () => await InsertPartAsync(SelectedPartType));
+        ConfirmRenameCommand = new RelayCommand(async () => await ConfirmRenameAsync());
+        CancelRenameCommand = new RelayCommand(CancelRename);
+        CloseReferencesCommand = new RelayCommand(CloseReferences);
     }
 
     public ICommand GenerateCodeCommand { get; }
@@ -102,6 +108,9 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor
     public ICommand CreateFileCommand { get; }
     public ICommand GoToFirstErrorCommand { get; }
     public ICommand InsertPartCommand { get; }
+    public ICommand ConfirmRenameCommand { get; }
+    public ICommand CancelRenameCommand { get; }
+    public ICommand CloseReferencesCommand { get; }
 
     // ---------------------------------------------------------------- Erros da última execução
 
@@ -848,6 +857,201 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor
 
     private static string FormatInvariant(object? value) =>
         value is IFormattable f ? f.ToString(null, System.Globalization.CultureInfo.InvariantCulture) : value?.ToString() ?? "?";
+
+    // ---------------------------------------------------------------- Navegação: F12, Shift+F12, F2
+
+    private string _renameFile = ScriptDocument.DefaultSceneFile;
+    private int _renameOffset;
+    private bool _isRenaming;
+    private string _renameText = string.Empty;
+    private string? _renameTitle;
+    private string? _renameError;
+    private string? _referencesTitle;
+    private CodeLocation? _selectedReference;
+
+    /// <summary>Ocorrências do último Shift+F12; clicar numa delas abre o arquivo na linha.</summary>
+    public ObservableCollection<CodeLocation> References { get; } = new();
+
+    public bool HasReferences => References.Count > 0;
+
+    public string? ReferencesTitle
+    {
+        get => _referencesTitle;
+        private set { _referencesTitle = value; OnPropertyChanged(); }
+    }
+
+    public CodeLocation? SelectedReference
+    {
+        get => _selectedReference;
+        set
+        {
+            _selectedReference = value;
+            OnPropertyChanged();
+            if (value != null) NavigateTo(value);
+        }
+    }
+
+    public bool IsRenaming
+    {
+        get => _isRenaming;
+        private set { _isRenaming = value; OnPropertyChanged(); }
+    }
+
+    public string RenameText
+    {
+        get => _renameText;
+        set { _renameText = value ?? string.Empty; OnPropertyChanged(); }
+    }
+
+    public string? RenameTitle
+    {
+        get => _renameTitle;
+        private set { _renameTitle = value; OnPropertyChanged(); }
+    }
+
+    public string? RenameError
+    {
+        get => _renameError;
+        private set { _renameError = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>Arquivo mostrado no editor, como a compilação o conhece.</summary>
+    private string CurrentFile => _project != null ? _activeFile ?? _entryFile : ScriptDocument.DefaultSceneFile;
+
+    public bool GoToDefinitionAt(int offset)
+    {
+        var found = _codeNavigator.FindReferences(CurrentDocuments(), CurrentFile, offset);
+        if (found == null)
+        {
+            _cadViewModel.StatusText = "F12: posicione o cursor sobre um nome.";
+            return false;
+        }
+        if (found.Definitions.Count == 0)
+        {
+            _cadViewModel.StatusText = $"{found.SymbolName} faz parte da API do AvaloniaCad (veja .cad/api.md).";
+            return false;
+        }
+
+        var target = found.Definitions[0];
+        NavigateTo(target);
+        _cadViewModel.StatusText = $"{found.Kind} {found.SymbolName}: {target.FilePath}, linha {target.Line}";
+        return true;
+    }
+
+    public int FindReferencesAt(int offset)
+    {
+        var found = _codeNavigator.FindReferences(CurrentDocuments(), CurrentFile, offset);
+        References.Clear();
+        _selectedReference = null;
+        OnPropertyChanged(nameof(SelectedReference));
+
+        if (found == null)
+        {
+            ReferencesTitle = null;
+            OnPropertyChanged(nameof(HasReferences));
+            _cadViewModel.StatusText = "Shift+F12: posicione o cursor sobre um nome.";
+            return 0;
+        }
+
+        foreach (var occurrence in found.Occurrences) References.Add(occurrence);
+        int files = found.Occurrences.Select(o => o.FilePath).Distinct(StringComparer.OrdinalIgnoreCase).Count();
+        ReferencesTitle = $"{found.Occurrences.Count} ocorrência(s) de {found.Kind} {found.SymbolName} em {files} arquivo(s)";
+        OnPropertyChanged(nameof(HasReferences));
+        _cadViewModel.StatusText = ReferencesTitle;
+        return found.Occurrences.Count;
+    }
+
+    public bool BeginRenameAt(int offset)
+    {
+        var found = _codeNavigator.FindReferences(CurrentDocuments(), CurrentFile, offset);
+        if (found == null)
+        {
+            _cadViewModel.StatusText = "F2: posicione o cursor sobre um nome para renomear.";
+            return false;
+        }
+        if (!found.IsInScene)
+        {
+            _cadViewModel.StatusText = $"{found.SymbolName} faz parte da API do AvaloniaCad e não pode ser renomeado.";
+            return false;
+        }
+
+        _renameFile = CurrentFile;
+        _renameOffset = offset;
+        RenameTitle = $"Renomear {found.Kind} {found.SymbolName} ({found.Occurrences.Count} ocorrência(s)) para:";
+        RenameText = found.SymbolName;
+        RenameError = null;
+        IsRenaming = true;
+        return true;
+    }
+
+    /// <summary>Aplica o nome digitado em todos os arquivos e reexecuta. Retorna o erro, ou null.</summary>
+    public async Task<string?> ConfirmRenameAsync()
+    {
+        if (!IsRenaming) return null;
+
+        RenameResult result;
+        try
+        {
+            result = _codeNavigator.Rename(CurrentDocuments(), _renameFile, _renameOffset, RenameText);
+        }
+        catch (InvalidOperationException ex)
+        {
+            RenameError = ex.Message;
+            return ex.Message;
+        }
+
+        IsRenaming = false;
+        RenameError = null;
+        if (result.ChangedDocuments.Count == 0) return null;
+
+        foreach (var (file, text) in result.ChangedDocuments)
+        {
+            SetDocumentText(file, text);
+        }
+        CloseReferences();
+        await RunCodeAsync();
+        _cadViewModel.StatusText =
+            $"✓ {result.OldName} → {result.NewName}: {result.Occurrences} ocorrência(s) em {result.ChangedDocuments.Count} arquivo(s)";
+        return null;
+    }
+
+    public void CancelRename()
+    {
+        IsRenaming = false;
+        RenameError = null;
+    }
+
+    public void CloseReferences()
+    {
+        References.Clear();
+        ReferencesTitle = null;
+        _selectedReference = null;
+        OnPropertyChanged(nameof(SelectedReference));
+        OnPropertyChanged(nameof(HasReferences));
+    }
+
+    /// <summary>Abre o arquivo da ocorrência (numa cena com vários) e seleciona o nome.</summary>
+    private void NavigateTo(CodeLocation location)
+    {
+        if (_project != null && !string.Equals(location.FilePath, _activeFile, StringComparison.OrdinalIgnoreCase))
+        {
+            if (!_documents.ContainsKey(location.FilePath)) return;
+            SwitchActiveFile(location.FilePath);
+        }
+        _cadViewModel.SidebarTabIndex = CadViewModel.CodeTabIndex;
+        RevealLine = new EditorLineRequest(location.Line, location.Column, location.Length);
+    }
+
+    public async Task<string?> MovePartInstanceAsync(PartInstance instance, AvaloniaCadEditor.Domain.ValueObjects.Vector3D offset)
+    {
+        string instanceName = instance.Name;
+        if (!MovePartInstances(new[] { instance }, offset)) return "Não foi possível mover: a chamada Add(...) não foi encontrada.";
+
+        await RunCodeAsync();
+        if (HasErrors) return ErrorSummary;
+        SelectFeatureByName(instanceName);
+        return null;
+    }
 
     // ---------------------------------------------------------------- Edições geradas pelo app
 

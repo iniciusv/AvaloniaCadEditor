@@ -1,5 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using Avalonia.Media;
 using AvaloniaEdit;
 using AvaloniaEdit.Highlighting;
@@ -90,6 +92,8 @@ public static class CodeEditorBehavior
         ErrorLinesProperty.Changed.AddClassHandler<TextEditor>((editor, e) => HandleErrorLinesChanged(editor, e));
         DocumentTextProperty.Changed.AddClassHandler<TextEditor>((editor, e) => HandleDocumentTextChanged(editor, e));
         RevealLineProperty.Changed.AddClassHandler<TextEditor>((editor, e) => HandleRevealLineChanged(editor, e));
+        CodeCommandsProperty.Changed.AddClassHandler<TextEditor>((editor, e) => HandleCodeCommandsChanged(editor));
+        FocusWhenProperty.Changed.AddClassHandler<TextBox>((box, e) => HandleFocusWhenChanged(box, e));
     }
 
     private static void ApplyVSDarkThemeToCSharp()
@@ -185,10 +189,79 @@ public static class CodeEditorBehavior
             try
             {
                 editor.TextArea.Caret.Line = request.Line;
-                editor.TextArea.Caret.Column = 1;
+                editor.TextArea.Caret.Column = Math.Max(1, request.Column);
+                if (request.SelectionLength > 0)
+                {
+                    int start = editor.Document.GetOffset(request.Line, Math.Max(1, request.Column));
+                    int length = Math.Min(request.SelectionLength, editor.Document.TextLength - start);
+                    if (length > 0) editor.Select(start, length);
+                }
                 editor.ScrollToLine(request.Line);
+                // Só navegação explícita (F12, lista de referências) leva o foco ao editor;
+                // selecionar uma peça na árvore não deve tirar o foco dela.
+                if (request.SelectionLength > 0) editor.TextArea.Focus();
             }
             catch (ArgumentOutOfRangeException) { /* documento trocou no meio do caminho */ }
+        }, Avalonia.Threading.DispatcherPriority.Loaded);
+    }
+
+    /// <summary>
+    /// Comandos de navegação do editor: F12 (ir para a definição), Shift+F12 (referências) e
+    /// F2 (renomear), sempre sobre o símbolo sob o cursor.
+    /// </summary>
+    public static readonly AttachedProperty<AvaloniaCadEditor.UI.ViewModels.ICodeEditorCommands?> CodeCommandsProperty =
+        AvaloniaProperty.RegisterAttached<TextEditor, AvaloniaCadEditor.UI.ViewModels.ICodeEditorCommands?>("CodeCommands", typeof(CodeEditorBehavior));
+
+    public static AvaloniaCadEditor.UI.ViewModels.ICodeEditorCommands? GetCodeCommands(AvaloniaObject element) => element.GetValue(CodeCommandsProperty);
+    public static void SetCodeCommands(AvaloniaObject element, AvaloniaCadEditor.UI.ViewModels.ICodeEditorCommands? value) => element.SetValue(CodeCommandsProperty, value);
+
+    private static readonly AttachedProperty<bool> IsKeyHandlerSubscribedProperty =
+        AvaloniaProperty.RegisterAttached<TextEditor, bool>("IsKeyHandlerSubscribed", typeof(CodeEditorBehavior));
+
+    private static void HandleCodeCommandsChanged(TextEditor editor)
+    {
+        if (editor.GetValue(IsKeyHandlerSubscribedProperty)) return;
+        editor.SetValue(IsKeyHandlerSubscribedProperty, true);
+
+        // Tunnel: o editor consumiria F2/F12 antes de um handler normal.
+        editor.AddHandler(InputElement.KeyDownEvent, (_, e) =>
+        {
+            var commands = GetCodeCommands(editor);
+            if (commands == null) return;
+
+            int offset = editor.CaretOffset;
+            if (e.Key == Key.F12 && e.KeyModifiers == KeyModifiers.Shift)
+            {
+                commands.FindReferencesAt(offset);
+                e.Handled = true;
+            }
+            else if (e.Key == Key.F12 && e.KeyModifiers == KeyModifiers.None)
+            {
+                commands.GoToDefinitionAt(offset);
+                e.Handled = true;
+            }
+            else if (e.Key == Key.F2 && e.KeyModifiers == KeyModifiers.None)
+            {
+                commands.BeginRenameAt(offset);
+                e.Handled = true;
+            }
+        }, RoutingStrategies.Tunnel);
+    }
+
+    /// <summary>Dá foco (e seleciona o texto) a uma caixa quando o valor vira true, ex.: a caixa de renomear.</summary>
+    public static readonly AttachedProperty<bool> FocusWhenProperty =
+        AvaloniaProperty.RegisterAttached<TextBox, bool>("FocusWhen", typeof(CodeEditorBehavior));
+
+    public static bool GetFocusWhen(AvaloniaObject element) => element.GetValue(FocusWhenProperty);
+    public static void SetFocusWhen(AvaloniaObject element, bool value) => element.SetValue(FocusWhenProperty, value);
+
+    private static void HandleFocusWhenChanged(TextBox box, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is not true) return;
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            box.Focus();
+            box.SelectAll();
         }, Avalonia.Threading.DispatcherPriority.Loaded);
     }
 

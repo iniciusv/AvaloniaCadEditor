@@ -19,16 +19,44 @@ public interface IPartCodeEditor
 
     /// <summary>Abre no editor o arquivo e a linha onde o tipo da peça é declarado.</summary>
     bool GoToPartDefinition(string typeName);
+
+    /// <summary>Move a instância (reescrevendo o <c>at:</c>) e reexecuta. Retorna a mensagem de erro, ou null.</summary>
+    Task<string?> MovePartInstanceAsync(PartInstance instance, AvaloniaCadEditor.Domain.ValueObjects.Vector3D offset);
+}
+
+/// <summary>Comandos de navegação disparados pelo teclado no editor (F12, Shift+F12, F2).</summary>
+public interface ICodeEditorCommands
+{
+    /// <summary>F12: vai para a declaração do símbolo sob o cursor.</summary>
+    bool GoToDefinitionAt(int offset);
+
+    /// <summary>Shift+F12: lista as ocorrências do símbolo sob o cursor. Devolve quantas achou.</summary>
+    int FindReferencesAt(int offset);
+
+    /// <summary>F2: abre a caixa de renomear para o símbolo sob o cursor.</summary>
+    bool BeginRenameAt(int offset);
 }
 
 /// <summary>
-/// Pedido para o editor rolar até uma linha. É uma classe (não record) de propósito: dois pedidos
-/// para a mesma linha precisam ser diferentes, senão o binding ignora o segundo.
+/// Pedido para o editor rolar até uma linha (e, opcionalmente, selecionar um trecho dela). É uma
+/// classe (não record) de propósito: dois pedidos iguais precisam ser diferentes, senão o binding
+/// ignora o segundo.
 /// </summary>
 public sealed class EditorLineRequest
 {
-    public EditorLineRequest(int line) => Line = line;
+    public EditorLineRequest(int line, int column = 1, int selectionLength = 0)
+    {
+        Line = line;
+        Column = column;
+        SelectionLength = selectionLength;
+    }
 
     /// <summary>Linha, começando em 1.</summary>
     public int Line { get; }
+
+    /// <summary>Coluna, começando em 1.</summary>
+    public int Column { get; }
+
+    /// <summary>Quantos caracteres selecionar a partir da coluna (0 = só posiciona o cursor).</summary>
+    public int SelectionLength { get; }
 }

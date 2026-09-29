@@ -39,15 +39,15 @@
                             <Grid ColumnDefinitions="*,*,*" Margin="0,2,0,0">
                                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4">
                                     <TextBlock Text="X:" Foreground="#FF6B6B" FontWeight="Bold" VerticalAlignment="Center" FontSize="11"/>
-                                    <NumericUpDown Value="{Binding CenterX, Mode=TwoWay}" IsReadOnly="{Binding IsPartInstance}" ShowButtonSpinner="False" FormatString="F2" Increment="1" Width="65" Height="26" FontSize="11" />
+                                    <NumericUpDown Value="{Binding CenterX, Mode=TwoWay}" ShowButtonSpinner="False" FormatString="F2" Increment="1" Width="65" Height="26" FontSize="11" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
                                     <TextBlock Text="Y:" Foreground="#51CF66" FontWeight="Bold" VerticalAlignment="Center" FontSize="11"/>
-                                    <NumericUpDown Value="{Binding CenterY, Mode=TwoWay}" IsReadOnly="{Binding IsPartInstance}" ShowButtonSpinner="False" FormatString="F2" Increment="1" Width="65" Height="26" FontSize="11" />
+                                    <NumericUpDown Value="{Binding CenterY, Mode=TwoWay}" ShowButtonSpinner="False" FormatString="F2" Increment="1" Width="65" Height="26" FontSize="11" />
                                 </StackPanel>
                                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4">
                                     <TextBlock Text="Z:" Foreground="#339AF0" FontWeight="Bold" VerticalAlignment="Center" FontSize="11"/>
-                                    <NumericUpDown Value="{Binding CenterZ, Mode=TwoWay}" IsReadOnly="{Binding IsPartInstance}" ShowButtonSpinner="False" FormatString="F2" Increment="1" Width="65" Height="26" FontSize="11" />
+                                    <NumericUpDown Value="{Binding CenterZ, Mode=TwoWay}" ShowButtonSpinner="False" FormatString="F2" Increment="1" Width="65" Height="26" FontSize="11" />
                                 </StackPanel>
                             </Grid>
                         </StackPanel>

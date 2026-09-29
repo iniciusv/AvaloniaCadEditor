@@ -490,6 +490,23 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
             cp2.UpdateCenter(newCenter);
             _onModelParametricModified?.Invoke();
         }
+        else if (obj is PartInstance instance && _partCodeEditor() is { } editor)
+        {
+            // Peça: a origem mostrada é onde o Placement leva (0,0,0); mover = somar a diferença no "at:".
+            var current = instance.ToWorld(Point3D.Origin);
+            var offset = new Vector3D(_centerX - current.X, _centerY - current.Y, _centerZ - current.Z);
+            if (offset.Length < 1e-9) return;
+            _ = MovePartAsync(editor, instance, offset);
+        }
+    }
+
+    private async System.Threading.Tasks.Task MovePartAsync(IPartCodeEditor editor, PartInstance instance, Vector3D offset)
+    {
+        string? error = await editor.MovePartInstanceAsync(instance, offset);
+        if (error != null)
+        {
+            PartNote = error;
+        }
     }
 
     private void NotifyAllFields()

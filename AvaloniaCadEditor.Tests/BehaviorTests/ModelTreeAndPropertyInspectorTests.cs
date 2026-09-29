@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using AvaloniaCadEditor.Application.Commands;
 using AvaloniaCadEditor.Application.Services;
@@ -31,10 +32,22 @@ public class ModelTreeAndPropertyInspectorTests
 
         treeVm.BindSketch(sketch);
 
-        // Assert: ModelTree only contains WorkPlanes (default 1)
-        Assert.Single(treeVm.RootNodes);
-        Assert.Equal("Plano Base (XY)", treeVm.RootNodes[0].Name);
+        // Assert: a árvore tem dois grupos — geometria de referência (planos, com perfis e
+        // entidades dentro) e volumes 3D — e cada item adicionado aparece nela.
+        Assert.Equal(2, treeVm.RootNodes.Count);
+        Assert.Equal("Geometria de Referência", treeVm.RootNodes[0].Name);
+        var plane = Assert.Single(treeVm.RootNodes[0].Children);
+        Assert.Equal("Plano Base (XY)", plane.Name);
+        Assert.Equal("Volumes 3D (1)", treeVm.RootNodes[1].Name);
+
+        var allTags = Flatten(treeVm.RootNodes).Select(n => n.Tag).ToList();
+        Assert.Contains(sketch.Entities[0], allTags);
+        Assert.Contains(circleProfile, allTags);
+        Assert.Contains(cylinderFeature, allTags);
     }
+
+    private static IEnumerable<TreeItemNode> Flatten(IEnumerable<TreeItemNode> nodes) =>
+        nodes.SelectMany(n => new[] { n }.Concat(Flatten(n.Children)));
 
     [Fact]
     public void PropertyInspector_ShouldDisplayAccurateCylinderProperties()
@@ -82,8 +95,8 @@ public class ModelTreeAndPropertyInspectorTests
 
         treeVm.BindSketch(sketch);
 
-        // Act 1: Select via Tree Node
-        var wpNode = treeVm.RootNodes[0];
+        // Act 1: Select via Tree Node (o plano fica dentro do grupo "Geometria de Referência")
+        var wpNode = treeVm.RootNodes[0].Children[0];
         treeVm.SelectedNode = wpNode;
 
         // Assert 1
