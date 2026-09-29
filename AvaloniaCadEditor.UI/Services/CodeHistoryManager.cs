@@ -7,6 +7,12 @@ public class CodeHistoryManager
     private readonly Stack<string> _undoStack = new();
     private readonly Stack<string> _redoStack = new();
 
+    public void Clear()
+    {
+        _undoStack.Clear();
+        _redoStack.Clear();
+    }
+
     public void SaveState(string currentState)
     {
         if (_undoStack.Count == 0 || _undoStack.Peek() != currentState)

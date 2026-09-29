@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.CompilerServices;
+using System.Text.RegularExpressions;
 using System.Threading;
 using AvaloniaCadEditor.Domain.Features;
 
@@ -12,8 +14,53 @@ namespace AvaloniaCadEditor.Domain.Scripting;
 /// </summary>
 public static class Scene
 {
-    /// <summary>Registra uma feature na cena que está sendo avaliada.</summary>
-    public static void AddFeature(IFeature feature) => SceneHost.CurrentBuilder.AddFeature(feature);
+    /// <summary>
+    /// Registra uma feature na cena que está sendo avaliada. Os parâmetros opcionais são
+    /// preenchidos pelo compilador e registram de onde a feature veio (arquivo, linha, variável).
+    /// </summary>
+    public static void AddFeature(
+        IFeature feature,
+        [CallerArgumentExpression(nameof(feature))] string? expression = null,
+        [CallerFilePath] string filePath = "",
+        [CallerLineNumber] int line = 0)
+    {
+        if (feature == null) return;
+        FeatureOrigin.Set(feature, new SourceOrigin(filePath, line, expression));
+        SceneHost.CurrentBuilder.AddFeature(feature);
+    }
+}
+
+/// <summary>Onde, no código da cena, uma feature foi registrada.</summary>
+/// <param name="FilePath">Arquivo da chamada (relativo à cena quando avaliada pelo app).</param>
+/// <param name="Line">Linha da chamada, começando em 1.</param>
+/// <param name="Expression">Texto do argumento passado a <c>AddFeature</c> (ex.: <c>box_1</c>).</param>
+public sealed record SourceOrigin(string FilePath, int Line, string? Expression)
+{
+    private static readonly Regex IdentifierPattern = new(@"^@?[\p{L}_][\p{L}\p{Nd}_]*$", RegexOptions.CultureInvariant);
+
+    /// <summary>Nome da variável quando o argumento era um identificador simples; senão null.</summary>
+    public string? Variable =>
+        Expression != null && IdentifierPattern.IsMatch(Expression) ? Expression.TrimStart('@') : null;
+}
+
+/// <summary>
+/// Origem de cada feature no código-fonte. Fica fora de <see cref="FeatureBase"/> para não virar
+/// parte da API vista pelos scripts; a tabela é fraca, então não segura features descartadas.
+/// </summary>
+public static class FeatureOrigin
+{
+    private static readonly ConditionalWeakTable<IFeature, SourceOrigin> Origins = new();
+
+    public static SourceOrigin? Of(IFeature feature) =>
+        feature != null && Origins.TryGetValue(feature, out var origin) ? origin : null;
+
+    /// <summary>
+    /// Nome pelo qual o código se refere à feature: a variável passada a <c>AddFeature</c> ou,
+    /// na falta dela, o <see cref="IFeature.Name"/>.
+    /// </summary>
+    public static string VariableName(IFeature feature) => Of(feature)?.Variable ?? feature.Name;
+
+    internal static void Set(IFeature feature, SourceOrigin origin) => Origins.AddOrUpdate(feature, origin);
 }
 
 /// <summary>

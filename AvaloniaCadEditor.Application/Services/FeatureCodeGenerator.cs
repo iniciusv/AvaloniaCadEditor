@@ -148,7 +148,7 @@ public static class FeatureCodeGenerator
         {
             string parentId = string.IsNullOrEmpty(faceProfile.BaseFeature.Name)
                 ? $"feature_{faceProfile.BaseFeature.Id.ToString("N").Substring(0, 4)}"
-                : RoslynDependencyAnalyzer.ResolveVariableName(RoslynDependencyAnalyzer.CurrentCode, faceProfile.BaseFeature.Name);
+                : AvaloniaCadEditor.Domain.Scripting.FeatureOrigin.VariableName(faceProfile.BaseFeature);
 
             string cylVar = $"cylinder_{id}";
             string boolVar = $"boolOp_{id}";
@@ -196,7 +196,7 @@ public static class FeatureCodeGenerator
                 {
                     string parentFeatureVar = string.IsNullOrEmpty(linkedPlane.TargetFace.ParentFeature.Name) 
                         ? $"feature_{linkedPlane.TargetFace.ParentFeature.Id.ToString("N").Substring(0, 4)}"
-                        : RoslynDependencyAnalyzer.ResolveVariableName(RoslynDependencyAnalyzer.CurrentCode, linkedPlane.TargetFace.ParentFeature.Name);
+                        : AvaloniaCadEditor.Domain.Scripting.FeatureOrigin.VariableName(linkedPlane.TargetFace.ParentFeature);
                     
                     string faceVar = linkedPlane.TargetFace.Name;
                     

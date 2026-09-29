@@ -46,6 +46,8 @@ public static class Strings
     public static string TreeTab => ResourceManager.GetString("TreeTab") ?? "Model";
     public static string CodeTab => ResourceManager.GetString("CodeTab") ?? "Code";
     public static string IOTab => ResourceManager.GetString("IOTab") ?? "Tools";
+    public static string NewScene => ResourceManager.GetString("NewScene") ?? "New scene";
+    public static string OpenScene => ResourceManager.GetString("OpenScene") ?? "Open scene";
     public static string LoadCode => ResourceManager.GetString("LoadCode") ?? "Load (.cs)";
     public static string SaveCode => ResourceManager.GetString("SaveCode") ?? "Save (.cs)";
     public static string UpdateCode => ResourceManager.GetString("UpdateCode") ?? "Update Code";

@@ -39,4 +39,16 @@ public class AvaloniaFilePickerService : IFilePickerService
         var result = await _window.StorageProvider.SaveFilePickerAsync(options);
         return result?.TryGetLocalPath();
     }
+
+    public async Task<string?> OpenFolderAsync(string title)
+    {
+        var options = new FolderPickerOpenOptions
+        {
+            Title = title,
+            AllowMultiple = false
+        };
+
+        var result = await _window.StorageProvider.OpenFolderPickerAsync(options);
+        return result?.FirstOrDefault()?.TryGetLocalPath();
+    }
 }

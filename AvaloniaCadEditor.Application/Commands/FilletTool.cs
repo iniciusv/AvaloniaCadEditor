@@ -39,7 +39,7 @@ public class FilletTool : ICommandTool, IDisposable
 
         if (sel is IFeature feature && feature is not WorkPlaneFeature)
         {
-            string code = $"var {filletVar} = new FilletFeature(name: \"{filletVar}\", baseFeature: {RoslynDependencyAnalyzer.ResolveVariableName(RoslynDependencyAnalyzer.CurrentCode, feature.Name)}, radius: 2.0) {{ Mode = {modeStr}, ApplyToAllEdges = true }};\r\nAddFeature({filletVar});";
+            string code = $"var {filletVar} = new FilletFeature(name: \"{filletVar}\", baseFeature: {AvaloniaCadEditor.Domain.Scripting.FeatureOrigin.VariableName(feature)}, radius: 2.0) {{ Mode = {modeStr}, ApplyToAllEdges = true }};\r\nAddFeature({filletVar});";
             CodeGenerated?.Invoke(this, code);
             Cancel();
         }
@@ -59,23 +59,23 @@ public class FilletTool : ICommandTool, IDisposable
                 if (face is AvaloniaCadEditor.Domain.Profiles.ParametricBoxFace boxFace)
                 {
                     baseFeature = boxFace.ParentBox;
-                    faceRefsCode.Add(System.FormattableString.Invariant($"    {filletVar}.Faces.Add(new FaceReference({RoslynDependencyAnalyzer.ResolveVariableName(RoslynDependencyAnalyzer.CurrentCode, baseFeature.Name)}, (int)FaceType.{boxFace.SelectedFace}, new Vector3D({boxFace.Normal.X}, {boxFace.Normal.Y}, {boxFace.Normal.Z}), \"{boxFace.SelectedFace}\"));"));
+                    faceRefsCode.Add(System.FormattableString.Invariant($"    {filletVar}.Faces.Add(new FaceReference({AvaloniaCadEditor.Domain.Scripting.FeatureOrigin.VariableName(baseFeature)}, (int)FaceType.{boxFace.SelectedFace}, new Vector3D({boxFace.Normal.X}, {boxFace.Normal.Y}, {boxFace.Normal.Z}), \"{boxFace.SelectedFace}\"));"));
                 }
                 else if (face is AvaloniaCadEditor.Domain.Profiles.ParametricCylinderFace cylFace)
                 {
                     baseFeature = cylFace.ParentCylinder;
-                    faceRefsCode.Add(System.FormattableString.Invariant($"    {filletVar}.Faces.Add(new FaceReference({RoslynDependencyAnalyzer.ResolveVariableName(RoslynDependencyAnalyzer.CurrentCode, baseFeature.Name)}, (int)FaceType.{cylFace.SelectedFace}, new Vector3D({cylFace.Normal.X}, {cylFace.Normal.Y}, {cylFace.Normal.Z}), \"{cylFace.SelectedFace}\"));"));
+                    faceRefsCode.Add(System.FormattableString.Invariant($"    {filletVar}.Faces.Add(new FaceReference({AvaloniaCadEditor.Domain.Scripting.FeatureOrigin.VariableName(baseFeature)}, (int)FaceType.{cylFace.SelectedFace}, new Vector3D({cylFace.Normal.X}, {cylFace.Normal.Y}, {cylFace.Normal.Z}), \"{cylFace.SelectedFace}\"));"));
                 }
                 else if (face is AvaloniaCadEditor.Domain.Profiles.FaceProfile faceProfile)
                 {
                     baseFeature = faceProfile.BaseFeature;
-                    faceRefsCode.Add(System.FormattableString.Invariant($"    {filletVar}.Faces.Add(new FaceReference({RoslynDependencyAnalyzer.ResolveVariableName(RoslynDependencyAnalyzer.CurrentCode, baseFeature.Name)}, -1, new Vector3D({faceProfile.Normal.X}, {faceProfile.Normal.Y}, {faceProfile.Normal.Z}), \"CustomFace\"));"));
+                    faceRefsCode.Add(System.FormattableString.Invariant($"    {filletVar}.Faces.Add(new FaceReference({AvaloniaCadEditor.Domain.Scripting.FeatureOrigin.VariableName(baseFeature)}, -1, new Vector3D({faceProfile.Normal.X}, {faceProfile.Normal.Y}, {faceProfile.Normal.Z}), \"CustomFace\"));"));
                 }
             }
 
             if (baseFeature != null && faceRefsCode.Count > 0)
             {
-                string code = $"var {filletVar} = new FilletFeature(name: \"{filletVar}\", baseFeature: {RoslynDependencyAnalyzer.ResolveVariableName(RoslynDependencyAnalyzer.CurrentCode, baseFeature.Name)}, radius: 2.0) {{ Mode = {modeStr}, ApplyToAllEdges = false }};\r\n" +
+                string code = $"var {filletVar} = new FilletFeature(name: \"{filletVar}\", baseFeature: {AvaloniaCadEditor.Domain.Scripting.FeatureOrigin.VariableName(baseFeature)}, radius: 2.0) {{ Mode = {modeStr}, ApplyToAllEdges = false }};\r\n" +
                               string.Join("\r\n", faceRefsCode) +
                               $"\r\nAddFeature({filletVar});";
                 CodeGenerated?.Invoke(this, code);

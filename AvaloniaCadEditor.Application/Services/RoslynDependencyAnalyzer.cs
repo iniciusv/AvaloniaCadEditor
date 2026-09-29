@@ -9,8 +9,6 @@ namespace AvaloniaCadEditor.Application.Services;
 
 public class RoslynDependencyAnalyzer
 {
-    public static string CurrentCode { get; set; } = string.Empty;
-
     public static string ResolveVariableName(string code, string featureName)
     {
         if (string.IsNullOrWhiteSpace(code) || string.IsNullOrWhiteSpace(featureName))

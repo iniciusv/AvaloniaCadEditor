@@ -11,6 +11,13 @@ sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        // `AvaloniaCadEditor.UI.exe check <pasta> [--geometry]`: verifica uma cena sem abrir a janela.
+        if (AvaloniaCadEditor.UI.Cli.CheckCommand.IsCheckInvocation(args))
+        {
+            Environment.ExitCode = AvaloniaCadEditor.UI.Cli.CheckCommand.Run(args);
+            return;
+        }
+
         BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
     }
 

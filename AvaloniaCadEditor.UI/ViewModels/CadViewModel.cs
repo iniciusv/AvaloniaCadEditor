@@ -577,6 +577,8 @@ public class CadViewModel : INotifyPropertyChanged
 			{
 				rc.RaiseCanExecuteChanged();
 			}
+			// Em uma cena com vários arquivos, abre no editor o arquivo onde a feature foi registrada.
+			ScriptEditor?.RevealFeature(SelectedFeature);
 			OnPropertyChanged(nameof(SelectedFeature));
 		};
 
