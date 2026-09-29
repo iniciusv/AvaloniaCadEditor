@@ -5,6 +5,7 @@ using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Application.Scenes;
 using AvaloniaCadEditor.Application.Services;
 using AvaloniaCadEditor.Domain.Features;
+using AvaloniaCadEditor.Domain.ValueObjects;
 using AvaloniaCadEditor.Infrastructure.OpenCascade;
 using AvaloniaCadEditor.Infrastructure.Scripting;
 using FluentAssertions;
@@ -118,6 +119,54 @@ public class PartEditingTests
         var evaluation = await new RoslynSceneEvaluator().EvaluateAsync(result);
         evaluation.Success.Should().BeTrue(because: evaluation.ErrorMessage);
         evaluation.Features.Should().HaveCount(2);
+    }
+
+    // ------------------------------------------------------------ Mover instâncias
+
+    [Theory]
+    [InlineData("Add(new Chapa(100));", 20.0, 0.0, 0.0, "Add(new Chapa(100), at: Placement.At(20, 0, 0));")]
+    [InlineData("Add(new Chapa(100), at: Placement.At(150, 0, 0));", 20.0, -5.0, 0.0, "Add(new Chapa(100), at: Placement.At(170, -5, 0));")]
+    [InlineData("Add(new Chapa(100), at: Placement.At(i * 150, 0, 0));", 20.0, 0.0, 0.0, "Add(new Chapa(100), at: Placement.At(i * 150 + 20, 0, 0));")]
+    [InlineData("Add(new Chapa(100), at: Placement.At(i * 150 + 20, 0, 0));", -20.0, 0.0, 0.0, "Add(new Chapa(100), at: Placement.At(i * 150, 0, 0));")]
+    [InlineData("Add(new Chapa(100), at: Placement.At(10, 0));", 0.0, 0.0, 5.0, "Add(new Chapa(100), at: Placement.At(10, 0, z: 5));")]
+    [InlineData("Add(new Chapa(100), at: Placement.At(0.1, 0, 0, rotationZDegrees: 45));", 0.2, 0.0, 0.0, "Add(new Chapa(100), at: Placement.At(0.3, 0, 0, rotationZDegrees: 45));")]
+    [InlineData("Add(b.Part, at: Placement.At(b.World(f => f.Topo)));", 0.0, 0.0, 5.0, "Add(b.Part, at: Placement.At(b.World(f => f.Topo)).Then(Placement.Translate(new Vector3D(0, 0, 5))));")]
+    [InlineData("Add(b.Part, at: Placement.At(b.World(f => f.Topo)).Then(Placement.Translate(new Vector3D(0, 0, 5))));", 10.0, 0.0, -5.0, "Add(b.Part, at: Placement.At(b.World(f => f.Topo)).Then(Placement.Translate(new Vector3D(10, 0, 0))));")]
+    public void TranslateInstance_SomaNoAtSemPerderALogica(string code, double dx, double dy, double dz, string expected)
+    {
+        PartSourceEditor.TranslateInstance(code, 1, dx, dy, dz).Should().Be(expected);
+    }
+
+    [Fact]
+    public void FindStatementSpan_AchaAInstrucaoDoAddNaLinha()
+    {
+        string code = "var a = 1;\nfor (int i = 0; i < 2; i++)\n    Add(new Chapa(1));\n";
+
+        var span = PartSourceEditor.FindStatementSpan(code, 3)!.Value;
+
+        code.Substring(span.Start, span.Length).Should().Be("Add(new Chapa(1));");
+    }
+
+    [Fact]
+    public async Task MoverInstancias_ReescreveOAt_EAPecaDependenteAcompanha()
+    {
+        var vm = CreateViewModel();
+        vm.ScriptEditor.GeneratedCSharpCode =
+            "var base1 = Add(new Chapa(80));\n" +
+            "var tampa = Add(base1.Part with { Espessura = 4 }, at: Placement.At(0, 0, base1.Part.Espessura));\n\n" +
+            ChapaRecord;
+        await vm.ScriptEditor.RunCodeAsync();
+
+        bool changed = vm.ScriptEditor.MovePartInstances(vm.Sketch.Features.OfType<PartInstance>().ToList(), new Vector3D(100, 0, 5));
+        await vm.ScriptEditor.RunCodeAsync();
+
+        changed.Should().BeTrue();
+        vm.ScriptEditor.GeneratedCSharpCode.Should().StartWith(
+            "var base1 = Add(new Chapa(80), at: Placement.At(100, 0, 5));\n" +
+            "var tampa = Add(base1.Part with { Espessura = 4 }, at: Placement.At(100, 0, base1.Part.Espessura + 5));");
+        var moved = vm.Sketch.Features.OfType<PartInstance>().ToList();
+        moved[0].Placement.Translation.X.Should().Be(100);
+        moved[1].Placement.Translation.Z.Should().Be(10);
     }
 
     // ------------------------------------------------------------ Inspector e editor

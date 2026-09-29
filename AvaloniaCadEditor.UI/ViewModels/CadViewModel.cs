@@ -177,35 +177,41 @@ public class CadViewModel : INotifyPropertyChanged
 
 	private async void MoveTool_FeaturesMoved(AvaloniaCadEditor.Domain.ValueObjects.Vector3D vector, System.Collections.Generic.IEnumerable<AvaloniaCadEditor.Domain.Features.IFeature> features)
 	{
+		var moved = features.ToList();
+		var selectedFeatureNames = moved.Select(f => f.Name).ToList();
+
+		// Instâncias de peça: o código muda o "at:" da chamada Add(...) que as criou.
+		var instances = moved.OfType<PartInstance>().ToList();
+		bool changed = instances.Count > 0 && ScriptEditor.MovePartInstances(instances, vector);
+
+		// Demais features: as coordenadas das variáveis de que elas dependem.
 		var analyzer = new AvaloniaCadEditor.Application.Services.RoslynDependencyAnalyzer();
 		var rootVariableNames = new System.Collections.Generic.HashSet<string>();
-        
-        var selectedFeatureNames = new System.Collections.Generic.List<string>();
-
-		foreach (var feature in features)
+		foreach (var feature in moved.Where(f => f is not PartInstance))
 		{
-            selectedFeatureNames.Add(feature.Name);
-			var rootsForFeature = analyzer.GetRootVariableNames(ScriptEditor.GeneratedCSharpCode, feature.Name);
-			foreach (var root in rootsForFeature)
+			foreach (var root in analyzer.GetRootVariableNames(ScriptEditor.GeneratedCSharpCode, feature.Name))
 			{
 				rootVariableNames.Add(root);
 			}
 		}
-
 		if (rootVariableNames.Count > 0)
 		{
 			ScriptEditor.MutateCoordinates(rootVariableNames, vector);
-			await ScriptEditor.RunCodeAsync();
-            
-            // Restore selection
-            foreach (var featureName in selectedFeatureNames)
-            {
-                var newFeature = Sketch.Features.FirstOrDefault(f => f.Name == featureName);
-                if (newFeature != null)
-                {
-                    _selectionService.SelectById(Sketch, newFeature.Id);
-                }
-            }
+			changed = true;
+		}
+
+		if (!changed) return;
+
+		await ScriptEditor.RunCodeAsync();
+
+		// Restaura a seleção
+		foreach (var featureName in selectedFeatureNames)
+		{
+			var newFeature = Sketch.Features.FirstOrDefault(f => f.Name == featureName);
+			if (newFeature != null)
+			{
+				_selectionService.SelectById(Sketch, newFeature.Id);
+			}
 		}
 	}
 

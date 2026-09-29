@@ -678,6 +678,40 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor
         return null;
     }
 
+    /// <summary>
+    /// Move instâncias de peça reescrevendo o <c>at:</c> da chamada que as criou (uma edição por
+    /// chamada, mesmo que ela crie várias instâncias num laço). Não reexecuta; devolve true se
+    /// algum código mudou.
+    /// </summary>
+    public bool MovePartInstances(IEnumerable<PartInstance> instances, AvaloniaCadEditor.Domain.ValueObjects.Vector3D offset)
+    {
+        var calls = instances
+            .Select(FeatureOrigin.Of)
+            .Where(o => o != null && o.Line > 0)
+            .Select(o => (File: SourceFileOf(o!), o!.Line))
+            .Distinct()
+            .ToList();
+
+        bool changed = false;
+        foreach (var (file, line) in calls)
+        {
+            string? source = GetDocumentText(file);
+            if (source == null) continue;
+            try
+            {
+                string updated = PartSourceEditor.TranslateInstance(source, line, offset.X, offset.Y, offset.Z);
+                if (updated == source) continue;
+                SetDocumentText(file, updated);
+                changed = true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                _cadViewModel.StatusText = $"✗ {ex.Message}";
+            }
+        }
+        return changed;
+    }
+
     public bool GoToPartDefinition(string typeName)
     {
         var type = PartSourceEditor.FindPartTypes(CurrentDocuments()).FirstOrDefault(t => t.Name == typeName);

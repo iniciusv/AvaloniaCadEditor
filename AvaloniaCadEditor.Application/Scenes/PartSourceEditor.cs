@@ -171,6 +171,188 @@ public static class PartSourceEditor
         return ok;
     }
 
+    // ---------------------------------------------------------------- Mover uma instância
+
+    /// <summary>
+    /// Move a instância criada pela chamada <c>Add(...)</c> da linha dada, somando o deslocamento
+    /// ao argumento <c>at:</c> sem perder a lógica escrita no código:
+    /// <list type="bullet">
+    /// <item>sem <c>at:</c>: acrescenta <c>at: Placement.At(dx, dy, dz)</c>;</item>
+    /// <item><c>Placement.At(x, y, z, ...)</c>: soma em cada coordenada (<c>150</c> vira <c>170</c>,
+    /// <c>i * 150</c> vira <c>i * 150 + 20</c>);</item>
+    /// <item>qualquer outro posicionamento (ex.: <c>Placement.At(base1.World(...))</c>): acrescenta
+    /// <c>.Then(Placement.Translate(new Vector3D(dx, dy, dz)))</c>, ou soma num Then desses que já exista.</item>
+    /// </list>
+    /// </summary>
+    public static string TranslateInstance(string source, int line, double dx, double dy, double dz)
+    {
+        var root = Parse(source);
+        var call = FindAddCall(root, line)
+            ?? throw new InvalidOperationException($"Não achei a chamada Add(...) na linha {line}.");
+
+        var args = call.ArgumentList.Arguments;
+        var at = args.FirstOrDefault(a => a.NameColon?.Name.Identifier.ValueText == "at")
+            ?? (args.Count > 1 && args[1].NameColon == null ? args[1] : null);
+
+        if (at == null)
+        {
+            string placement = FormattableString.Invariant($"Placement.At({Number(dx)}, {Number(dy)}, {Number(dz)})");
+            return Insert(source, call.ArgumentList.CloseParenToken.SpanStart, $", at: {placement}");
+        }
+
+        var edits = new List<TextChange>();
+        if (TryOffsetCoordinates(at.Expression, "At", new[] { "x", "y", "z" }, new[] { dx, dy, dz }, edits))
+        {
+            return Apply(source, edits);
+        }
+
+        // E.Then(Placement.Translate(new Vector3D(a, b, c))): soma no deslocamento que já existe.
+        if (at.Expression is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Then" } } then &&
+            then.ArgumentList.Arguments.Count == 1 &&
+            then.ArgumentList.Arguments[0].Expression is InvocationExpressionSyntax translate &&
+            MethodName(translate.Expression) == "Translate" &&
+            translate.ArgumentList.Arguments.Count == 1 &&
+            translate.ArgumentList.Arguments[0].Expression is BaseObjectCreationExpressionSyntax vector &&
+            vector.ArgumentList is { Arguments.Count: 3 } &&
+            vector.ArgumentList.Arguments.All(a => a.NameColon == null))
+        {
+            var coords = vector.ArgumentList.Arguments;
+            double[] deltas = { dx, dy, dz };
+            for (int i = 0; i < 3; i++) OffsetExpression(coords[i].Expression, deltas[i], edits);
+            return Apply(source, edits);
+        }
+
+        string target = NeedsParentheses(at.Expression) ? $"({at.Expression})" : at.Expression.ToString();
+        string offset = FormattableString.Invariant($"Placement.Translate(new Vector3D({Number(dx)}, {Number(dy)}, {Number(dz)}))");
+        return Replace(source, at.Expression.Span, $"{target}.Then({offset})");
+    }
+
+    /// <summary>Trecho da instrução que registrou uma feature (para destacar no editor).</summary>
+    public static TextSpan? FindStatementSpan(string source, int line)
+    {
+        if (line < 1) return null;
+        var root = Parse(source);
+        var call = FindAddCall(root, line);
+        if (call != null)
+        {
+            return call.FirstAncestorOrSelf<StatementSyntax>()?.Span ?? call.Span;
+        }
+
+        // Outras chamadas (AddFeature, ajudantes): a menor instrução que começa nessa linha.
+        return root.DescendantNodes()
+            .OfType<StatementSyntax>()
+            .Where(st => st is not BlockSyntax && LineOf(st.GetFirstToken()) == line)
+            .OrderBy(st => st.Span.Length)
+            .Select(st => (TextSpan?)st.Span)
+            .FirstOrDefault();
+    }
+
+    /// <summary>
+    /// Se <paramref name="expression"/> é <c>Placement.At(x, y, z, ...)</c> com coordenadas
+    /// numéricas, registra as edições que somam os deslocamentos e devolve true.
+    /// </summary>
+    private static bool TryOffsetCoordinates(ExpressionSyntax expression, string method, string[] names, double[] deltas, List<TextChange> edits)
+    {
+        if (expression is not InvocationExpressionSyntax invocation || MethodName(invocation.Expression) != method) return false;
+        var args = invocation.ArgumentList.Arguments;
+
+        // Forma At(Point3D, ...): um único argumento posicional que não é um número.
+        int positional = args.TakeWhile(a => a.NameColon == null).Count();
+        bool named = args.Any(a => a.NameColon != null && names.Contains(a.NameColon.Name.Identifier.ValueText));
+        if (positional < 2 && !named) return false;
+
+        for (int i = 0; i < names.Length; i++)
+        {
+            var arg = args.FirstOrDefault(a => a.NameColon?.Name.Identifier.ValueText == names[i])
+                ?? (i < positional ? args[i] : null);
+            if (arg != null)
+            {
+                OffsetExpression(arg.Expression, deltas[i], edits);
+            }
+            else if (Math.Abs(deltas[i]) > 1e-9)
+            {
+                // Coordenada omitida (ex.: z no padrão 0): acrescenta como argumento nomeado.
+                edits.Add(new TextChange(new TextSpan(invocation.ArgumentList.CloseParenToken.SpanStart, 0),
+                    $", {names[i]}: {Number(deltas[i])}"));
+            }
+        }
+        return true;
+    }
+
+    /// <summary>Soma <paramref name="delta"/> a uma expressão numérica, mantendo-a legível.</summary>
+    private static void OffsetExpression(ExpressionSyntax expression, double delta, List<TextChange> edits)
+    {
+        if (Math.Abs(delta) < 1e-9) return;
+
+        if (TryNumber(expression, out double value))
+        {
+            edits.Add(new TextChange(expression.Span, Number(value + delta)));
+            return;
+        }
+
+        // e + L / e - L: ajusta o literal em vez de acumular "+ 10 + 5".
+        if (expression is BinaryExpressionSyntax binary &&
+            (binary.IsKind(SyntaxKind.AddExpression) || binary.IsKind(SyntaxKind.SubtractExpression)) &&
+            TryNumber(binary.Right, out double right))
+        {
+            double current = binary.IsKind(SyntaxKind.AddExpression) ? right : -right;
+            double next = current + delta;
+            var span = TextSpan.FromBounds(binary.Left.Span.End, binary.Right.Span.End);
+            edits.Add(new TextChange(span, SignedSuffix(next)));
+            return;
+        }
+
+        string text = NeedsParenthesesForSum(expression) ? $"({expression})" : expression.ToString();
+        edits.Add(new TextChange(expression.Span, text + SignedSuffix(delta)));
+    }
+
+    private static bool TryNumber(ExpressionSyntax expression, out double value)
+    {
+        value = 0;
+        switch (expression)
+        {
+            case LiteralExpressionSyntax literal when literal.IsKind(SyntaxKind.NumericLiteralExpression):
+                value = Convert.ToDouble(literal.Token.Value, CultureInfo.InvariantCulture);
+                return true;
+            case PrefixUnaryExpressionSyntax unary when unary.Operand is LiteralExpressionSyntax inner &&
+                                                        inner.IsKind(SyntaxKind.NumericLiteralExpression):
+                double v = Convert.ToDouble(inner.Token.Value, CultureInfo.InvariantCulture);
+                value = unary.IsKind(SyntaxKind.UnaryMinusExpression) ? -v : v;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    /// <summary>" + 20", " - 5" ou "" (quando o deslocamento zera).</summary>
+    private static string SignedSuffix(double value)
+    {
+        if (Math.Abs(value) < 1e-9) return string.Empty;
+        return value > 0 ? " + " + Number(value) : " - " + Number(-value);
+    }
+
+    /// <summary>Número sem ruído de ponto flutuante (150.00000000001 vira 150).</summary>
+    private static string Number(double value)
+    {
+        double rounded = Math.Round(value, 6);
+        if (rounded == 0) rounded = 0; // evita "-0"
+        return rounded.ToString("0.######", CultureInfo.InvariantCulture);
+    }
+
+    private static bool NeedsParenthesesForSum(ExpressionSyntax expression) => expression switch
+    {
+        IdentifierNameSyntax or MemberAccessExpressionSyntax or InvocationExpressionSyntax or
+        ElementAccessExpressionSyntax or ParenthesizedExpressionSyntax or LiteralExpressionSyntax or
+        PrefixUnaryExpressionSyntax => false,
+        BinaryExpressionSyntax b => !(b.IsKind(SyntaxKind.MultiplyExpression) || b.IsKind(SyntaxKind.DivideExpression) ||
+                                      b.IsKind(SyntaxKind.ModuloExpression) || b.IsKind(SyntaxKind.AddExpression) ||
+                                      b.IsKind(SyntaxKind.SubtractExpression)),
+        _ => true
+    };
+
+    private static string Apply(string source, List<TextChange> edits) =>
+        edits.Count == 0 ? source : SourceText.From(source).WithChanges(edits.OrderBy(e => e.Span.Start)).ToString();
+
     // ---------------------------------------------------------------- Tipos de peça
 
     /// <summary>Records não abstratos que herdam de <c>Part</c>, em ordem de nome.</summary>
@@ -246,8 +428,8 @@ public static class PartSourceEditor
     private static SyntaxNode Parse(string source) =>
         CSharpSyntaxTree.ParseText(source ?? string.Empty, ParseOptions).GetRoot();
 
-    /// <summary>Primeiro argumento (a peça) da chamada Add/Scene.Add cujo nome está na linha dada.</summary>
-    private static ExpressionSyntax? FindPartExpression(SyntaxNode root, int line)
+    /// <summary>Chamada Add/Scene.Add cujo nome está na linha dada (ou que atravessa essa linha).</summary>
+    private static InvocationExpressionSyntax? FindAddCall(SyntaxNode root, int line)
     {
         var calls = root.DescendantNodes()
             .OfType<InvocationExpressionSyntax>()
@@ -256,8 +438,14 @@ public static class PartSourceEditor
 
         // CallerLineNumber aponta para a linha do nome do método; para chamadas quebradas em
         // várias linhas, aceita também qualquer linha dentro da chamada.
-        var call = calls.FirstOrDefault(i => LineOf(NameToken(i.Expression)) == line)
+        return calls.FirstOrDefault(i => LineOf(NameToken(i.Expression)) == line)
             ?? calls.FirstOrDefault(i => LineOf(i.GetFirstToken()) <= line && LineOf(i.GetLastToken()) >= line);
+    }
+
+    /// <summary>Primeiro argumento (a peça) da chamada Add/Scene.Add cujo nome está na linha dada.</summary>
+    private static ExpressionSyntax? FindPartExpression(SyntaxNode root, int line)
+    {
+        var call = FindAddCall(root, line);
         if (call == null) return null;
 
         var args = call.ArgumentList.Arguments;

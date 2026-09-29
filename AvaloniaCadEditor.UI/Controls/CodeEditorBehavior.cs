@@ -36,6 +36,14 @@ public static class CodeEditorBehavior
             var spans = _highlighter.FindFeatureSpans(code, newFeature.Name);
             System.Diagnostics.Debug.WriteLine($"[DEBUG-HIGHLIGHT] Feature {newFeature.Name} found {spans.Count} spans");
 
+            // Instâncias de peça (e features sem variável com o mesmo nome) não aparecem pelo
+            // nome no código: destaca a instrução da linha onde foram registradas.
+            if (spans.Count == 0 && AvaloniaCadEditor.Domain.Scripting.FeatureOrigin.Of(newFeature) is { Line: > 0 } origin)
+            {
+                var statement = AvaloniaCadEditor.Application.Scenes.PartSourceEditor.FindStatementSpan(code, origin.Line);
+                if (statement.HasValue) spans.Add(statement.Value);
+            }
+
             colorizer.HighlightSpans = spans;
             
             // Scroll to the main target node specifically
