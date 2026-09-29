@@ -18,6 +18,14 @@ public static class Strings
     public static string TrimTool => ResourceManager.GetString("TrimTool") ?? "Trim (T)";
     public static string ExtendTool => ResourceManager.GetString("ExtendTool") ?? "Extend (X)";
     public static string OffsetTool => ResourceManager.GetString("OffsetTool") ?? "Offset (O)";
+    public static string MoveTool => ResourceManager.GetString("MoveTool") ?? "Move (M)";
+    public static string GoToDefinition => ResourceManager.GetString("GoToDefinition") ?? "Go to definition";
+    public static string FindReferences => ResourceManager.GetString("FindReferences") ?? "Find references";
+    public static string RenameSymbol => ResourceManager.GetString("RenameSymbol") ?? "Rename...";
+    public static string CutText => ResourceManager.GetString("CutText") ?? "Cut";
+    public static string CopyText => ResourceManager.GetString("CopyText") ?? "Copy";
+    public static string PasteText => ResourceManager.GetString("PasteText") ?? "Paste";
+    public static string EditorShortcutsHint => ResourceManager.GetString("EditorShortcutsHint") ?? "F12 go to definition · Shift+F12 references · F2 rename · right-click for more";
     public static string ExitSketch => ResourceManager.GetString("ExitSketch") ?? "Exit Sketch";
     public static string ImportStl => ResourceManager.GetString("ImportStl") ?? "Import STL";
     public static string ExportStl => ResourceManager.GetString("ExportStl") ?? "Export STL";

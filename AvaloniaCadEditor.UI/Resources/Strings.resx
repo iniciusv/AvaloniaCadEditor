@@ -11,6 +11,14 @@
   <data name="TrimTool" xml:space="preserve"><value>Trim (T)</value></data>
   <data name="ExtendTool" xml:space="preserve"><value>Extend (X)</value></data>
   <data name="OffsetTool" xml:space="preserve"><value>Offset (O)</value></data>
+  <data name="MoveTool" xml:space="preserve"><value>Move (M)</value></data>
+  <data name="GoToDefinition" xml:space="preserve"><value>Go to definition</value></data>
+  <data name="FindReferences" xml:space="preserve"><value>Find references</value></data>
+  <data name="RenameSymbol" xml:space="preserve"><value>Rename...</value></data>
+  <data name="CutText" xml:space="preserve"><value>Cut</value></data>
+  <data name="CopyText" xml:space="preserve"><value>Copy</value></data>
+  <data name="PasteText" xml:space="preserve"><value>Paste</value></data>
+  <data name="EditorShortcutsHint" xml:space="preserve"><value>F12 go to definition · Shift+F12 references · F2 rename · right-click for more</value></data>
   <data name="ExitSketch" xml:space="preserve"><value>Exit Sketch</value></data>
   <data name="ImportStl" xml:space="preserve"><value>Import STL</value></data>
   <data name="ExportStl" xml:space="preserve"><value>Export STL</value></data>

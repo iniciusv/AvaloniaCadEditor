@@ -8,6 +8,7 @@ using AvaloniaEdit.Highlighting;
 using AvaloniaCadEditor.Application.Services;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.UI.Controls.Rendering;
+using AvaloniaCadEditor.UI.Resources;
 using Microsoft.CodeAnalysis.Text;
 using System;
 using System.Linq;
@@ -246,6 +247,57 @@ public static class CodeEditorBehavior
                 e.Handled = true;
             }
         }, RoutingStrategies.Tunnel);
+
+        // Botão direito: leva o cursor até onde se clicou (o menu age sobre o nome clicado),
+        // a menos que o clique caia dentro de uma seleção que o usuário quer copiar.
+        editor.AddHandler(InputElement.PointerPressedEvent, (_, e) =>
+        {
+            if (!e.GetCurrentPoint(editor).Properties.IsRightButtonPressed || editor.Document == null) return;
+            var position = editor.GetPositionFromPoint(e.GetPosition(editor));
+            if (position == null) return;
+
+            int offset = editor.Document.GetOffset(position.Value.Location);
+            bool insideSelection = editor.SelectionLength > 0 &&
+                                   offset >= editor.SelectionStart && offset <= editor.SelectionStart + editor.SelectionLength;
+            if (!insideSelection)
+            {
+                editor.TextArea.ClearSelection();
+                editor.TextArea.Caret.Position = position.Value;
+            }
+        }, RoutingStrategies.Tunnel);
+
+        editor.ContextMenu = BuildContextMenu(editor);
+    }
+
+    /// <summary>Menu do editor: navegação no código (com os atalhos visíveis) e área de transferência.</summary>
+    private static ContextMenu BuildContextMenu(TextEditor editor)
+    {
+        MenuItem Item(string header, KeyGesture? gesture, Action action) => new MenuItem
+        {
+            Header = header,
+            InputGesture = gesture,
+            Command = new AvaloniaCadEditor.UI.ViewModels.RelayCommand(action)
+        };
+
+        void WithCommands(Action<AvaloniaCadEditor.UI.ViewModels.ICodeEditorCommands> action)
+        {
+            var commands = GetCodeCommands(editor);
+            if (commands != null) action(commands);
+        }
+
+        return new ContextMenu
+        {
+            ItemsSource = new Control[]
+            {
+                Item(Strings.GoToDefinition, new KeyGesture(Key.F12), () => WithCommands(c => c.GoToDefinitionAt(editor.CaretOffset))),
+                Item(Strings.FindReferences, new KeyGesture(Key.F12, KeyModifiers.Shift), () => WithCommands(c => c.FindReferencesAt(editor.CaretOffset))),
+                Item(Strings.RenameSymbol, new KeyGesture(Key.F2), () => WithCommands(c => c.BeginRenameAt(editor.CaretOffset))),
+                new Separator(),
+                Item(Strings.CutText, new KeyGesture(Key.X, KeyModifiers.Control), () => editor.Cut()),
+                Item(Strings.CopyText, new KeyGesture(Key.C, KeyModifiers.Control), () => editor.Copy()),
+                Item(Strings.PasteText, new KeyGesture(Key.V, KeyModifiers.Control), () => editor.Paste()),
+            }
+        };
     }
 
     /// <summary>Dá foco (e seleciona o texto) a uma caixa quando o valor vira true, ex.: a caixa de renomear.</summary>

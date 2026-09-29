@@ -138,6 +138,7 @@
                     <Button Content="{x:Static res:Strings.TrimTool}" Command="{Binding SelectTrimToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     <Button Content="{x:Static res:Strings.ExtendTool}" Command="{Binding SelectExtendToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     <Button Content="{x:Static res:Strings.OffsetTool}" Command="{Binding SelectOffsetToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                    <Button Content="{x:Static res:Strings.MoveTool}" Command="{Binding SelectMoveToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     
                     <Button Content="{x:Static res:Strings.ExitSketch}" Command="{Binding ExitWorkPlaneCommand}" IsVisible="{Binding IsInCustomWorkPlane}" Background="#E74C3C" Foreground="White" FontWeight="Bold" Margin="0,4" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     
@@ -286,6 +287,8 @@
                                                  MaxHeight="160" FontSize="11" FontFamily="Consolas, Monospace"/>
                                     </StackPanel>
                                 </Border>
+                                <!-- Atalhos do editor: sempre visíveis para quem ainda não os conhece -->
+                                <TextBlock Text="{x:Static res:Strings.EditorShortcutsHint}" Foreground="#808080" FontSize="10" TextWrapping="Wrap"/>
                             </StackPanel>
                             <AvaloniaEdit:TextEditor Grid.Row="1"
                                      Name="CodeEditor"
