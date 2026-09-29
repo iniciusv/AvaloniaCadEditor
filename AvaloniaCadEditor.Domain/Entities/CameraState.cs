@@ -43,14 +43,19 @@ public class CameraState
 
     public Matrix4x4 GetProjectionMatrix()
     {
+        // Scale the clip planes with Distance so zooming far out (e.g. to see a large model, or
+        // the grid growing to match it) doesn't get near/far-clipped by the fixed defaults.
+        float far = MathF.Max(FarPlane, Distance * 100f);
+
         if (IsOrthographic)
         {
             // Same framing as the perspective view at the Target plane, so wheel zoom (Distance) still works.
             // Negative near plane keeps geometry behind the eye visible when zoomed in.
             float height = 2f * Distance * MathF.Tan(Fov / 2f);
-            return Matrix4x4.CreateOrthographic(height * AspectRatio, height, -FarPlane, FarPlane);
+            return Matrix4x4.CreateOrthographic(height * AspectRatio, height, -far, far);
         }
-        return Matrix4x4.CreatePerspectiveFieldOfView(Fov, AspectRatio, NearPlane, FarPlane);
+        float near = MathF.Min(NearPlane, Distance * 0.001f);
+        return Matrix4x4.CreatePerspectiveFieldOfView(Fov, AspectRatio, near, far);
     }
 
     public void SetStandardView(StandardView view)

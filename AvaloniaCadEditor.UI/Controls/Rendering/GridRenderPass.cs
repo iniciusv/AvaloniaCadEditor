@@ -1,3 +1,4 @@
+using System;
 using System.Numerics;
 using Silk.NET.OpenGL;
 
@@ -9,6 +10,16 @@ public sealed class GridRenderPass : IRenderPass
     private uint _vbo;
     private uint _ebo;
     private int _vertexCount;
+
+    /// <summary>Vertex count of the grid lines only (excludes the RGB axes that follow them
+    /// in the buffer). Used so the grid and the axes can be drawn with different model
+    /// matrices: the grid scales and re-centers to track the camera, the axes only scale.</summary>
+    private int _gridVertexCount;
+
+    /// <summary>Half-width, in local (unscaled) grid units, of the base grid geometry: matches
+    /// the original fixed 200x200 grid so the on-screen size is unchanged at the default zoom.</summary>
+    private const float BaseHalfSize = 100.0f;
+    private const float BaseStep = 5.0f;
 
     public void Init(GL gl)
     {
@@ -35,6 +46,8 @@ public sealed class GridRenderPass : IRenderPass
             vertices[index++] = pos; vertices[index++] = size / 2; vertices[index++] = 0;
             vertices[index++] = 0.3f; vertices[index++] = 0.3f; vertices[index++] = 0.3f;
         }
+
+        _gridVertexCount = index / 6;
 
         // Axes (Red, Green, Blue)
         vertices[index++] = 0; vertices[index++] = 0; vertices[index++] = 0;
@@ -120,30 +133,50 @@ public sealed class GridRenderPass : IRenderPass
 
     public void Render(GL gl, RenderContext context)
     {
-        var gridMatrix = context.IdentityMatrix;
-        if (context.ViewModel != null)
-        {
-            var wp = context.ViewModel.CurrentMode == AvaloniaCadEditor.UI.ViewModels.EditorMode.SketchEdit 
-                ? context.ViewModel.ActiveWorkPlane 
-                : AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.XY;
-                
-            gridMatrix = new Matrix4x4(
-                (float)wp.XAxis.X, (float)wp.XAxis.Y, (float)wp.XAxis.Z, 0,
-                (float)wp.YAxis.X, (float)wp.YAxis.Y, (float)wp.YAxis.Z, 0,
-                (float)wp.Normal.X, (float)wp.Normal.Y, (float)wp.Normal.Z, 0,
-                (float)wp.Origin.X, (float)wp.Origin.Y, (float)wp.Origin.Z, 1
-            );
-        }
+        var wp = context.ViewModel?.CurrentMode == AvaloniaCadEditor.UI.ViewModels.EditorMode.SketchEdit
+            ? context.ViewModel.ActiveWorkPlane
+            : AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.XY;
+
+        var planeMatrix = new Matrix4x4(
+            (float)wp.XAxis.X, (float)wp.XAxis.Y, (float)wp.XAxis.Z, 0,
+            (float)wp.YAxis.X, (float)wp.YAxis.Y, (float)wp.YAxis.Z, 0,
+            (float)wp.Normal.X, (float)wp.Normal.Y, (float)wp.Normal.Z, 0,
+            (float)wp.Origin.X, (float)wp.Origin.Y, (float)wp.Origin.Z, 1
+        );
+
+        // Grow/shrink the grid in powers of 10 so it always covers the visible area around the
+        // camera target, whether the model is tiny or huge, without changing the vertex buffer.
+        float distance = MathF.Max(context.Camera.Distance, 0.001f);
+        float ratio = distance / BaseHalfSize;
+        float scale = MathF.Pow(10f, MathF.Ceiling(MathF.Log10(ratio)));
+        float worldStep = BaseStep * scale;
+
+        // Re-center the grid on the camera target, snapped to a whole grid cell so lines stay
+        // put (rather than sliding) while panning.
+        var targetLocal = wp.ToLocalSpace(new AvaloniaCadEditor.Domain.ValueObjects.Point3D(
+            context.Camera.Target.X, context.Camera.Target.Y, context.Camera.Target.Z));
+        float tx = MathF.Round((float)targetLocal.X / worldStep) * worldStep;
+        float ty = MathF.Round((float)targetLocal.Y / worldStep) * worldStep;
+
+        var scaleMatrix = Matrix4x4.CreateScale(scale);
+        var gridMatrix = scaleMatrix * Matrix4x4.CreateTranslation(tx, ty, 0f) * planeMatrix;
+        var axesMatrix = scaleMatrix * planeMatrix;
+
+        gl.Uniform1(context.Uniforms.LightingLoc, 0);
+        gl.Uniform1(context.Uniforms.AlphaLoc, 1.0f);
+        gl.BindVertexArray(_vao);
 
         unsafe
         {
             gl.UniformMatrix4(context.Uniforms.ModelLoc, 1, false, (float*)&gridMatrix);
-            gl.Uniform1(context.Uniforms.LightingLoc, 0); 
-            gl.Uniform1(context.Uniforms.AlphaLoc, 1.0f);
         }
+        gl.DrawArrays(PrimitiveType.Lines, 0, (uint)_gridVertexCount);
 
-        gl.BindVertexArray(_vao);
-        gl.DrawArrays(PrimitiveType.Lines, 0, (uint)_vertexCount);
+        unsafe
+        {
+            gl.UniformMatrix4(context.Uniforms.ModelLoc, 1, false, (float*)&axesMatrix);
+        }
+        gl.DrawArrays(PrimitiveType.Lines, _gridVertexCount, (uint)(_vertexCount - _gridVertexCount));
     }
 
     public void Dispose(GL gl)
