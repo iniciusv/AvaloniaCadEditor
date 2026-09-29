@@ -14,6 +14,10 @@ public class PureMathGeometryKernel : IGeometryKernel
     public TriangleMesh BuildFeatureMesh(IFeature feature, TessellationSettings? settings = null)
     {
         settings ??= new TessellationSettings();
+        if (feature is PartInstance instance)
+        {
+            return BuildFeatureMesh(instance.Definition, settings).Transform(instance.Placement);
+        }
         if (feature is ExtrudeFeature extrude && extrude.IsEnabled)
         {
             return ExtrudeProfile(extrude.Profile, extrude.Direction, settings);

@@ -137,6 +137,13 @@ public static class SceneProjectTemplate
         - Toda feature visível deve ser registrada com `AddFeature(...)`. Dê a cada feature `Name` igual ao nome da variável.
         - Ferramentas de operações booleanas (ex.: o cilindro que fura) usam `IsTransientTool = true` e também são registradas.
 
+        ## Peças paramétricas
+        - Peças reutilizáveis são `record`s em `Pecas/` que herdam de `Part`; os parâmetros são o construtor primário.
+        - `Build()` devolve a geometria em coordenadas locais (origem da peça em 0,0,0) e não chama `AddFeature`.
+        - Na cena: `var p = Add(new MinhaPeca(...), at: Placement.At(x, y, z));`. Variantes: expressão `with` do C# sobre `p.Part` (ex.: mudar só a espessura).
+        - Pontos da peça no mundo: `p.World(peca => peca.AlgumPonto)`.
+        - Exemplo completo em `{ApiReferenceFile}` (seção PEÇAS PARAMÉTRICAS).
+
         ## Verificação (obrigatória depois de qualquer edição)
         1. `dotnet build` — garante que o código compila (tipos e referências entre arquivos).
         2. `"{tools.CheckExecutable}" check . --geometry` — executa a cena e valida a geometria no kernel.
@@ -162,6 +169,67 @@ public static class SceneProjectTemplate
         }
 
         """;
+
+    /// <summary>
+    /// Cria um arquivo de peça na cena a partir de um nome ("Suporte", "Pecas/Suporte" ou
+    /// "Pecas/Suporte.cs"). Sem pasta, vai para Pecas/. Devolve o caminho relativo criado.
+    /// </summary>
+    public static string CreatePartFile(SceneProject project, string requestedName)
+    {
+        string name = (requestedName ?? string.Empty).Trim().Replace('\\', '/').TrimStart('/');
+        if (name.Length == 0)
+        {
+            throw new InvalidOperationException("Digite um nome para o arquivo (ex.: Suporte ou Pecas/Suporte).");
+        }
+        if (!name.EndsWith(".cs", StringComparison.OrdinalIgnoreCase))
+        {
+            name += ".cs";
+        }
+        if (!name.Contains('/'))
+        {
+            name = "Pecas/" + name;
+        }
+
+        string fullPath = project.ToFullPath(name);
+        string relative = project.ToRelativePath(fullPath);
+        if (project.IsIgnoredPath(fullPath))
+        {
+            throw new InvalidOperationException($"'{relative}' fica fora da cena ou numa pasta ignorada (bin/, obj/, .cad/).");
+        }
+        if (File.Exists(fullPath))
+        {
+            throw new InvalidOperationException($"O arquivo '{relative}' já existe.");
+        }
+
+        string typeName = ToTypeName(Path.GetFileNameWithoutExtension(fullPath));
+        Write(project.RootPath, relative, $$"""
+            /// <summary>Descreva a peça {{typeName}}.</summary>
+            public sealed record {{typeName}}(double Largura = 50, double Comprimento = 50, double Espessura = 10) : Part
+            {
+                // Geometria em coordenadas locais: a origem da peça é (0, 0, 0).
+                protected override IFeature Build() =>
+                    new BoxFeature(Point3D.Origin, Largura, Comprimento, Espessura) { Name = "{{typeName}}" };
+            }
+
+            """);
+        return relative;
+    }
+
+    /// <summary>Converte um nome de arquivo num identificador C# válido (ex.: "suporte-lateral" → "SuporteLateral").</summary>
+    public static string ToTypeName(string fileName)
+    {
+        var parts = fileName.Split(new[] { ' ', '-', '_', '.' }, StringSplitOptions.RemoveEmptyEntries);
+        var sb = new StringBuilder();
+        foreach (var part in parts)
+        {
+            var clean = new string(part.Where(char.IsLetterOrDigit).ToArray());
+            if (clean.Length == 0) continue;
+            sb.Append(char.ToUpperInvariant(clean[0])).Append(clean, 1, clean.Length - 1);
+        }
+        string result = sb.ToString();
+        if (result.Length == 0) return "NovaPeca";
+        return char.IsDigit(result[0]) ? "Peca" + result : result;
+    }
 
     private static void Write(string root, string relativePath, string content)
     {

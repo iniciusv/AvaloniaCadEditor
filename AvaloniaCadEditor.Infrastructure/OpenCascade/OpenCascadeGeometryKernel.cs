@@ -14,6 +14,9 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
 {
     private readonly Dictionary<Guid, OcctShape> _shapeCache = new();
 
+    // Malha local de cada definição de peça (compartilhada por instâncias de peças iguais).
+    private readonly Dictionary<Guid, TriangleMesh> _definitionMeshCache = new();
+
     public void InvalidateShape(Guid featureId)
     {
         if (_shapeCache.TryGetValue(featureId, out var cached))
@@ -21,6 +24,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             cached.Dispose();
             _shapeCache.Remove(featureId);
         }
+        _definitionMeshCache.Remove(featureId);
     }
 
     public void InvalidateAll()
@@ -30,6 +34,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             shape?.Dispose();
         }
         _shapeCache.Clear();
+        _definitionMeshCache.Clear();
     }
 
     public TriangleMesh BuildFeatureMesh(IFeature feature, TessellationSettings? settings = null)
@@ -37,6 +42,17 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         if (feature is ImportedMeshFeature imported)
         {
             return imported.Mesh;
+        }
+
+        if (feature is PartInstance instance)
+        {
+            // A geometria da peça é construída uma vez por definição; cada instância só transforma a malha.
+            if (!_definitionMeshCache.TryGetValue(instance.Definition.Id, out var local))
+            {
+                local = BuildFeatureMesh(instance.Definition, settings);
+                _definitionMeshCache[instance.Definition.Id] = local;
+            }
+            return local.Transform(instance.Placement);
         }
 
         settings ??= new TessellationSettings();
@@ -135,6 +151,10 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             {
                 result = BuildFillet(fillet, settings);
             }
+            else if (feature is PartInstance instance && instance.IsEnabled)
+            {
+                result = BuildInstanceShape(instance, settings);
+            }
         }
         catch (Exception ex)
         {
@@ -147,6 +167,27 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// Sólido de uma instância de peça no mundo, para uso em operações booleanas. A definição é
+    /// construída uma vez (cache por Id) e a instância recebe uma cópia transladada. Rotação não é
+    /// suportada pelo OcctNet.Wrapper (a validação em BooleanFeature impede chegar aqui girada).
+    /// </summary>
+    private OcctShape BuildInstanceShape(PartInstance instance, TessellationSettings settings)
+    {
+        if (instance.Placement.HasRotation)
+        {
+            Console.WriteLine($"[BuildShape] Instância girada '{instance.Name}' não tem sólido B-Rep (OcctNet.Wrapper só translada).");
+            return null;
+        }
+
+        var local = BuildShape(instance.Definition, settings);
+        if (local == null || local.IsNull) return null;
+
+        var t = instance.Placement.Translation;
+        // Sempre uma cópia: o sólido local continua no cache da definição, e cada entrada é descartada uma vez.
+        return local.Translate(new OcctVector3d(t.X, t.Y, t.Z));
     }
 
     private OcctShape CreateCylinderCutter(CylinderFeature cyl, double filletRadius, bool isTop, bool isRound, TessellationSettings settings)

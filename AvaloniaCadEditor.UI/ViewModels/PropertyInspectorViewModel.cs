@@ -258,6 +258,30 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
                 NotifyAllFields();
             }
         }
+        else if (obj is PartInstance instance)
+        {
+            IsCylinder = false;
+            IsPrism = false;
+            Is2DProfile = false;
+            Is2DEntity = false;
+
+            Title = instance.Name;
+            TypeBadge = $"PEÇA · {instance.PartTypeName}";
+            var origin = instance.ToWorld(Point3D.Origin);
+            _centerX = origin.X;
+            _centerY = origin.Y;
+            _centerZ = origin.Z;
+
+            var lines = new System.Collections.Generic.List<string>();
+            foreach (var parameter in instance.Part.GetParameters())
+            {
+                lines.Add(parameter.ToString());
+            }
+            lines.Add($"Origem: ({origin.X:F1}, {origin.Y:F1}, {origin.Z:F1})");
+            AdditionalInfo = string.Join("\n", lines);
+
+            NotifyAllFields();
+        }
         else if (obj is IProfile profile)
         {
             IsCylinder = false;

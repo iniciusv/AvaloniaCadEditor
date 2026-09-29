@@ -79,6 +79,7 @@ public static class CodeEditorBehavior
     {
         ApplyVSDarkThemeToCSharp();
         SelectedFeatureProperty.Changed.AddClassHandler<TextEditor>((editor, e) => HandleSelectedFeatureChanged(editor, e));
+        ErrorLinesProperty.Changed.AddClassHandler<TextEditor>((editor, e) => HandleErrorLinesChanged(editor, e));
         DocumentTextProperty.Changed.AddClassHandler<TextEditor>((editor, e) => HandleDocumentTextChanged(editor, e));
     }
 
@@ -119,6 +120,42 @@ public static class CodeEditorBehavior
         {
             SetColor(kw, "#569CD6");
         }
+    }
+
+    /// <summary>Linhas (1-based) com erro na última execução; pintadas de vermelho no editor.</summary>
+    public static readonly AttachedProperty<System.Collections.Generic.IReadOnlyList<int>?> ErrorLinesProperty =
+        AvaloniaProperty.RegisterAttached<TextEditor, System.Collections.Generic.IReadOnlyList<int>?>("ErrorLines", typeof(CodeEditorBehavior));
+
+    public static System.Collections.Generic.IReadOnlyList<int>? GetErrorLines(AvaloniaObject element) => element.GetValue(ErrorLinesProperty);
+    public static void SetErrorLines(AvaloniaObject element, System.Collections.Generic.IReadOnlyList<int>? value) => element.SetValue(ErrorLinesProperty, value);
+
+    private static void HandleErrorLinesChanged(TextEditor editor, AvaloniaPropertyChangedEventArgs e)
+    {
+        ErrorLineColorizer? colorizer = null;
+        foreach (var transformer in editor.TextArea.TextView.LineTransformers)
+        {
+            if (transformer is ErrorLineColorizer existing)
+            {
+                colorizer = existing;
+                break;
+            }
+        }
+        if (colorizer == null)
+        {
+            colorizer = new ErrorLineColorizer();
+            editor.TextArea.TextView.LineTransformers.Add(colorizer);
+        }
+
+        colorizer.Lines.Clear();
+        if (e.NewValue is System.Collections.Generic.IReadOnlyList<int> lines)
+        {
+            foreach (var line in lines) colorizer.Lines.Add(line);
+            if (lines.Count > 0 && editor.Document != null && lines[0] <= editor.Document.LineCount)
+            {
+                editor.ScrollToLine(lines[0]);
+            }
+        }
+        editor.TextArea.TextView.Redraw();
     }
 
     public static string GetDocumentText(AvaloniaObject element) => element.GetValue(DocumentTextProperty);

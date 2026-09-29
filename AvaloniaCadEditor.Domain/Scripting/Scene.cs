@@ -4,6 +4,7 @@ using System.Runtime.CompilerServices;
 using System.Text.RegularExpressions;
 using System.Threading;
 using AvaloniaCadEditor.Domain.Features;
+using AvaloniaCadEditor.Domain.ValueObjects;
 
 namespace AvaloniaCadEditor.Domain.Scripting;
 
@@ -27,6 +28,32 @@ public static class Scene
         if (feature == null) return;
         FeatureOrigin.Set(feature, new SourceOrigin(filePath, line, expression));
         SceneHost.CurrentBuilder.AddFeature(feature);
+    }
+
+    /// <summary>
+    /// Coloca uma instância da peça na cena. Peças com parâmetros iguais compartilham a mesma
+    /// geometria (construída uma vez); cada instância só acrescenta sua posição.
+    /// </summary>
+    /// <param name="part">A peça (um record que herda de <see cref="Part"/>).</param>
+    /// <param name="at">Posição e rotação; padrão: na origem, sem rotação.</param>
+    /// <param name="name">Nome exibido na árvore; padrão: TipoDaPeca_N.</param>
+    public static PartInstance<T> Add<T>(
+        T part,
+        Placement? at = null,
+        string? name = null,
+        [CallerArgumentExpression(nameof(part))] string? expression = null,
+        [CallerFilePath] string filePath = "",
+        [CallerLineNumber] int line = 0) where T : Part
+    {
+        ArgumentNullException.ThrowIfNull(part);
+        var builder = SceneHost.CurrentBuilder;
+        var instance = new PartInstance<T>(part, builder.GetOrBuildDefinition(part), at ?? Placement.Identity)
+        {
+            Name = name ?? builder.NextInstanceName(part.GetType().Name)
+        };
+        FeatureOrigin.Set(instance, new SourceOrigin(filePath, line, expression));
+        builder.AddFeature(instance);
+        return instance;
     }
 }
 
@@ -70,8 +97,35 @@ public static class FeatureOrigin
 public sealed class SceneBuilder
 {
     private readonly List<IFeature> _features = new();
+    private readonly Dictionary<Part, IFeature> _definitions = new();
+    private readonly Dictionary<string, int> _instanceCounters = new(StringComparer.Ordinal);
 
     public IReadOnlyList<IFeature> Features => _features;
+
+    /// <summary>Quantas vezes um <see cref="Part"/> teve a geometria construída nesta execução.</summary>
+    public int DefinitionBuildCount { get; private set; }
+
+    /// <summary>
+    /// Geometria local da peça. A chave é a igualdade por valor do record: peças com os mesmos
+    /// parâmetros recebem o mesmo objeto, e o kernel (que guarda formas por Id) as constrói uma vez.
+    /// </summary>
+    public IFeature GetOrBuildDefinition(Part part)
+    {
+        if (!_definitions.TryGetValue(part, out var definition))
+        {
+            definition = part.CreateDefinition();
+            _definitions[part] = definition;
+            DefinitionBuildCount++;
+        }
+        return definition;
+    }
+
+    internal string NextInstanceName(string typeName)
+    {
+        _instanceCounters.TryGetValue(typeName, out int n);
+        _instanceCounters[typeName] = ++n;
+        return $"{typeName}_{n}";
+    }
 
     public void AddFeature(IFeature feature)
     {

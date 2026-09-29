@@ -16,6 +16,12 @@ public class BooleanFeature : FeatureBase
         BaseFeature = baseFeature ?? throw new ArgumentNullException(nameof(baseFeature));
         ToolFeatures = new List<IFeature>(toolFeatures ?? Array.Empty<IFeature>());
 
+        PartInstance.EnsureCanBeBooleanOperand(BaseFeature);
+        foreach (var tool in ToolFeatures)
+        {
+            PartInstance.EnsureCanBeBooleanOperand(tool);
+        }
+
         // Parametricity: Hide the original volumes from the 3D view so they don't overlap with the boolean result
         BaseFeature.IsVisible = false;
         foreach (var tool in ToolFeatures)
@@ -43,6 +49,7 @@ public class BooleanFeature : FeatureBase
     {
         if (!ToolFeatures.Contains(feature))
         {
+            PartInstance.EnsureCanBeBooleanOperand(feature);
             ToolFeatures.Add(feature);
             feature.IsVisible = false;
         }
@@ -58,6 +65,7 @@ public class BooleanFeature : FeatureBase
 
     public IFeature ChangeBaseFeature(IFeature newBase)
     {
+        PartInstance.EnsureCanBeBooleanOperand(newBase);
         var oldBase = BaseFeature;
         if (oldBase != null)
         {

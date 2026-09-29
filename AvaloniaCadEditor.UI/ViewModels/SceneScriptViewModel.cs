@@ -88,6 +88,8 @@ public class SceneScriptViewModel : INotifyPropertyChanged
 
         NewSceneCommand = new RelayCommand(async () => await NewSceneAsync());
         OpenSceneCommand = new RelayCommand(async () => await OpenSceneAsync());
+        CreateFileCommand = new RelayCommand(async () => await CreateFileAsync());
+        GoToFirstErrorCommand = new RelayCommand(GoToFirstError);
     }
 
     public ICommand GenerateCodeCommand { get; }
@@ -96,6 +98,109 @@ public class SceneScriptViewModel : INotifyPropertyChanged
     public ICommand SaveCodeToFileCommand { get; }
     public ICommand NewSceneCommand { get; }
     public ICommand OpenSceneCommand { get; }
+    public ICommand CreateFileCommand { get; }
+    public ICommand GoToFirstErrorCommand { get; }
+
+    // ---------------------------------------------------------------- Erros da última execução
+
+    private IReadOnlyList<ScriptDiagnostic> _errors = Array.Empty<ScriptDiagnostic>();
+
+    /// <summary>Erros da última execução. Enquanto houver, a cena mostrada é a última válida.</summary>
+    public IReadOnlyList<ScriptDiagnostic> Errors => _errors;
+
+    public bool HasErrors => _errors.Count > 0;
+
+    /// <summary>Primeiro erro formatado (arquivo, linha e mensagem) + quantos outros há.</summary>
+    public string? ErrorSummary
+    {
+        get
+        {
+            if (_errors.Count == 0) return null;
+            var first = _errors[0];
+            string where = string.IsNullOrEmpty(first.FilePath) ? string.Empty : $"{first.FilePath}({first.Line}): ";
+            string more = _errors.Count > 1 ? $"  (+{_errors.Count - 1} erro(s))" : string.Empty;
+            return $"{where}{first.Message}{more}";
+        }
+    }
+
+    /// <summary>Linhas (1-based) com erro no arquivo mostrado no editor.</summary>
+    public IReadOnlyList<int> ActiveFileErrorLines
+    {
+        get
+        {
+            string current = _project != null ? _activeFile ?? string.Empty : ScriptDocument.DefaultSceneFile;
+            return _errors
+                .Where(e => e.Line > 0 && string.Equals(NormalizeErrorPath(e.FilePath), current, StringComparison.OrdinalIgnoreCase))
+                .Select(e => e.Line)
+                .Distinct()
+                .ToList();
+        }
+    }
+
+    private string NormalizeErrorPath(string path) =>
+        _project != null && !string.IsNullOrEmpty(path) ? _project.ToRelativePath(path) : path;
+
+    private void SetErrors(IReadOnlyList<ScriptDiagnostic> errors)
+    {
+        _errors = errors;
+        OnPropertyChanged(nameof(Errors));
+        OnPropertyChanged(nameof(HasErrors));
+        OnPropertyChanged(nameof(ErrorSummary));
+        OnPropertyChanged(nameof(ActiveFileErrorLines));
+    }
+
+    /// <summary>Abre no editor o arquivo do primeiro erro.</summary>
+    public void GoToFirstError()
+    {
+        var first = _errors.FirstOrDefault(e => !string.IsNullOrEmpty(e.FilePath));
+        if (first == null || _project == null) return;
+        string file = NormalizeErrorPath(first.FilePath);
+        if (_documents.ContainsKey(file) && !string.Equals(file, _activeFile, StringComparison.OrdinalIgnoreCase))
+        {
+            SwitchActiveFile(file);
+        }
+    }
+
+    // ---------------------------------------------------------------- Novo arquivo
+
+    private string _newFileName = string.Empty;
+
+    /// <summary>Nome digitado para o próximo arquivo (ex.: "Suporte" cria Pecas/Suporte.cs).</summary>
+    public string NewFileName
+    {
+        get => _newFileName;
+        set { _newFileName = value ?? string.Empty; OnPropertyChanged(); }
+    }
+
+    /// <summary>Cria um arquivo de peça na cena, abre no editor e reexecuta.</summary>
+    public async Task CreateFileAsync()
+    {
+        if (_project == null)
+        {
+            _cadViewModel.StatusText = "Abra ou crie uma cena (pasta) para adicionar arquivos.";
+            return;
+        }
+
+        string relative;
+        try
+        {
+            relative = SceneProjectTemplate.CreatePartFile(_project, NewFileName);
+        }
+        catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
+        {
+            _cadViewModel.StatusText = $"✗ {ex.Message}";
+            return;
+        }
+
+        string text = File.ReadAllText(_project.ToFullPath(relative));
+        _documents[relative] = text;
+        _diskTexts[relative] = text;
+        RefreshFileList();
+        SwitchActiveFile(relative);
+        NewFileName = string.Empty;
+        _cadViewModel.StatusText = $"✓ Criado {relative}";
+        await RunCodeAsync();
+    }
 
     private string _generatedCSharpCode = "// Pressione 'Atualizar Código' para gerar o C#.";
     public string GeneratedCSharpCode
@@ -306,6 +411,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged
         _history.Clear();
         GeneratedCSharpCode = _documents.TryGetValue(file, out var text) ? text : string.Empty;
         OnPropertyChanged(nameof(ActiveFile));
+        OnPropertyChanged(nameof(ActiveFileErrorLines));
     }
 
     private void SyncActiveDocument()
@@ -439,12 +545,20 @@ public class SceneScriptViewModel : INotifyPropertyChanged
             _cadViewModel.StatusText = _project != null
                 ? $"✓ {_project.Name}: {result.Features.Count} feature(s) em {_documents.Count} arquivo(s)"
                 : $"✓ Código executado: {result.Features.Count} feature(s)";
+            SetErrors(Array.Empty<ScriptDiagnostic>());
         }
         else
         {
             string error = (result.ErrorMessage ?? "Erro desconhecido").Replace("\r", "").Replace("\n", " ");
             _cadViewModel.StatusText = $"✗ Erro: {error}";
             Console.WriteLine("Evaluation Error:\n" + result.ErrorMessage);
+
+            var errors = result.Diagnostics.Where(d => d.Severity == ScriptDiagnosticSeverity.Error).ToList();
+            if (errors.Count == 0)
+            {
+                errors.Add(new ScriptDiagnostic(string.Empty, 0, 0, ScriptDiagnosticSeverity.Error, "CAD0000", error));
+            }
+            SetErrors(errors);
         }
     }
 

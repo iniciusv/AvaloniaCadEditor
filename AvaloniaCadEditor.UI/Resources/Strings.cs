@@ -48,6 +48,10 @@ public static class Strings
     public static string IOTab => ResourceManager.GetString("IOTab") ?? "Tools";
     public static string NewScene => ResourceManager.GetString("NewScene") ?? "New scene";
     public static string OpenScene => ResourceManager.GetString("OpenScene") ?? "Open scene";
+    public static string NewFileWatermark => ResourceManager.GetString("NewFileWatermark") ?? "New part file";
+    public static string NewFileTooltip => ResourceManager.GetString("NewFileTooltip") ?? "Create Pecas/<name>.cs with a part template (e.g. Bracket or Pecas/Bracket)";
+    public static string SceneErrorTitle => ResourceManager.GetString("SceneErrorTitle") ?? "⚠ Scene error: showing the last model that ran successfully";
+    public static string GoToError => ResourceManager.GetString("GoToError") ?? "Go to error";
     public static string LoadCode => ResourceManager.GetString("LoadCode") ?? "Load (.cs)";
     public static string SaveCode => ResourceManager.GetString("SaveCode") ?? "Save (.cs)";
     public static string UpdateCode => ResourceManager.GetString("UpdateCode") ?? "Update Code";

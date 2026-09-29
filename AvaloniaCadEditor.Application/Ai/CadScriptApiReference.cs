@@ -32,7 +32,9 @@ public static class CadScriptApiReference
         typeof(FaceReference),
         typeof(EdgeReference),
         typeof(Point3D),
-        typeof(Vector3D)
+        typeof(Vector3D),
+        typeof(Placement),
+        typeof(PartInstance)
     };
 
     private static readonly Type[] EnumTypes =
@@ -68,6 +70,21 @@ public static class CadScriptApiReference
         }
 
         sb.AppendLine("Método global disponível no script: void AddFeature(IFeature feature) — registra a feature na cena.");
+        sb.AppendLine();
+        sb.AppendLine("PEÇAS PARAMÉTRICAS (em projetos de cena com vários arquivos):");
+        sb.AppendLine("  Declare em Pecas/ um record que herda de Part; os parâmetros são o construtor primário:");
+        sb.AppendLine("    public sealed record Placa(double Largura, double Comprimento, double Espessura = 5) : Part");
+        sb.AppendLine("    {");
+        sb.AppendLine("        protected override IFeature Build() =>");
+        sb.AppendLine("            new BoxFeature(Point3D.Origin, Largura, Comprimento, Espessura) { Name = \"placa\" };");
+        sb.AppendLine("    }");
+        sb.AppendLine("  Build() constrói a peça em coordenadas locais e NÃO chama AddFeature.");
+        sb.AppendLine("  Parâmetros podem ter [System.ComponentModel.DataAnnotations.Range(min, max)]; valores fora do intervalo viram erro.");
+        sb.AppendLine("  Método global: PartInstance<T> Add<T>(T part, Placement? at = null, string? name = null) — coloca uma instância na cena.");
+        sb.AppendLine("    var p1 = Add(new Placa(100, 60));");
+        sb.AppendLine("    var p2 = Add(p1.Part with { Espessura = 8 }, at: Placement.At(150, 0, 0, rotationZDegrees: 90));");
+        sb.AppendLine("    Point3D canto = p2.World(p => new Point3D(p.Largura, 0, 0)); // ponto local da peça convertido para o mundo");
+        sb.AppendLine("  Peças com os mesmos parâmetros compartilham a geometria (construída uma vez). Instâncias ainda não podem ser operandos de BooleanFeature.");
 
         return sb.ToString();
     }

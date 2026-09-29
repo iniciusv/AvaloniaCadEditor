@@ -171,6 +171,21 @@
                 <controls:SilkViewportControl x:Name="ViewportControl" DataContext="{Binding}" />
                 <refguides:GuideLabelsOverlay x:Name="GuideLabelsOverlay" />
 
+                <!-- Erro na cena: o modelo exibido é o último que executou com sucesso -->
+                <Border IsVisible="{Binding ScriptEditor.HasErrors}"
+                        Background="#E6B00020" BorderBrush="#FF5252" BorderThickness="1"
+                        CornerRadius="4" Padding="10,6" Margin="10"
+                        HorizontalAlignment="Left" VerticalAlignment="Bottom" MaxWidth="700">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Grid.Column="0" Spacing="2">
+                            <TextBlock Text="{x:Static res:Strings.SceneErrorTitle}" Foreground="White" FontWeight="Bold"/>
+                            <TextBlock Text="{Binding ScriptEditor.ErrorSummary}" Foreground="White" TextWrapping="Wrap" FontSize="12"/>
+                        </StackPanel>
+                        <Button Grid.Column="1" Content="{x:Static res:Strings.GoToError}" Command="{Binding ScriptEditor.GoToFirstErrorCommand}"
+                                IsVisible="{Binding ScriptEditor.IsProjectOpen}" Margin="10,0,0,0" VerticalAlignment="Center"/>
+                    </Grid>
+                </Border>
+
                 <!-- Boolean Edit Mode Banner -->
                 <Border IsVisible="{Binding IsEditingBooleanGroup}" 
                         Background="#80D32F2F" BorderBrush="#D32F2F" BorderThickness="1" 
@@ -204,14 +219,21 @@
                         <!-- C# Code editor on top, AI Chat below -->
                         <Grid RowDefinitions="Auto,*,4,1.2*">
                             <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="4">
-                                <!-- Seletor de arquivos: só aparece quando uma cena (pasta com .csproj) está aberta -->
-                                <ComboBox Grid.Column="0"
-                                          ItemsSource="{Binding ScriptEditor.ProjectFiles}"
-                                          SelectedItem="{Binding ScriptEditor.ActiveFile, Mode=TwoWay}"
-                                          IsVisible="{Binding ScriptEditor.IsProjectOpen}"
-                                          ToolTip.Tip="{Binding ScriptEditor.ProjectName}"
-                                          HorizontalAlignment="Stretch" VerticalAlignment="Top"
-                                          MinWidth="140" Margin="0,0,8,4"/>
+                                <!-- Seletor de arquivos + novo arquivo: só aparecem quando uma cena (pasta com .csproj) está aberta -->
+                                <Grid Grid.Column="0" ColumnDefinitions="*,Auto,Auto" IsVisible="{Binding ScriptEditor.IsProjectOpen}"
+                                      VerticalAlignment="Top" Margin="0,0,8,4">
+                                    <ComboBox Grid.Column="0"
+                                              ItemsSource="{Binding ScriptEditor.ProjectFiles}"
+                                              SelectedItem="{Binding ScriptEditor.ActiveFile, Mode=TwoWay}"
+                                              ToolTip.Tip="{Binding ScriptEditor.ProjectName}"
+                                              HorizontalAlignment="Stretch" MinWidth="120"/>
+                                    <TextBox Grid.Column="1" Width="120" Margin="4,0,0,0"
+                                             Text="{Binding ScriptEditor.NewFileName, Mode=TwoWay}"
+                                             Watermark="{x:Static res:Strings.NewFileWatermark}"
+                                             ToolTip.Tip="{x:Static res:Strings.NewFileTooltip}"/>
+                                    <Button Grid.Column="2" Content="+" Command="{Binding ScriptEditor.CreateFileCommand}"
+                                            ToolTip.Tip="{x:Static res:Strings.NewFileTooltip}" Margin="4,0,0,0"/>
+                                </Grid>
                                 <WrapPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
                                     <Button Content="{x:Static res:Strings.NewScene}" Command="{Binding ScriptEditor.NewSceneCommand}" Margin="0,0,4,4"/>
                                     <Button Content="{x:Static res:Strings.OpenScene}" Command="{Binding ScriptEditor.OpenSceneCommand}" Margin="0,0,4,4"/>
@@ -227,6 +249,7 @@
                                      SyntaxHighlighting="C#"
                                      controls:CodeEditorBehavior.DocumentText="{Binding ScriptEditor.GeneratedCSharpCode, Mode=TwoWay}"
                                      controls:CodeEditorBehavior.SelectedFeature="{Binding SelectedFeature}"
+                                     controls:CodeEditorBehavior.ErrorLines="{Binding ScriptEditor.ActiveFileErrorLines}"
                                      FontFamily="Consolas, Fira Code, Monospace"
                                      Background="#1E1E1E"
                                      Foreground="#D4D4D4"
