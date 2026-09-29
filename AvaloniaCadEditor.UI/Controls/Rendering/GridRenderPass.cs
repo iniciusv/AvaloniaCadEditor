@@ -146,37 +146,57 @@ public sealed class GridRenderPass : IRenderPass
 
         // Grow/shrink the grid in powers of 10 so it always covers the visible area around the
         // camera target, whether the model is tiny or huge, without changing the vertex buffer.
+        // Instead of snapping to the nearest power of 10, keep the two neighboring levels (fine
+        // and coarse) and cross-fade between them by how far "level" is into the current decade,
+        // so the grid spacing changes gradually with zoom instead of jumping.
         float distance = MathF.Max(context.Camera.Distance, 0.001f);
-        float ratio = distance / BaseHalfSize;
-        float scale = MathF.Pow(10f, MathF.Ceiling(MathF.Log10(ratio)));
-        float worldStep = BaseStep * scale;
+        float level = MathF.Log10(distance / BaseHalfSize);
+        float levelFloor = MathF.Floor(level);
+        float frac = level - levelFloor;
+        float scaleFine = MathF.Pow(10f, levelFloor);
+        float scaleCoarse = scaleFine * 10f;
+        float alphaFine = 1f - frac;
+        float alphaCoarse = frac;
 
-        // Re-center the grid on the camera target, snapped to a whole grid cell so lines stay
-        // put (rather than sliding) while panning.
         var targetLocal = wp.ToLocalSpace(new AvaloniaCadEditor.Domain.ValueObjects.Point3D(
             context.Camera.Target.X, context.Camera.Target.Y, context.Camera.Target.Z));
-        float tx = MathF.Round((float)targetLocal.X / worldStep) * worldStep;
-        float ty = MathF.Round((float)targetLocal.Y / worldStep) * worldStep;
-
-        var scaleMatrix = Matrix4x4.CreateScale(scale);
-        var gridMatrix = scaleMatrix * Matrix4x4.CreateTranslation(tx, ty, 0f) * planeMatrix;
-        var axesMatrix = scaleMatrix * planeMatrix;
 
         gl.Uniform1(context.Uniforms.LightingLoc, 0);
-        gl.Uniform1(context.Uniforms.AlphaLoc, 1.0f);
         gl.BindVertexArray(_vao);
 
-        unsafe
-        {
-            gl.UniformMatrix4(context.Uniforms.ModelLoc, 1, false, (float*)&gridMatrix);
-        }
-        gl.DrawArrays(PrimitiveType.Lines, 0, (uint)_gridVertexCount);
+        DrawGridLevel(gl, context, planeMatrix, targetLocal, scaleFine, alphaFine);
+        DrawGridLevel(gl, context, planeMatrix, targetLocal, scaleCoarse, alphaCoarse);
 
+        // Axes are drawn once (no cross-fade needed: they read as infinite lines crossing the
+        // screen regardless of scale) using the coarse level so they always reach past the edges.
+        var axesMatrix = Matrix4x4.CreateScale(scaleCoarse) * planeMatrix;
+        gl.Uniform1(context.Uniforms.AlphaLoc, 1.0f);
         unsafe
         {
             gl.UniformMatrix4(context.Uniforms.ModelLoc, 1, false, (float*)&axesMatrix);
         }
         gl.DrawArrays(PrimitiveType.Lines, _gridVertexCount, (uint)(_vertexCount - _gridVertexCount));
+    }
+
+    /// <summary>Draws just the grid lines (not the axes) at the given scale, re-centered on the
+    /// camera target and snapped to that scale's own grid step, with the given fade alpha.</summary>
+    private void DrawGridLevel(GL gl, RenderContext context, Matrix4x4 planeMatrix,
+        AvaloniaCadEditor.Domain.ValueObjects.Point3D targetLocal, float scale, float alpha)
+    {
+        if (alpha <= 0f) return;
+
+        float worldStep = BaseStep * scale;
+        float tx = MathF.Round((float)targetLocal.X / worldStep) * worldStep;
+        float ty = MathF.Round((float)targetLocal.Y / worldStep) * worldStep;
+
+        var gridMatrix = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateTranslation(tx, ty, 0f) * planeMatrix;
+
+        gl.Uniform1(context.Uniforms.AlphaLoc, alpha);
+        unsafe
+        {
+            gl.UniformMatrix4(context.Uniforms.ModelLoc, 1, false, (float*)&gridMatrix);
+        }
+        gl.DrawArrays(PrimitiveType.Lines, 0, (uint)_gridVertexCount);
     }
 
     public void Dispose(GL gl)
