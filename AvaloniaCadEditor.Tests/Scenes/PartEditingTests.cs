@@ -294,6 +294,158 @@ public class PartEditingTests
         PartSourceEditor.RotateFeature(code, 1, new Point3D(0, 0, 0), Vector3D.UnitZ, degrees).Should().Be(expected);
     }
 
+    // ------------------------------------------------------------ Mover/girar uma feature usada por outra (ex.: booleana)
+    //
+    // Regressão: mover a ferramenta/base de uma BooleanFeature reescrevia só o argumento do
+    // AddFeature (AddFeature(x) -> AddFeature(x.Transformed(...))), criando um sólido novo e visível
+    // no lugar de destino - a booleana continuava usando o "x" original, parado, então o corte não
+    // acompanhava. A correção move a transformação para a DECLARAÇÃO de x quando x é usado em outro
+    // lugar do script.
+
+    [Fact]
+    public void TranslateFeature_UsadaPorBooleana_MoveADeclaracaoNaoOAddFeature()
+    {
+        string code =
+            "var box = new BoxFeature(Point3D.Origin, 10, 10, 10);\n" +
+            "AddFeature(box);\n" +
+            "var tool = new BoxFeature(new Point3D(20, 0, 0), 4, 4, 4);\n" +
+            "AddFeature(tool);\n" +
+            "var cut = BooleanFeature.CreateDifference(\"cut\", box, tool);\n" +
+            "AddFeature(cut);\n";
+
+        string result = PartSourceEditor.TranslateFeature(code, 4, 5, 0, 0);
+
+        result.Should().Contain(
+            "var tool = new BoxFeature(new Point3D(20, 0, 0), 4, 4, 4).Transformed(Placement.Translate(new Vector3D(5, 0, 0)));");
+        result.Should().Contain("AddFeature(tool);", "o AddFeature não muda - ele já só referenciava a variável");
+        result.Should().NotContain("AddFeature(tool.Transformed", "não deve criar um sólido novo separado da booleana");
+        result.Should().Contain("BooleanFeature.CreateDifference(\"cut\", box, tool);", "a booleana continua referenciando a mesma variável, agora já na posição nova");
+    }
+
+    [Fact]
+    public void TranslateFeature_UsadaPorBooleana_MoverDeNovoSomaNoDeslocamentoDaDeclaracao()
+    {
+        string code =
+            "var tool = new BoxFeature(new Point3D(20, 0, 0), 4, 4, 4);\n" +
+            "AddFeature(tool);\n" +
+            "var cut = BooleanFeature.CreateDifference(\"cut\", box, tool);\n";
+
+        string once = PartSourceEditor.TranslateFeature(code, 2, 5, 0, 0);
+        string twice = PartSourceEditor.TranslateFeature(once, 2, 3, 0, 0);
+
+        twice.Should().Contain(
+            "var tool = new BoxFeature(new Point3D(20, 0, 0), 4, 4, 4).Transformed(Placement.Translate(new Vector3D(8, 0, 0)));");
+    }
+
+    [Fact]
+    public void RotateFeature_UsadaPorBooleana_MoveADeclaracaoNaoOAddFeature()
+    {
+        string code =
+            "var tool = new BoxFeature(new Point3D(20, 0, 0), 4, 4, 4);\n" +
+            "AddFeature(tool);\n" +
+            "var cut = BooleanFeature.CreateDifference(\"cut\", box, tool);\n";
+
+        string result = PartSourceEditor.RotateFeature(code, 2, new Point3D(0, 0, 0), Vector3D.UnitZ, 90);
+
+        result.Should().Contain(
+            "var tool = new BoxFeature(new Point3D(20, 0, 0), 4, 4, 4).Transformed(Placement.RotationAbout(new Point3D(0, 0, 0), Vector3D.UnitZ, 90));");
+        result.Should().Contain("AddFeature(tool);");
+    }
+
+    [Fact]
+    public void TranslateFeature_CenaJaInconsistente_RepataDevolvendoOAddFeatureParaAVariavelSimples()
+    {
+        // Estado quebrado: uma versão anterior moveu "tool" reescrevendo o AddFeature, então a
+        // booleana ficou usando o sólido original e o Transformed ficou "solto" e visível.
+        string code =
+            "var box = new BoxFeature(Point3D.Origin, 10, 10, 10);\n" +
+            "AddFeature(box);\n" +
+            "var tool = new BoxFeature(new Point3D(20, 0, 0), 4, 4, 4);\n" +
+            "AddFeature(tool.Transformed(Placement.Translate(new Vector3D(1, 0, 0))));\n" +
+            "var cut = BooleanFeature.CreateDifference(\"cut\", box, tool);\n" +
+            "AddFeature(cut);\n";
+
+        string result = PartSourceEditor.TranslateFeature(code, 4, 2, 0, 0);
+
+        result.Should().Contain(
+            "var tool = new BoxFeature(new Point3D(20, 0, 0), 4, 4, 4).Transformed(Placement.Translate(new Vector3D(3, 0, 0)));",
+            "o deslocamento que estava solto no AddFeature (1) soma com o novo (2) na declaração");
+        result.Should().Contain("AddFeature(tool);", "o AddFeature volta a só referenciar a variável - conserta o estado inconsistente");
+        result.Should().NotContain("AddFeature(tool.Transformed");
+    }
+
+    [Fact]
+    public void TranslateFeature_UsadaComMetodoEmOutroLugar_Lanca()
+    {
+        // "cyl" é usado como cyl.GetFaceCenter(...) fora do AddFeature: mudar o tipo estático da
+        // declaração para TransformedFeature poderia quebrar essa chamada, então não arriscamos.
+        string code =
+            "var cyl = new CylinderFeature(Point3D.Origin, Vector3D.UnitZ, 5, 10);\n" +
+            "AddFeature(cyl);\n" +
+            "var h = cyl.GetFaceCenter(FaceType.Top);\n";
+
+        Action act = () => PartSourceEditor.TranslateFeature(code, 2, 1, 0, 0);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*cyl*");
+    }
+
+    [Fact]
+    public void TranslateFeature_CasoRelatado_MoverFerramentaDeBooleanaComVariasBasesEFerramentas()
+    {
+        // Reprodução literal do bug relatado: mover cylinder_ddc7 (usado como uma das ferramentas de
+        // boolOp_90c4, que também tem 2 bases) recriava o sólido no AddFeature em vez de mover o
+        // corte - a booleana continuava usando o cylinder_ddc7 original, parado.
+        string code =
+            "var cylinder_df12 = new CylinderFeature(globalBaseCenter: new Point3D(1, 5, 0), globalDirection: new Vector3D(0, 0, 1), radius: 8.06226, height: 11.5)\n" +
+            "{\n" +
+            "    Name = \"cylinder_df12\"\n" +
+            "};\n" +
+            "AddFeature(cylinder_df12);\n" +
+            "var cylinder_6627 = new CylinderFeature(globalBaseCenter: new Point3D(8, -6, 0), globalDirection: new Vector3D(0, 0, 1), radius: 7.28011, height: 12)\n" +
+            "{\n" +
+            "    Name = \"cylinder_6627\"\n" +
+            "};\n" +
+            "AddFeature(cylinder_6627);\n" +
+            "var cylinder_ddc7 = new CylinderFeature(globalBaseCenter: new Point3D(15, 5, 0), globalDirection: new Vector3D(0, 0, 1), radius: 7.24158, height: 13)\n" +
+            "{\n" +
+            "    Name = \"cylinder_ddc7\"\n" +
+            "};\n" +
+            "AddFeature(cylinder_ddc7);\n" +
+            "var cylinder_0193 = new CylinderFeature(globalBaseCenter: new Point3D(2.57287, 12.90735, 6), globalDirection: new Vector3D(0.09802, 0.99518, 0), radius: 2.23607, height: -42.66361)\n" +
+            "{\n" +
+            "    Name = \"cylinder_0193\"\n" +
+            "};\n" +
+            "AddFeature(cylinder_0193);\n" +
+            "var boolOp_90c4 = new BooleanFeature(name: \"boolOp_90c4\", operation: BooleanOperationType.Subtract, baseFeatures: new IFeature[] { cylinder_df12, cylinder_6627 }, toolFeatures: new IFeature[] { cylinder_ddc7, cylinder_0193 });\n" +
+            "AddFeature(boolOp_90c4);\n";
+
+        string result = PartSourceEditor.TranslateFeature(code, 15, -6.427131, -6.092654, 0);
+
+        result.Should().Contain(
+            "new CylinderFeature(globalBaseCenter: new Point3D(15, 5, 0), globalDirection: new Vector3D(0, 0, 1), radius: 7.24158, height: 13)\n" +
+            "{\n" +
+            "    Name = \"cylinder_ddc7\"\n" +
+            "}.Transformed(Placement.Translate(new Vector3D(-6.427131, -6.092654, 0)))",
+            "o movimento vai para a declaração de cylinder_ddc7");
+        result.Should().Contain("AddFeature(cylinder_ddc7);", "o AddFeature não vira um sólido novo separado da booleana");
+        result.Should().NotContain("AddFeature(cylinder_ddc7.Transformed");
+        result.Should().Contain(
+            "toolFeatures: new IFeature[] { cylinder_ddc7, cylinder_0193 }",
+            "a booleana continua com as mesmas duas ferramentas - agora cylinder_ddc7 já é a versão movida");
+    }
+
+    [Fact]
+    public void TranslateFeature_UsadaEmOutroLugarSemDeclaracaoNesteArquivo_LancaComMensagemClara()
+    {
+        string code =
+            "AddFeature(cyl);\n" +
+            "var h = new IFeature[] { cyl };\n";
+
+        Action act = () => PartSourceEditor.TranslateFeature(code, 1, 1, 0, 0);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*cyl*");
+    }
+
     [Fact]
     public void CopyFeature_AcrescentaVarETransformedComNomeUnico()
     {

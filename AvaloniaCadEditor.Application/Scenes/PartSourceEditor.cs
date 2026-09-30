@@ -378,45 +378,154 @@ public static class PartSourceEditor
     /// <item>já é, com <c>Placement.Translate(...)</c> direto ou no fim de um <c>.Then</c>: soma no deslocamento existente;</item>
     /// <item>qualquer outro placement: acrescenta <c>.Then(Placement.Translate(...))</c> dentro do Transformed.</item>
     /// </list>
+    /// Se <c>x</c> também é usado em outro lugar do script (ex.: como ferramenta de uma
+    /// <c>BooleanFeature</c>), a transformação vai para a <b>declaração</b> de <c>x</c> em vez do
+    /// argumento do <c>AddFeature</c> — senão o corte ficaria parado enquanto um sólido novo (e
+    /// visível) nascia no lugar de destino. Ver <see cref="EditDeclarationInsteadOfAddFeature"/>.
     /// </summary>
     public static string TranslateFeature(string source, int line, double dx, double dy, double dz) =>
         EditTransformedFeature(source, line, TranslationCall(dx, dy, dz),
-            placement => { var edits = new List<TextChange>(); return TryMergeTranslate(placement, dx, dy, dz, edits) ? Apply(source, edits) : null; });
+            (currentSource, placement) => { var edits = new List<TextChange>(); return TryMergeTranslate(placement, dx, dy, dz, edits) ? Apply(currentSource, edits) : null; });
 
     /// <summary>
     /// Gira a feature solta registrada por <c>AddFeature(x)</c> na linha dada em torno de
     /// <paramref name="pivot"/>/<paramref name="axis"/>, seguindo o mesmo padrão de <see cref="TranslateFeature"/>
-    /// (e de <see cref="RotateInstance"/>: mesmo pivô/eixo soma o ângulo).
+    /// (e de <see cref="RotateInstance"/>: mesmo pivô/eixo soma o ângulo) — inclusive o desvio para a
+    /// declaração quando <c>x</c> é usado em outro lugar do script.
     /// </summary>
     public static string RotateFeature(string source, int line, Point3D pivot, Vector3D axis, double degrees) =>
         EditTransformedFeature(source, line, RotationCall(pivot, axis, degrees),
-            placement => TryMergeRotation(placement, pivot, axis, degrees, out string? merged) ? Replace(source, placement.Span, merged!) : null);
+            (currentSource, placement) => TryMergeRotation(placement, pivot, axis, degrees, out string? merged) ? Replace(currentSource, placement.Span, merged!) : null);
 
     /// <summary>
-    /// Aplica um novo placement à feature solta de <c>AddFeature(x)</c> na linha dada: tenta fundir
-    /// com um <c>x.Transformed(...)</c> já existente via <paramref name="tryMerge"/>; sem isso,
-    /// encadeia um <c>.Then</c> dentro do Transformed existente, ou cria um novo.
+    /// Aplica um novo placement à feature solta de <c>AddFeature(x)</c> na linha dada. Se <c>x</c> é só
+    /// um identificador (ou já <c>x.Transformed(P)</c>) e é referenciado em outro lugar do mesmo
+    /// arquivo — o caso de uma ferramenta/base de uma <c>BooleanFeature</c> — a edição vai para a
+    /// <b>declaração</b> de <c>x</c>, para que quem depende de <c>x</c> (a booleana) veja o sólido
+    /// já na posição nova, em vez de continuar apontando para o original parado. Senão, segue o
+    /// caminho de sempre: funde com um <c>x.Transformed(...)</c> já existente no próprio
+    /// <c>AddFeature</c> (via <paramref name="tryMerge"/>), encadeia um <c>.Then</c>, ou cria um novo.
     /// </summary>
-    private static string EditTransformedFeature(string source, int line, string newPlacementCode, Func<ExpressionSyntax, string?> tryMerge)
+    private static string EditTransformedFeature(string source, int line, string newPlacementCode, Func<string, ExpressionSyntax, string?> tryMerge)
     {
         var root = Parse(source);
         var call = FindAddFeatureCall(root, line)
             ?? throw new InvalidOperationException($"Não achei a chamada AddFeature(...) na linha {line}.");
         var expr = call.ArgumentList.Arguments[0].Expression;
 
-        if (expr is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Transformed" } } transformed &&
+        var (identifier, existingPlacementInCall) = DecomposeAddFeatureArgument(expr);
+        if (identifier != null && IsReferencedElsewhere(root, identifier.Identifier.ValueText, call))
+        {
+            return EditDeclarationInsteadOfAddFeature(source, root, identifier.Identifier.ValueText, existingPlacementInCall, call, newPlacementCode, tryMerge);
+        }
+
+        return ApplyPlacement(source, expr, newPlacementCode, tryMerge);
+    }
+
+    /// <summary>
+    /// Se <paramref name="expr"/> (o argumento de <c>AddFeature</c>) é um identificador simples
+    /// <c>x</c>, ou <c>x.Transformed(P)</c>, devolve <c>x</c> e (no segundo caso) <c>P</c>. Senão,
+    /// devolve <c>(null, null)</c> — não há como saber a variável de origem para olhar o resto do script.
+    /// </summary>
+    private static (IdentifierNameSyntax? Identifier, ExpressionSyntax? ExistingPlacement) DecomposeAddFeatureArgument(ExpressionSyntax expr)
+    {
+        if (expr is IdentifierNameSyntax id) return (id, null);
+
+        if (expr is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Transformed" } transformedMember } invocation &&
+            transformedMember.Expression is IdentifierNameSyntax innerId &&
+            invocation.ArgumentList.Arguments.Count >= 1)
+        {
+            return (innerId, invocation.ArgumentList.Arguments[0].Expression);
+        }
+
+        return (null, null);
+    }
+
+    /// <summary>True se <paramref name="variableName"/> aparece em algum outro lugar do arquivo, fora
+    /// da própria chamada <c>AddFeature</c> (ex.: como base/ferramenta de uma BooleanFeature).</summary>
+    private static bool IsReferencedElsewhere(SyntaxNode root, string variableName, InvocationExpressionSyntax addFeatureCall) =>
+        root.DescendantNodes()
+            .OfType<IdentifierNameSyntax>()
+            .Any(id => id.Identifier.ValueText == variableName && !addFeatureCall.Span.Contains(id.Span));
+
+    /// <summary>
+    /// True se <paramref name="variableName"/> é usado como <c>x.Algo(...)</c> em outro lugar do
+    /// arquivo (fora do próprio <c>AddFeature</c>) — mover a declaração para <c>x.Transformed(...)</c>
+    /// mudaria o tipo estático de <c>x</c> e poderia quebrar essa chamada, então não arriscamos.
+    /// </summary>
+    private static bool HasRiskyMemberAccessElsewhere(SyntaxNode root, string variableName, InvocationExpressionSyntax addFeatureCall) =>
+        root.DescendantNodes()
+            .OfType<MemberAccessExpressionSyntax>()
+            .Any(m => m.Expression is IdentifierNameSyntax id && id.Identifier.ValueText == variableName &&
+                      !addFeatureCall.Span.Contains(m.Span));
+
+    /// <summary>
+    /// Move o placement para a declaração <c>var x = ...;</c> em vez do <c>AddFeature(x)</c>, porque
+    /// outra parte do script (ex.: uma BooleanFeature) também usa <c>x</c> e precisa ver a posição nova.
+    /// Se o <c>AddFeature</c> já estava como <c>x.Transformed(P)</c> — uma cena que ficou inconsistente
+    /// por ter sido movida assim antes desta correção existir — primeiro repara: volta a ser
+    /// <c>AddFeature(x)</c> e leva <c>P</c> para a declaração, e só então aplica o placement novo.
+    /// </summary>
+    private static string EditDeclarationInsteadOfAddFeature(
+        string source, SyntaxNode root, string variableName, ExpressionSyntax? existingPlacementInCall,
+        InvocationExpressionSyntax addFeatureCall, string newPlacementCode, Func<string, ExpressionSyntax, string?> tryMerge)
+    {
+        if (HasRiskyMemberAccessElsewhere(root, variableName, addFeatureCall))
+        {
+            throw new InvalidOperationException(
+                $"'{variableName}' é usado com '.algumMétodo(...)' em outro lugar do script; mover assim quebraria essa chamada. " +
+                $"Edite '{variableName}' direto no código, ou tire essa dependência antes de mover.");
+        }
+
+        string currentSource = source;
+
+        if (existingPlacementInCall != null)
+        {
+            // Repara: AddFeature(x.Transformed(P)) volta a ser AddFeature(x)...
+            currentSource = Replace(currentSource, addFeatureCall.ArgumentList.Arguments[0].Expression.Span, variableName);
+
+            // ...e P vai para a declaração (sempre por composição estrutural — .Then/.Transformed —
+            // nunca por fusão numérica: não sabemos se P é do mesmo tipo do placement novo).
+            var declaratorForFold = FindFeatureDeclarator(Parse(currentSource), variableName)
+                ?? throw new InvalidOperationException(DeclarationNotFoundMessage(variableName));
+            currentSource = ApplyPlacement(currentSource, declaratorForFold.Initializer!.Value, existingPlacementInCall.ToString(), static (_, _) => null);
+        }
+
+        var declarator = FindFeatureDeclarator(Parse(currentSource), variableName)
+            ?? throw new InvalidOperationException(DeclarationNotFoundMessage(variableName));
+        return ApplyPlacement(currentSource, declarator.Initializer!.Value, newPlacementCode, tryMerge);
+    }
+
+    private static VariableDeclaratorSyntax? FindFeatureDeclarator(SyntaxNode root, string variableName) =>
+        root.DescendantNodes()
+            .OfType<VariableDeclaratorSyntax>()
+            .FirstOrDefault(d => d.Identifier.ValueText == variableName && d.Initializer?.Value != null);
+
+    private static string DeclarationNotFoundMessage(string variableName) =>
+        $"'{variableName}' é usado em outro lugar do script (ex.: numa operação booleana), mas não achei " +
+        $"'var {variableName} = ...;' nesse arquivo para mover o sólido de verdade.";
+
+    /// <summary>
+    /// Aplica <paramref name="newPlacementCode"/> sobre <paramref name="target"/> — o argumento do
+    /// <c>AddFeature</c>, ou o inicializador da declaração de <c>x</c>, dependendo de quem chamou:
+    /// funde com um <c>.Transformed(P)</c> que já esteja no fim de <paramref name="target"/> (via
+    /// <paramref name="tryMerge"/>; sem sucesso, encadeia um <c>.Then</c> dentro dele), ou embrulha do zero.
+    /// </summary>
+    private static string ApplyPlacement(string currentSource, ExpressionSyntax target, string newPlacementCode, Func<string, ExpressionSyntax, string?> tryMerge)
+    {
+        if (target is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Transformed" } } transformed &&
             transformed.ArgumentList.Arguments.Count >= 1)
         {
             var placementArg = transformed.ArgumentList.Arguments[0].Expression;
-            var merged = tryMerge(placementArg);
+            var merged = tryMerge(currentSource, placementArg);
             if (merged != null) return merged;
 
             string placementTarget = NeedsParentheses(placementArg) ? $"({placementArg})" : placementArg.ToString();
-            return Replace(source, placementArg.Span, $"{placementTarget}.Then({newPlacementCode})");
+            return Replace(currentSource, placementArg.Span, $"{placementTarget}.Then({newPlacementCode})");
         }
 
-        string target = NeedsParentheses(expr) ? $"({expr})" : expr.ToString();
-        return Replace(source, expr.Span, $"{target}.Transformed({newPlacementCode})");
+        string targetText = NeedsParentheses(target) ? $"({target})" : target.ToString();
+        return Replace(currentSource, target.Span, $"{targetText}.Transformed({newPlacementCode})");
     }
 
     /// <summary>
