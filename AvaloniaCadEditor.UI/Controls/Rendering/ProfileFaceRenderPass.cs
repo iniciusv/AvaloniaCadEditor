@@ -34,10 +34,15 @@ public sealed class ProfileFaceRenderPass : IRenderPass
     public void Render(GL gl, RenderContext context)
     {
         var vm = context.ViewModel;
-        if (vm == null || vm.CurrentMode != AvaloniaCadEditor.UI.ViewModels.EditorMode.SketchEdit) return;
+        if (vm == null) return;
 
-        var profilesToRender = new System.Collections.Generic.List<AvaloniaCadEditor.Domain.Profiles.IProfile>(vm.Sketch.Profiles);
-        
+        // Fora do SketchEdit só a face selecionada é destacada (seleção de face no modo Part);
+        // os perfis de esboço continuam restritos à edição de sketch.
+        bool sketchEdit = vm.CurrentMode == AvaloniaCadEditor.UI.ViewModels.EditorMode.SketchEdit;
+        var profilesToRender = sketchEdit
+            ? new System.Collections.Generic.List<AvaloniaCadEditor.Domain.Profiles.IProfile>(vm.Sketch.Profiles)
+            : new System.Collections.Generic.List<AvaloniaCadEditor.Domain.Profiles.IProfile>();
+
         if (vm.SelectionService.SelectedObject is AvaloniaCadEditor.Domain.Profiles.IProfile selectedProfile && 
             !profilesToRender.Contains(selectedProfile))
         {

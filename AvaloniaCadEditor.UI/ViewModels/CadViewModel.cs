@@ -213,6 +213,7 @@ public class CadViewModel : INotifyPropertyChanged
 	{
 		var moved = features.ToList();
 		var selectedFeatureNames = moved.Select(f => f.Name).ToList();
+		ReturnToSelectTool();
 
 		var instances = moved.OfType<PartInstance>().ToList();
 		var loose = moved.Where(f => f is not PartInstance).ToList();
@@ -249,6 +250,7 @@ public class CadViewModel : INotifyPropertyChanged
 		}
 
 		var selectedFeatureNames = rotated.Select(f => f.Name).ToList();
+		ReturnToSelectTool();
 		var instances = rotated.OfType<PartInstance>().ToList();
 		var loose = rotated.Where(f => f is not PartInstance).ToList();
 
@@ -270,8 +272,19 @@ public class CadViewModel : INotifyPropertyChanged
 		}
 	}
 
+	/// <summary>
+	/// Mover/Rotacionar são de uso único: depois de aplicar, volta ao Select. Sem isso a ferramenta
+	/// continua ativa (a UI não indica qual está ativa) e o próximo clique no modelo inicia outro movimento.
+	/// </summary>
+	private void ReturnToSelectTool()
+	{
+		if (CurrentTool is MoveTool or RotateTool)
+			CurrentTool = new SelectTool(_geometryEngine, _selectionService);
+	}
+
 	private void MoveTool_FeaturesCopied(AvaloniaCadEditor.Domain.ValueObjects.Vector3D vector, System.Collections.Generic.IEnumerable<AvaloniaCadEditor.Domain.Features.IFeature> features)
 	{
+		ReturnToSelectTool();
 		CopyFeatures(features,
 			instances => ScriptEditor.CopyPartInstances(instances, (source, line) =>
 				AvaloniaCadEditor.Application.Scenes.PartSourceEditor.TranslateInstance(source, line, vector.X, vector.Y, vector.Z)),
@@ -281,6 +294,7 @@ public class CadViewModel : INotifyPropertyChanged
 
 	private void RotateTool_FeaturesCopied(AvaloniaCadEditor.Domain.ValueObjects.Point3D pivot, AvaloniaCadEditor.Domain.ValueObjects.Vector3D axis, double degrees, System.Collections.Generic.IEnumerable<AvaloniaCadEditor.Domain.Features.IFeature> features)
 	{
+		ReturnToSelectTool();
 		CopyFeatures(features,
 			instances => ScriptEditor.CopyPartInstances(instances, (source, line) =>
 				AvaloniaCadEditor.Application.Scenes.PartSourceEditor.RotateInstance(source, line, pivot, axis, degrees)),
