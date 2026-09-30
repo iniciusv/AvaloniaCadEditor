@@ -2,6 +2,7 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Input;
 using System.Linq;
+using Avalonia.VisualTree;
 using AvaloniaCadEditor.UI.ViewModels;
 using AvaloniaCadEditor.Domain.Features;
 
@@ -25,6 +26,55 @@ public partial class ModelTreeView : UserControl
         AddHandler(PointerPressedEvent, OnPointerPressed, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
         AddHandler(PointerMovedEvent, OnPointerMoved, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
         AddHandler(PointerReleasedEvent, OnPointerReleasedAnywhere, Avalonia.Interactivity.RoutingStrategies.Tunnel | Avalonia.Interactivity.RoutingStrategies.Bubble, true);
+
+        DataContextChanged += OnDataContextChanged;
+    }
+
+    private ModelTreeViewModel? _subscribedVm;
+    private Vector _savedScrollOffset;
+
+    private void OnDataContextChanged(object? sender, System.EventArgs e)
+    {
+        if (_subscribedVm != null)
+        {
+            _subscribedVm.TreeRebuilding -= OnTreeRebuilding;
+            _subscribedVm.TreeRebuilt -= OnTreeRebuilt;
+        }
+        _subscribedVm = DataContext as ModelTreeViewModel;
+        if (_subscribedVm != null)
+        {
+            _subscribedVm.TreeRebuilding += OnTreeRebuilding;
+            _subscribedVm.TreeRebuilt += OnTreeRebuilt;
+        }
+    }
+
+    private Avalonia.Controls.ScrollViewer? FindTreeScrollViewer() =>
+        this.FindControl<TreeView>("Tree")?.GetVisualDescendants()
+            .OfType<Avalonia.Controls.ScrollViewer>().FirstOrDefault();
+
+    // A árvore é reconstruída a cada mudança (inclusive de visibilidade); sem isso o scroll voltaria ao topo.
+    private void OnTreeRebuilding()
+    {
+        _savedScrollOffset = FindTreeScrollViewer()?.Offset ?? default;
+    }
+
+    private void OnTreeRebuilt()
+    {
+        var offset = _savedScrollOffset;
+        if (offset == default) return;
+
+        void Restore()
+        {
+            var sv = FindTreeScrollViewer();
+            if (sv != null) sv.Offset = offset;
+        }
+
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            Restore();
+            // O layout dos itens recriados pode terminar só depois; reaplica uma vez.
+            Avalonia.Threading.Dispatcher.UIThread.Post(Restore, Avalonia.Threading.DispatcherPriority.Background);
+        }, Avalonia.Threading.DispatcherPriority.Loaded);
     }
     
     private void OnDoubleTapped(object? sender, Avalonia.Input.TappedEventArgs e)

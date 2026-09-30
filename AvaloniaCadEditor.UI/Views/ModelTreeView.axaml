@@ -17,7 +17,7 @@
             </Border>
 
             <!-- Tree View -->
-            <TreeView Grid.Row="1"
+            <TreeView Grid.Row="1" x:Name="Tree"
                       ItemsSource="{Binding RootNodes}"
                       Background="Transparent"
                       DragDrop.AllowDrop="True"

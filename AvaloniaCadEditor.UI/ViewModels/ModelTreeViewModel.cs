@@ -64,9 +64,27 @@ public class ModelTreeViewModel : INotifyPropertyChanged
         RebuildTree();
     }
 
+    /// <summary>Disparado antes/depois de a árvore ser reconstruída (a view usa para preservar o scroll).</summary>
+    public event Action? TreeRebuilding;
+    public event Action? TreeRebuilt;
+
     public void RebuildTree()
     {
         if (CurrentSketch == null) return;
+
+        TreeRebuilding?.Invoke();
+        try
+        {
+            RebuildTreeCore();
+        }
+        finally
+        {
+            TreeRebuilt?.Invoke();
+        }
+    }
+
+    private void RebuildTreeCore()
+    {
 
         // 1. Save expansion states before clearing
         var expandedIds = new HashSet<Guid>();
