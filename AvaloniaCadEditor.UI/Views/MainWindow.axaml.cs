@@ -63,9 +63,21 @@ public partial class MainWindow : Window
         }
     }
 
+    private bool IsTextInputFocused()
+    {
+        var focused = FocusManager?.GetFocusedElement() as Avalonia.Visual;
+        for (var v = focused; v != null; v = Avalonia.VisualTree.VisualExtensions.GetVisualParent(v) as Avalonia.Visual)
+        {
+            if (v is TextBox || v is AvaloniaEdit.TextEditor || v is AvaloniaEdit.Editing.TextArea)
+                return true;
+        }
+        return false;
+    }
+
     protected override void OnKeyDown(Avalonia.Input.KeyEventArgs e)
     {
         base.OnKeyDown(e);
+        if (IsTextInputFocused()) return;
         if (DataContext is AvaloniaCadEditor.UI.ViewModels.CadViewModel vm)
         {
             bool isCtrl = e.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Control);
