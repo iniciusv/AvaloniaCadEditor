@@ -29,17 +29,20 @@
 
             <!-- Header -->
             <Border Grid.Row="0" Background="#282828" Padding="8,6">
-                <Grid ColumnDefinitions="*,Auto,Auto">
+                <Grid ColumnDefinitions="*,Auto,Auto,Auto">
                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center">
                         <Path Data="M17.5 15.5C17.5 16.61 16.61 17.5 15.5 17.5S13.5 16.61 13.5 15.5 14.4 13.5 15.5 13.5 17.5 14.4 17.5 15.5M8.5 13.5C7.4 13.5 6.5 14.4 6.5 15.5S7.4 17.5 8.5 17.5 10.5 16.61 10.5 15.5 9.61 13.5 8.5 13.5M23 15V18C23 18.55 22.55 19 22 19H21V20C21 21.11 20.11 22 19 22H5C3.9 22 3 21.11 3 20V19H2C1.45 19 1 18.55 1 18V15C1 14.45 1.45 14 2 14H3C3 10.13 6.13 7 10 7H11V5.73C10.4 5.39 10 4.74 10 4C10 2.9 10.9 2 12 2S14 2.9 14 4C14 4.74 13.6 5.39 13 5.73V7H14C17.87 7 21 10.13 21 14H22C22.55 14 23 14.45 23 15M21 16H19V14C19 11.24 16.76 9 14 9H10C7.24 9 5 11.24 5 14V16H3V17H5V20H19V17H21V16Z"
                               Fill="#999999" Stretch="Uniform" Width="14" Height="14" VerticalAlignment="Center" />
                         <TextBlock Text="AI Chat" FontWeight="Bold" Foreground="#DDDDDD" FontSize="13" VerticalAlignment="Center" />
                         <TextBlock Text="{Binding ModelName}" Foreground="#888888" FontSize="10" VerticalAlignment="Center" />
                     </StackPanel>
-                    <Button Grid.Column="1" Content="⚙" Command="{Binding ToggleSettingsCommand}"
+                    <Button Grid.Column="1" Content="⧉" Click="OnCopyConversationClick"
+                            ToolTip.Tip="Copy the entire conversation"
+                            FontSize="12" Padding="6,2" Margin="0,0,4,0" />
+                    <Button Grid.Column="2" Content="⚙" Command="{Binding ToggleSettingsCommand}"
                             ToolTip.Tip="AI settings (API key, model, base URL)"
                             FontSize="12" Padding="6,2" Margin="0,0,4,0" />
-                    <Button Grid.Column="2" Content="New chat" Command="{Binding NewConversationCommand}" FontSize="10" Padding="6,2" />
+                    <Button Grid.Column="3" Content="New chat" Command="{Binding NewConversationCommand}" FontSize="10" Padding="6,2" />
                 </Grid>
             </Border>
 
@@ -97,7 +100,13 @@
                                     Classes.assistantBubble="{Binding !IsUser}"
                                     CornerRadius="6" Padding="8" Margin="0,0,0,10">
                                 <StackPanel Spacing="6">
-                                    <TextBlock Text="{Binding Text}" Foreground="#EEEEEE" TextWrapping="Wrap" FontSize="12" />
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <TextBlock Grid.Column="0" Text="{Binding Text}" Foreground="#EEEEEE" TextWrapping="Wrap" FontSize="12" />
+                                        <Button Grid.Column="1" Content="⧉" Click="OnCopyMessageClick"
+                                                ToolTip.Tip="Copy this message"
+                                                VerticalAlignment="Top" Background="Transparent" Foreground="#AAAAAA"
+                                                FontSize="11" Padding="4,0" Margin="6,0,0,0" />
+                                    </Grid>
 
                                     <Expander Header="Reasoning" IsVisible="{Binding HasReasoning}" FontSize="10" Padding="0">
                                         <TextBlock Text="{Binding Reasoning}" Foreground="#999999" TextWrapping="Wrap" FontSize="10" Margin="4" />

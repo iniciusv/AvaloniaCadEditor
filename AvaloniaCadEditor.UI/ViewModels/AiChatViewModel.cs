@@ -172,6 +172,10 @@ public class AiChatViewModel : INotifyPropertyChanged
         SaveSettingsCommand = new RelayCommand(SaveSettings);
     }
 
+    /// <summary>A conversa inteira (prompts e respostas) como texto, para debug.</summary>
+    public string GetConversationText() =>
+        string.Join("\n\n", Messages.Select(m => m.ToClipboardText(includeRole: true)));
+
     private void InitializeSession()
     {
         var (options, error) = CadScriptChatSession.LoadOptions(_settingsProvider);

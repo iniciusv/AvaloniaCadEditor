@@ -40,6 +40,31 @@ public partial class AiChatView : UserControl
         }
     }
 
+    private async void OnCopyMessageClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is Control control && control.DataContext is AiChatMessageItem item)
+        {
+            await CopyToClipboardAsync(item.ToClipboardText());
+        }
+    }
+
+    private async void OnCopyConversationClick(object? sender, RoutedEventArgs e)
+    {
+        if (DataContext is AiChatViewModel vm)
+        {
+            await CopyToClipboardAsync(vm.GetConversationText());
+        }
+    }
+
+    private async System.Threading.Tasks.Task CopyToClipboardAsync(string text)
+    {
+        var clipboard = TopLevel.GetTopLevel(this)?.Clipboard;
+        if (clipboard != null)
+        {
+            await clipboard.SetTextAsync(text);
+        }
+    }
+
     private async void OnCopyCodeClick(object? sender, RoutedEventArgs e)
     {
         if (sender is Control control && control.DataContext is AiChatMessageItem item && item.Code != null)

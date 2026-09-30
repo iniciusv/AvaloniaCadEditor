@@ -59,6 +59,23 @@ public class AiChatMessageItem : INotifyPropertyChanged
         Reasoning = reasoning;
     }
 
+    /// <summary>Texto completo do balão (mensagem + raciocínio + código) para copiar/colar, útil em debug.</summary>
+    public string ToClipboardText(bool includeRole = false)
+    {
+        var sb = new System.Text.StringBuilder();
+        if (includeRole) sb.AppendLine(IsUser ? "### User" : "### Assistant");
+        sb.AppendLine(Text);
+        if (HasReasoning)
+        {
+            sb.AppendLine().AppendLine("[Reasoning]").AppendLine(Reasoning);
+        }
+        if (HasCode)
+        {
+            sb.AppendLine().AppendLine("```csharp").AppendLine(Code).AppendLine("```");
+        }
+        return sb.ToString().TrimEnd();
+    }
+
     public event PropertyChangedEventHandler? PropertyChanged;
 
     protected void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
