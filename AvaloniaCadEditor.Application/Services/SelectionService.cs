@@ -126,6 +126,37 @@ public class SelectionService : ISelectionService
         SelectionChanged?.Invoke();
     }
 
+    public void SelectMany(Sketch sketch, IEnumerable<IFeature> features, IEnumerable<Entity> entities)
+    {
+        UnselectAllInSketch(sketch);
+
+        var featureList = features.ToList();
+        var entityList = entities.ToList();
+        foreach (var f in featureList) f.IsSelected = true;
+        foreach (var e in entityList) e.IsSelected = true;
+
+        if (featureList.Count > 0)
+        {
+            CurrentSelectionType = SelectionType.Feature;
+            SelectedId = featureList[0].Id;
+            SelectedObject = featureList[0];
+        }
+        else if (entityList.Count > 0)
+        {
+            CurrentSelectionType = SelectionType.Entity;
+            SelectedId = entityList[0].Id;
+            SelectedObject = entityList[0];
+        }
+        else
+        {
+            CurrentSelectionType = SelectionType.None;
+            SelectedId = null;
+            SelectedObject = null;
+        }
+
+        SelectionChanged?.Invoke();
+    }
+
     public void ClearSelection(Sketch? sketch = null)
     {
         if (sketch != null)

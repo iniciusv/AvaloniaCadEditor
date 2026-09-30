@@ -375,7 +375,9 @@ public class CadViewModel : INotifyPropertyChanged
 		set { _currentSnappedPoint = value; OnPropertyChanged(); }
 	}
 
-	public enum TargetSelectionMode { Feature, Face }
+	/// <summary>O que a seleção pega (inclusive a seleção por arraste): sólidos, faces ou arestas
+	/// (linhas e círculos do esboço).</summary>
+	public enum TargetSelectionMode { Feature, Face, Edge }
 
 	private TargetSelectionMode _currentSelectionMode = TargetSelectionMode.Feature;
 	public TargetSelectionMode CurrentSelectionMode
@@ -388,6 +390,7 @@ public class CadViewModel : INotifyPropertyChanged
 			OnPropertyChanged(nameof(SelectionModeIndex));
 			OnPropertyChanged(nameof(IsFeatureSelectionMode));
 			OnPropertyChanged(nameof(IsFaceSelectionMode));
+			OnPropertyChanged(nameof(IsEdgeSelectionMode));
 		}
 	}
 
@@ -407,6 +410,12 @@ public class CadViewModel : INotifyPropertyChanged
 	{
 		get => CurrentSelectionMode == TargetSelectionMode.Face;
 		set { if (value) CurrentSelectionMode = TargetSelectionMode.Face; }
+	}
+
+	public bool IsEdgeSelectionMode
+	{
+		get => CurrentSelectionMode == TargetSelectionMode.Edge;
+		set { if (value) CurrentSelectionMode = TargetSelectionMode.Edge; }
 	}
 
 	public bool IsInCustomWorkPlane => !ActiveWorkPlane.Equals(WorkPlane.XY);
@@ -1122,9 +1131,12 @@ public class CadViewModel : INotifyPropertyChanged
 				}
 				break;
 			case "F":
-				CurrentSelectionMode = CurrentSelectionMode == TargetSelectionMode.Feature
-					? TargetSelectionMode.Face
-					: TargetSelectionMode.Feature;
+				CurrentSelectionMode = CurrentSelectionMode switch
+				{
+					TargetSelectionMode.Feature => TargetSelectionMode.Face,
+					TargetSelectionMode.Face => TargetSelectionMode.Edge,
+					_ => TargetSelectionMode.Feature
+				};
 				break;
 			case "UP":
 				CurrentTool?.OnKeyDown(Sketch, CadKey.ArrowUp);

@@ -9,6 +9,7 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         GuideLabelsOverlay.AttachTo(ViewportControl);
+        SelectionBoxOverlay.AttachTo(ViewportControl);
 
         this.DataContextChanged += (s, e) =>
         {

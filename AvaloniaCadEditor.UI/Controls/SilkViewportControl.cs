@@ -30,11 +30,16 @@ public class SilkViewportControl : OpenGlControlBase
     /// exactly when the camera/viewport actually changed, without polling.</summary>
     public event System.Action? FrameRendered;
 
+    /// <summary>Retângulo da seleção por arraste (null = esconder) e se é janela (true) ou
+    /// crossing (false); desenhado pelo <see cref="SelectionBoxOverlay"/>.</summary>
+    public event System.Action<Rect?, bool>? SelectionBoxChanged;
+
     public SilkViewportControl()
     {
         _camera = new CameraState();
         _shaderManager = new ViewportShaderManager();
         _inputHandler = new ViewportInputHandler();
+        _inputHandler.SelectionBoxChanged += (rect, window) => SelectionBoxChanged?.Invoke(rect, window);
 
         // Exact rendering order preserved:
         // 1. Solid features (3D)
@@ -200,6 +205,6 @@ public class SilkViewportControl : OpenGlControlBase
 
     public void HandlePointerReleased(PointerReleasedEventArgs e)
     {
-        _inputHandler.HandlePointerReleased(e);
+        _inputHandler.HandlePointerReleased(e, this, Bounds.Size, _camera, ViewModel, RequestNextFrameRendering);
     }
 }

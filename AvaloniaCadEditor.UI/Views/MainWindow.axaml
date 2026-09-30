@@ -128,6 +128,13 @@
                             <TextBlock Text="{x:Static res:Strings.Faces}" VerticalAlignment="Center" FontSize="12" />
                         </StackPanel>
                     </RadioButton>
+                    <RadioButton GroupName="SelMode" IsChecked="{Binding IsEdgeSelectionMode}" Foreground="White">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <Path Data="M4,20 L20,4"
+                                  Stroke="LightGray" StrokeThickness="2" Fill="Transparent" Stretch="Uniform" Width="14" Height="14" VerticalAlignment="Center"/>
+                            <TextBlock Text="{x:Static res:Strings.Edges}" VerticalAlignment="Center" FontSize="12" />
+                        </StackPanel>
+                    </RadioButton>
 
                     <Separator Height="1" Background="#555" Margin="0,4" />
 
@@ -172,6 +179,7 @@
                    PointerWheelChanged="Viewport_PointerWheelChanged">
                 <controls:SilkViewportControl x:Name="ViewportControl" DataContext="{Binding}" />
                 <refguides:GuideLabelsOverlay x:Name="GuideLabelsOverlay" />
+                <controls:SelectionBoxOverlay x:Name="SelectionBoxOverlay" />
 
                 <!-- Erro na cena: o modelo exibido é o último que executou com sucesso -->
                 <Border IsVisible="{Binding ScriptEditor.HasErrors}"

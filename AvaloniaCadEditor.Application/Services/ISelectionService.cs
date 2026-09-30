@@ -34,4 +34,11 @@ public interface ISelectionService
     /// (SelectedObject/SelectedId) passa para outra feature ainda marcada, ou fica vazia.
     /// </summary>
     void ToggleFeature(Sketch sketch, IFeature feature);
+
+    /// <summary>
+    /// Substitui a seleção pelas features e entidades dadas (todas ficam com IsSelected) - usado
+    /// pela seleção por retângulo. A seleção "primária" é a primeira feature, senão a primeira
+    /// entidade, senão fica vazia. Dispara SelectionChanged uma única vez.
+    /// </summary>
+    void SelectMany(Sketch sketch, IEnumerable<IFeature> features, IEnumerable<Entity> entities);
 }

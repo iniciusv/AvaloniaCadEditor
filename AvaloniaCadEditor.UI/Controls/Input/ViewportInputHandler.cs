@@ -15,6 +15,18 @@ public sealed class ViewportInputHandler
     private bool _isPanning = false;
     private bool _isOrbiting = false;
 
+    // Seleção por retângulo (SelectTool): começa no botão esquerdo pressionado e só vira um
+    // retângulo depois de arrastar alguns pixels, para não atrapalhar o clique simples.
+    private const double BoxDragThreshold = 4.0;
+    private Point? _boxStart;
+    private bool _boxActive;
+    private bool _boxAdditive;
+    private BoxSelector.Snapshot? _boxSnapshot;
+
+    /// <summary>Retângulo de seleção em pixels do viewport (null = esconder) e se é janela
+    /// (true, esquerda → direita) ou crossing (false).</summary>
+    public event Action<Rect?, bool>? SelectionBoxChanged;
+
     public void HandlePointerWheelChanged(PointerWheelEventArgs e, CameraState camera, Action requestRender)
     {
         Debug.WriteLine($"[DEBUG] Mouse Wheel: {e.Delta.Y}");
@@ -88,6 +100,16 @@ public sealed class ViewportInputHandler
                     }
                     requestRender();
                     return;
+                }
+
+                // Candidato a seleção por retângulo. O snapshot é tirado antes do clique abaixo,
+                // que pode limpar a seleção - com Ctrl o retângulo soma ao que já estava marcado.
+                if (viewModel.CurrentTool is Application.Commands.SelectTool)
+                {
+                    _boxStart = point.Position;
+                    _boxActive = false;
+                    _boxAdditive = e.KeyModifiers.HasFlag(KeyModifiers.Control) || viewModel.IsCtrlPressed;
+                    _boxSnapshot = _boxAdditive ? BoxSelector.Snapshot.Capture(viewModel) : null;
                 }
 
                 // --- NOVA LÓGICA: Despacho por tipo de tool ---
@@ -310,6 +332,29 @@ public sealed class ViewportInputHandler
     {
         var point = e.GetCurrentPoint(visual);
 
+        if (_boxStart is { } boxStart)
+        {
+            if (!point.Properties.IsLeftButtonPressed)
+            {
+                ResetBox();
+            }
+            else
+            {
+                var d = point.Position - boxStart;
+                if (!_boxActive && Math.Sqrt(d.X * d.X + d.Y * d.Y) > BoxDragThreshold)
+                    _boxActive = true;
+
+                if (_boxActive)
+                {
+                    SelectionBoxChanged?.Invoke(
+                        BoxSelectionGeometry.Normalize(boxStart, point.Position),
+                        BoxSelectionGeometry.IsWindowSelection(boxStart, point.Position));
+                    _lastMousePos = point.Position;
+                    return;
+                }
+            }
+        }
+
         if (_lastMousePos.HasValue)
         {
             float deltaX = (float)(point.Position.X - _lastMousePos.Value.X);
@@ -405,15 +450,44 @@ public sealed class ViewportInputHandler
         _lastMousePos = point.Position;
     }
 
-    public void HandlePointerReleased(PointerReleasedEventArgs e)
+    public void HandlePointerReleased(
+        PointerReleasedEventArgs e,
+        Visual visual,
+        Size bounds,
+        CameraState camera,
+        CadViewModel? viewModel,
+        Action requestRender)
     {
         Debug.WriteLine($"[DEBUG] Mouse Released: {e.InitialPressMouseButton}");
+        if (e.InitialPressMouseButton == MouseButton.Left && _boxStart is { } boxStart)
+        {
+            if (_boxActive && viewModel != null && bounds.Width > 0 && bounds.Height > 0)
+            {
+                var end = e.GetPosition(visual);
+                BoxSelector.Apply(viewModel, camera, bounds,
+                    BoxSelectionGeometry.Normalize(boxStart, end),
+                    BoxSelectionGeometry.IsWindowSelection(boxStart, end),
+                    _boxAdditive ? _boxSnapshot : null);
+                requestRender();
+            }
+            ResetBox();
+        }
+
         if (e.InitialPressMouseButton == MouseButton.Middle || e.InitialPressMouseButton == MouseButton.Right)
         {
             _isPanning = false;
             _isOrbiting = false;
             _lastMousePos = null;
         }
+    }
+
+    private void ResetBox()
+    {
+        bool wasActive = _boxActive;
+        _boxStart = null;
+        _boxActive = false;
+        _boxSnapshot = null;
+        if (wasActive) SelectionBoxChanged?.Invoke(null, true);
     }
 
     /// <summary>
@@ -434,7 +508,7 @@ public sealed class ViewportInputHandler
             viewModel.WorldUnitsPerPixel = unitsPerPixel;
     }
 
-    private AvaloniaCadEditor.Domain.ValueObjects.WorkPlane GetStableWorkPlane(CadViewModel viewModel, AvaloniaCadEditor.Domain.ValueObjects.RaycastHit hit)
+    internal static AvaloniaCadEditor.Domain.ValueObjects.WorkPlane GetStableWorkPlane(CadViewModel viewModel, AvaloniaCadEditor.Domain.ValueObjects.RaycastHit hit)
     {
         var normal = hit.Normal;
         var origin = hit.Point;

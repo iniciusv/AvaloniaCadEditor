@@ -4,6 +4,7 @@
   <data name="Selection" xml:space="preserve"><value>Selection:</value></data>
   <data name="Volumes" xml:space="preserve"><value>Volumes</value></data>
   <data name="Faces" xml:space="preserve"><value>Faces</value></data>
+  <data name="Edges" xml:space="preserve"><value>Edges</value></data>
   <data name="SelectTool" xml:space="preserve"><value>Select (Space)</value></data>
   <data name="LineTool" xml:space="preserve"><value>Line (L)</value></data>
   <data name="CircleTool" xml:space="preserve"><value>Circle (C)</value></data>

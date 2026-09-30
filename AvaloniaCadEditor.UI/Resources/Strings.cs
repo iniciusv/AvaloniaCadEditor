@@ -11,6 +11,7 @@ public static class Strings
     public static string Selection => ResourceManager.GetString("Selection") ?? "Selection:";
     public static string Volumes => ResourceManager.GetString("Volumes") ?? "Volumes";
     public static string Faces => ResourceManager.GetString("Faces") ?? "Faces";
+    public static string Edges => ResourceManager.GetString("Edges") ?? "Edges";
     public static string SelectTool => ResourceManager.GetString("SelectTool") ?? "Select (Space)";
     public static string LineTool => ResourceManager.GetString("LineTool") ?? "Line (L)";
     public static string CircleTool => ResourceManager.GetString("CircleTool") ?? "Circle (C)";
