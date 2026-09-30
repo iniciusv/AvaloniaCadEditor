@@ -160,9 +160,12 @@ public sealed class SketchEntityRenderPass : IRenderPass
                 gl.Uniform1(context.Uniforms.LightingLoc, 0);
             }
             
-            gl.Disable(EnableCap.DepthTest);
+            // Depth test ligado: o sketch (inclusive selecionado) não aparece atrás de sólidos.
+            // O offset negativo evita z-fighting com faces coplanares (ex.: sketch sobre uma face).
+            gl.Enable(EnableCap.PolygonOffsetLine);
+            gl.PolygonOffset(-1.0f, -1.0f);
             gl.DrawArrays(PrimitiveType.Lines, 0, (uint)(sketchVertices.Count / 6));
-            gl.Enable(EnableCap.DepthTest);
+            gl.Disable(EnableCap.PolygonOffsetLine);
         }
     }
 

@@ -45,7 +45,11 @@ public sealed class ProfileFaceRenderPass : IRenderPass
         }
 
         if (profilesToRender.Count == 0) return;
-        gl.Disable(EnableCap.DepthTest);
+        // Depth test ligado (sem escrever profundidade): o preenchimento/seleção do perfil
+        // não aparece atrás de sólidos, e o offset evita z-fighting com faces coplanares.
+        gl.DepthMask(false);
+        gl.Enable(EnableCap.PolygonOffsetFill);
+        gl.PolygonOffset(-1.0f, -1.0f);
 
         // Render 2D Profiles Face Shading (Subtle Shading, Hover Pre-highlight, Selection)
         foreach (var profile in profilesToRender)
@@ -110,7 +114,8 @@ public sealed class ProfileFaceRenderPass : IRenderPass
                 gl.DrawElements(PrimitiveType.Triangles, (uint)iData.Length, DrawElementsType.UnsignedInt, (void*)0);
             }
         }
-        gl.Enable(EnableCap.DepthTest);
+        gl.Disable(EnableCap.PolygonOffsetFill);
+        gl.DepthMask(true);
 
         // Reset alpha to 1.0 for lines and solids
         unsafe
