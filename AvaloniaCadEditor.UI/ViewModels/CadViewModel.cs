@@ -690,8 +690,7 @@ public class CadViewModel : INotifyPropertyChanged
 			}
 
 			DeletionService.DeleteSelected(Sketch, ModelTree.SelectedNode?.Id);
-			RefreshProfiles();
-			ModelTree.RebuildTree();
+			RefreshProfiles(); // já reconstrói a malha e a árvore
 		});
 
 		ImportStlCommand = new RelayCommand(async () =>

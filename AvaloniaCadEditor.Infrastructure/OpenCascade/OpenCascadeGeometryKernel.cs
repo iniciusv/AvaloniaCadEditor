@@ -76,46 +76,9 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
     public TriangleMesh BuildSolidMesh(IEnumerable<IFeature> features, TessellationSettings? settings = null)
     {
         settings ??= new TessellationSettings();
-        
-        var positions = new List<float>();
-        var normals = new List<float>();
-        var indices = new List<uint>();
-        var featureEdges = new List<uint>();
-        var internalEdges = new List<uint>();
-        var featureNormals1 = new List<float>();
-        var featureNormals2 = new List<float>();
-        
-        uint vertexOffset = 0;
 
-        foreach (var f in features)
-        {
-            var mesh = BuildFeatureMesh(f, settings);
-            if (mesh.VertexCount == 0) continue;
-
-            positions.AddRange(mesh.Positions);
-            normals.AddRange(mesh.Normals);
-            featureNormals1.AddRange(mesh.FeatureNormals1);
-            featureNormals2.AddRange(mesh.FeatureNormals2);
-
-            foreach (var idx in mesh.Indices)
-            {
-                indices.Add(idx + vertexOffset);
-            }
-            
-            foreach (var fe in mesh.FeatureEdges)
-            {
-                featureEdges.Add(fe + vertexOffset);
-            }
-            
-            foreach (var ie in mesh.InternalEdges)
-            {
-                internalEdges.Add(ie + vertexOffset);
-            }
-            
-            vertexOffset += (uint)mesh.VertexCount;
-        }
-
-        return new TriangleMesh(positions.ToArray(), normals.ToArray(), indices.ToArray(), featureEdges.ToArray(), internalEdges.ToArray(), featureNormals1.ToArray(), featureNormals2.ToArray());
+        var meshes = features.Select(f => BuildFeatureMesh(f, settings)).ToList();
+        return TriangleMesh.Combine(meshes, includeFeatureNormals: true);
     }
 
     /// <summary>

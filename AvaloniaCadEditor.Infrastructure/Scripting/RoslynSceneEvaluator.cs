@@ -54,6 +54,28 @@ public class RoslynSceneEvaluator : ISceneEvaluator
     }
 
     /// <summary>
+    /// Compila e emite (sem carregar nem executar) uma cena mínima, para que o JIT do Roslyn e a
+    /// leitura das referências aconteçam antes do primeiro Run. Não toca em estado da cena, então
+    /// pode rodar em paralelo com uma avaliação normal. Falhas são ignoradas: é só otimização.
+    /// </summary>
+    public static void WarmUp()
+    {
+        try
+        {
+            var documents = new[] { new ScriptDocument(ScriptDocument.DefaultSceneFile, "var warmUp = 0;") };
+            var compilation = CreateCompilation(documents, out _);
+            using var peStream = new MemoryStream();
+            using var pdbStream = new MemoryStream();
+            compilation.Emit(peStream, pdbStream,
+                options: new EmitOptions(debugInformationFormat: DebugInformationFormat.PortablePdb));
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Falha ao aquecer o compilador da cena: " + ex.Message);
+        }
+    }
+
+    /// <summary>
     /// Compilação da cena (sem emitir nem executar), com as mesmas referências e usings globais
     /// da execução. Também serve à navegação no código (definição, referências, renomear).
     /// </summary>

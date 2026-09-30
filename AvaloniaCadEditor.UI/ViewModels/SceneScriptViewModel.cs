@@ -538,6 +538,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         }
         _cadViewModel.StatusText = "Avaliando código...";
 
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
         SceneEvaluationResult result;
         if (_project != null)
         {
@@ -553,6 +554,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         {
             result = await _sceneEvaluator.EvaluateAsync(GeneratedCSharpCode);
         }
+        long evaluateMs = stopwatch.ElapsedMilliseconds;
 
         if (result.Success)
         {
@@ -562,9 +564,9 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
             {
                 _cadViewModel.Sketch.AddFeature(feature);
             }
-            _cadViewModel.ModelTree.RebuildTree();
+            // RefreshProfiles já refaz a malha composta e a árvore, uma vez cada.
             _cadViewModel.RefreshProfiles();
-            _cadViewModel.RefreshSolidMesh();
+            Console.WriteLine($"[Run] avaliação {evaluateMs} ms, geometria/árvore {stopwatch.ElapsedMilliseconds - evaluateMs} ms, {result.Features.Count} feature(s)");
             _cadViewModel.StatusText = _project != null
                 ? $"✓ {_project.Name}: {result.Features.Count} feature(s) em {_documents.Count} arquivo(s)"
                 : $"✓ Código executado: {result.Features.Count} feature(s)";

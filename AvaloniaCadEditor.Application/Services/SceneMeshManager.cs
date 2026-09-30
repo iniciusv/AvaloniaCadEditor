@@ -150,13 +150,7 @@ public class SceneMeshManager : ISceneMeshManager
             featuresToRender.Add(previewFeature);
         }
 
-        var positions = new List<float>();
-        var normals = new List<float>();
-        var indices = new List<uint>();
-        var featureEdges = new List<uint>();
-        var internalEdges = new List<uint>();
-        uint vertexOffset = 0;
-
+        var meshes = new List<TriangleMesh>(featuresToRender.Count);
         foreach (var f in featuresToRender)
         {
             if (!_featureMeshCache.TryGetValue(f.Id, out var mesh))
@@ -168,18 +162,9 @@ public class SceneMeshManager : ISceneMeshManager
                 }
             }
 
-            if (mesh == null || mesh.VertexCount == 0) continue;
-
-            positions.AddRange(mesh.Positions);
-            normals.AddRange(mesh.Normals);
-
-            foreach (var idx in mesh.Indices) indices.Add(idx + vertexOffset);
-            foreach (var fe in mesh.FeatureEdges) featureEdges.Add(fe + vertexOffset);
-            foreach (var ie in mesh.InternalEdges) internalEdges.Add(ie + vertexOffset);
-
-            vertexOffset += (uint)mesh.VertexCount;
+            if (mesh != null) meshes.Add(mesh);
         }
 
-        return new TriangleMesh(positions.ToArray(), normals.ToArray(), indices.ToArray(), featureEdges.ToArray(), internalEdges.ToArray());
+        return TriangleMesh.Combine(meshes, includeFeatureNormals: false);
     }
 }

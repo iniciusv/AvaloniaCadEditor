@@ -24,6 +24,8 @@ public partial class App : Avalonia.Application
 			var geometryKernel = new AvaloniaCadEditor.Infrastructure.OpenCascade.OpenCascadeGeometryKernel();
 			var settingsProvider = new AvaloniaCadEditor.Infrastructure.Settings.JsonTessellationSettingsProvider();
 			var evaluator = new AvaloniaCadEditor.Infrastructure.Scripting.RoslynSceneEvaluator();
+			// O primeiro Run pagaria o JIT do Roslyn e a carga das referências; adianta isso em background.
+			System.Threading.Tasks.Task.Run(AvaloniaCadEditor.Infrastructure.Scripting.RoslynSceneEvaluator.WarmUp);
 			var selectionService = new SelectionService();
 			
 			var meshManager = new SceneMeshManager(geometryKernel, settingsProvider);
