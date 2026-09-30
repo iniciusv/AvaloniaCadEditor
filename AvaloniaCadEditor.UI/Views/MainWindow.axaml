@@ -233,12 +233,13 @@
                             <StackPanel Grid.Row="0" Margin="4" Spacing="4">
                                 <WrapPanel Orientation="Horizontal">
                                     <Button Content="{x:Static res:Strings.RunCode}" Command="{Binding ScriptEditor.RunCodeCommand}"
-                                            Background="#27AE60" Foreground="White" FontWeight="Bold" Margin="0,0,4,4"/>
-                                    <Button Content="{x:Static res:Strings.NewScene}" Command="{Binding ScriptEditor.NewSceneCommand}" Margin="0,0,4,4"/>
-                                    <Button Content="{x:Static res:Strings.OpenScene}" Command="{Binding ScriptEditor.OpenSceneCommand}" Margin="0,0,4,4"/>
-                                    <Button Content="{x:Static res:Strings.LoadCode}" Command="{Binding ScriptEditor.LoadCodeFromFileCommand}" Margin="0,0,4,4"/>
-                                    <Button Content="{x:Static res:Strings.SaveCode}" Command="{Binding ScriptEditor.SaveCodeToFileCommand}" Margin="0,0,4,4"/>
-                                    <Button Content="{x:Static res:Strings.UpdateCode}" Command="{Binding ScriptEditor.GenerateCodeCommand}" Margin="0,0,4,4"/>
+                                            Background="#27AE60" Foreground="White" FontWeight="Bold" Width="40" HorizontalContentAlignment="Center"
+                                            ToolTip.Tip="Run" Margin="0,0,4,4"/>
+                                    <Button Content="{x:Static res:Strings.NewScene}" Command="{Binding ScriptEditor.NewSceneCommand}" FontSize="11" Padding="8,4" Margin="0,0,4,4"/>
+                                    <Button Content="{x:Static res:Strings.OpenScene}" Command="{Binding ScriptEditor.OpenSceneCommand}" FontSize="11" Padding="8,4" Margin="0,0,4,4"/>
+                                    <Button Content="{x:Static res:Strings.LoadCode}" Command="{Binding ScriptEditor.LoadCodeFromFileCommand}" FontSize="11" Padding="8,4" Margin="0,0,4,4"/>
+                                    <Button Content="{x:Static res:Strings.SaveCode}" Command="{Binding ScriptEditor.SaveCodeToFileCommand}" FontSize="11" Padding="8,4" Margin="0,0,4,4"/>
+                                    <Button Content="{x:Static res:Strings.UpdateCode}" Command="{Binding ScriptEditor.GenerateCodeCommand}" FontSize="11" Padding="8,4" Margin="0,0,4,4"/>
                                 </WrapPanel>
                                 <Grid ColumnDefinitions="*,Auto,Auto" IsVisible="{Binding ScriptEditor.IsProjectOpen}">
                                     <ComboBox Grid.Column="0"

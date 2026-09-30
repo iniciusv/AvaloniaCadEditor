@@ -49,8 +49,8 @@
   <data name="TreeTab" xml:space="preserve"><value>Model</value></data>
   <data name="CodeTab" xml:space="preserve"><value>Code</value></data>
   <data name="IOTab" xml:space="preserve"><value>Tools</value></data>
-  <data name="NewScene" xml:space="preserve"><value>New scene</value></data>
-  <data name="OpenScene" xml:space="preserve"><value>Open scene</value></data>
+  <data name="NewScene" xml:space="preserve"><value>New</value></data>
+  <data name="OpenScene" xml:space="preserve"><value>Open</value></data>
   <data name="NewFileWatermark" xml:space="preserve"><value>New part file</value></data>
   <data name="NewFileTooltip" xml:space="preserve"><value>Create Pecas/&lt;name&gt;.cs with a part template (e.g. Bracket or Pecas/Bracket)</value></data>
   <data name="SceneErrorTitle" xml:space="preserve"><value>⚠ Scene error: showing the last model that ran successfully</value></data>
@@ -58,10 +58,10 @@
   <data name="InsertPart" xml:space="preserve"><value>Insert part</value></data>
   <data name="InsertPartTooltip" xml:space="preserve"><value>Add an instance of the chosen part to the scene entry file</value></data>
   <data name="PartTypePlaceholder" xml:space="preserve"><value>Part type</value></data>
-  <data name="LoadCode" xml:space="preserve"><value>Load (.cs)</value></data>
-  <data name="SaveCode" xml:space="preserve"><value>Save (.cs)</value></data>
-  <data name="UpdateCode" xml:space="preserve"><value>Update Code</value></data>
-  <data name="RunCode" xml:space="preserve"><value>▶ Run</value></data>
+  <data name="LoadCode" xml:space="preserve"><value>Load</value></data>
+  <data name="SaveCode" xml:space="preserve"><value>Save</value></data>
+  <data name="UpdateCode" xml:space="preserve"><value>Update</value></data>
+  <data name="RunCode" xml:space="preserve"><value>▶</value></data>
   <data name="Measurement" xml:space="preserve"><value>Measurement:</value></data>
   <data name="ReferenceGuides" xml:space="preserve"><value>Guides</value></data>
   <data name="AnalyzeGuides" xml:space="preserve"><value>Analyze</value></data>

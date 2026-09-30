@@ -56,8 +56,8 @@ public static class Strings
     public static string TreeTab => ResourceManager.GetString("TreeTab") ?? "Model";
     public static string CodeTab => ResourceManager.GetString("CodeTab") ?? "Code";
     public static string IOTab => ResourceManager.GetString("IOTab") ?? "Tools";
-    public static string NewScene => ResourceManager.GetString("NewScene") ?? "New scene";
-    public static string OpenScene => ResourceManager.GetString("OpenScene") ?? "Open scene";
+    public static string NewScene => ResourceManager.GetString("NewScene") ?? "New";
+    public static string OpenScene => ResourceManager.GetString("OpenScene") ?? "Open";
     public static string NewFileWatermark => ResourceManager.GetString("NewFileWatermark") ?? "New part file";
     public static string NewFileTooltip => ResourceManager.GetString("NewFileTooltip") ?? "Create Pecas/<name>.cs with a part template (e.g. Bracket or Pecas/Bracket)";
     public static string SceneErrorTitle => ResourceManager.GetString("SceneErrorTitle") ?? "⚠ Scene error: showing the last model that ran successfully";
@@ -65,10 +65,10 @@ public static class Strings
     public static string InsertPart => ResourceManager.GetString("InsertPart") ?? "Insert part";
     public static string InsertPartTooltip => ResourceManager.GetString("InsertPartTooltip") ?? "Add an instance of the chosen part to the scene entry file";
     public static string PartTypePlaceholder => ResourceManager.GetString("PartTypePlaceholder") ?? "Part type";
-    public static string LoadCode => ResourceManager.GetString("LoadCode") ?? "Load (.cs)";
-    public static string SaveCode => ResourceManager.GetString("SaveCode") ?? "Save (.cs)";
-    public static string UpdateCode => ResourceManager.GetString("UpdateCode") ?? "Update Code";
-    public static string RunCode => ResourceManager.GetString("RunCode") ?? "▶ Run";
+    public static string LoadCode => ResourceManager.GetString("LoadCode") ?? "Load";
+    public static string SaveCode => ResourceManager.GetString("SaveCode") ?? "Save";
+    public static string UpdateCode => ResourceManager.GetString("UpdateCode") ?? "Update";
+    public static string RunCode => ResourceManager.GetString("RunCode") ?? "▶";
     public static string Measurement => ResourceManager.GetString("Measurement") ?? "Measurement:";
     public static string ReferenceGuides => ResourceManager.GetString("ReferenceGuides") ?? "Guides";
     public static string AnalyzeGuides => ResourceManager.GetString("AnalyzeGuides") ?? "Analyze";
