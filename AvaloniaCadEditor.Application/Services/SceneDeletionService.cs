@@ -41,7 +41,8 @@ public class SceneDeletionService : ISceneDeletionService
                 }
                 if (targetFeature is BooleanFeature boolF)
                 {
-                    boolF.BaseFeature.IsVisible = true;
+                    foreach (var b in boolF.BaseFeatures)
+                        b.IsVisible = true;
                     foreach (var tool in boolF.ToolFeatures)
                         tool.IsVisible = true;
                 }
@@ -86,7 +87,8 @@ public class SceneDeletionService : ISceneDeletionService
                     if (feature is WorkPlaneFeature wpf && wpf.IsBasePlane) continue;
                     if (feature is BooleanFeature boolF)
                     {
-                        boolF.BaseFeature.IsVisible = true;
+                        foreach (var b in boolF.BaseFeatures)
+                            b.IsVisible = true;
                         foreach (var tool in boolF.ToolFeatures)
                             tool.IsVisible = true;
                     }

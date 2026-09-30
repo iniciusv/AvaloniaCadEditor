@@ -272,9 +272,9 @@ public class ModelTreeViewModel : INotifyPropertyChanged
 
         if (feature is BooleanFeature booleanFeature)
         {
-            if (booleanFeature.BaseFeature != null)
+            foreach (var b in booleanFeature.BaseFeatures)
             {
-                node.Children.Add(BuildFeatureNode(booleanFeature.BaseFeature, "Base"));
+                node.Children.Add(BuildFeatureNode(b, "Base"));
             }
 
             string opPrefix = booleanFeature.Operation == BooleanOperationType.Subtract ? "-" :

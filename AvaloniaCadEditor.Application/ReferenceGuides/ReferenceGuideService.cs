@@ -84,7 +84,10 @@ public sealed class ReferenceGuideService : IReferenceGuideService
                 return;
 
             case BooleanFeature boolean:
-                CollectFeatures(boolean.BaseFeature, isSubtractTool, visited, holes, walls);
+                foreach (var b in boolean.BaseFeatures)
+                {
+                    CollectFeatures(b, isSubtractTool, visited, holes, walls);
+                }
                 var subtractHere = boolean.Operation == BooleanOperationType.Subtract;
                 foreach (var tool in boolean.ToolFeatures)
                 {

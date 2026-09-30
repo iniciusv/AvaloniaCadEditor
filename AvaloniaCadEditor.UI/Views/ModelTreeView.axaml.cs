@@ -179,10 +179,15 @@ public partial class ModelTreeView : UserControl
         {
             if (f is BooleanFeature bf)
             {
-                // Note: we avoid removing the base feature if dropped outside of a replacement to prevent invalid states
                 if (bf.ToolFeatures.Contains(featureToRemove))
                 {
                     bf.RemoveToolFeature(featureToRemove);
+                }
+                // Uma base só nunca é removida daqui para não deixar a booleana sem base;
+                // com várias bases, tirar uma ainda deixa pelo menos uma (RemoveBaseFeature garante isso).
+                else if (bf.BaseFeatures.Count > 1 && bf.BaseFeatures.Contains(featureToRemove))
+                {
+                    bf.RemoveBaseFeature(featureToRemove);
                 }
             }
         }

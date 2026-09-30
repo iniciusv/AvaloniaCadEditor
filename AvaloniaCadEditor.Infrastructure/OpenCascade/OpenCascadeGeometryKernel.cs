@@ -690,9 +690,22 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         return face.Extrude(vec);
     }
     
+    /// <summary>
+    /// Constrói o resultado de uma booleana com várias bases e várias ferramentas como uma única
+    /// operação: as bases são unidas entre si (<see cref="FuseBalanced"/>), e depois o corte/interseção/
+    /// união é aplicado de uma vez contra o conjunto de ferramentas (também unidas quando fizer sentido),
+    /// em vez de um Cut/Fuse por ferramenta encadeado.
+    /// </summary>
     private OcctShape BuildBoolean(BooleanFeature boolean, TessellationSettings settings, Placement? transform = null)
     {
-        var baseShape = BuildShape(boolean.BaseFeature, settings, transform);
+        var baseShapes = boolean.BaseFeatures
+                               .Select(f => BuildShape(f, settings, transform))
+                               .Where(s => s != null && !s.IsNull)
+                               .ToList();
+
+        if (baseShapes.Count == 0) return null;
+
+        var baseShape = FuseBalanced(baseShapes);
         if (baseShape == null || baseShape.IsNull) return null;
 
         var toolShapes = boolean.ToolFeatures
@@ -702,31 +715,92 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
 
         if (toolShapes.Count == 0) return baseShape;
 
-        var currentShape = baseShape;
-        bool isIntermediate = false;
-
-        foreach (var tool in toolShapes)
+        switch (boolean.Operation)
         {
-            var newShape = boolean.Operation switch
+            case BooleanOperationType.Union:
             {
-                BooleanOperationType.Union => currentShape.Fuse(tool),
-                BooleanOperationType.Subtract => currentShape.Cut(tool),
-                BooleanOperationType.Intersect => currentShape.Common(tool),
-                _ => currentShape
-            };
-
-            if (newShape != null && !newShape.IsNull)
-            {
-                if (isIntermediate)
-                {
-                    currentShape.Dispose();
-                }
-                currentShape = newShape;
-                isIntermediate = true;
+                var all = new List<OcctShape> { baseShape };
+                all.AddRange(toolShapes);
+                return FuseBalanced(all);
             }
+            case BooleanOperationType.Subtract:
+            {
+                // Uma única operação: as ferramentas são unidas entre si primeiro, e a base sofre
+                // um Cut só, em vez de um Cut por ferramenta.
+                var toolUnion = FuseBalanced(toolShapes);
+                if (toolUnion == null || toolUnion.IsNull) return baseShape;
+                return baseShape.Cut(toolUnion);
+            }
+            case BooleanOperationType.Intersect:
+            {
+                // A∩(B∪C) não é o mesmo que A∩B∩C: cada ferramenta precisa entrar na interseção
+                // separadamente, então isso continua sequencial.
+                var currentShape = baseShape;
+                bool isIntermediate = false;
+                foreach (var tool in toolShapes)
+                {
+                    var newShape = currentShape.Common(tool);
+                    if (newShape != null && !newShape.IsNull)
+                    {
+                        if (isIntermediate) currentShape.Dispose();
+                        currentShape = newShape;
+                        isIntermediate = true;
+                    }
+                }
+                return currentShape;
+            }
+            default:
+                return baseShape;
+        }
+    }
+
+    /// <summary>
+    /// Une uma lista de sólidos em árvore balanceada (fuse aos pares, nível a nível) em vez de uma
+    /// cadeia sequencial: mesmo resultado, com menos profundidade de operações booleanas. Nunca
+    /// descarta os shapes de entrada (podem estar no <see cref="_shapeCache"/> de outra feature) -
+    /// só os resultados intermediários que este método cria. Um par que falhe a fusão (raro) é
+    /// descartado silenciosamente, do jeito que o código sequencial anterior já tolerava.
+    /// </summary>
+    private OcctShape FuseBalanced(List<OcctShape> shapes)
+    {
+        if (shapes.Count == 0) return null;
+        if (shapes.Count == 1) return shapes[0];
+
+        var current = new List<OcctShape>(shapes);
+        var owned = new HashSet<OcctShape>();
+
+        while (current.Count > 1)
+        {
+            var next = new List<OcctShape>();
+            for (int i = 0; i < current.Count; i += 2)
+            {
+                if (i + 1 >= current.Count)
+                {
+                    next.Add(current[i]);
+                    continue;
+                }
+
+                var a = current[i];
+                var b = current[i + 1];
+                var fused = a.Fuse(b);
+
+                if (fused == null || fused.IsNull)
+                {
+                    if (owned.Remove(b)) b.Dispose();
+                    next.Add(a);
+                    continue;
+                }
+
+                if (owned.Remove(a)) a.Dispose();
+                if (owned.Remove(b)) b.Dispose();
+                next.Add(fused);
+                owned.Add(fused);
+            }
+            current = next;
         }
 
-        return currentShape;
+        owned.Remove(current[0]);
+        return current[0];
     }
 
     private TriangleMesh TessellateShape(OcctShape shape, TessellationSettings settings)

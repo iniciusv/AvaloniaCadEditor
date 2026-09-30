@@ -98,6 +98,86 @@ public class OpenCascadeKernelTests
         volume.Should().BeApproximately(expected, expected * 0.01);
     }
 
+    // --- Booleanas com várias bases/ferramentas numa operação só (em vez de uma cadeia de features) ---
+
+    [Fact]
+    public void CaixaMenosVariasFerramentas_VolumeDeveSerExato()
+    {
+        // Furos quadrados atravessando a caixa de baixo a cima (não cavidades isoladas por dentro:
+        // a malha de uma cavidade totalmente interna dispara à parte a heurística de correção de
+        // sentido de giro comentada no topo do arquivo, sem relação com a operação booleana em si).
+        var box = new BoxFeature(new Point3D(0, 0, 0), width: 20, length: 20, height: 20);
+        var hole1 = new BoxFeature(new Point3D(2, 2, -1), width: 4, length: 4, height: 22);
+        var hole2 = new BoxFeature(new Point3D(8, 8, -1), width: 4, length: 4, height: 22);
+        var hole3 = new BoxFeature(new Point3D(14, 14, -1), width: 4, length: 4, height: 22);
+        var cut = BooleanFeature.CreateDifference("Cut", box, hole1, hole2, hole3);
+        var kernel = new OpenCascadeGeometryKernel();
+
+        var mesh = kernel.BuildFeatureMesh(cut);
+        double volume = MeshVolumeCalculator.ComputeVolume(mesh);
+        double expected = 20 * 20 * 20 - 3 * (4 * 4 * 20);
+
+        volume.Should().BeApproximately(expected, expected * 0.01);
+    }
+
+    [Fact]
+    public void CadeiaDeSubtractsEncadeados_DeveDarMesmoVolumeQueUmaOperacaoComVariasFerramentas()
+    {
+        var box = new BoxFeature(new Point3D(0, 0, 0), width: 20, length: 20, height: 20);
+        var hole1 = new BoxFeature(new Point3D(2, 2, -1), width: 4, length: 4, height: 22);
+        var hole2 = new BoxFeature(new Point3D(8, 8, -1), width: 4, length: 4, height: 22);
+        var hole3 = new BoxFeature(new Point3D(14, 14, -1), width: 4, length: 4, height: 22);
+
+        // O mesmo corte, mas como uma cadeia de 3 BooleanFeature (base da próxima = resultado da anterior),
+        // do jeito que a UI gerava antes de acrescentar a ferramenta a uma feature existente.
+        var step1 = BooleanFeature.CreateDifference("Step1", box, hole1);
+        var step2 = BooleanFeature.CreateDifference("Step2", step1, hole2);
+        var step3 = BooleanFeature.CreateDifference("Step3", step2, hole3);
+        var kernel = new OpenCascadeGeometryKernel();
+
+        var mesh = kernel.BuildFeatureMesh(step3);
+        double volume = MeshVolumeCalculator.ComputeVolume(mesh);
+        double expected = 20 * 20 * 20 - 3 * (4 * 4 * 20);
+
+        volume.Should().BeApproximately(expected, expected * 0.01);
+    }
+
+    [Fact]
+    public void UniaoComVariasBasesENenhumaFerramenta_VolumeDeveSomarTodas()
+    {
+        var b1 = new BoxFeature(new Point3D(0, 0, 0), width: 5, length: 5, height: 5);
+        var b2 = new BoxFeature(new Point3D(100, 0, 0), width: 5, length: 5, height: 5);
+        var b3 = new BoxFeature(new Point3D(0, 100, 0), width: 5, length: 5, height: 5);
+        var union = new BooleanFeature("MultiBaseUnion", BooleanOperationType.Union,
+            new IFeature[] { b1, b2, b3 }, Array.Empty<IFeature>());
+        var kernel = new OpenCascadeGeometryKernel();
+
+        var mesh = kernel.BuildFeatureMesh(union);
+        double volume = MeshVolumeCalculator.ComputeVolume(mesh);
+        double expected = 3 * (5 * 5 * 5);
+
+        volume.Should().BeApproximately(expected, expected * 0.01);
+    }
+
+    [Fact]
+    public void SubtractComVariasBases_UneAsBasesEDepoisCorta()
+    {
+        // Duas bases adjacentes que, unidas, formam uma caixa 20x10x10; um furo atravessando a
+        // costura entre elas prova que a união das bases acontece antes do corte, não uma por vez.
+        var base1 = new BoxFeature(new Point3D(0, 0, 0), width: 10, length: 10, height: 10);
+        var base2 = new BoxFeature(new Point3D(10, 0, 0), width: 10, length: 10, height: 10);
+        var hole = new CylinderFeature(new Point3D(10, 5, -1), new Vector3D(0, 0, 1), radius: 2, height: 12);
+
+        var cut = BooleanFeature.CreateDifference("Cut", new IFeature[] { base1, base2 }, hole);
+        var kernel = new OpenCascadeGeometryKernel();
+
+        var mesh = kernel.BuildFeatureMesh(cut);
+        double volume = MeshVolumeCalculator.ComputeVolume(mesh);
+        double expected = 20 * 10 * 10 - Math.PI * 2 * 2 * 10;
+
+        volume.Should().BeApproximately(expected, expected * 0.01);
+    }
+
     [Fact]
     public void ExtrusaoDePoligonoConcavo_VolumeDeveSerExato()
     {

@@ -1133,6 +1133,25 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
     }
 
     /// <summary>
+    /// Acrescenta uma ferramenta a uma <c>BooleanFeature</c> já existente no script (ver
+    /// <see cref="RoslynBooleanOperandAppender"/>), em vez de encadear uma nova operação em cima do
+    /// resultado. Devolve <c>false</c> se o código não estiver num formato reconhecido; nesse caso o
+    /// script não é alterado e quem chamou deve cair para o caminho antigo (gerar uma feature nova).
+    /// </summary>
+    public bool TryAppendBooleanTool(string booleanVar, string toolVar)
+    {
+        if (!RoslynBooleanOperandAppender.TryAppendTool(GeneratedCSharpCode, booleanVar, toolVar, out var result))
+        {
+            return false;
+        }
+
+        EnsureEntryDocumentActive();
+        _history.SaveState(GeneratedCSharpCode);
+        GeneratedCSharpCode = result;
+        return true;
+    }
+
+    /// <summary>
     /// Aplica um código gerado por fonte externa (ex.: o chat de IA) como o script vigente,
     /// preservando o histórico de Undo/Redo, e o executa imediatamente.
     /// </summary>

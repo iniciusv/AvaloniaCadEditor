@@ -11,6 +11,17 @@ namespace AvaloniaCadEditor.Application.Commands;
 public class BooleanTool : ICommandTool, IDisposable
 {
     public event EventHandler<string>? CodeGenerated;
+
+    /// <summary>
+    /// Disparado, em vez de <see cref="CodeGenerated"/>, quando a base escolhida já é o resultado de
+    /// uma booleana do mesmo tipo: a ferramenta é acrescentada à feature existente (ver
+    /// <see cref="AvaloniaCadEditor.Application.Services.RoslynBooleanOperandAppender"/>) em vez de
+    /// encadear mais uma operação em cima dela. <c>FallbackCode</c> é o código equivalente ao caminho
+    /// antigo (uma BooleanFeature nova encadeada); quem ouvir o evento deve usá-lo se o acréscimo ao
+    /// script falhar (formato de código não reconhecido).
+    /// </summary>
+    public event EventHandler<(string BooleanVar, string ToolVar, string FallbackCode)>? OperandAppendRequested;
+
     private readonly BooleanOperationType _operationType;
     private readonly ISelectionService _selectionService;
     private Sketch? _sketch;
@@ -64,11 +75,23 @@ public class BooleanTool : ICommandTool, IDisposable
     {
         if (_baseFeature != null && _toolFeature != null)
         {
+            string toolVar = AvaloniaCadEditor.Domain.Scripting.FeatureOrigin.VariableName(_toolFeature);
+            string baseVar = AvaloniaCadEditor.Domain.Scripting.FeatureOrigin.VariableName(_baseFeature);
+
             string id = Guid.NewGuid().ToString("N").Substring(0, 4);
-            string boolVar = $"boolOp_{id}";
-            string code = $"var {boolVar} = new BooleanFeature(name: \"{boolVar}\", operation: BooleanOperationType.{_operationType}, baseFeature: {AvaloniaCadEditor.Domain.Scripting.FeatureOrigin.VariableName(_baseFeature)}, toolFeatures: new IFeature[] {{ {AvaloniaCadEditor.Domain.Scripting.FeatureOrigin.VariableName(_toolFeature)} }});\r\nAddFeature({boolVar});";
-            
-            CodeGenerated?.Invoke(this, code);
+            string newBoolVar = $"boolOp_{id}";
+            string fallbackCode = $"var {newBoolVar} = new BooleanFeature(name: \"{newBoolVar}\", operation: BooleanOperationType.{_operationType}, baseFeature: {baseVar}, toolFeatures: new IFeature[] {{ {toolVar} }});\r\nAddFeature({newBoolVar});";
+
+            // A base já é uma booleana do mesmo tipo: acrescenta a ferramenta a ela em vez de
+            // encadear outra BooleanFeature em cima do resultado (uma operação só, árvore plana).
+            if (_baseFeature is BooleanFeature existingBoolean && existingBoolean.Operation == _operationType)
+            {
+                OperandAppendRequested?.Invoke(this, (baseVar, toolVar, fallbackCode));
+                Cancel();
+                return;
+            }
+
+            CodeGenerated?.Invoke(this, fallbackCode);
             Cancel();
         }
     }

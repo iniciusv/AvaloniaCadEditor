@@ -252,4 +252,73 @@ public class BooleanBehaviorTests
         booleanOp.BaseFeature.Should().Be(cylinder1);
         booleanOp.ToolFeatures.Should().Contain(cylinder2);
     }
+
+    // --- BooleanTool: acrescentar a uma booleana existente em vez de encadear (ver OperandAppendRequested) ---
+
+    [Fact]
+    public void BooleanTool_BaseJaESendoUmaBooleanaDoMesmoTipo_PedeAcrescimoEmVezDeGerarFeatureNova()
+    {
+        var box = new BoxFeature(new Point3D(0, 0, 0), 20, 20, 20, "box_1");
+        var toolA = new BoxFeature(new Point3D(2, 2, -1), 4, 4, 22, "a");
+        var existing = new BooleanFeature("boolOp_1", BooleanOperationType.Subtract, box, new IFeature[] { toolA });
+        var toolB = new BoxFeature(new Point3D(8, 8, -1), 4, 4, 22, "b");
+
+        var sketch = new Sketch();
+        sketch.AddFeature(box);
+        sketch.AddFeature(toolA);
+        sketch.AddFeature(existing);
+        sketch.AddFeature(toolB);
+
+        var selectionService = new SelectionService();
+        var booleanTool = new BooleanTool(BooleanOperationType.Subtract, selectionService);
+
+        string? codeGenerated = null;
+        (string BooleanVar, string ToolVar, string FallbackCode)? appendRequest = null;
+        booleanTool.CodeGenerated += (s, code) => codeGenerated = code;
+        booleanTool.OperandAppendRequested += (s, args) => appendRequest = args;
+
+        selectionService.SelectFeature(existing);
+        booleanTool.OnMouseDown(sketch, Point3D.Origin);
+        selectionService.SelectFeature(toolB);
+        booleanTool.OnMouseDown(sketch, Point3D.Origin);
+
+        codeGenerated.Should().BeNull("a base já é uma BooleanFeature do mesmo tipo: deve acrescentar, não encadear");
+        appendRequest.Should().NotBeNull();
+        appendRequest!.Value.BooleanVar.Should().Be("boolOp_1");
+        appendRequest.Value.ToolVar.Should().Be("b");
+        appendRequest.Value.FallbackCode.Should().Contain("BooleanFeature");
+    }
+
+    [Fact]
+    public void BooleanTool_BaseSendoBooleanaDeOutraOperacao_GeraFeatureNovaEncadeada()
+    {
+        var box = new BoxFeature(new Point3D(0, 0, 0), 20, 20, 20, "box_1");
+        var toolA = new BoxFeature(new Point3D(2, 2, -1), 4, 4, 22, "a");
+        // A base já existente é uma UNIÃO; a ferramenta atual é de Subtract - operações diferentes.
+        var existingUnion = new BooleanFeature("boolOp_1", BooleanOperationType.Union, box, new IFeature[] { toolA });
+        var toolB = new BoxFeature(new Point3D(8, 8, -1), 4, 4, 22, "b");
+
+        var sketch = new Sketch();
+        sketch.AddFeature(box);
+        sketch.AddFeature(toolA);
+        sketch.AddFeature(existingUnion);
+        sketch.AddFeature(toolB);
+
+        var selectionService = new SelectionService();
+        var booleanTool = new BooleanTool(BooleanOperationType.Subtract, selectionService);
+
+        string? codeGenerated = null;
+        (string BooleanVar, string ToolVar, string FallbackCode)? appendRequest = null;
+        booleanTool.CodeGenerated += (s, code) => codeGenerated = code;
+        booleanTool.OperandAppendRequested += (s, args) => appendRequest = args;
+
+        selectionService.SelectFeature(existingUnion);
+        booleanTool.OnMouseDown(sketch, Point3D.Origin);
+        selectionService.SelectFeature(toolB);
+        booleanTool.OnMouseDown(sketch, Point3D.Origin);
+
+        appendRequest.Should().BeNull();
+        codeGenerated.Should().NotBeNull();
+        codeGenerated.Should().Contain("BooleanOperationType.Subtract");
+    }
 }

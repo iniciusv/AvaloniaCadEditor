@@ -45,20 +45,28 @@ public class FeatureToCSharpConverter
         }
         else if (feature is BooleanFeature boolean)
         {
-            string baseVar = ProcessFeature(boolean.BaseFeature);
+            var baseVars = new List<string>();
+            foreach (var b in boolean.BaseFeatures)
+            {
+                baseVars.Add(ProcessFeature(b));
+            }
             var toolVars = new List<string>();
             foreach (var tool in boolean.ToolFeatures)
             {
                 toolVars.Add(ProcessFeature(tool));
             }
-            
+
             string boolVar = $"boolOp{_varCounter++}";
             string toolsStr = string.Join(", ", toolVars);
-            
-            string methodName = boolean.Operation == BooleanOperationType.Union ? "CreateUnion" : 
+
+            string methodName = boolean.Operation == BooleanOperationType.Union ? "CreateUnion" :
                                (boolean.Operation == BooleanOperationType.Subtract ? "CreateDifference" : "CreateIntersection");
-                               
-            _codeBuilder.AppendLine($"var {boolVar} = BooleanFeature.{methodName}(\"{feature.Name}\", {baseVar}, {toolsStr});");
+
+            // Uma base só usa a forma simples (compatível com scripts antigos); várias bases usam
+            // a sobrecarga com IEnumerable<IFeature>.
+            string baseArg = baseVars.Count == 1 ? baseVars[0] : $"new IFeature[] {{ {string.Join(", ", baseVars)} }}";
+
+            _codeBuilder.AppendLine($"var {boolVar} = BooleanFeature.{methodName}(\"{feature.Name}\", {baseArg}, {toolsStr});");
             return boolVar;
         }
         

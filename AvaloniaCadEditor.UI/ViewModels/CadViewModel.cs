@@ -156,6 +156,10 @@ public class CadViewModel : INotifyPropertyChanged
 					oldRotate.FeaturesRotated -= RotateTool_FeaturesRotated;
 					oldRotate.FeaturesCopied -= RotateTool_FeaturesCopied;
 				}
+				if (_currentTool is BooleanTool oldBoolean)
+				{
+					oldBoolean.OperandAppendRequested -= BooleanTool_OperandAppendRequested;
+				}
 				_currentTool.Cancel();
 			}
 
@@ -173,6 +177,10 @@ public class CadViewModel : INotifyPropertyChanged
 				{
 					newRotate.FeaturesRotated += RotateTool_FeaturesRotated;
 					newRotate.FeaturesCopied += RotateTool_FeaturesCopied;
+				}
+				if (_currentTool is BooleanTool newBoolean)
+				{
+					newBoolean.OperandAppendRequested += BooleanTool_OperandAppendRequested;
 				}
 			}
 
@@ -317,6 +325,19 @@ public class CadViewModel : INotifyPropertyChanged
 	private void CurrentTool_CodeGenerated(object? sender, string codeSnippet)
 	{
 		ScriptEditor.AppendCode(codeSnippet + "\n");
+		ScriptEditor.RunCodeCommand.Execute(null);
+
+		// Return to SelectTool after an operation is committed
+		CurrentTool = new SelectTool(_geometryEngine, _selectionService);
+	}
+
+	private void BooleanTool_OperandAppendRequested(object? sender, (string BooleanVar, string ToolVar, string FallbackCode) args)
+	{
+		if (!ScriptEditor.TryAppendBooleanTool(args.BooleanVar, args.ToolVar))
+		{
+			// Formato de código não reconhecido: cai para o caminho antigo (feature nova encadeada).
+			ScriptEditor.AppendCode(args.FallbackCode + "\n");
+		}
 		ScriptEditor.RunCodeCommand.Execute(null);
 
 		// Return to SelectTool after an operation is committed

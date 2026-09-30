@@ -47,7 +47,7 @@ public class SceneMeshManager : ISceneMeshManager
                 if (f.Id == featureId) return f;
                 if (f is AvaloniaCadEditor.Domain.Features.BooleanFeature bf)
                 {
-                    var foundBase = FindFeature(new[] { bf.BaseFeature });
+                    var foundBase = FindFeature(bf.BaseFeatures);
                     if (foundBase != null) return foundBase;
                     var foundTool = FindFeature(bf.ToolFeatures);
                     if (foundTool != null) return foundTool;

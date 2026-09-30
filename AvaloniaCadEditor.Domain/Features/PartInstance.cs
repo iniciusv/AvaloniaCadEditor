@@ -71,7 +71,7 @@ public abstract class PartInstance : FeatureBase
     {
         FilletFeature => true,
         ImportedMeshFeature => true,
-        BooleanFeature boolean => DependsOnFixedGeometry(boolean.BaseFeature) ||
+        BooleanFeature boolean => boolean.BaseFeatures.Any(DependsOnFixedGeometry) ||
                                    boolean.ToolFeatures.Any(DependsOnFixedGeometry),
         PartInstance nested => DependsOnFixedGeometry(nested.Definition),
         TransformedFeature transformed => DependsOnFixedGeometry(transformed.Source),
