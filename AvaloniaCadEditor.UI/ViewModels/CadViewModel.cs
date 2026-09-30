@@ -189,7 +189,10 @@ public class CadViewModel : INotifyPropertyChanged
 			HoveredFeatureId = null;
 			_hoverTimer?.Stop();
 
-			if (value != null && !(value is SelectTool) && !(value is MoveTool) && !(value is RotateTool) && !(value is FilletTool))
+			// BooleanTool preserva a seleção que já estava marcada: quem chama (SelectBooleanCutCommand/
+			// SelectBooleanFuseCommand) já passou os sólidos pré-selecionados como bases; limpar aqui
+			// desmarcaria justamente o que a ferramenta acabou de receber.
+			if (value != null && !(value is SelectTool) && !(value is MoveTool) && !(value is RotateTool) && !(value is FilletTool) && !(value is BooleanTool))
 			{
 				ClearSelection();
 			}
@@ -331,9 +334,14 @@ public class CadViewModel : INotifyPropertyChanged
 		CurrentTool = new SelectTool(_geometryEngine, _selectionService);
 	}
 
-	private void BooleanTool_OperandAppendRequested(object? sender, (string BooleanVar, string ToolVar, string FallbackCode) args)
+	/// <summary>Sólidos já marcados no viewport/árvore (Ctrl+clique) antes de abrir Cut/Fuse - entram
+	/// direto como bases da operação (ver <see cref="BooleanTool"/>).</summary>
+	private System.Collections.Generic.List<AvaloniaCadEditor.Domain.Features.IFeature> PreSelectedSolids() =>
+		Sketch.Features.Where(f => f.IsSelected && f is not AvaloniaCadEditor.Domain.Features.WorkPlaneFeature).ToList();
+
+	private void BooleanTool_OperandAppendRequested(object? sender, (string BooleanVar, System.Collections.Generic.IReadOnlyList<string> ToolVars, string FallbackCode) args)
 	{
-		if (!ScriptEditor.TryAppendBooleanTool(args.BooleanVar, args.ToolVar))
+		if (!ScriptEditor.TryAppendBooleanTool(args.BooleanVar, args.ToolVars))
 		{
 			// Formato de código não reconhecido: cai para o caminho antigo (feature nova encadeada).
 			ScriptEditor.AppendCode(args.FallbackCode + "\n");
@@ -604,8 +612,8 @@ public class CadViewModel : INotifyPropertyChanged
 				RefreshSolidMesh(); // Force preview mesh update
 			}
 		});
-		SelectBooleanCutCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Subtract, _selectionService));
-		SelectBooleanFuseCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Union, _selectionService));
+		SelectBooleanCutCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Subtract, _selectionService, PreSelectedSolids()));
+		SelectBooleanFuseCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Union, _selectionService, PreSelectedSolids()));
 		ExitBooleanEditModeCommand = new RelayCommand(() => ActiveBooleanGroupName = null);
 		SelectFilletToolCommand = new RelayCommand<string>((modeStr) =>
 		{

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using AvaloniaCadEditor.Application.Commands;
 using AvaloniaCadEditor.Application.Services;
@@ -273,7 +274,7 @@ public class BooleanBehaviorTests
         var booleanTool = new BooleanTool(BooleanOperationType.Subtract, selectionService);
 
         string? codeGenerated = null;
-        (string BooleanVar, string ToolVar, string FallbackCode)? appendRequest = null;
+        (string BooleanVar, IReadOnlyList<string> ToolVars, string FallbackCode)? appendRequest = null;
         booleanTool.CodeGenerated += (s, code) => codeGenerated = code;
         booleanTool.OperandAppendRequested += (s, args) => appendRequest = args;
 
@@ -285,7 +286,7 @@ public class BooleanBehaviorTests
         codeGenerated.Should().BeNull("a base já é uma BooleanFeature do mesmo tipo: deve acrescentar, não encadear");
         appendRequest.Should().NotBeNull();
         appendRequest!.Value.BooleanVar.Should().Be("boolOp_1");
-        appendRequest.Value.ToolVar.Should().Be("b");
+        appendRequest.Value.ToolVars.Should().BeEquivalentTo(new[] { "b" });
         appendRequest.Value.FallbackCode.Should().Contain("BooleanFeature");
     }
 
@@ -308,7 +309,7 @@ public class BooleanBehaviorTests
         var booleanTool = new BooleanTool(BooleanOperationType.Subtract, selectionService);
 
         string? codeGenerated = null;
-        (string BooleanVar, string ToolVar, string FallbackCode)? appendRequest = null;
+        (string BooleanVar, IReadOnlyList<string> ToolVars, string FallbackCode)? appendRequest = null;
         booleanTool.CodeGenerated += (s, code) => codeGenerated = code;
         booleanTool.OperandAppendRequested += (s, args) => appendRequest = args;
 
@@ -320,5 +321,150 @@ public class BooleanBehaviorTests
         appendRequest.Should().BeNull();
         codeGenerated.Should().NotBeNull();
         codeGenerated.Should().Contain("BooleanOperationType.Subtract");
+    }
+
+    // --- BooleanTool: seleção múltipla (Ctrl+clique) de bases e ferramentas ---
+
+    [Fact]
+    public void BooleanTool_ComPreSelecaoDeVariasBases_JaComecaEscolhendoFerramentas()
+    {
+        var baseA = new BoxFeature(new Point3D(0, 0, 0), 10, 10, 10, "baseA");
+        var baseB = new BoxFeature(new Point3D(10, 0, 0), 10, 10, 10, "baseB");
+        var tool1 = new CylinderFeature(new Point3D(10, 5, -1), new Vector3D(0, 0, 1), 2, 12, "tool1");
+
+        var sketch = new Sketch();
+        sketch.AddFeature(baseA);
+        sketch.AddFeature(baseB);
+        sketch.AddFeature(tool1);
+
+        var selectionService = new SelectionService();
+        var booleanTool = new BooleanTool(BooleanOperationType.Subtract, selectionService, new IFeature[] { baseA, baseB });
+
+        baseA.IsSelected.Should().BeTrue();
+        baseB.IsSelected.Should().BeTrue();
+        booleanTool.GetStatusText().Should().Contain("FERRAMENTA", "com pré-seleção, a ferramenta já pula para escolher as ferramentas");
+
+        string? codeGenerated = null;
+        booleanTool.CodeGenerated += (s, code) => codeGenerated = code;
+
+        booleanTool.OnMouseDown(sketch, Point3D.Origin);
+        booleanTool.PickFeature(tool1, additive: false);
+
+        codeGenerated.Should().NotBeNull();
+        codeGenerated.Should().Contain("baseFeatures: new IFeature[] { baseA, baseB }");
+        codeGenerated.Should().Contain("toolFeatures: new IFeature[] { tool1 }");
+    }
+
+    [Fact]
+    public void BooleanTool_CtrlClique_AcumulaVariasFerramentas_EEnterConfirmaAsDuas()
+    {
+        var box = new BoxFeature(new Point3D(0, 0, 0), 20, 20, 20, "box_1");
+        var toolA = new BoxFeature(new Point3D(2, 2, -1), 4, 4, 22, "a");
+        var toolB = new BoxFeature(new Point3D(8, 8, -1), 4, 4, 22, "b");
+
+        var sketch = new Sketch();
+        sketch.AddFeature(box);
+        sketch.AddFeature(toolA);
+        sketch.AddFeature(toolB);
+
+        var selectionService = new SelectionService();
+        var booleanTool = new BooleanTool(BooleanOperationType.Subtract, selectionService);
+
+        string? codeGenerated = null;
+        booleanTool.CodeGenerated += (s, code) => codeGenerated = code;
+
+        booleanTool.OnMouseDown(sketch, Point3D.Origin);
+        booleanTool.PickFeature(box, additive: false); // base: 1 clique simples já avança
+
+        booleanTool.PickFeature(toolA, additive: true); // Ctrl+clique acumula
+        booleanTool.PickFeature(toolB, additive: true);
+        codeGenerated.Should().BeNull("Ctrl+clique não confirma - só acumula");
+        toolA.IsSelected.Should().BeTrue();
+        toolB.IsSelected.Should().BeTrue();
+
+        booleanTool.OnKeyDown(sketch, CadKey.Enter);
+
+        codeGenerated.Should().NotBeNull();
+        codeGenerated.Should().Contain("baseFeature: box_1");
+        codeGenerated.Should().Contain("toolFeatures: new IFeature[] { a, b }");
+    }
+
+    [Fact]
+    public void BooleanTool_CtrlCliqueDuasVezesNaMesmaFerramenta_Desmarca()
+    {
+        var box = new BoxFeature(new Point3D(0, 0, 0), 20, 20, 20, "box_1");
+        var toolA = new BoxFeature(new Point3D(2, 2, -1), 4, 4, 22, "a");
+
+        var sketch = new Sketch();
+        sketch.AddFeature(box);
+        sketch.AddFeature(toolA);
+
+        var selectionService = new SelectionService();
+        var booleanTool = new BooleanTool(BooleanOperationType.Subtract, selectionService);
+
+        booleanTool.OnMouseDown(sketch, Point3D.Origin);
+        booleanTool.PickFeature(box, additive: false);
+
+        booleanTool.PickFeature(toolA, additive: true);
+        toolA.IsSelected.Should().BeTrue();
+
+        booleanTool.PickFeature(toolA, additive: true); // Ctrl+clique de novo: desmarca
+        toolA.IsSelected.Should().BeFalse();
+
+        string? codeGenerated = null;
+        booleanTool.CodeGenerated += (s, code) => codeGenerated = code;
+        booleanTool.OnKeyDown(sketch, CadKey.Enter);
+
+        codeGenerated.Should().BeNull("nenhuma ferramenta escolhida (Subtract não confirma sem ferramentas)");
+    }
+
+    [Fact]
+    public void BooleanTool_EnterSemFerramentas_NaoConfirma_ExcetoFuseComVariasBases()
+    {
+        var baseA = new BoxFeature(new Point3D(0, 0, 0), 10, 10, 10, "baseA");
+        var baseB = new BoxFeature(new Point3D(10, 0, 0), 10, 10, 10, "baseB");
+        var sketch = new Sketch();
+        sketch.AddFeature(baseA);
+        sketch.AddFeature(baseB);
+
+        var selectionService = new SelectionService();
+
+        // Subtract com 2 bases e nenhuma ferramenta: Enter não confirma (não há o que cortar).
+        var cutTool = new BooleanTool(BooleanOperationType.Subtract, selectionService, new IFeature[] { baseA, baseB });
+        string? cutCode = null;
+        cutTool.CodeGenerated += (s, code) => cutCode = code;
+        cutTool.OnKeyDown(sketch, CadKey.Enter);
+        cutCode.Should().BeNull();
+
+        // Union (Fuse) com 2 bases e nenhuma ferramenta: Enter confirma - é a união pura das bases.
+        var fuseTool = new BooleanTool(BooleanOperationType.Union, selectionService, new IFeature[] { baseA, baseB });
+        string? fuseCode = null;
+        fuseTool.CodeGenerated += (s, code) => fuseCode = code;
+        fuseTool.OnKeyDown(sketch, CadKey.Enter);
+
+        fuseCode.Should().NotBeNull();
+        fuseCode.Should().Contain("baseFeatures: new IFeature[] { baseA, baseB }");
+    }
+
+    [Fact]
+    public void BooleanTool_Escape_CancelaEDesmarcaTudo()
+    {
+        var baseA = new BoxFeature(new Point3D(0, 0, 0), 10, 10, 10, "baseA");
+        var toolA = new BoxFeature(new Point3D(20, 0, 0), 4, 4, 4, "toolA");
+        var sketch = new Sketch();
+        sketch.AddFeature(baseA);
+        sketch.AddFeature(toolA);
+
+        var selectionService = new SelectionService();
+        var booleanTool = new BooleanTool(BooleanOperationType.Subtract, selectionService);
+
+        booleanTool.OnMouseDown(sketch, Point3D.Origin);
+        booleanTool.PickFeature(baseA, additive: false);
+        booleanTool.PickFeature(toolA, additive: true);
+
+        booleanTool.OnKeyDown(sketch, CadKey.Escape);
+
+        baseA.IsSelected.Should().BeFalse();
+        toolA.IsSelected.Should().BeFalse();
     }
 }

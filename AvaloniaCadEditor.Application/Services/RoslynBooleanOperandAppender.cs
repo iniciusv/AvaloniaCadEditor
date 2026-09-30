@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
@@ -13,6 +14,27 @@ namespace AvaloniaCadEditor.Application.Services;
 /// </summary>
 public static class RoslynBooleanOperandAppender
 {
+    /// <summary>Acrescenta várias ferramentas de uma vez (ex.: seleção múltipla com Ctrl). Falha em
+    /// qualquer uma delas devolve <c>false</c> e não altera o script.</summary>
+    public static bool TryAppendTools(string script, string booleanVar, IEnumerable<string> toolVars, out string result)
+    {
+        result = script;
+        var vars = toolVars?.ToList() ?? new List<string>();
+        if (vars.Count == 0) return false;
+
+        string current = script;
+        foreach (var toolVar in vars)
+        {
+            if (!TryAppendTool(current, booleanVar, toolVar, out current))
+            {
+                return false;
+            }
+        }
+
+        result = current;
+        return true;
+    }
+
     public static bool TryAppendTool(string script, string booleanVar, string toolVar, out string result)
     {
         result = script;

@@ -92,6 +92,40 @@ public class SelectionService : ISelectionService
         ClearSelection(sketch);
     }
 
+    public void ToggleFeature(Sketch sketch, IFeature feature)
+    {
+        if (feature == null) return;
+
+        if (feature.IsSelected)
+        {
+            feature.IsSelected = false;
+
+            // A seleção "primária" passa para outra feature ainda marcada, ou fica vazia.
+            var stillSelected = sketch.Features.FirstOrDefault(f => f.IsSelected);
+            if (stillSelected != null)
+            {
+                CurrentSelectionType = SelectionType.Feature;
+                SelectedId = stillSelected.Id;
+                SelectedObject = stillSelected;
+            }
+            else
+            {
+                CurrentSelectionType = SelectionType.None;
+                SelectedId = null;
+                SelectedObject = null;
+            }
+        }
+        else
+        {
+            feature.IsSelected = true;
+            CurrentSelectionType = SelectionType.Feature;
+            SelectedId = feature.Id;
+            SelectedObject = feature;
+        }
+
+        SelectionChanged?.Invoke();
+    }
+
     public void ClearSelection(Sketch? sketch = null)
     {
         if (sketch != null)

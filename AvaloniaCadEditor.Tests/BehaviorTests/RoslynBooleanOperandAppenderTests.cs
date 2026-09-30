@@ -109,4 +109,41 @@ public class RoslynBooleanOperandAppenderTests
         ok.Should().BeFalse();
         result.Should().Be("");
     }
+
+    [Fact]
+    public void TryAppendTools_AcrescentaVariasFerramentasDeUmaVez()
+    {
+        var script =
+            "var boolOp_1 = new BooleanFeature(name: \"boolOp_1\", operation: BooleanOperationType.Subtract, baseFeature: box_1, toolFeatures: new IFeature[] { a });\r\n" +
+            "AddFeature(boolOp_1);\r\n";
+
+        bool ok = RoslynBooleanOperandAppender.TryAppendTools(script, "boolOp_1", new[] { "b", "c" }, out var result);
+
+        ok.Should().BeTrue();
+        result.Should().Contain("toolFeatures: new IFeature[] { a, b, c }");
+    }
+
+    [Fact]
+    public void TryAppendTools_SemFerramentas_DevolveFalse()
+    {
+        var script = "var boolOp_1 = BooleanFeature.CreateDifference(\"boolOp_1\", box_1, a);\r\n";
+
+        bool ok = RoslynBooleanOperandAppender.TryAppendTools(script, "boolOp_1", System.Array.Empty<string>(), out var result);
+
+        ok.Should().BeFalse();
+        result.Should().Be(script);
+    }
+
+    [Fact]
+    public void TryAppendTools_QuandoFalha_DevolveOScriptOriginalIntacto()
+    {
+        // A variável da BooleanFeature não existe: nada é aplicado, nem parcialmente - "b" e "c"
+        // nunca chegam a ser inseridos, e o script devolvido é exatamente o original.
+        var script = "var boolOp_1 = BooleanFeature.CreateDifference(\"boolOp_1\", box_1, a);\r\n";
+
+        bool ok = RoslynBooleanOperandAppender.TryAppendTools(script, "boolOp_nao_existe", new[] { "b", "c" }, out var result);
+
+        ok.Should().BeFalse();
+        result.Should().Be(script);
+    }
 }

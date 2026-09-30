@@ -93,14 +93,22 @@ public sealed class ViewportInputHandler
                 // --- NOVA LÓGICA: Despacho por tipo de tool ---
                 
                 // Tools 3D: BooleanTool e FilletTool operam por seleção de feature via 3D raycast
-                if (viewModel.CurrentTool is Application.Commands.BooleanTool)
+                if (viewModel.CurrentTool is Application.Commands.BooleanTool booleanTool)
                 {
                     var hit = viewModel.Raycast3D(ray);
                     if (hit.HasValue && hit.Value.FeatureId.HasValue)
                     {
                         // Explicitly give the tool the sketch before triggering selection events
-                        viewModel.CurrentTool.OnMouseDown(viewModel.Sketch, new AvaloniaCadEditor.Domain.ValueObjects.Point3D(0, 0, 0));
-                        viewModel.SelectionService.SelectById(viewModel.Sketch, hit.Value.FeatureId.Value);
+                        booleanTool.OnMouseDown(viewModel.Sketch, new AvaloniaCadEditor.Domain.ValueObjects.Point3D(0, 0, 0));
+
+                        // Ctrl+clique acumula bases/ferramentas em vez de confirmar na hora (não passa
+                        // pelo SelectionService.SelectById, que desmarcaria tudo o mais).
+                        var feature = viewModel.Sketch.Features.FirstOrDefault(f => f.Id == hit.Value.FeatureId.Value);
+                        if (feature != null)
+                        {
+                            bool isCtrl = e.KeyModifiers.HasFlag(KeyModifiers.Control) || viewModel.IsCtrlPressed;
+                            booleanTool.PickFeature(feature, isCtrl);
+                        }
                         requestRender();
                     }
                     return; // Pula o fluxo 2D
@@ -148,7 +156,22 @@ public sealed class ViewportInputHandler
                         {
                             if (viewModel.CurrentSelectionMode == CadViewModel.TargetSelectionMode.Feature)
                             {
-                                viewModel.SelectionService.SelectById(viewModel.Sketch, hit.Value.FeatureId.Value);
+                                // Ctrl+clique acumula vários sólidos marcados (ex.: para abrir Cut/Fuse
+                                // com várias bases de uma vez); só faz sentido no SelectTool - o
+                                // FilletTool sempre opera num alvo só, então continua no seleciona-único.
+                                bool isCtrl = e.KeyModifiers.HasFlag(KeyModifiers.Control) || viewModel.IsCtrlPressed;
+                                if (isCtrl && viewModel.CurrentTool is Application.Commands.SelectTool)
+                                {
+                                    var feature = viewModel.Sketch.Features.FirstOrDefault(f => f.Id == hit.Value.FeatureId.Value);
+                                    if (feature != null && feature is not AvaloniaCadEditor.Domain.Features.WorkPlaneFeature)
+                                    {
+                                        viewModel.SelectionService.ToggleFeature(viewModel.Sketch, feature);
+                                    }
+                                }
+                                else
+                                {
+                                    viewModel.SelectionService.SelectById(viewModel.Sketch, hit.Value.FeatureId.Value);
+                                }
                                 requestRender();
                             }
                             else if (viewModel.CurrentSelectionMode == CadViewModel.TargetSelectionMode.Face)

@@ -26,4 +26,12 @@ public interface ISelectionService
     void SelectFeature(IFeature? feature);
     void SelectById(Sketch sketch, Guid? id);
     void ClearSelection(Sketch? sketch = null);
+
+    /// <summary>
+    /// Alterna a marcação (IsSelected) de uma feature sem desmarcar as demais - usado pelo
+    /// Ctrl+clique para selecionar vários sólidos de uma vez (ex.: para uma booleana com várias
+    /// bases/ferramentas). Se a feature já estava marcada, desmarca; a seleção "primária"
+    /// (SelectedObject/SelectedId) passa para outra feature ainda marcada, ou fica vazia.
+    /// </summary>
+    void ToggleFeature(Sketch sketch, IFeature feature);
 }
