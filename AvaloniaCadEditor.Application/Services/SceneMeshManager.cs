@@ -27,6 +27,12 @@ public class SceneMeshManager : ISceneMeshManager
         _geometryKernel.InvalidateAll();
     }
 
+    public void ResetForNewScene()
+    {
+        _featureMeshCache.Clear();
+        _geometryKernel.BeginSceneRebuild();
+    }
+
     public TriangleMesh GetFeatureMesh(Sketch sketch, Guid featureId, IFeature? previewFeature, bool forceRebuild = false)
     {
         if (forceRebuild)

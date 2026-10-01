@@ -121,6 +121,9 @@ public sealed class SolidFeatureRenderPass : IRenderPass
 
         var identity = context.IdentityMatrix;
 
+        // Lido uma vez por frame (antes era por feature): GetSettings lê e desserializa o JSON do disco.
+        var settings = new AvaloniaCadEditor.Infrastructure.Settings.JsonTessellationSettingsProvider().GetSettings();
+
         foreach (var (feature, isPreview, isToolFeature) in featuresToRender)
         {
             var mesh = vm.GetFeatureMesh(feature.Id, forceRebuild: false);
@@ -244,7 +247,6 @@ public sealed class SolidFeatureRenderPass : IRenderPass
             }
 
             // Render Edge Outlines
-            var settings = new AvaloniaCadEditor.Infrastructure.Settings.JsonTessellationSettingsProvider().GetSettings();
             
             var featureColor = ViewportShaderManager.ParseHexColor(settings.FeatureEdgeColor, (edgeR, edgeG, edgeB, 1.0f));
             var internalColor = ViewportShaderManager.ParseHexColor(settings.InternalEdgeColor, (0.5f, 0.5f, 0.5f, 0.5f));

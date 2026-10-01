@@ -17,6 +17,17 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
     // Malha local de cada definição de peça (compartilhada por instâncias de peças iguais).
     private readonly Dictionary<Guid, TriangleMesh> _definitionMeshCache = new();
 
+    // Malhas por geometria (FeatureFingerprint + tesselação). Diferente dos caches por Id, sobrevivem
+    // a uma reexecução da cena: mover uma peça não refaz as booleanas/tesselação de nenhuma definição.
+    private readonly Dictionary<string, TriangleMesh> _meshByGeometry = new();
+    private readonly HashSet<string> _geometryKeysInUse = new();
+
+    // Teto de segurança: ferramentas interativas (preview) podem gerar uma chave nova por frame.
+    private const int MaxMeshesByGeometry = 512;
+
+    /// <summary>Quantas malhas foram de fato tesseladas (cache miss). Usado por testes.</summary>
+    public int MeshBuildCount { get; private set; }
+
     public void InvalidateShape(Guid featureId)
     {
         if (_shapeCache.TryGetValue(featureId, out var cached))
@@ -35,6 +46,50 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         }
         _shapeCache.Clear();
         _definitionMeshCache.Clear();
+        _meshByGeometry.Clear();
+        _geometryKeysInUse.Clear();
+    }
+
+    /// <summary>
+    /// Nova execução da cena: tudo que é por Id é descartado (os Ids mudaram), mas as malhas por
+    /// geometria usadas desde a execução anterior continuam disponíveis; as demais saem.
+    /// </summary>
+    public void BeginSceneRebuild()
+    {
+        foreach (var shape in _shapeCache.Values)
+        {
+            shape?.Dispose();
+        }
+        _shapeCache.Clear();
+        _definitionMeshCache.Clear();
+        RemoveMeshesNotInUse();
+        _geometryKeysInUse.Clear();
+    }
+
+    private void RemoveMeshesNotInUse()
+    {
+        foreach (var key in _meshByGeometry.Keys.Where(k => !_geometryKeysInUse.Contains(k)).ToList())
+        {
+            _meshByGeometry.Remove(key);
+        }
+    }
+
+    private static string? GeometryKey(IFeature feature, TessellationSettings settings)
+    {
+        var fingerprint = FeatureFingerprint.Compute(feature);
+        if (fingerprint == null) return null;
+
+        // Tudo que pode mudar a malha gerada entra na chave (cores não, mas não custa nada).
+        return string.Join("|",
+            BitConverter.DoubleToInt64Bits(settings.LinearDeflection),
+            BitConverter.DoubleToInt64Bits(settings.AngularDeflection),
+            settings.ProfileSegments,
+            settings.FaceSegments,
+            settings.ShowInternalEdges,
+            BitConverter.SingleToInt32Bits(settings.CreaseAngle),
+            settings.FeatureEdgeColor,
+            settings.InternalEdgeColor,
+            fingerprint);
     }
 
     public TriangleMesh BuildFeatureMesh(IFeature feature, TessellationSettings? settings = null)
@@ -56,14 +111,39 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         }
 
         settings ??= new TessellationSettings();
-        try 
+
+        string? key = GeometryKey(feature, settings);
+        if (key != null && _meshByGeometry.TryGetValue(key, out var reused))
+        {
+            _geometryKeysInUse.Add(key);
+            return reused;
+        }
+
+        try
         {
             var shape = BuildShape(feature, settings);
             if (shape == null || shape.IsNull)
                 return TriangleMesh.Empty;
 
             var mesh = TessellateShape(shape, settings);
+            MeshBuildCount++;
             // shape.Dispose(); // Shape is now cached, do not dispose here
+
+            // Malha vazia pode ser falha do OCCT: não fica guardada, tenta de novo na próxima vez.
+            if (key != null && mesh.VertexCount > 0)
+            {
+                if (_meshByGeometry.Count >= MaxMeshesByGeometry)
+                {
+                    RemoveMeshesNotInUse();
+                    if (_meshByGeometry.Count >= MaxMeshesByGeometry)
+                    {
+                        _meshByGeometry.Clear();
+                        _geometryKeysInUse.Clear();
+                    }
+                }
+                _meshByGeometry[key] = mesh;
+                _geometryKeysInUse.Add(key);
+            }
             return mesh;
         }
         catch (Exception ex)

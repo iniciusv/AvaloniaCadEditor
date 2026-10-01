@@ -564,7 +564,8 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
 
         if (result.Success)
         {
-            _cadViewModel.MeshManager.ClearCache();
+            // Reaproveita malhas de geometria idêntica da execução anterior (ex.: só uma peça mudou de lugar).
+            _cadViewModel.MeshManager.ResetForNewScene();
             _cadViewModel.Sketch.ClearFeatures();
             foreach (var feature in result.Features)
             {

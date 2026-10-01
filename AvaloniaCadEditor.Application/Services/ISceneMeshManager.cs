@@ -15,4 +15,10 @@ public interface ISceneMeshManager
     RaycastHit? Raycast3D(Sketch sketch, Ray ray, Func<IFeature, bool>? includeFilter = null);
     TriangleMesh BuildCompositeMesh(Sketch sketch, IFeature? previewFeature);
     void ClearCache();
+
+    /// <summary>
+    /// Prepara para uma cena recém-executada: esquece as malhas por Id, mas deixa o kernel reaproveitar
+    /// geometria idêntica da execução anterior. Para descartar tudo (ex.: mudou a tesselação), use <see cref="ClearCache"/>.
+    /// </summary>
+    void ResetForNewScene();
 }
