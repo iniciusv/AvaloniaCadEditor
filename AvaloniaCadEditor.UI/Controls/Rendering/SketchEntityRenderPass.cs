@@ -163,11 +163,13 @@ public sealed class SketchEntityRenderPass : IRenderPass
             // Depth test ligado: o sketch (inclusive selecionado) não aparece atrás de sólidos.
             // GL_POLYGON_OFFSET_LINE não afeta primitivas GL_LINES (só polígonos em modo wireframe),
             // então para evitar z-fighting com geometria coplanar (grade do plano, faces de sólidos)
-            // comprimimos levemente o DepthRange: isso aproxima o sketch da câmera o suficiente para
-            // vencer empates de profundidade, sem deixar de respeitar sólidos genuinamente à frente.
-            gl.DepthRange(0.0, 0.9999);
+            // aplicamos um leve viés de profundidade no vertex shader (uDepthBias): isso aproxima
+            // o sketch da câmera o suficiente para vencer empates de profundidade, sem deixar de
+            // respeitar sólidos genuinamente à frente. (glDepthRange não é usado aqui porque o
+            // contexto ANGLE/GLES do Avalonia no Windows não expõe esse símbolo nativo.)
+            gl.Uniform1(context.Uniforms.DepthBiasLoc, 0.0005f);
             gl.DrawArrays(PrimitiveType.Lines, 0, (uint)(sketchVertices.Count / 6));
-            gl.DepthRange(0.0, 1.0);
+            gl.Uniform1(context.Uniforms.DepthBiasLoc, 0.0f);
         }
     }
 

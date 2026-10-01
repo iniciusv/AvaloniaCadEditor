@@ -16,13 +16,18 @@ public sealed class ViewportShaderManager
         uniform mat4 uProjection;
         uniform int uUseLighting;
         uniform int uColorFacesByNormal;
-        
+        uniform float uDepthBias;
+
         varying vec3 vertexColor;
-        
+
         void main()
         {
             gl_Position = uProjection * uView * uModel * vec4(aPos, 1.0);
-            
+            // Aproxima a geometria da câmera em espaço de clip (proporcional a w, então
+            // o efeito independe da distância), evitando z-fighting sem depender de
+            // glDepthRange (indisponível em contextos ANGLE/GLES usados pelo Avalonia).
+            gl_Position.z -= uDepthBias * gl_Position.w;
+
             vec3 currentColor = aColor;
             vec3 viewNormal = normalize(mat3(uView * uModel) * aNormal);
             
@@ -104,7 +109,8 @@ public sealed class ViewportShaderManager
             ModelLoc: gl.GetUniformLocation(ShaderProgram, "uModel"),
             LightingLoc: gl.GetUniformLocation(ShaderProgram, "uUseLighting"),
             AlphaLoc: gl.GetUniformLocation(ShaderProgram, "uAlpha"),
-            ColorFacesByNormalLoc: gl.GetUniformLocation(ShaderProgram, "uColorFacesByNormal")
+            ColorFacesByNormalLoc: gl.GetUniformLocation(ShaderProgram, "uColorFacesByNormal"),
+            DepthBiasLoc: gl.GetUniformLocation(ShaderProgram, "uDepthBias")
         );
     }
 

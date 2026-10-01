@@ -6,4 +6,14 @@
     <Nullable>enable</Nullable>
   </PropertyGroup>
 
+  <!-- Esta pasta também é usada como cena do AvaloniaCad (Cena.cs, Pecas/, .cad/).
+       Esses arquivos são compilados à parte pelo RoslynSceneEvaluator do app, não pelo
+       build normal deste projeto — por isso são excluídos do Compile aqui. -->
+  <ItemGroup>
+    <Compile Remove="Cena.cs" />
+    <Compile Remove="Pecas\**\*.cs" />
+    <None Include="Cena.cs" />
+    <None Include="Pecas\**\*.cs" />
+  </ItemGroup>
+
 </Project>
