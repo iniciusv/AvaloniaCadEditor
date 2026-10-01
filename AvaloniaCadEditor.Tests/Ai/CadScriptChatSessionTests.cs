@@ -69,6 +69,55 @@ public class CadScriptChatSessionTests
         callCount.Should().Be(CadScriptChatSession.MaxAttempts);
     }
 
+    private const string ValidPart =
+        "public sealed record Placa(double Largura = 50, double Comprimento = 30, double Espessura = 5) : Part\n{\n    protected override IFeature Build() => new BoxFeature(Point3D.Origin, Largura, Comprimento, Espessura) { Name = \"placa\" };\n}";
+
+    [Fact]
+    public async Task SendAsync_ComArquivoDePeca_ValidaExecutandoNumaCenaSintetica()
+    {
+        var session = new CadScriptChatSession(
+            FakeOptions(),
+            new CadScriptProtocol(),
+            new RoslynSceneEvaluator(),
+            send: (messages, options, ct) => Task.FromResult(new LlmResult { Content = $"Pronto.\n```cadscript\n{ValidPart}\n```" }));
+
+        var context = new CadScriptContext("", Kind: CadFileKind.PartFile, FileName: "Pecas/Placa.cs");
+        var result = await session.SendAsync("Crie uma placa", context);
+
+        result.IsValid.Should().BeTrue(because: result.Error ?? string.Empty);
+        result.FeatureCount.Should().Be(1);
+    }
+
+    [Fact]
+    public async Task SendAsync_ComArquivoDePecaEScriptSolto_RejeitaEPermiteCorrecaoAutomatica()
+    {
+        // O mesmo engano relatado pelo usuário: pedir uma peça e receber de volta um script solto
+        // (var ...; AddFeature(...)) em vez de um record : Part.
+        const string EstiloScriptSolto =
+            "var motor_corpo = new BoxFeature(baseCorner: new Point3D(0, 0, 0), width: 42.3, length: 42.3, height: 48) { Name = \"motor_corpo\" };\nAddFeature(motor_corpo);";
+
+        int callCount = 0;
+        var session = new CadScriptChatSession(
+            FakeOptions(),
+            new CadScriptProtocol(),
+            new RoslynSceneEvaluator(),
+            send: (messages, options, ct) =>
+            {
+                callCount++;
+                string content = callCount == 1
+                    ? $"Tentando.\n```cadscript\n{EstiloScriptSolto}\n```"
+                    : $"Corrigido.\n```cadscript\n{ValidPart}\n```";
+                return Task.FromResult(new LlmResult { Content = content });
+            });
+
+        var context = new CadScriptContext("", Kind: CadFileKind.PartFile, FileName: "Pecas/Nema17.cs");
+        var result = await session.SendAsync("Crie um motor nema 17 com eixo e furos", context);
+
+        result.IsValid.Should().BeTrue(because: result.Error ?? string.Empty);
+        result.Attempts.Should().Be(2);
+        callCount.Should().Be(2);
+    }
+
     [Fact]
     public async Task SendAsync_NaoReenviaReasoningContentNoHistorico()
     {

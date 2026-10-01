@@ -83,4 +83,42 @@ public class CadScriptProtocolTests
         prompt.Should().Contain("AddFeature");
         prompt.Should().Contain("cadscript");
     }
+
+    [Fact]
+    public void GetSystemPrompt_ContemRegrasDosDoisFormatos()
+    {
+        string prompt = _protocol.GetSystemPrompt();
+
+        prompt.Should().Contain("FORMATO \"script\"");
+        prompt.Should().Contain("FORMATO \"peça\"");
+        prompt.Should().Contain("Build()");
+        prompt.Should().Contain(": Part");
+    }
+
+    [Fact]
+    public void BuildUserMessage_ComArquivoDePeca_IndicaOFormatoEAsPecasDisponiveis()
+    {
+        var context = new CadScriptContext(
+            CurrentCode: "",
+            Kind: CadFileKind.PartFile,
+            FileName: "Pecas/Nema17.cs",
+            PartSummaries: new[] { "Placa(double Largura, double Comprimento, double Espessura = 5)" });
+
+        string message = _protocol.BuildUserMessage(context, "Crie um motor nema 17");
+
+        message.Should().Contain("Pecas/Nema17.cs");
+        message.Should().Contain("peça");
+        message.Should().Contain("Placa(double Largura, double Comprimento, double Espessura = 5)");
+    }
+
+    [Fact]
+    public void BuildUserMessage_ComArquivoDeEntrada_IndicaFormatoScript()
+    {
+        var context = new CadScriptContext(CurrentCode: "", Kind: CadFileKind.SceneEntry, FileName: "Cena.cs");
+
+        string message = _protocol.BuildUserMessage(context, "Adicione uma caixa");
+
+        message.Should().Contain("Cena.cs");
+        message.Should().Contain("script");
+    }
 }

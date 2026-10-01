@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 using AvaloniaCadEditor.Application.Ai;
 using AvaloniaCadEditor.Application.Interfaces;
+using AvaloniaCadEditor.Application.Scenes;
 using AvaloniaCadEditor.Domain.Settings;
 
 namespace AvaloniaCadEditor.UI.ViewModels;
@@ -241,9 +242,7 @@ public class AiChatViewModel : INotifyPropertyChanged
         _cts = new CancellationTokenSource();
         try
         {
-            var context = new CadScriptContext(
-                _scriptEditor.GeneratedCSharpCode,
-                _cadViewModel.SelectedFeature?.Name);
+            var context = BuildContext();
 
             var result = await _session.SendAsync(instruction, context, _cts.Token);
 
@@ -253,9 +252,10 @@ public class AiChatViewModel : INotifyPropertyChanged
             if (result.Code != null)
             {
                 item.IsValid = result.IsValid;
+                string kindNoun = context.Kind == CadFileKind.PartFile ? "part" : "script";
                 string autoFixSuffix = result.Attempts > 1 ? $" — auto-fixed ({result.Attempts - 1}x)" : "";
                 item.ValidationText = result.IsValid
-                    ? $"✓ Valid script ({result.FeatureCount} feature(s)){autoFixSuffix}"
+                    ? $"✓ Valid {kindNoun} ({result.FeatureCount} feature(s)){autoFixSuffix}"
                     : $"✗ {result.Error}";
 
                 if (result.IsValid)
@@ -287,6 +287,53 @@ public class AiChatViewModel : INotifyPropertyChanged
             _cts = null;
         }
     }
+
+    /// <summary>
+    /// Monta o contexto passado à IA a partir do estado atual do editor: qual arquivo está ativo e em
+    /// qual dos dois formatos (script ou peça — ver <see cref="CadFileKind"/>), as peças já declaradas
+    /// na cena (para a IA reaproveitá-las em vez de redeclará-las) e os demais arquivos do projeto
+    /// (para validar/executar a resposta no contexto completo da cena, não isolada).
+    /// </summary>
+    private CadScriptContext BuildContext()
+    {
+        string fileName = _scriptEditor.IsProjectOpen
+            ? _scriptEditor.ActiveFile ?? _scriptEditor.EntryFile
+            : ScriptDocument.DefaultSceneFile;
+
+        CadFileKind kind = !_scriptEditor.IsProjectOpen
+            ? CadFileKind.StandaloneScript
+            : string.Equals(fileName, _scriptEditor.EntryFile, StringComparison.OrdinalIgnoreCase)
+                ? CadFileKind.SceneEntry
+                : CadFileKind.PartFile;
+
+        IReadOnlyList<ScriptDocument>? projectDocuments = null;
+        IReadOnlyList<string>? partSummaries = null;
+        if (_scriptEditor.IsProjectOpen)
+        {
+            var all = _scriptEditor.GetSceneDocuments();
+            // Num arquivo de peça, o arquivo de entrada real não entra no contexto de avaliação: ele
+            // é substituído por um arquivo sintético que só instancia a peça (ver CadScriptChatSession).
+            projectDocuments = kind == CadFileKind.PartFile
+                ? all.Where(d => !string.Equals(d.FilePath, _scriptEditor.EntryFile, StringComparison.OrdinalIgnoreCase)).ToList()
+                : all;
+            partSummaries = PartSourceEditor.FindPartTypes(all)
+                .Where(t => !string.Equals(t.FilePath, fileName, StringComparison.OrdinalIgnoreCase))
+                .Select(FormatPartSignature)
+                .ToList();
+        }
+
+        return new CadScriptContext(
+            _scriptEditor.GeneratedCSharpCode,
+            _cadViewModel.SelectedFeature?.Name,
+            Kind: kind,
+            FileName: fileName,
+            PartSummaries: partSummaries,
+            ProjectDocuments: projectDocuments);
+    }
+
+    private static string FormatPartSignature(PartTypeInfo type) =>
+        $"{type.Name}({string.Join(", ", type.Parameters.Select(p =>
+            p.DefaultValue == null ? $"{p.TypeName} {p.Name}" : $"{p.TypeName} {p.Name} = {p.DefaultValue}"))})";
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

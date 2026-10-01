@@ -56,13 +56,20 @@ Propriedades comuns a TODAS as features (herdadas de FeatureBase):
 
 ### BooleanFeature : FeatureBase
   new BooleanFeature(string name, BooleanOperationType operation, IFeature baseFeature, IEnumerable<IFeature> toolFeatures)
+  new BooleanFeature(string name, BooleanOperationType operation, IEnumerable<IFeature> baseFeatures, IEnumerable<IFeature> toolFeatures)
   static BooleanFeature BooleanFeature.CreateUnion(string name, IFeature baseFeature, params IFeature[] toolFeatures)
+  static BooleanFeature BooleanFeature.CreateUnion(string name, IEnumerable<IFeature> baseFeatures, params IFeature[] toolFeatures)
   static BooleanFeature BooleanFeature.CreateDifference(string name, IFeature baseFeature, params IFeature[] toolFeatures)
+  static BooleanFeature BooleanFeature.CreateDifference(string name, IEnumerable<IFeature> baseFeatures, params IFeature[] toolFeatures)
   static BooleanFeature BooleanFeature.CreateIntersection(string name, IFeature baseFeature, params IFeature[] toolFeatures)
+  static BooleanFeature BooleanFeature.CreateIntersection(string name, IEnumerable<IFeature> baseFeatures, params IFeature[] toolFeatures)
   BooleanOperationType Operation { get; set; }
-  IFeature BaseFeature { get; set; }
+  List<IFeature> BaseFeatures { get; set; }
   List<IFeature> ToolFeatures { get; set; }
+  IFeature BaseFeature { get; }
   IEnumerable<IFeature> Dependencies { get; }
+  void AddBaseFeature(IFeature feature)
+  void RemoveBaseFeature(IFeature feature)
   void AddToolFeature(IFeature feature)
   void RemoveToolFeature(IFeature feature)
   IFeature ChangeBaseFeature(IFeature newBase)
@@ -146,6 +153,7 @@ Propriedades comuns a TODAS as features (herdadas de FeatureBase):
   static Placement Placement.At(Point3D point, double rotationZDegrees = 0)
   static Placement Placement.Translate(Vector3D offset)
   static Placement Placement.RotationZ(double degrees)
+  static Placement Placement.RotationAbout(Point3D pivot, Vector3D axis, double degrees)
   static Placement Placement.Rotation(Vector3D axis, double degrees)
   Vector3D Translation { get; }
   bool HasRotation { get; }

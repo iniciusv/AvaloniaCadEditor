@@ -17,7 +17,12 @@ O app AvaloniaCad observa esta pasta e redesenha o modelo sempre que um arquivo 
 
 ## Peças paramétricas
 - Peças reutilizáveis são `record`s em `Pecas/` que herdam de `Part`; os parâmetros são o construtor primário.
-- `Build()` devolve a geometria em coordenadas locais (origem da peça em 0,0,0) e não chama `AddFeature`.
+- Um objeto/sólido reutilizável (motor, parafuso, suporte etc.) é uma peça: crie/edite o arquivo dele em `Pecas/`
+  nesse formato, mesmo que só apareça uma vez na cena. NUNCA escreva `var x = new BoxFeature(...); AddFeature(x);`
+  num arquivo de `Pecas/` — isso só existe no arquivo de entrada (`Cena.cs`).
+- `Build()` devolve a geometria em coordenadas locais (origem da peça em 0,0,0) e não chama `AddFeature`/`Add`.
+  Para peças compostas (corpo + furos + eixo etc.), combine tudo dentro do próprio `Build()` com
+  `BooleanFeature.CreateUnion`/`CreateDifference`/`CreateIntersection` e devolva a `IFeature` final.
 - Na cena: `var p = Add(new MinhaPeca(...), at: Placement.At(x, y, z));`. Variantes: expressão `with` do C# sobre `p.Part` (ex.: mudar só a espessura).
 - Pontos da peça no mundo: `p.World(peca => peca.AlgumPonto)`.
 - Exemplo completo em `.cad/api.md` (seção PEÇAS PARAMÉTRICAS).

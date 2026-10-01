@@ -233,6 +233,12 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
     public bool IsProjectOpen => _project != null;
     public string? ProjectName => _project?.Name;
 
+    /// <summary>Arquivo de entrada da cena (o único com statements top-level): Cena.cs numa cena de arquivo único.</summary>
+    public string EntryFile => _project != null ? _entryFile : ScriptDocument.DefaultSceneFile;
+
+    /// <summary>Fontes atuais de todos os arquivos da cena (com o texto ainda não salvo do editor), para dar contexto à IA.</summary>
+    public IReadOnlyList<ScriptDocument> GetSceneDocuments() => CurrentDocuments();
+
     /// <summary>Arquivo mostrado no editor. Trocar de arquivo guarda o texto atual em memória.</summary>
     public string? ActiveFile
     {

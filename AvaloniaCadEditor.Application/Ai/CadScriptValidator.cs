@@ -8,16 +8,19 @@ namespace AvaloniaCadEditor.Application.Ai;
 public sealed record CadScriptValidationResult(bool IsValid, string? Error);
 
 /// <summary>
-/// Validação sintática barata (sem compilar/executar) do script retornado pela IA,
+/// Validação sintática barata (sem compilar/executar) do arquivo retornado pela IA,
 /// para dar um erro claro e rápido antes de rodar o <c>ISceneEvaluator</c> de verdade.
+/// As regras dependem do formato esperado do arquivo (<see cref="CadFileKind"/>): um script solto
+/// (statements top-level + AddFeature/Add) ou um arquivo de peça (um único record : Part).
 /// </summary>
 public static class CadScriptValidator
 {
-    public static CadScriptValidationResult Validate(string code)
+    public static CadScriptValidationResult Validate(string code, CadFileKind kind = CadFileKind.StandaloneScript)
     {
         if (string.IsNullOrWhiteSpace(code))
         {
-            return new CadScriptValidationResult(false, "O script está vazio.");
+            return new CadScriptValidationResult(false,
+                kind == CadFileKind.PartFile ? "O arquivo da peça está vazio." : "O script está vazio.");
         }
 
         var options = new CSharpParseOptions(kind: SourceCodeKind.Script);
@@ -34,17 +37,24 @@ public static class CadScriptValidator
 
         if (root.DescendantNodes().OfType<UsingDirectiveSyntax>().Any())
         {
-            return new CadScriptValidationResult(false, "O script não pode conter diretivas 'using'.");
+            return new CadScriptValidationResult(false,
+                "O arquivo não pode conter diretivas 'using' (use o nome totalmente qualificado quando precisar, ex.: [System.ComponentModel.DataAnnotations.Range(10, 500)]).");
         }
 
         if (root.DescendantNodes().OfType<BaseNamespaceDeclarationSyntax>().Any())
         {
-            return new CadScriptValidationResult(false, "O script não pode declarar 'namespace'.");
+            return new CadScriptValidationResult(false, "O arquivo não pode declarar 'namespace'.");
         }
 
+        return kind == CadFileKind.PartFile ? ValidatePartFile(root) : ValidateScriptFile(root);
+    }
+
+    private static CadScriptValidationResult ValidateScriptFile(SyntaxNode root)
+    {
         if (root.DescendantNodes().OfType<TypeDeclarationSyntax>().Any())
         {
-            return new CadScriptValidationResult(false, "O script não pode declarar 'class', 'struct', 'record' ou 'interface'.");
+            return new CadScriptValidationResult(false,
+                "O script não pode declarar 'class', 'struct', 'record' ou 'interface' — peças reutilizáveis vão num arquivo próprio em Pecas/ (um record que herda de Part).");
         }
 
         bool hasAddFeature = root.DescendantNodes()
@@ -57,4 +67,55 @@ public static class CadScriptValidator
 
         return new CadScriptValidationResult(true, null);
     }
+
+    private static CadScriptValidationResult ValidatePartFile(SyntaxNode root)
+    {
+        if (root.DescendantNodes().OfType<GlobalStatementSyntax>().Any())
+        {
+            return new CadScriptValidationResult(false,
+                "Um arquivo de peça não pode ter statements soltos (AddFeature, Add, var no nível superior) — isso pertence ao arquivo de entrada da cena (ex.: Cena.cs).");
+        }
+
+        if (root.DescendantNodes().OfType<TypeDeclarationSyntax>().Any(t => t is not RecordDeclarationSyntax))
+        {
+            return new CadScriptValidationResult(false,
+                "Um arquivo de peça só pode declarar um 'record' que herda de Part — nada de 'class', 'struct' ou 'interface' soltos.");
+        }
+
+        var records = root.DescendantNodes().OfType<RecordDeclarationSyntax>()
+            .Where(r => !r.Modifiers.Any(SyntaxKind.AbstractKeyword))
+            .Where(r => r.BaseList?.Types.Any(t => SimpleBaseName(t.Type) == "Part") == true)
+            .ToList();
+
+        if (records.Count != 1)
+        {
+            return new CadScriptValidationResult(false, records.Count == 0
+                ? "O arquivo precisa declarar um 'record' que herda de Part (ex.: public sealed record NomeDaPeca(double Largura = 50) : Part)."
+                : $"O arquivo deve declarar exatamente um record que herda de Part (encontrados {records.Count}).");
+        }
+
+        bool hasBuild = records[0].Members.OfType<MethodDeclarationSyntax>().Any(m => m.Identifier.Text == "Build");
+        if (!hasBuild)
+        {
+            return new CadScriptValidationResult(false, $"{records[0].Identifier.Text} precisa sobrescrever 'protected override IFeature Build()'.");
+        }
+
+        bool callsSceneMethods = root.DescendantNodes()
+            .OfType<InvocationExpressionSyntax>()
+            .Any(inv => inv.Expression is IdentifierNameSyntax id && (id.Identifier.Text == "AddFeature" || id.Identifier.Text == "Add"));
+        if (callsSceneMethods)
+        {
+            return new CadScriptValidationResult(false,
+                "Build() não deve chamar AddFeature/Add — só devolve a IFeature da peça; quem registra e posiciona a instância é o arquivo de entrada da cena.");
+        }
+
+        return new CadScriptValidationResult(true, null);
+    }
+
+    private static string? SimpleBaseName(TypeSyntax type) => type switch
+    {
+        SimpleNameSyntax s => s.Identifier.Text,
+        QualifiedNameSyntax q => q.Right.Identifier.Text,
+        _ => null
+    };
 }

@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AiCore.Abstractions;
 using AiCore.Models;
 using AiCore.Services;
 using AvaloniaCadEditor.Application.Interfaces;
+using AvaloniaCadEditor.Application.Scenes;
+using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.Settings;
 
 namespace AvaloniaCadEditor.Application.Ai;
@@ -110,9 +113,9 @@ public class CadScriptChatSession
             }
 
             string code = parsed.Payload!;
-            var syntaxResult = CadScriptValidator.Validate(code);
+            var syntaxResult = CadScriptValidator.Validate(code, context.Kind);
             SceneEvaluationResult? evalResult = syntaxResult.IsValid
-                ? await _evaluator.EvaluateAsync(code)
+                ? await EvaluateAsync(code, context)
                 : null;
 
             if (syntaxResult.IsValid && evalResult!.Success)
@@ -160,6 +163,50 @@ public class CadScriptChatSession
         }
 
         throw new InvalidOperationException("Loop de tentativas do CadScriptChatSession terminou sem retornar um resultado.");
+    }
+
+    /// <summary>
+    /// Avalia o código proposto pela IA no contexto certo: um script de arquivo único é avaliado
+    /// sozinho; um arquivo de uma cena com vários arquivos (entrada ou peça) é avaliado junto dos
+    /// demais arquivos do projeto (<see cref="CadScriptContext.ProjectDocuments"/>), para que tipos
+    /// declarados noutros arquivos (peças, constantes) resolvam normalmente. Um arquivo de peça não
+    /// tem statements próprios para executar, então ganha um arquivo de entrada sintético que só
+    /// instancia a peça (<c>Add(new Peca(...))</c>), forçando o <c>Build()</c> a rodar.
+    /// </summary>
+    private Task<SceneEvaluationResult> EvaluateAsync(string code, CadScriptContext context)
+    {
+        string fileName = context.FileName ?? ScriptDocument.DefaultSceneFile;
+        var others = context.ProjectDocuments ?? Array.Empty<ScriptDocument>();
+
+        if (context.Kind != CadFileKind.PartFile)
+        {
+            if (others.Count == 0) return _evaluator.EvaluateAsync(code);
+
+            var docs = new List<ScriptDocument> { new(fileName, code) };
+            docs.AddRange(others.Where(d => !string.Equals(d.FilePath, fileName, StringComparison.OrdinalIgnoreCase)));
+            return _evaluator.EvaluateAsync(docs);
+        }
+
+        var partDoc = new ScriptDocument(fileName, code);
+        var types = PartSourceEditor.FindPartTypes(new[] { partDoc });
+        if (types.Count != 1)
+        {
+            return Task.FromResult(new SceneEvaluationResult(Array.Empty<IFeature>(), false, types.Count == 0
+                ? "O arquivo não declara nenhum record que herda de Part."
+                : $"O arquivo declara {types.Count} peças; deveria declarar exatamente uma."));
+        }
+
+        var partDocs = new List<ScriptDocument> { partDoc };
+        partDocs.AddRange(others.Where(d => !string.Equals(d.FilePath, fileName, StringComparison.OrdinalIgnoreCase)));
+
+        string entryFile = "__CadScriptPartCheck.cs";
+        while (partDocs.Any(d => string.Equals(d.FilePath, entryFile, StringComparison.OrdinalIgnoreCase)))
+        {
+            entryFile = "_" + entryFile;
+        }
+        partDocs.Add(new ScriptDocument(entryFile, PartSourceEditor.BuildAddStatement(types[0])));
+
+        return _evaluator.EvaluateAsync(partDocs);
     }
 
     /// <summary>
