@@ -1,5 +1,6 @@
 using System.Reflection;
 using AvaloniaCadEditor.Domain.Features;
+using AvaloniaCadEditor.Domain.Profiles;
 using AvaloniaCadEditor.Domain.ValueObjects;
 using FluentAssertions;
 
@@ -112,13 +113,90 @@ public class FeatureFingerprintTests
             .Should().NotBe(Fp(Box().Transformed(Placement.Translate(new Vector3D(2, 0, 0)))));
     }
 
+    private static ImportedMeshFeature SemChave() => new(AvaloniaCadEditor.Domain.Mesh.TriangleMesh.Empty);
+
     [Fact]
     public void TiposNaoSuportados_NaoTemChave()
     {
-        FeatureFingerprint.Compute(new FilletFeature("f", Box(), 1)).Should().BeNull();
-        FeatureFingerprint.Compute(new ImportedMeshFeature(AvaloniaCadEditor.Domain.Mesh.TriangleMesh.Empty)).Should().BeNull();
-        // Um filho sem chave contamina o pai: a booleana inteira fica fora do cache.
-        FeatureFingerprint.Compute(BooleanFeature.CreateUnion("u", Box(), new FilletFeature("f", Cylinder(), 1))).Should().BeNull();
+        FeatureFingerprint.Compute(SemChave()).Should().BeNull();
+        // Um filho sem chave contamina o pai: a booleana (ou o fillet) inteira fica fora do cache.
+        FeatureFingerprint.Compute(BooleanFeature.CreateUnion("u", Box(), SemChave())).Should().BeNull();
+        FeatureFingerprint.Compute(new FilletFeature("f", SemChave(), 1)).Should().BeNull();
+    }
+
+    private static FilletFeature Fillet(IFeature? baseFeature = null) =>
+        new("f", baseFeature ?? Box(), 1) { Mode = FilletMode.Bevel, ApplyToAllEdges = true };
+
+    [Fact]
+    public void Fillet_IgualTemMesmaChave_EDependeDeCadaParametro()
+    {
+        Fp(Fillet()).Should().Be(Fp(Fillet()));
+
+        var baseFillet = Fp(Fillet());
+        var f1 = Fillet(); f1.Radius = 2;
+        var f2 = Fillet(); f2.Mode = FilletMode.Round;
+        var f3 = Fillet(); f3.ApplyToAllEdges = false;
+        var f4 = Fillet(); f4.AddEdge(new EdgeReference(f4.BaseFeature, EdgeType.TopFront));
+        var f5 = Fillet(); f5.AddFace(new FaceReference(f5.BaseFeature, (int)FaceType.Top, new Vector3D(0, 0, 1), "topo"));
+        var outraBase = Box(); outraBase.Height = 6;
+        var f6 = Fillet(outraBase);
+        new[] { f1, f2, f3, f4, f5, f6 }.Select(Fp).Should().AllSatisfy(k => k.Should().NotBe(baseFillet));
+
+        // A geometria do dono da aresta entra na chave.
+        var a = Fillet(); a.AddEdge(new EdgeReference(Box(), EdgeType.TopFront));
+        var donoMaior = Box(); donoMaior.Width = 30;
+        var b = Fillet(); b.AddEdge(new EdgeReference(donoMaior, EdgeType.TopFront));
+        Fp(a).Should().NotBe(Fp(b));
+    }
+
+    private static ExtrudeFeature Extrusao(IProfile? profile = null) =>
+        new(profile ?? new PolygonProfile(new[] { new Point3D(0, 0, 0), new Point3D(4, 0, 0), new Point3D(0, 3, 0) }), 5);
+
+    [Fact]
+    public void Extrusao_IgualTemMesmaChave_EDependeDoPerfilEDaDirecao()
+    {
+        Fp(Extrusao()).Should().Be(Fp(Extrusao()));
+
+        var baseExt = Fp(Extrusao());
+        var e1 = Extrusao(); e1.Direction = new Vector3D(0, 0, 6);
+        var e2 = Extrusao(new PolygonProfile(new[] { new Point3D(0, 0, 0), new Point3D(4, 0, 0), new Point3D(0, 3.5, 0) }));
+        var e3 = Extrusao(new PolygonProfile(new[] { new Point3D(0, 0, 0), new Point3D(4, 0, 0), new Point3D(0, 3, 0) },
+            plane: new WorkPlane(new Vector3D(1, 0, 0), Point3D.Origin)));
+        new[] { e1, e2, e3 }.Select(Fp).Should().AllSatisfy(k => k.Should().NotBe(baseExt));
+
+        var ret = Fp(Extrusao(new RectangleProfile(Point3D.Origin, 4, 3)));
+        Fp(Extrusao(new RectangleProfile(Point3D.Origin, 4, 3))).Should().Be(ret);
+        Fp(Extrusao(new RectangleProfile(Point3D.Origin, 4, 3, rotationAngle: 0.1))).Should().NotBe(ret);
+
+        var circ = Fp(Extrusao(new CircleProfile(Point3D.Origin, 2)));
+        Fp(Extrusao(new CircleProfile(Point3D.Origin, 2.5))).Should().NotBe(circ);
+    }
+
+    /// <summary>Perfis que o fingerprint não sabe descrever (ex.: compostos, com furos) ficam fora do cache.</summary>
+    [Fact]
+    public void Extrusao_DePerfilDesconhecido_NaoTemChave()
+    {
+        var face = new FaceProfile(Box(), WorkPlane.XY, AvaloniaCadEditor.Domain.Mesh.TriangleMesh.Empty);
+        FeatureFingerprint.Compute(Extrusao(face)).Should().BeNull();
+    }
+
+    [Theory]
+    [InlineData(typeof(PolygonProfile), new[] { "Vertices", "Plane" })]
+    [InlineData(typeof(RectangleProfile), new[] { "Center", "Width", "Height", "RotationAngle", "Plane" })]
+    [InlineData(typeof(CircleProfile), new[] { "Center", "Radius", "Plane" })]
+    public void FingerprintCobreTodasAsPropriedadesDosPerfis(Type profileType, string[] cobertas)
+    {
+        // Derivadas (Normal, Area, Center do polígono) ou sem efeito na geometria.
+        var naoGeometricas = new HashSet<string> { "Id", "Classification", "AvailableCandidates", "SourceEntityIds", "Normal", "Area", "Center", "IsSelected", "IsVisible" };
+
+        var faltando = profileType
+            .GetProperties(BindingFlags.Public | BindingFlags.Instance)
+            .Select(p => p.Name)
+            .Distinct()
+            .Where(n => !naoGeometricas.Contains(n) && !cobertas.Contains(n))
+            .ToList();
+
+        faltando.Should().BeEmpty($"{profileType.Name} ganhou propriedades que o FeatureFingerprint não conhece");
     }
 
     /// <summary>
@@ -133,6 +211,9 @@ public class FeatureFingerprintTests
     [InlineData(typeof(PrismFeature), new[] { "Vertices", "Height", "Plane" })]
     [InlineData(typeof(BooleanFeature), new[] { "Operation", "BaseFeatures", "ToolFeatures", "BaseFeature" })]
     [InlineData(typeof(TransformedFeature), new[] { "Source", "Placement" })]
+    [InlineData(typeof(FilletFeature), new[] { "BaseFeature", "Edges", "Faces", "Radius", "Mode", "ApplyToAllEdges" })]
+    // BaseArea, Volume, BaseCenter, TopCenter e Centroid são derivadas de Profile/Height/Direction.
+    [InlineData(typeof(ExtrudeFeature), new[] { "Profile", "Height", "Direction", "BaseArea", "Volume", "BaseCenter", "TopCenter", "Centroid" })]
     [InlineData(typeof(PartInstance<PlacaTeste>), new[] { "Definition", "Placement", "Part", "PartTypeName" })]
     public void FingerprintCobreTodasAsPropriedadesPublicas(Type featureType, string[] cobertas)
     {

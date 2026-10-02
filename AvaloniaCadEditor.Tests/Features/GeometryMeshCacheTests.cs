@@ -115,16 +115,46 @@ public class GeometryMeshCacheTests
         kernel.MeshBuildCount.Should().Be(2);
     }
 
+    private sealed record BlocoChanfrado(double Largura) : Part
+    {
+        protected override IFeature Build() => Chanfrado(Largura);
+    }
+
+    private static FilletFeature Chanfrado(double largura) =>
+        new("chanfro", new BoxFeature(Point3D.Origin, largura, 10, 10), 1) { Mode = FilletMode.Bevel, ApplyToAllEdges = true };
+
+    [Fact]
+    public void MoverPecaComFillet_EntreExecucoes_NaoRetessela()
+    {
+        var kernel = new OpenCascadeGeometryKernel();
+        var settings = new TessellationSettings();
+        PartInstance<BlocoChanfrado> Instancia(double x) =>
+            new(new BlocoChanfrado(20), Chanfrado(20), Placement.At(x, 0, 0));
+
+        kernel.BuildFeatureMesh(Instancia(0), settings);
+        kernel.BeginSceneRebuild();
+        kernel.BuildFeatureMesh(Instancia(30), settings);
+
+        kernel.MeshBuildCount.Should().Be(1, "fillets são cacheados pela geometria, como as booleanas");
+    }
+
+    /// <summary>Subclasse de um perfil conhecido: pode ter parâmetros a mais, então não tem chave.</summary>
+    private sealed class PerfilDesconhecido : AvaloniaCadEditor.Domain.Profiles.PolygonProfile
+    {
+        public PerfilDesconhecido() : base(new[] { new Point3D(0, 0, 0), new Point3D(10, 0, 0), new Point3D(0, 10, 0) }) { }
+    }
+
+    private static ExtrudeFeature ExtrusaoDePerfilDesconhecido() => new(new PerfilDesconhecido(), 5);
+
     [Fact]
     public void FeatureSemChave_ContinuaFuncionandoSemCache()
     {
         var kernel = new OpenCascadeGeometryKernel();
         var settings = new TessellationSettings();
 
-        var fillet = new FilletFeature("f", new BoxFeature(Point3D.Origin, 10, 10, 10), 1) { ApplyToAllEdges = true };
-        kernel.BuildFeatureMesh(fillet, settings);
+        kernel.BuildFeatureMesh(ExtrusaoDePerfilDesconhecido(), settings);
         kernel.BeginSceneRebuild();
-        kernel.BuildFeatureMesh(new FilletFeature("f", new BoxFeature(Point3D.Origin, 10, 10, 10), 1) { ApplyToAllEdges = true }, settings);
+        kernel.BuildFeatureMesh(ExtrusaoDePerfilDesconhecido(), settings);
 
         kernel.MeshBuildCount.Should().Be(2);
     }

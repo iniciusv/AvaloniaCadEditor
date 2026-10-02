@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
+using AvaloniaCadEditor.Domain.Profiles;
 using AvaloniaCadEditor.Domain.ValueObjects;
 
 namespace AvaloniaCadEditor.Domain.Features;
@@ -43,6 +44,8 @@ public static class FeatureFingerprint
             CylinderFeature cylinder => AppendCylinder(sb, cylinder),
             PrismFeature prism => AppendPrism(sb, prism),
             BooleanFeature boolean => AppendBoolean(sb, boolean),
+            FilletFeature fillet => AppendFillet(sb, fillet),
+            ExtrudeFeature extrude => AppendExtrude(sb, extrude),
             PartInstance instance => AppendPlacement(sb, instance.Placement) && Append(sb, instance.Definition),
             TransformedFeature transformed => AppendPlacement(sb, transformed.Placement) && Append(sb, transformed.Source),
             _ => false
@@ -86,6 +89,86 @@ public static class FeatureFingerprint
     {
         sb.Append(boolean.Operation).Append(';');
         return AppendList(sb, boolean.BaseFeatures) && AppendList(sb, boolean.ToolFeatures);
+    }
+
+    /// <summary>
+    /// Arestas e faces entram com a geometria da feature a que pertencem (o kernel lê a aresta
+    /// dessa feature, que nem sempre é a própria <see cref="FilletFeature.BaseFeature"/>).
+    /// </summary>
+    private static bool AppendFillet(StringBuilder sb, FilletFeature fillet)
+    {
+        AppendDouble(sb, fillet.Radius);
+        sb.Append(fillet.Mode).Append(';').Append(fillet.ApplyToAllEdges ? 'A' : 'S').Append(';');
+        if (!Append(sb, fillet.BaseFeature) || fillet.Edges == null || fillet.Faces == null) return false;
+
+        sb.Append("E[");
+        foreach (var edge in fillet.Edges)
+        {
+            if (edge == null) return false;
+            sb.Append(edge.EdgeId).Append(';');
+            if (!Append(sb, edge.ParentFeature)) return false;
+        }
+        sb.Append("]F[");
+        foreach (var face in fillet.Faces)
+        {
+            if (face == null) return false;
+            sb.Append(face.FaceId).Append(';');
+            AppendVector(sb, face.NormalHint);
+            if (!Append(sb, face.ParentFeature)) return false;
+        }
+        sb.Append(']');
+        return true;
+    }
+
+    private static readonly HashSet<Type> KnownProfileTypes = new()
+    {
+        typeof(PolygonProfile), typeof(RectangleProfile), typeof(CircleProfile)
+    };
+
+    private static bool AppendExtrude(StringBuilder sb, ExtrudeFeature extrude)
+    {
+        AppendDouble(sb, extrude.Height);
+        AppendVector(sb, extrude.Direction);
+        return AppendProfile(sb, extrude.Profile);
+    }
+
+    /// <summary>
+    /// Só perfis cujos parâmetros conhecemos por completo; os demais ficam fora do cache. Tipo exato:
+    /// uma subclasse pode ter parâmetros a mais que não entrariam na chave.
+    /// </summary>
+    private static bool AppendProfile(StringBuilder sb, IProfile? profile)
+    {
+        if (profile == null || !KnownProfileTypes.Contains(profile.GetType())) return false;
+        sb.Append(profile.GetType().FullName).Append('{');
+
+        bool ok;
+        switch (profile)
+        {
+            case PolygonProfile polygon:
+                if (polygon.Vertices == null) return false;
+                sb.Append('[');
+                foreach (var vertex in polygon.Vertices) AppendPoint(sb, vertex);
+                sb.Append(']');
+                ok = AppendPlane(sb, polygon.Plane);
+                break;
+            case RectangleProfile rectangle:
+                AppendPoint(sb, rectangle.Center);
+                AppendDouble(sb, rectangle.Width);
+                AppendDouble(sb, rectangle.Height);
+                AppendDouble(sb, rectangle.RotationAngle);
+                ok = AppendPlane(sb, rectangle.Plane);
+                break;
+            case CircleProfile circle:
+                AppendPoint(sb, circle.Center);
+                AppendDouble(sb, circle.Radius);
+                ok = AppendPlane(sb, circle.Plane);
+                break;
+            default:
+                return false;
+        }
+
+        sb.Append('}');
+        return ok;
     }
 
     private static bool AppendList(StringBuilder sb, IReadOnlyList<IFeature>? features)
