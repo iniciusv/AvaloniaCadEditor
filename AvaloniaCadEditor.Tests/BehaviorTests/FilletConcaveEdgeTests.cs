@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.ValueObjects;
@@ -36,23 +37,33 @@ public class FilletConcaveEdgeTests
 
         // A aresta côncava do degrau fica em Y=10, Z=20 (ver EdgeDetectorTests). As normais das
         // faces que se encontram ali são +Z (piso do rebaixo) e -Y (parede), então o perfil do
-        // cutter (offsets -r em cada normal) cairia dentro do material: Y em [10, 11] e Z em
-        // [19, 20], deixando vértices como (10, 19) e (11, 20). Longe das pontas em X (onde as
-        // arestas transversais, essas sim convexas, são chanfradas de verdade), esse miolo de
-        // material não pode ganhar vértices — sem entalhe, ali só existe sólido.
-        var verticesNoEntalheProibido = Enumerable.Range(0, mesh.VertexCount)
-            .Where(i =>
+        // cutter (offsets -r em cada normal) cairia dentro do material e deixaria uma face
+        // diagonal de (Y=10, Z=19) a (Y=11, Z=20) ao longo de todo o X. Sem o entalhe, junto a essa
+        // aresta só existem o piso e a parede, com normais alinhadas a Z e a Y. Faces dos chanfros
+        // legítimos nas pontas (X=0/40) têm componente X na normal e ficam de fora do filtro.
+        var facesDoEntalhe = Enumerable.Range(0, mesh.Indices.Length / 3)
+            .Where(t =>
             {
-                double x = mesh.Positions[i * 3];
-                double y = mesh.Positions[i * 3 + 1];
-                double z = mesh.Positions[i * 3 + 2];
-                return x is > 15 and < 25
-                    && y is > 10.01 and < 10.99
-                    && z is > 19.01 and < 19.99;
+                var v = Enumerable.Range(0, 3)
+                    .Select(k => mesh.Indices[t * 3 + k] * 3)
+                    .Select(o => (X: (double)mesh.Positions[o], Y: (double)mesh.Positions[o + 1], Z: (double)mesh.Positions[o + 2]))
+                    .ToArray();
+
+                bool colada = v.All(p => p.Y is > 9.8 and < 11.2 && p.Z is > 18.8 and < 20.2);
+                if (!colada) return false;
+
+                double ux = v[1].X - v[0].X, uy = v[1].Y - v[0].Y, uz = v[1].Z - v[0].Z;
+                double wx = v[2].X - v[0].X, wy = v[2].Y - v[0].Y, wz = v[2].Z - v[0].Z;
+                double nx = uy * wz - uz * wy, ny = uz * wx - ux * wz, nz = ux * wy - uy * wx;
+                double len = Math.Sqrt(nx * nx + ny * ny + nz * nz);
+                if (len < 1e-9) return false;
+                nx /= len; ny /= len; nz /= len;
+
+                return Math.Abs(nx) < 0.1 && Math.Abs(ny) > 0.3 && Math.Abs(nz) > 0.3;
             })
             .ToList();
 
-        verticesNoEntalheProibido.Should().BeEmpty(
+        facesDoEntalhe.Should().BeEmpty(
             "a aresta côncava do degrau não deveria ser chanfrada (isso cortaria material que deve continuar sólido)");
     }
 }
