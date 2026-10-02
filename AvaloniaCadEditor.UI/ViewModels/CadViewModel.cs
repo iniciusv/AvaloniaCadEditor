@@ -161,7 +161,7 @@ public class CadViewModel : INotifyPropertyChanged
 				_hoverTimer.Stop();
 				if (_lastHoverRay.HasValue)
 				{
-					var hit = MeshManager.Raycast3D(Sketch, _lastHoverRay.Value);
+					var hit = RaycastScene(_lastHoverRay.Value);
 					if (hit?.FeatureId != null && IsFacePickMode())
 					{
 						HoveredFeatureId = null;
@@ -851,6 +851,7 @@ public class CadViewModel : INotifyPropertyChanged
 			if (_activeBooleanGroupName != value)
 			{
 				_activeBooleanGroupName = value;
+				HighlightedToolId = null;
 				OnPropertyChanged();
 				OnPropertyChanged(nameof(IsEditingBooleanGroup));
 				OnPropertyChanged(nameof(ActiveBooleanGroup));
@@ -858,10 +859,92 @@ public class CadViewModel : INotifyPropertyChanged
 		}
 	}
 
-	public AvaloniaCadEditor.Domain.Features.BooleanFeature? ActiveBooleanGroup => 
+	public AvaloniaCadEditor.Domain.Features.BooleanFeature? ActiveBooleanGroup =>
         Sketch.Features.OfType<AvaloniaCadEditor.Domain.Features.BooleanFeature>().FirstOrDefault(f => f.Name == _activeBooleanGroupName);
 
 	public bool IsEditingBooleanGroup => !string.IsNullOrEmpty(_activeBooleanGroupName);
+
+	/// <summary>
+	/// Sólidos-ferramenta (vazios) do grupo aberto com duplo-clique, desenhados em vermelho. Numa booleana
+	/// solta são as próprias <c>ToolFeatures</c>; numa instância de peça são as ferramentas das booleanas da
+	/// definição, envolvidas num <see cref="TransformedFeature"/> com o <c>Placement</c> da instância para
+	/// aparecerem no lugar certo do mundo.
+	/// </summary>
+	public IReadOnlyList<IFeature> ActiveToolFeatures
+	{
+		get
+		{
+			if (string.IsNullOrEmpty(_activeBooleanGroupName)) return Array.Empty<IFeature>();
+
+			var group = Sketch.Features.FirstOrDefault(f => f.Name == _activeBooleanGroupName);
+			switch (group)
+			{
+				case AvaloniaCadEditor.Domain.Features.BooleanFeature boolean:
+					return boolean.ToolFeatures;
+				case PartInstance instance:
+					if (!ReferenceEquals(instance, _partToolsOwner))
+					{
+						_partToolsOwner = instance;
+						_partTools = CollectToolFeatures(instance.Definition)
+							.Select(tool => (IFeature)new TransformedFeature(tool, instance.Placement, tool.Name))
+							.ToList();
+					}
+					return _partTools;
+				default:
+					return Array.Empty<IFeature>();
+			}
+		}
+	}
+
+	private PartInstance? _partToolsOwner;
+	private IReadOnlyList<IFeature> _partTools = Array.Empty<IFeature>();
+
+	/// <summary>Ferramentas de todas as booleanas de uma árvore de features (bases, fillets e transformações incluídos).</summary>
+	public static IReadOnlyList<IFeature> CollectToolFeatures(IFeature root)
+	{
+		var tools = new List<IFeature>();
+		void Visit(IFeature feature)
+		{
+			if (feature is AvaloniaCadEditor.Domain.Features.BooleanFeature boolean)
+			{
+				foreach (var b in boolean.BaseFeatures) Visit(b);
+				tools.AddRange(boolean.ToolFeatures);
+				return;
+			}
+			foreach (var dep in feature.Dependencies) Visit(dep);
+		}
+		Visit(root);
+		return tools;
+	}
+
+	/// <summary>Ferramenta do grupo aberto que foi clicada; desenhada com realce.</summary>
+	private Guid? _highlightedToolId;
+	public Guid? HighlightedToolId
+	{
+		get => _highlightedToolId;
+		set { if (_highlightedToolId != value) { _highlightedToolId = value; OnPropertyChanged(); } }
+	}
+
+	/// <summary>
+	/// Clique num sólido vermelho: realça, mostra o nome no status e seleciona a declaração no código
+	/// (em Pecas/ para ferramentas de peça, no arquivo da cena para booleanas soltas).
+	/// </summary>
+	public void RevealToolFeature(IFeature tool)
+	{
+		HighlightedToolId = tool.Id;
+
+		if (tool is TransformedFeature wrapper && _partToolsOwner != null && _partTools.Contains(tool))
+		{
+			var local = wrapper.Source;
+			StatusText = $"{local.Name} ({local.GetType().Name}) — {_partToolsOwner.PartTypeName}";
+			ScriptEditor?.RevealPartTool(_partToolsOwner.PartTypeName, local.Name);
+		}
+		else
+		{
+			StatusText = $"{tool.Name} ({tool.GetType().Name})";
+			ScriptEditor?.RevealLooseFeatureLine(tool);
+		}
+	}
 
 	public System.Windows.Input.ICommand ExitBooleanEditModeCommand { get; }
 
@@ -875,8 +958,30 @@ public class CadViewModel : INotifyPropertyChanged
 			return over;
 		}
 
-		return MeshManager.Raycast3D(Sketch, ray, f => ActiveBooleanGroup != null && ActiveBooleanGroup.ToolFeatures.Contains(f));
+		return RaycastScene(ray);
 	}
+
+	/// <summary>
+	/// Raycast na cena incluindo as ferramentas do grupo aberto (soltas ou de peça). Com um grupo aberto, o
+	/// próprio sólido do grupo é atravessado, para o clique alcançar os vazios que ficam dentro dele.
+	/// </summary>
+	private RaycastHit? RaycastScene(Ray ray)
+	{
+		if (!IsEditingBooleanGroup)
+		{
+			return MeshManager.Raycast3D(Sketch, ray);
+		}
+
+		var tools = ActiveToolFeatures;
+		var groupId = Sketch.Features.FirstOrDefault(f => f.Name == _activeBooleanGroupName)?.Id;
+		return MeshManager.RaycastAll3D(Sketch, ray, f => tools.Contains(f), ExtraToolFeatures(tools))
+			.Cast<RaycastHit?>()
+			.FirstOrDefault(h => h!.Value.FeatureId != groupId);
+	}
+
+	/// <summary>Ferramentas que não estão no sketch (as de peça) e por isso precisam ir como extras no raycast.</summary>
+	private IEnumerable<IFeature>? ExtraToolFeatures(IReadOnlyList<IFeature> tools) =>
+		ReferenceEquals(tools, _partTools) && tools.Count > 0 ? tools : null;
 
 	/// <summary>
 	/// Alterna o realce (e o próximo alvo de clique) entre sólidos sobrepostos no ponto onde o mouse
@@ -895,8 +1000,9 @@ public class CadViewModel : INotifyPropertyChanged
 
 		if (_pickCandidates == null)
 		{
+			var tools = ActiveToolFeatures;
 			_pickCandidates = MeshManager
-				.RaycastAll3D(Sketch, ray, f => ActiveBooleanGroup != null && ActiveBooleanGroup.ToolFeatures.Contains(f))
+				.RaycastAll3D(Sketch, ray, f => tools.Contains(f), ExtraToolFeatures(tools))
 				.ToList();
 			_pickCandidateIndex = -1;
 		}
@@ -1284,7 +1390,7 @@ public class CadViewModel : INotifyPropertyChanged
 				{
 					_selectionService.ClearSelection(Sketch);
 				}
-				else if (ActiveBooleanGroup != null)
+				else if (IsEditingBooleanGroup)
 				{
 					ActiveBooleanGroupName = null;
 				}

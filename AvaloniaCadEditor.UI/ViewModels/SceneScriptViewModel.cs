@@ -433,6 +433,32 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         }
     }
 
+    /// <summary>
+    /// Seleciona no editor a declaração de um sólido criado dentro do <c>Build()</c> de uma peça
+    /// (ver <see cref="PartSourceEditor.FindToolDeclaration"/>); sem ela, abre a declaração do record.
+    /// </summary>
+    public void RevealPartTool(string partTypeName, string toolName)
+    {
+        var location = PartSourceEditor.FindToolDeclaration(CurrentDocuments(), partTypeName, toolName);
+        if (location == null)
+        {
+            GoToPartDefinition(partTypeName);
+            _cadViewModel.StatusText = $"{toolName}: declaração não encontrada em {partTypeName} (nome gerado em laço?).";
+            return;
+        }
+        NavigateTo(location);
+    }
+
+    /// <summary>Seleciona no editor a linha onde uma feature solta foi registrada (AddFeature).</summary>
+    public void RevealLooseFeatureLine(IFeature feature)
+    {
+        var origin = FeatureOrigin.Of(feature);
+        if (origin == null || origin.Line <= 0) return;
+        RevealFeature(feature);
+        _cadViewModel.SidebarTabIndex = CadViewModel.CodeTabIndex;
+        RevealLine = new EditorLineRequest(origin.Line);
+    }
+
     private void SwitchActiveFile(string file)
     {
         SyncActiveDocument();

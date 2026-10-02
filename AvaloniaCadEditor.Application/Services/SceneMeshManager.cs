@@ -97,80 +97,65 @@ public class SceneMeshManager : ISceneMeshManager
         }
     }
 
-    public RaycastHit? Raycast3D(Sketch sketch, Ray ray, Func<IFeature, bool>? includeFilter = null)
+    public TriangleMesh GetMeshFor(IFeature feature) => GetOrBuildMesh(feature) ?? TriangleMesh.Empty;
+
+    private TriangleMesh? GetOrBuildMesh(IFeature feature)
     {
-        if (sketch.Features.Count == 0) return null;
-
-        float bestDist = float.MaxValue;
-        RaycastHit? bestHit = null;
-
-        foreach (var feature in sketch.Features)
+        if (!_featureMeshCache.TryGetValue(feature.Id, out var mesh))
         {
-            bool shouldProcess = feature.IsVisible || (includeFilter != null && includeFilter(feature));
-            if (!shouldProcess) continue;
-
-            if (!_featureMeshCache.TryGetValue(feature.Id, out var mesh))
-            {
-                mesh = _geometryKernel.BuildSolidMesh(new[] { feature }, _settingsProvider.GetSettings());
-                if (mesh != null)
-                {
-                    _featureMeshCache[feature.Id] = mesh;
-                }
-            }
-
+            mesh = _geometryKernel.BuildSolidMesh(new[] { feature }, _settingsProvider.GetSettings());
             if (mesh != null)
             {
-                var hit = ray.IntersectMesh(mesh);
-                if (hit.HasValue && hit.Value.Distance < bestDist)
-                {
-                    bestDist = hit.Value.Distance;
-                    bestHit = new RaycastHit(
-                        hit.Value.Distance,
-                        hit.Value.Point,
-                        hit.Value.Normal,
-                        feature.Id);
-                }
+                _featureMeshCache[feature.Id] = mesh;
             }
         }
+        return mesh;
+    }
 
+    public RaycastHit? Raycast3D(Sketch sketch, Ray ray, Func<IFeature, bool>? includeFilter = null, IEnumerable<IFeature>? extraFeatures = null)
+    {
+        RaycastHit? bestHit = null;
+        foreach (var hit in RaycastCandidates(sketch, ray, includeFilter, extraFeatures))
+        {
+            if (bestHit == null || hit.Distance < bestHit.Value.Distance)
+            {
+                bestHit = hit;
+            }
+        }
         return bestHit;
     }
 
-    public IReadOnlyList<RaycastHit> RaycastAll3D(Sketch sketch, Ray ray, Func<IFeature, bool>? includeFilter = null)
+    public IReadOnlyList<RaycastHit> RaycastAll3D(Sketch sketch, Ray ray, Func<IFeature, bool>? includeFilter = null, IEnumerable<IFeature>? extraFeatures = null)
     {
-        var hits = new List<RaycastHit>();
-        if (sketch.Features.Count == 0) return hits;
-
-        foreach (var feature in sketch.Features)
-        {
-            bool shouldProcess = feature.IsVisible || (includeFilter != null && includeFilter(feature));
-            if (!shouldProcess) continue;
-
-            if (!_featureMeshCache.TryGetValue(feature.Id, out var mesh))
-            {
-                mesh = _geometryKernel.BuildSolidMesh(new[] { feature }, _settingsProvider.GetSettings());
-                if (mesh != null)
-                {
-                    _featureMeshCache[feature.Id] = mesh;
-                }
-            }
-
-            if (mesh != null)
-            {
-                var hit = ray.IntersectMesh(mesh);
-                if (hit.HasValue)
-                {
-                    hits.Add(new RaycastHit(
-                        hit.Value.Distance,
-                        hit.Value.Point,
-                        hit.Value.Normal,
-                        feature.Id));
-                }
-            }
-        }
-
+        var hits = RaycastCandidates(sketch, ray, includeFilter, extraFeatures).ToList();
         hits.Sort((a, b) => a.Distance.CompareTo(b.Distance));
         return hits;
+    }
+
+    /// <summary>
+    /// Um acerto por sólido atingido: as features visíveis do sketch (ou aceitas por <paramref name="includeFilter"/>)
+    /// e, sempre, as <paramref name="extraFeatures"/> — sólidos que não estão no sketch, como as ferramentas de
+    /// uma peça já posicionadas no mundo (modo de edição de grupo).
+    /// </summary>
+    private IEnumerable<RaycastHit> RaycastCandidates(Sketch sketch, Ray ray, Func<IFeature, bool>? includeFilter, IEnumerable<IFeature>? extraFeatures)
+    {
+        var candidates = sketch.Features.Where(f => f.IsVisible || (includeFilter != null && includeFilter(f)));
+        if (extraFeatures != null)
+        {
+            candidates = candidates.Concat(extraFeatures);
+        }
+
+        foreach (var feature in candidates)
+        {
+            var mesh = GetOrBuildMesh(feature);
+            if (mesh == null) continue;
+
+            var hit = ray.IntersectMesh(mesh);
+            if (hit.HasValue)
+            {
+                yield return new RaycastHit(hit.Value.Distance, hit.Value.Point, hit.Value.Normal, feature.Id);
+            }
+        }
     }
 
     public TriangleMesh BuildCompositeMesh(Sketch sketch, IFeature? previewFeature)

@@ -83,11 +83,16 @@ public sealed class ViewportInputHandler
                     var hit = viewModel.Raycast3D(ray);
                     if (hit.HasValue && hit.Value.FeatureId.HasValue)
                     {
-                        var feature = viewModel.Sketch.Features.FirstOrDefault(f => f.Id == hit.Value.FeatureId.Value) 
-                                      ?? viewModel.ActiveBooleanGroup?.ToolFeatures.FirstOrDefault(f => f.Id == hit.Value.FeatureId.Value);
+                        var feature = viewModel.Sketch.Features.FirstOrDefault(f => f.Id == hit.Value.FeatureId.Value)
+                                      ?? viewModel.ActiveToolFeatures.FirstOrDefault(f => f.Id == hit.Value.FeatureId.Value);
                         if (feature is AvaloniaCadEditor.Domain.Features.BooleanFeature bf)
                         {
                             viewModel.ActiveBooleanGroupName = bf.Name;
+                        }
+                        else if (feature is AvaloniaCadEditor.Domain.Features.PartInstance instance
+                                 && CadViewModel.CollectToolFeatures(instance.Definition).Count > 0)
+                        {
+                            viewModel.ActiveBooleanGroupName = instance.Name;
                         }
                         else
                         {
@@ -182,7 +187,18 @@ public sealed class ViewportInputHandler
                                 // com várias bases de uma vez); só faz sentido no SelectTool - o
                                 // FilletTool sempre opera num alvo só, então continua no seleciona-único.
                                 bool isCtrl = e.KeyModifiers.HasFlag(KeyModifiers.Control) || viewModel.IsCtrlPressed;
-                                if (isCtrl && viewModel.CurrentTool is Application.Commands.SelectTool)
+                                var tool = viewModel.ActiveToolFeatures.FirstOrDefault(f => f.Id == hit.Value.FeatureId.Value);
+                                if (tool != null && viewModel.CurrentTool is Application.Commands.SelectTool)
+                                {
+                                    // Sólido vermelho do grupo aberto: ferramentas soltas continuam selecionáveis;
+                                    // as de peça não estão no sketch, então só realçam e mostram o código.
+                                    if (viewModel.Sketch.Features.Contains(tool))
+                                    {
+                                        viewModel.SelectionService.SelectById(viewModel.Sketch, tool.Id);
+                                    }
+                                    viewModel.RevealToolFeature(tool);
+                                }
+                                else if (isCtrl && viewModel.CurrentTool is Application.Commands.SelectTool)
                                 {
                                     var feature = viewModel.Sketch.Features.FirstOrDefault(f => f.Id == hit.Value.FeatureId.Value);
                                     if (feature != null && feature is not AvaloniaCadEditor.Domain.Features.WorkPlaneFeature)

@@ -91,12 +91,9 @@ public sealed class SolidFeatureRenderPass : IRenderPass
             if (f.IsVisible) featuresToRender.Add((f, false, false));
         }
 
-        if (vm.ActiveBooleanGroup != null)
+        foreach (var tf in vm.ActiveToolFeatures)
         {
-            foreach (var tf in vm.ActiveBooleanGroup.ToolFeatures)
-            {
-                featuresToRender.Add((tf, false, true));
-            }
+            featuresToRender.Add((tf, false, true));
         }
 
         if (vm.CurrentTool is Application.Commands.ExtrudeCommand extCmd)
@@ -126,7 +123,8 @@ public sealed class SolidFeatureRenderPass : IRenderPass
 
         foreach (var (feature, isPreview, isToolFeature) in featuresToRender)
         {
-            var mesh = vm.GetFeatureMesh(feature.Id, forceRebuild: false);
+            // Ferramentas de peça não estão no sketch: a malha vem do próprio objeto.
+            var mesh = isToolFeature ? vm.MeshManager.GetMeshFor(feature) : vm.GetFeatureMesh(feature.Id, forceRebuild: false);
             if (mesh == null || mesh.TriangleCount == 0) continue;
 
             int vertexCount = mesh.VertexCount;
@@ -140,7 +138,12 @@ public sealed class SolidFeatureRenderPass : IRenderPass
             float faceR, faceG, faceB;
             float edgeR, edgeG, edgeB;
 
-            if (isToolFeature)
+            if (isToolFeature && (vm.HighlightedToolId == feature.Id || vm.HoveredFeatureId == feature.Id))
+            {
+                faceR = 1.0f; faceG = 0.55f; faceB = 0.1f; // Ferramenta clicada/sob o mouse: laranja
+                edgeR = 1.0f; edgeG = 0.8f; edgeB = 0.2f;
+            }
+            else if (isToolFeature)
             {
                 faceR = 0.9f; faceG = 0.1f; faceB = 0.1f; // Transparent Red
                 edgeR = 1.0f; edgeG = 0.0f; edgeB = 0.0f;

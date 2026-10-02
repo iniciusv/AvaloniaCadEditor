@@ -938,6 +938,44 @@ public static class PartSourceEditor
     }
 
     /// <summary>
+    /// Onde um sólido criado dentro do <c>Build()</c> de uma peça é declarado: a variável com o mesmo
+    /// nome (<c>var furo_1 = new CylinderFeature(...)</c>, o padrão ensinado à IA) ou, na falta dela, o
+    /// literal com o nome (<c>Name = "furo_1"</c> / <c>name: "furo_1"</c>). Null se não achar — por
+    /// exemplo, um nome interpolado num laço.
+    /// </summary>
+    public static CodeLocation? FindToolDeclaration(IEnumerable<ScriptDocument> documents, string partTypeName, string toolName)
+    {
+        if (string.IsNullOrEmpty(toolName)) return null;
+
+        foreach (var doc in documents)
+        {
+            var root = Parse(doc.Text);
+            var type = root.DescendantNodes().OfType<RecordDeclarationSyntax>()
+                .FirstOrDefault(t => t.Identifier.ValueText == partTypeName);
+            if (type == null) continue;
+
+            var declarator = type.DescendantNodes().OfType<VariableDeclaratorSyntax>()
+                .FirstOrDefault(v => v.Identifier.ValueText == toolName);
+            if (declarator != null) return ToLocation(doc, root, declarator.Identifier.Span);
+
+            var literal = type.DescendantTokens()
+                .FirstOrDefault(t => t.IsKind(SyntaxKind.StringLiteralToken) && t.ValueText == toolName);
+            if (literal != default) return ToLocation(doc, root, literal.Span);
+
+            return null;
+        }
+        return null;
+    }
+
+    private static CodeLocation ToLocation(ScriptDocument doc, SyntaxNode root, TextSpan span)
+    {
+        var text = root.SyntaxTree.GetText();
+        var position = text.Lines.GetLinePosition(span.Start);
+        string lineText = text.Lines[position.Line].ToString().Trim();
+        return new CodeLocation(doc.FilePath, span.Start, span.Length, position.Line + 1, position.Character + 1, lineText);
+    }
+
+    /// <summary>
     /// Chamada que insere uma peça nova: parâmetros obrigatórios com o mínimo do [Range]
     /// (ou um valor neutro), os opcionais ficam com o padrão do record.
     /// </summary>
