@@ -9,20 +9,29 @@ using System.Collections.Generic;
 ///    com rebaixo para a cabeça do parafuso na face frontal (Y = -Profundidade / 2).
 /// 2. Dois furos passantes M3 para fixação ao perfil 2020 (passo 30 mm em X),
 ///    com rebaixo para a cabeça do parafuso no lado oposto (face traseira, Y = +Profundidade / 2).
+/// 3. Rebaixo (vazio) na face superior, cobrindo metade da área do retângulo (toda a Largura,
+///    metade da Profundidade), 10 mm de profundidade, do lado mais próximo do carrinho MGN9C na montagem.
 /// Origem (0, 0, 0) no centro em X e Y, base em Z = 0.
 /// </summary>
 public sealed record BlocoConexaoMotor2020(
     double Largura = 40.0,
     double Profundidade = 20.0,
-    double Altura = 20.0,
-    double PassoFurosSuporte = 15.0,
-    double PassoFurosExtrusao = 30.0,
+    double Altura = 30.0,
+    double PassoFurosSuporte = 10.0,
+    double PassoFurosExtrusao = 20.0,
     double DiametroFuroM3 = 3.2,
     double DiametroRebaixo = 6.0,
     double ProfundidadeRebaixo = 3.0,
-    double AlturaFurosSuporteZ = 15.0,
+    double AlturaFurosSuporteZ = 25.0,//
     double AlturaFurosExtrusaoZ = 10.0,
-    double RaioChanfro = 1.0) : Part
+    double RaioChanfro = 1.0,
+    double PassoFurosVerticaisZ = 30.0,
+    double DiametroFuroVertical = 3.2,
+    double FolgaLateralFuroVertical = 1.0,
+    double DistanciaFurosVerticaisDaFaceTraseiraY = 5.0,
+    double DistanciaFurosVerticaisDaFaceFrontalY = 5.0,
+    double ProfundidadeRebaixoSuperior = 10.0,
+    bool RebaixoSuperiorNoLadoNegativoY = true) : Part
 {
     protected override IFeature Build()
     {
@@ -100,6 +109,92 @@ public sealed record BlocoConexaoMotor2020(
                 IsTransientTool = true
             };
             cortes.Add(rebaixo);
+        }
+
+        // 3. Furos verticais no eixo Z passantes com folga lateral (rasgo oblongo em X para 30 mm a 31 mm)
+        if (PassoFurosVerticaisZ > 0.001 && DiametroFuroVertical > 0.001)
+        {
+            var r = DiametroFuroVertical / 2.0;
+
+            // Dois pares de furos em Y:
+            // - Traseiro: próximo da face ligada ao suporte (+Y)
+            // - Frontal: próximo da face oposta, ligada ao perfil 2020 (-Y)
+            var posicoesY = new[]
+            {
+                ("tras", Profundidade / 2.0 - DistanciaFurosVerticaisDaFaceTraseiraY),
+                ("frente", -Profundidade / 2.0 + DistanciaFurosVerticaisDaFaceFrontalY)
+            };
+
+            foreach (var (ladoY, yFuroVertical) in posicoesY)
+            {
+                foreach (var sinalX in new[] { -1.0, 1.0 })
+                {
+                    var nome = $"{ladoY}_{(sinalX < 0 ? "esq" : "dir")}";
+                    // Centro nominal do furo em 30 mm
+                    var x1 = sinalX * (PassoFurosVerticaisZ / 2.0);
+                    // Centro expandido para acomodar 31 mm (para fora)
+                    var x2 = sinalX * (PassoFurosVerticaisZ / 2.0 + FolgaLateralFuroVertical);
+
+                    var xMin = Math.Min(x1, x2);
+                    var xMax = Math.Max(x1, x2);
+
+                    // Cilindro na posição de 30 mm
+                    cortes.Add(new CylinderFeature(
+                        globalBaseCenter: new Point3D(x1, yFuroVertical, -1.0),
+                        globalDirection: Vector3D.UnitZ,
+                        radius: r,
+                        height: Altura + 2.0)
+                    {
+                        Name = $"furo_vertical_z_{nome}_1",
+                        IsTransientTool = true
+                    });
+
+                    if (FolgaLateralFuroVertical > 0.001)
+                    {
+                        // Cilindro na posição expandida (31 mm)
+                        cortes.Add(new CylinderFeature(
+                            globalBaseCenter: new Point3D(x2, yFuroVertical, -1.0),
+                            globalDirection: Vector3D.UnitZ,
+                            radius: r,
+                            height: Altura + 2.0)
+                        {
+                            Name = $"furo_vertical_z_{nome}_2",
+                            IsTransientTool = true
+                        });
+
+                        // Caixa de união entre os dois cilindros formando o furo oblongo contínuo
+                        cortes.Add(new BoxFeature(
+                            baseCorner: new Point3D(xMin, yFuroVertical - r, -1.0),
+                            width: xMax - xMin,
+                            length: DiametroFuroVertical,
+                            height: Altura + 2.0)
+                        {
+                            Name = $"furo_vertical_z_{nome}_rasgo",
+                            IsTransientTool = true
+                        });
+                    }
+                }
+            }
+        }
+
+        // 4. Rebaixo (vazio) na face superior, ocupando metade da área do retângulo (Largura inteira x metade
+        // da Profundidade), do lado mais próximo do carrinho MGN9C na montagem (lado -Y, face frontal).
+        if (ProfundidadeRebaixoSuperior > 0.001)
+        {
+            var profundidadeRebaixoArea = Profundidade / 2.0;
+            var yInicioRebaixo = RebaixoSuperiorNoLadoNegativoY
+                ? -Profundidade / 2.0
+                : 0.0;
+
+            cortes.Add(new BoxFeature(
+                baseCorner: new Point3D(-Largura / 2.0, yInicioRebaixo, Altura - ProfundidadeRebaixoSuperior),
+                width: Largura,
+                length: profundidadeRebaixoArea,
+                height: ProfundidadeRebaixoSuperior + 1.0)
+            {
+                Name = "rebaixo_superior",
+                IsTransientTool = true
+            });
         }
 
         return BooleanFeature.CreateDifference("bloco_conexao_motor_2020", corpo, cortes.ToArray());

@@ -353,6 +353,28 @@ public class CadViewModel : INotifyPropertyChanged
 	private System.Collections.Generic.List<AvaloniaCadEditor.Domain.Features.IFeature> PreSelectedSolids() =>
 		Sketch.Features.Where(f => f.IsSelected && f is not AvaloniaCadEditor.Domain.Features.WorkPlaneFeature).ToList();
 
+	/// <summary>Tecla H: com sólido(s) selecionado(s), oculta todo o restante do modelo (isolar seleção).</summary>
+	private void HideUnselectedSolids()
+	{
+		var selected = PreSelectedSolids();
+		if (selected.Count == 0)
+		{
+			return;
+		}
+
+		foreach (var feature in Sketch.Features)
+		{
+			if (feature is AvaloniaCadEditor.Domain.Features.WorkPlaneFeature)
+			{
+				continue;
+			}
+
+			feature.IsVisible = selected.Contains(feature);
+		}
+
+		RefreshProfiles();
+	}
+
 	private void BooleanTool_OperandAppendRequested(object? sender, (string BooleanVar, System.Collections.Generic.IReadOnlyList<string> ToolVars, string FallbackCode) args)
 	{
 		if (!ScriptEditor.TryAppendBooleanTool(args.BooleanVar, args.ToolVars))
@@ -1175,6 +1197,9 @@ public class CadViewModel : INotifyPropertyChanged
 				{
 					ActiveWorkPlane = AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.XY;
 				}
+				break;
+			case "H":
+				HideUnselectedSolids();
 				break;
 			case "F":
 				CurrentSelectionMode = CurrentSelectionMode switch
