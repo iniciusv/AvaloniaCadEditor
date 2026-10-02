@@ -6,6 +6,7 @@ using System.Text;
 using AvaloniaCadEditor.Domain.Entities;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.Profiles;
+using AvaloniaCadEditor.Domain.Profiles.Classifiers;
 using AvaloniaCadEditor.Domain.ValueObjects;
 
 namespace AvaloniaCadEditor.Application.Services;
@@ -27,6 +28,10 @@ public static class FeatureCodeGenerator
         var sb = new StringBuilder();
         string id = Guid.NewGuid().ToString("N").Substring(0, 4);
         string heightStr = F(height);
+
+        // Face genérica (de malha) retangular: extruda como BoxFeature em vez de cair no prisma.
+        if (profile is FaceProfile rectFace && TryGetRectangle(rectFace) is { } rectFromFace)
+            profile = rectFromFace;
 
         if (profile is ParametricBoxFace boxFace)
         {
@@ -305,6 +310,23 @@ public static class FeatureCodeGenerator
         height = Clean(height);
         width = Clean(width);
         length = Clean(length);
+    }
+
+    private static RectangleProfile? TryGetRectangle(FaceProfile faceProfile)
+    {
+        var plane = faceProfile.Plane;
+        var local = faceProfile.GetVertices().Select(v => plane.ToLocalSpace(v)).ToList();
+
+        // A malha pode ter vértices intermediários colineares nas arestas; descarta-os.
+        var corners = local.Where((p, i) =>
+        {
+            var prev = local[(i - 1 + local.Count) % local.Count];
+            var next = local[(i + 1) % local.Count];
+            return (p - prev).CrossProduct(next - p).Length > 1e-6;
+        }).ToList();
+
+        var candidate = new RectangleClassifier().Classify(corners, faceProfile.SourceEntityIds, plane);
+        return candidate?.Factory() as RectangleProfile;
     }
 
     private static bool TryGetCircle(FaceProfile faceProfile, out Point3D worldCenter, out double radius)

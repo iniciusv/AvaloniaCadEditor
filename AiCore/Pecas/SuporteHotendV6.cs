@@ -12,14 +12,19 @@ using System.Collections.Generic;
 public sealed record SuporteHotendV6(
     double Altura = 10,
     double Largura = 28.9,
-    double DistanciaYHotend = 15.0,
+    double DistanciaYHotend = 13.0,
     double DiametroColar = 16.2,
-    double EspessuraParedeFrontal = 5.0,
+    double EspessuraParedeFrontal = 7.0,
     double DiametroFuroM3 = 3.2,
     double DistanciaFurosLateraisX = 10.0,
     double DiametroRebaixo = 6.0,
-    double ProfundidadeRebaixo = 4.0,
-    double RaioChanfro = 1.0) : Part
+    double ProfundidadeRebaixo = 10.0,
+    double RaioChanfro = 1.0,
+    double EspessuraRasgo = 1.0,
+    double ProfundidadeRasgoX = 2.0,
+    double LarguraPorca = 5.83,
+    double EspessuraPorca = 3.0,
+    double AfastamentoPorcaFrontal = 3.0) : Part
 {
     protected override IFeature Build()
     {
@@ -88,6 +93,81 @@ public sealed record SuporteHotendV6(
             }
         }
 
+        // 3. Rasgo lateral vertical (eixo Z) que vai da face externa direita (+X) até o vazio do hotend
+        if (EspessuraRasgo > 0.001)
+        {
+            // Rasgo partindo do raio do colar (X = DiametroColar / 2) até ultrapassar a lateral externa direita (X = Largura / 2)
+            var xMinRasgo = DiametroColar / 2.0 - 0.5; // penetra ligeiramente no vazio para garantir união limpa
+            var xMaxRasgo = Largura / 2.0 + 1.0;
+            var yMinRasgo = -DistanciaYHotend - EspessuraRasgo / 2.0;
+            var zMinRasgo = -1.0;
+
+            var rasgoLateral = new BoxFeature(
+                baseCorner: new Point3D(xMinRasgo, yMinRasgo, zMinRasgo),
+                width: xMaxRasgo - xMinRasgo,
+                length: EspessuraRasgo,
+                height: Altura + 2.0)
+            {
+                Name = "rasgo_lateral",
+                IsTransientTool = true
+            };
+            cortes.Add(rasgoLateral);
+        }
+
+        // 4. Alojamento para porca M3 no furo central (X = 0), na parede frontal afastado 3 mm dela, com saída vertical (+Z)
+        if (LarguraPorca > 0.001 && EspessuraPorca > 0.001)
+        {
+            var yPorca = -comprimentoTotal + AfastamentoPorcaFrontal + EspessuraPorca / 2.0;
+            cortes.Add(CriarAlojamentoPorca(
+                nome: "alojamento_porca_central",
+                x: 0.0,
+                yPorca: yPorca,
+                zCentro: zCentro,
+                alturaBloco: Altura,
+                larguraPorca: LarguraPorca,
+                espessuraPorca: EspessuraPorca));
+        }
+
         return BooleanFeature.CreateDifference("suporte_hotend_v6", corpo, cortes.ToArray());
+    }
+
+    private static IFeature CriarAlojamentoPorca(
+        string nome,
+        double x,
+        double yPorca,
+        double zCentro,
+        double alturaBloco,
+        double larguraPorca,
+        double espessuraPorca)
+    {
+        var s = larguraPorca;
+        var r = (s / 2.0) / (Math.Sqrt(3.0) / 2.0); // raio até os vértices
+        var hTopo = alturaBloco - zCentro + 1.0;     // extrapola o topo para corte limpo
+
+        var verticesAlojamento = new[]
+        {
+            new Point3D(0, -r, 0),
+            new Point3D(s / 2.0, -r / 2.0, 0),
+            new Point3D(s / 2.0, r / 2.0, 0),
+            new Point3D(s / 2.0, hTopo, 0),
+            new Point3D(-s / 2.0, hTopo, 0),
+            new Point3D(-s / 2.0, r / 2.0, 0),
+            new Point3D(-s / 2.0, -r / 2.0, 0)
+        };
+
+        var yInicio = yPorca - espessuraPorca / 2.0;
+        var planoAlojamento = new WorkPlane(
+            origin: new Point3D(x, yInicio, zCentro),
+            normal: Vector3D.UnitY,
+            xAxis: new Vector3D(-1, 0, 0));
+
+        return new PrismFeature(
+            verticesAlojamento,
+            height: espessuraPorca,
+            plane: planoAlojamento,
+            name: nome)
+        {
+            IsTransientTool = true
+        };
     }
 }
