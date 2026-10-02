@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 
 /// <summary>
 /// Bloco de pressão da correia (belt), fixado na lateral do bloco_fixacao_mgn9.
@@ -53,76 +52,31 @@ public sealed record BlocoFixacaoBelt(
             Name = "corpo"
         };
 
-        var cortes = new List<IFeature>
+        var vao_correia = new BoxFeature(new Point3D(BaseVaoX, BaseVaoY, BaseVaoZ), LarguraVaoX, ComprimentoVaoY, AlturaVao) { Name = "vao_correia", IsTransientTool = true };
+        var furo_vertical = new CylinderFeature(new Point3D(FuroVerticalX, FuroVerticalY, FuroVerticalZ), Vector3D.UnitZ, RaioFuroVertical, AlturaFuroVertical) { Name = "furo_vertical", IsTransientTool = true };
+        var rebaixo_fixacao = new CylinderFeature(new Point3D(FuroLateralX, yFundo, FuroLateralZ), new Vector3D(0, -1, 0), RaioFuroRebaixo, ComprimentoFuroRebaixo) { Name = "rebaixo_fixacao", IsTransientTool = true };
+        var furo_fixacao = new CylinderFeature(new Point3D(FuroLateralX, yFundo, FuroLateralZ), new Vector3D(0, -1, 0), RaioFuroPassante, ComprimentoFuroPassante) { Name = "furo_fixacao", IsTransientTool = true };
+        var furo_pressao_correia = new CylinderFeature(new Point3D(FuroPressaoX, yFundo, FuroPressaoZ), new Vector3D(0, -1, 0), RaioFuroPressao, ComprimentoFuroPassante) { Name = "furo_pressao_correia", IsTransientTool = true };
+
+        // Alojamento hexagonal da porca M3 com saída vertical (+Z), desenhado num plano normal a Y.
+        var raioVerticePorca = (LarguraPorca / 2.0) / (Math.Sqrt(3.0) / 2.0); // raio até os vértices
+        var alturaTopoPorca = AlturaCorpo - FuroPressaoZ + 1.0;              // extrapola o topo para corte limpo
+        var verticesPorca = new[]
         {
-            new BoxFeature(new Point3D(BaseVaoX, BaseVaoY, BaseVaoZ), LarguraVaoX, ComprimentoVaoY, AlturaVao)
-            {
-                Name = "vao_correia",
-                IsTransientTool = true
-            },
-            new CylinderFeature(new Point3D(FuroVerticalX, FuroVerticalY, FuroVerticalZ), Vector3D.UnitZ, RaioFuroVertical, AlturaFuroVertical)
-            {
-                Name = "furo_vertical",
-                IsTransientTool = true
-            },
-            new CylinderFeature(new Point3D(FuroLateralX, yFundo, FuroLateralZ), new Vector3D(0, -1, 0), RaioFuroRebaixo, ComprimentoFuroRebaixo)
-            {
-                Name = "rebaixo_fixacao",
-                IsTransientTool = true
-            },
-            new CylinderFeature(new Point3D(FuroLateralX, yFundo, FuroLateralZ), new Vector3D(0, -1, 0), RaioFuroPassante, ComprimentoFuroPassante)
-            {
-                Name = "furo_fixacao",
-                IsTransientTool = true
-            },
-            new CylinderFeature(new Point3D(FuroPressaoX, yFundo, FuroPressaoZ), new Vector3D(0, -1, 0), RaioFuroPressao, ComprimentoFuroPassante)
-            {
-                Name = "furo_pressao_correia",
-                IsTransientTool = true
-            },
-            CriarAlojamentoPorca("porca_pressao_correia", FuroPressaoX, PosicaoPorcaTraseiraY, FuroPressaoZ, AlturaCorpo, LarguraPorca, EspessuraPorca)
+            new Point3D(0, -raioVerticePorca, 0),
+            new Point3D(LarguraPorca / 2.0, -raioVerticePorca / 2.0, 0),
+            new Point3D(LarguraPorca / 2.0, raioVerticePorca / 2.0, 0),
+            new Point3D(LarguraPorca / 2.0, alturaTopoPorca, 0),
+            new Point3D(-LarguraPorca / 2.0, alturaTopoPorca, 0),
+            new Point3D(-LarguraPorca / 2.0, raioVerticePorca / 2.0, 0),
+            new Point3D(-LarguraPorca / 2.0, -raioVerticePorca / 2.0, 0)
         };
-
-        return BooleanFeature.CreateDifference("bloco_fixacao_belt", corpo, cortes.ToArray());
-    }
-
-    private static IFeature CriarAlojamentoPorca(
-        string nome,
-        double x,
-        double yPorca,
-        double zCentro,
-        double alturaBloco,
-        double larguraPorca,
-        double espessuraPorca)
-    {
-        var s = larguraPorca;
-        var r = (s / 2.0) / (Math.Sqrt(3.0) / 2.0); // raio até os vértices
-        var hTopo = alturaBloco - zCentro + 1.0;     // extrapola o topo para corte limpo
-
-        var verticesAlojamento = new[]
-        {
-            new Point3D(0, -r, 0),
-            new Point3D(s / 2.0, -r / 2.0, 0),
-            new Point3D(s / 2.0, r / 2.0, 0),
-            new Point3D(s / 2.0, hTopo, 0),
-            new Point3D(-s / 2.0, hTopo, 0),
-            new Point3D(-s / 2.0, r / 2.0, 0),
-            new Point3D(-s / 2.0, -r / 2.0, 0)
-        };
-
-        var yInicio = yPorca - espessuraPorca / 2.0;
-        var planoAlojamento = new WorkPlane(
-            origin: new Point3D(x, yInicio, zCentro),
+        var planoPorca = new WorkPlane(
+            origin: new Point3D(FuroPressaoX, PosicaoPorcaTraseiraY - EspessuraPorca / 2.0, FuroPressaoZ),
             normal: Vector3D.UnitY,
             xAxis: new Vector3D(-1, 0, 0));
+        var porca_pressao_correia = new PrismFeature(verticesPorca, height: EspessuraPorca, plane: planoPorca) { Name = "porca_pressao_correia", IsTransientTool = true };
 
-        return new PrismFeature(
-            verticesAlojamento,
-            height: espessuraPorca,
-            plane: planoAlojamento,
-            name: nome)
-        {
-            IsTransientTool = true
-        };
+        return BooleanFeature.CreateDifference("bloco_fixacao_belt", corpo, vao_correia, furo_vertical, rebaixo_fixacao, furo_fixacao, furo_pressao_correia, porca_pressao_correia);
     }
 }
