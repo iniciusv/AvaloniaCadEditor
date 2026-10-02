@@ -168,7 +168,7 @@ public class PureMathGeometryKernel : IGeometryKernel
 
         var posArr = positions.ToArray();
         var idxArr = indices.ToArray();
-        var (featureEdges, internalEdges, n1, n2) = EdgeDetector.ClassifyEdges(posArr, idxArr, settings.CreaseAngle);
+        var (featureEdges, internalEdges, n1, n2, _) = EdgeDetector.ClassifyEdges(posArr, idxArr, settings.CreaseAngle);
         var featureNormals1 = new float[n1.Length * 3];
         var featureNormals2 = new float[n2.Length * 3];
         for (int i = 0; i < n1.Length; i++) { featureNormals1[i*3] = n1[i].X; featureNormals1[i*3+1] = n1[i].Y; featureNormals1[i*3+2] = n1[i].Z; featureNormals2[i*3] = n2[i].X; featureNormals2[i*3+1] = n2[i].Y; featureNormals2[i*3+2] = n2[i].Z; }

@@ -11,6 +11,8 @@ using System.Collections.Generic;
 ///    com rebaixo para a cabeça do parafuso no lado oposto (face traseira, Y = +Profundidade / 2).
 /// 3. Rebaixo (vazio) na face superior, cobrindo metade da área do retângulo (toda a Largura,
 ///    metade da Profundidade), 10 mm de profundidade, do lado mais próximo do carrinho MGN9C na montagem.
+///    Esse rebaixo é cortado ANTES do chanfro de quinas (bevel), para que a aresta externa que ele
+///    cria na face de cima também saia chanfrada.
 /// Origem (0, 0, 0) no centro em X e Y, base em Z = 0.
 /// </summary>
 public sealed record BlocoConexaoMotor2020(
@@ -38,13 +40,38 @@ public sealed record BlocoConexaoMotor2020(
         var baseCorner = new Point3D(-Largura / 2.0, -Profundidade / 2.0, 0);
         var corpoBase = new BoxFeature(baseCorner, Largura, Profundidade, Altura) { Name = "corpo_base" };
 
+        // O rebaixo superior (seção 4) é cortado ANTES do chanfro, não depois: assim a aresta
+        // externa que ele cria na face de cima também é chanfrada junto com o resto do corpo. A
+        // aresta interna do degrau (côncava) não é afetada pelo chanfro de qualquer forma — o
+        // kernel pula arestas côncavas no fillet genérico (ver OpenCascadeGeometryKernel.BuildFillet).
+        IFeature corpoPreChanfro = corpoBase;
+        if (ProfundidadeRebaixoSuperior > 0.001)
+        {
+            var profundidadeRebaixoArea = Profundidade / 2.0;
+            var yInicioRebaixo = RebaixoSuperiorNoLadoNegativoY
+                ? -Profundidade / 2.0
+                : 0.0;
+
+            var rebaixoSuperior = new BoxFeature(
+                baseCorner: new Point3D(-Largura / 2.0, yInicioRebaixo, Altura - ProfundidadeRebaixoSuperior),
+                width: Largura,
+                length: profundidadeRebaixoArea,
+                height: ProfundidadeRebaixoSuperior + 1.0)
+            {
+                Name = "rebaixo_superior",
+                IsTransientTool = true
+            };
+
+            corpoPreChanfro = BooleanFeature.CreateDifference("corpo_com_rebaixo", corpoBase, rebaixoSuperior);
+        }
+
         var corpo = RaioChanfro > 0.001
-            ? new FilletFeature("corpo_chanfrado", corpoBase, RaioChanfro)
+            ? new FilletFeature("corpo_chanfrado", corpoPreChanfro, RaioChanfro)
             {
                 Mode = FilletMode.Bevel,
                 ApplyToAllEdges = true
             }
-            : (IFeature)corpoBase;
+            : corpoPreChanfro;
 
         var cortes = new List<IFeature>();
 
@@ -179,23 +206,7 @@ public sealed record BlocoConexaoMotor2020(
 
         // 4. Rebaixo (vazio) na face superior, ocupando metade da área do retângulo (Largura inteira x metade
         // da Profundidade), do lado mais próximo do carrinho MGN9C na montagem (lado -Y, face frontal).
-        if (ProfundidadeRebaixoSuperior > 0.001)
-        {
-            var profundidadeRebaixoArea = Profundidade / 2.0;
-            var yInicioRebaixo = RebaixoSuperiorNoLadoNegativoY
-                ? -Profundidade / 2.0
-                : 0.0;
-
-            cortes.Add(new BoxFeature(
-                baseCorner: new Point3D(-Largura / 2.0, yInicioRebaixo, Altura - ProfundidadeRebaixoSuperior),
-                width: Largura,
-                length: profundidadeRebaixoArea,
-                height: ProfundidadeRebaixoSuperior + 1.0)
-            {
-                Name = "rebaixo_superior",
-                IsTransientTool = true
-            });
-        }
+        // Já foi cortado acima, antes do chanfro — ver "corpoPreChanfro".
 
         return BooleanFeature.CreateDifference("bloco_conexao_motor_2020", corpo, cortes.ToArray());
     }

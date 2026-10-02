@@ -452,14 +452,24 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             var mesh = TessellateShape(currentShape, settings);
             if (mesh != null && mesh.FeatureEdges.Length > 0)
             {
+                // Recalcula a convexidade de cada feature edge (mesma entrada e mesma ordem de
+                // EdgeDetector.ClassifyEdges usada dentro de TessellateShape, então os índices
+                // batem com mesh.FeatureEdges par a par).
+                var (_, _, _, _, edgeConvex) = EdgeDetector.ClassifyEdges(mesh.Positions, mesh.Indices, settings.CreaseAngle);
+
                 var targetNormals = fillet.ApplyToAllEdges ? new List<Vector3D>() : fillet.Faces.Select(f => f.NormalHint).ToList();
                 for (int i = 0; i < mesh.FeatureEdges.Length; i += 2)
                 {
+                    // O cutter deste fillet só remove material (chanfro/arredondamento de quina).
+                    // Numa aresta côncava (ex.: o canto interno de um degrau) isso abriria um
+                    // entalhe em vez de cortar a quina, então essas arestas ficam de fora.
+                    if (!edgeConvex[i / 2]) continue;
+
                     uint idx1 = mesh.FeatureEdges[i];
                     uint idx2 = mesh.FeatureEdges[i + 1];
                     var start = new Point3D(mesh.Positions[idx1 * 3], mesh.Positions[idx1 * 3 + 1], mesh.Positions[idx1 * 3 + 2]);
                     var end = new Point3D(mesh.Positions[idx2 * 3], mesh.Positions[idx2 * 3 + 1], mesh.Positions[idx2 * 3 + 2]);
-                    
+
                     var n1 = new Vector3D(mesh.FeatureNormals1[(i/2)*3], mesh.FeatureNormals1[(i/2)*3+1], mesh.FeatureNormals1[(i/2)*3+2]);
                     var n2 = new Vector3D(mesh.FeatureNormals2[(i/2)*3], mesh.FeatureNormals2[(i/2)*3+1], mesh.FeatureNormals2[(i/2)*3+2]);
 
@@ -1001,7 +1011,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
 
         var posArr = positions.ToArray();
         var idxArr = indices.ToArray();
-        var (featureEdges, internalEdges, n1, n2) = EdgeDetector.ClassifyEdges(posArr, idxArr, settings.CreaseAngle);
+        var (featureEdges, internalEdges, n1, n2, _) = EdgeDetector.ClassifyEdges(posArr, idxArr, settings.CreaseAngle);
         var featureNormals1 = new float[n1.Length * 3];
         var featureNormals2 = new float[n2.Length * 3];
         for (int i = 0; i < n1.Length; i++) { featureNormals1[i*3] = n1[i].X; featureNormals1[i*3+1] = n1[i].Y; featureNormals1[i*3+2] = n1[i].Z; featureNormals2[i*3] = n2[i].X; featureNormals2[i*3+1] = n2[i].Y; featureNormals2[i*3+2] = n2[i].Z; }
