@@ -416,6 +416,41 @@ public class PartEditingTests
     }
 
     [Fact]
+    public void HoistTransformedAddFeatures_BooleanaCriadaDepoisDeMover_LevaOPlacementParaADeclaracao()
+    {
+        // Caso relatado: a caixa foi movida (AddFeature(x.Transformed(P))) e só depois virou base de
+        // uma booleana gerada com "box_0578" - o resultado aparecia na posição original da caixa.
+        string code =
+            "var box_0578 = new BoxFeature(baseCorner: new Point3D(-6.05, 10, 25.99999), width: 20.5, length: 16.5, height: 13)\n" +
+            "{\n" +
+            "    Name = \"box_0578\"\n" +
+            "};\n" +
+            "AddFeature(box_0578.Transformed(Placement.Translate(new Vector3D(-14.565334, 0.5, 0.584834))));\n" +
+            "var cylinder_3345 = new CylinderFeature(globalBaseCenter: new Point3D(-5.61533, 18.75, 39.58398), globalDirection: new Vector3D(0, 0, 1), radius: 3, height: -9);\n" +
+            "AddFeature(cylinder_3345);\n" +
+            "var boolOp_ec68 = new BooleanFeature(name: \"boolOp_ec68\", operation: BooleanOperationType.Subtract, baseFeature: box_0578, toolFeatures: new IFeature[] { cylinder_3345 });\n" +
+            "AddFeature(boolOp_ec68);\n";
+
+        string result = PartSourceEditor.HoistTransformedAddFeatures(code);
+
+        result.Should().Contain(
+            "}.Transformed(Placement.Translate(new Vector3D(-14.565334, 0.5, 0.584834)));\n" +
+            "AddFeature(box_0578);\n");
+        result.Should().NotContain("AddFeature(box_0578.Transformed");
+        result.Should().Contain("baseFeature: box_0578,");
+    }
+
+    [Fact]
+    public void HoistTransformedAddFeatures_SemOutroUso_NaoMexe()
+    {
+        string code =
+            "var box = new BoxFeature(Point3D.Origin, 10, 10, 10);\n" +
+            "AddFeature(box.Transformed(Placement.Translate(new Vector3D(1, 0, 0))));\n";
+
+        PartSourceEditor.HoistTransformedAddFeatures(code).Should().Be(code);
+    }
+
+    [Fact]
     public void TranslateFeature_UsadaComMetodoEmOutroLugar_Lanca()
     {
         // "cyl" é usado como cyl.GetFaceCenter(...) fora do AddFeature: mudar o tipo estático da

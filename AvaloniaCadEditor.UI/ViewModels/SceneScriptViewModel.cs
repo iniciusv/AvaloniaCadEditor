@@ -1171,7 +1171,24 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
             GeneratedCSharpCode = string.Empty;
         }
 
-        GeneratedCSharpCode += codeSnippet;
+        GeneratedCSharpCode = HoistMovedOperands(GeneratedCSharpCode + codeSnippet);
+    }
+
+    /// <summary>
+    /// Um sólido movido vira <c>AddFeature(x.Transformed(P))</c>; se o código novo (ex.: uma booleana)
+    /// passa a usar <c>x</c>, o <c>P</c> sobe para a declaração de <c>x</c> — senão a operação usaria o
+    /// sólido na posição original (ver <see cref="PartSourceEditor.HoistTransformedAddFeatures"/>).
+    /// </summary>
+    private static string HoistMovedOperands(string code)
+    {
+        try
+        {
+            return PartSourceEditor.HoistTransformedAddFeatures(code);
+        }
+        catch (Exception)
+        {
+            return code;
+        }
     }
 
     public void RemoveCodeForFeature(string variableName)
@@ -1205,7 +1222,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
 
         EnsureEntryDocumentActive();
         _history.SaveState(GeneratedCSharpCode);
-        GeneratedCSharpCode = result;
+        GeneratedCSharpCode = HoistMovedOperands(result);
         return true;
     }
 

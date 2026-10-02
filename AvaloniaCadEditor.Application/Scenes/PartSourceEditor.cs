@@ -591,6 +591,56 @@ public static class PartSourceEditor
         return ApplyPlacement(currentSource, declarator.Initializer!.Value, newPlacementCode, tryMerge);
     }
 
+    /// <summary>
+    /// Repara cenas em que uma feature solta foi movida/girada (<c>AddFeature(x.Transformed(P))</c>)
+    /// e só <b>depois</b> passou a ser usada em outro lugar — tipicamente como base/ferramenta de uma
+    /// <c>BooleanFeature</c> gerada com <c>x</c>. Sem isso a booleana enxerga o <c>x</c> original,
+    /// parado, e o resultado aparece fora do lugar onde o sólido estava na tela. Para cada caso, o
+    /// <c>AddFeature</c> volta a ser <c>AddFeature(x)</c> e <c>P</c> vai para a declaração
+    /// (<c>var x = ....Transformed(P);</c>). Casos em que isso mudaria o significado de outra chamada
+    /// (<c>x.Algo(...)</c> em outro lugar, ex.: uma cópia) ou sem declaração no arquivo ficam como estão.
+    /// </summary>
+    public static string HoistTransformedAddFeatures(string source)
+    {
+        var skipped = new HashSet<string>(StringComparer.Ordinal);
+        string current = source;
+
+        // Uma correção por vez (cada uma muda as posições do texto); o limite é só uma rede de segurança.
+        for (int guard = 0; guard < 1000; guard++)
+        {
+            var root = Parse(current);
+            var candidate = root.DescendantNodes()
+                .OfType<InvocationExpressionSyntax>()
+                .Where(i => MethodName(i.Expression) == "AddFeature" && i.ArgumentList.Arguments.Count == 1)
+                .Select(call => (Call: call, Parts: DecomposeAddFeatureArgument(call.ArgumentList.Arguments[0].Expression)))
+                .FirstOrDefault(c =>
+                    c.Parts.Identifier != null && c.Parts.ExistingPlacement != null &&
+                    !skipped.Contains(c.Parts.Identifier.Identifier.ValueText) &&
+                    IsReferencedElsewhere(root, c.Parts.Identifier.Identifier.ValueText, c.Call));
+
+            if (candidate.Call == null) return current;
+
+            string variableName = candidate.Parts.Identifier!.Identifier.ValueText;
+            var transformedCall = (InvocationExpressionSyntax)candidate.Call.ArgumentList.Arguments[0].Expression;
+            if (transformedCall.ArgumentList.Arguments.Count != 1 ||
+                HasRiskyMemberAccessElsewhere(root, variableName, candidate.Call) ||
+                FindFeatureDeclarator(root, variableName) == null)
+            {
+                // Ex.: Transformed(P, name: "...") ou x usado como x.Algo(...): não dá para mover sem
+                // mudar o que outra parte do script vê.
+                skipped.Add(variableName);
+                continue;
+            }
+
+            string placementCode = candidate.Parts.ExistingPlacement!.ToString();
+            current = Replace(current, candidate.Call.ArgumentList.Arguments[0].Expression.Span, variableName);
+            var declarator = FindFeatureDeclarator(Parse(current), variableName)!;
+            current = ApplyPlacement(current, declarator.Initializer!.Value, placementCode, static (_, _) => null);
+        }
+
+        return current;
+    }
+
     private static VariableDeclaratorSyntax? FindFeatureDeclarator(SyntaxNode root, string variableName) =>
         root.DescendantNodes()
             .OfType<VariableDeclaratorSyntax>()
