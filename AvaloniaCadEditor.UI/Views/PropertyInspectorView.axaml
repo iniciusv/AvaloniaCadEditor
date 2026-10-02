@@ -30,7 +30,23 @@
                 <StackPanel Spacing="8" IsVisible="{Binding HasSelection}">
                     
                     <!-- Element Title -->
-                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="#00BFFF" FontSize="13" />
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="#00BFFF" FontSize="13" IsVisible="{Binding !IsFeature}" />
+
+                    <!-- Nome: Enter reescreve o nome no código e reexecuta -->
+                    <StackPanel Spacing="2" IsVisible="{Binding IsFeature}">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                            <TextBox Text="{Binding FeatureName, Mode=TwoWay}" Height="26" FontSize="12" FontWeight="SemiBold"
+                                     Foreground="#00BFFF" ToolTip.Tip="Enter renomeia no código">
+                                <TextBox.KeyBindings>
+                                    <KeyBinding Gesture="Enter" Command="{Binding RenameCommand}" />
+                                </TextBox.KeyBindings>
+                            </TextBox>
+                            <Button Grid.Column="1" Content="⧉" Click="OnCopyNameClick" Padding="6,2" FontSize="12"
+                                    ToolTip.Tip="Copiar o nome" />
+                        </Grid>
+                        <TextBlock Text="{Binding NameError}" Foreground="#FF6B6B" FontSize="10" TextWrapping="Wrap"
+                                   IsVisible="{Binding NameError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    </StackPanel>
 
                     <!-- Mathematical Center -->
                     <Border Background="#262626" CornerRadius="4" Padding="8">

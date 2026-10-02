@@ -41,6 +41,7 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
             _colorWriteTimer.Stop();
             _colorWriteTimer.Start();
         });
+        RenameCommand = new RelayCommand(async () => await RenameAsync());
         OpenPartDefinitionCommand = new RelayCommand(() =>
         {
             if (_selectionService.SelectedObject is PartInstance instance)
@@ -70,6 +71,44 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
     }
 
     public ICommand OpenPartDefinitionCommand { get; }
+
+    // --- Nome: editar + Enter reescreve o nome no código e reexecuta ---
+    private bool _isFeature;
+    public bool IsFeature
+    {
+        get => _isFeature;
+        private set { _isFeature = value; OnPropertyChanged(); }
+    }
+
+    private string _featureName = "";
+    public string FeatureName
+    {
+        get => _featureName;
+        set { _featureName = value ?? ""; OnPropertyChanged(); }
+    }
+
+    private string? _nameError;
+    public string? NameError
+    {
+        get => _nameError;
+        private set { _nameError = value; OnPropertyChanged(); }
+    }
+
+    public ICommand RenameCommand { get; }
+
+    /// <summary>Nome atual da feature selecionada (o que o botão de copiar copia).</summary>
+    public string? SelectedFeatureName => (_selectionService.SelectedObject as IFeature)?.Name;
+
+    private async System.Threading.Tasks.Task RenameAsync()
+    {
+        if (_selectionService.SelectedObject is not IFeature feature) return;
+        if (_partCodeEditor() is not { } editor)
+        {
+            NameError = "Editor de código indisponível.";
+            return;
+        }
+        NameError = await editor.RenameFeatureAsync(feature, FeatureName);
+    }
 
     // --- Cor da peça: o seletor muda muito rápido ao arrastar, então o código só é reescrito
     // depois de uma pausa (o timer), numa única reexecução.
@@ -309,6 +348,7 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
         if (obj == null)
         {
             HasSelection = false;
+            IsFeature = false;
             Title = "Nenhum elemento selecionado";
             TypeBadge = "";
             IsCylinder = false;
@@ -319,6 +359,9 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
         }
 
         HasSelection = true;
+        IsFeature = obj is IFeature;
+        FeatureName = (obj as IFeature)?.Name ?? "";
+        NameError = null;
 
         if (obj is ExtrudeFeature feature)
         {

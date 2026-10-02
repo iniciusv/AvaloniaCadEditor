@@ -25,6 +25,9 @@ public interface IPartCodeEditor
 
     /// <summary>Grava o <c>color:</c> ("#RRGGBB" ou null = padrão) e reexecuta. Retorna a mensagem de erro, ou null.</summary>
     Task<string?> SetPartInstanceColorAsync(PartInstance instance, string? color);
+
+    /// <summary>Renomeia a feature no código (<c>name:</c> ou o literal do nome) e reexecuta. Retorna a mensagem de erro, ou null.</summary>
+    Task<string?> RenameFeatureAsync(IFeature feature, string newName);
 }
 
 /// <summary>Comandos de navegação disparados pelo teclado no editor (F12, Shift+F12, F2).</summary>

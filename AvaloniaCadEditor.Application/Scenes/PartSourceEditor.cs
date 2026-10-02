@@ -256,6 +256,62 @@ public static class PartSourceEditor
         return Replace(source, TextSpan.FromBounds(separator.SpanStart, args[index].Span.End), string.Empty);
     }
 
+    // ---------------------------------------------------------------- Renomear
+
+    /// <summary>
+    /// Troca o <c>name:</c> da chamada <c>Add(...)</c> da linha dada, ou o acrescenta se a instância
+    /// usa o nome automático. Um nome calculado (ex.: <c>$"trilho_{i}"</c>) não é mexido.
+    /// </summary>
+    public static string RenameInstance(string source, int line, string newName)
+    {
+        var root = Parse(source);
+        var call = FindAddCall(root, line)
+            ?? throw new InvalidOperationException($"Não achei a chamada Add(...) na linha {line}.");
+
+        var args = call.ArgumentList.Arguments;
+        // name é o 3º parâmetro de Add(part, at, name, color).
+        var nameArg = args.FirstOrDefault(a => a.NameColon?.Name.Identifier.ValueText == "name")
+            ?? (args.Count > 2 && args[2].NameColon == null ? args[2] : null);
+
+        if (nameArg == null)
+        {
+            return Insert(source, call.ArgumentList.CloseParenToken.SpanStart, $", name: {StringLiteral(newName)}");
+        }
+        if (!nameArg.Expression.IsKind(SyntaxKind.StringLiteralExpression))
+        {
+            throw new InvalidOperationException($"O nome é calculado no código ({nameArg.Expression}); renomeie no editor.");
+        }
+        return Replace(source, nameArg.Expression.Span, StringLiteral(newName));
+    }
+
+    /// <summary>
+    /// Renomeia a feature solta de <c>AddFeature(x)</c> na linha dada trocando o literal com o nome
+    /// atual onde ela é criada (<c>{ Name = "a" }</c>, <c>name: "a"</c>, <c>CreateDifference("a", ...)</c>).
+    /// </summary>
+    public static string RenameFeature(string source, int line, string oldName, string newName)
+    {
+        var root = Parse(source);
+        var call = FindAddFeatureCall(root, line)
+            ?? throw new InvalidOperationException($"Não achei a chamada AddFeature(...) na linha {line}.");
+
+        ExpressionSyntax target = call.ArgumentList.Arguments[0].Expression;
+        var (identifier, _) = DecomposeAddFeatureArgument(target);
+        if (identifier != null)
+        {
+            target = FindFeatureDeclarator(root, identifier.Identifier.ValueText)?.Initializer?.Value
+                ?? throw new InvalidOperationException($"Não achei 'var {identifier.Identifier.ValueText} = ...;' neste arquivo.");
+        }
+
+        var literal = target.DescendantNodesAndSelf()
+            .OfType<LiteralExpressionSyntax>()
+            .FirstOrDefault(l => l.IsKind(SyntaxKind.StringLiteralExpression) && l.Token.ValueText == oldName)
+            ?? throw new InvalidOperationException($"Não achei o nome \"{oldName}\" escrito no código; renomeie no editor.");
+        return Replace(source, literal.Span, StringLiteral(newName));
+    }
+
+    private static string StringLiteral(string value) =>
+        SymbolDisplay.FormatLiteral(value, quote: true);
+
     // ---------------------------------------------------------------- Copiar uma instância
 
     /// <summary>

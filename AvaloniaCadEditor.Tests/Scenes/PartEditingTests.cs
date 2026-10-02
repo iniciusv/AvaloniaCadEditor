@@ -150,6 +150,34 @@ public class PartEditingTests
         PartSourceEditor.SetInstanceColor(code, 1, color).Should().Be(expected);
     }
 
+    // ------------------------------------------------------------ Renomear
+
+    [Theory]
+    [InlineData("Add(new Chapa(100));", "Add(new Chapa(100), name: \"base\");")]
+    [InlineData("Add(new Chapa(100), name: \"a\", color: \"#000000\");", "Add(new Chapa(100), name: \"base\", color: \"#000000\");")]
+    [InlineData("Add(new Chapa(100), p, \"a\");", "Add(new Chapa(100), p, \"base\");")]
+    public void RenameInstance_TrocaOuAcrescentaOName(string code, string expected)
+    {
+        PartSourceEditor.RenameInstance(code, 1, "base").Should().Be(expected);
+    }
+
+    [Fact]
+    public void RenameInstance_NomeCalculado_Recusa()
+    {
+        var act = () => PartSourceEditor.RenameInstance("Add(new Chapa(100), name: $\"c_{i}\");", 1, "base");
+        act.Should().Throw<InvalidOperationException>();
+    }
+
+    [Theory]
+    [InlineData("var b = new BoxFeature(Point3D.Origin, 1, 1, 1) { Name = \"caixa\" };\nAddFeature(b);", 2,
+        "var b = new BoxFeature(Point3D.Origin, 1, 1, 1) { Name = \"tampa\" };\nAddFeature(b);")]
+    [InlineData("AddFeature(BooleanFeature.CreateDifference(\"caixa\", a, c));", 1,
+        "AddFeature(BooleanFeature.CreateDifference(\"tampa\", a, c));")]
+    public void RenameFeature_TrocaOLiteralDoNome(string code, int line, string expected)
+    {
+        PartSourceEditor.RenameFeature(code, line, "caixa", "tampa").Should().Be(expected);
+    }
+
     // ------------------------------------------------------------ Girar instâncias
 
     [Theory]

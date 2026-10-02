@@ -1123,6 +1123,43 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         return null;
     }
 
+    public async Task<string?> RenameFeatureAsync(IFeature feature, string newName)
+    {
+        newName = newName.Trim();
+        if (newName.Length == 0) return "O nome não pode ficar vazio.";
+        if (newName == feature.Name) return null;
+        if (_cadViewModel.Sketch.Features.Any(f => f != feature && f.Name == newName))
+            return $"Já existe um elemento chamado \"{newName}\".";
+
+        var origin = FeatureOrigin.Of(feature);
+        if (origin == null || origin.Line <= 0) return "Não sei de onde este elemento veio no código.";
+        if (feature is PartInstance instance && CountInstancesFromSameCall(instance) > 1)
+            return "Esta linha cria várias instâncias; um nome fixo repetiria em todas. Renomeie no código.";
+
+        string file = SourceFileOf(origin);
+        string? source = GetDocumentText(file);
+        if (source == null) return $"O arquivo {file} não faz parte da cena aberta.";
+
+        string updated;
+        try
+        {
+            updated = feature is PartInstance
+                ? PartSourceEditor.RenameInstance(source, origin.Line, newName)
+                : PartSourceEditor.RenameFeature(source, origin.Line, feature.Name, newName);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message;
+        }
+        if (updated == source) return null;
+
+        SetDocumentText(file, updated);
+        await RunCodeAsync();
+        if (HasErrors) return ErrorSummary;
+        SelectFeatureByName(newName);
+        return null;
+    }
+
     // ---------------------------------------------------------------- Edições geradas pelo app
 
     public void AppendCode(string codeSnippet)
