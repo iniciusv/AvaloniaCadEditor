@@ -19,27 +19,17 @@ public sealed record CarrinhoMgn9C(double Largura = 20, double Comprimento = 28.
         const double diametroFuro = 3; // M3
         const double profundidadeFuro = 3;
 
-        var xCentro = Largura / 2;
-        var yCentro = Comprimento / 2;
+        var xEsquerda = Largura / 2 - passoTransversal / 2;
+        var xDireita = Largura / 2 + passoTransversal / 2;
+        var yFrente = Comprimento / 2 - passoLongitudinal / 2;
+        var yTras = Comprimento / 2 + passoLongitudinal / 2;
+        var zFuro = Altura - profundidadeFuro;
 
-        var furos = new List<IFeature>();
-        var i = 0;
-        foreach (var sinalX in new[] { -1.0, 1.0 })
-        {
-            foreach (var sinalY in new[] { -1.0, 1.0 })
-            {
-                var x = xCentro + sinalX * passoTransversal / 2;
-                var y = yCentro + sinalY * passoLongitudinal / 2;
-                var furo = new CylinderFeature(new Point3D(x, y, Altura - profundidadeFuro), Vector3D.UnitZ, diametroFuro / 2, profundidadeFuro)
-                {
-                    Name = $"furo_fixacao_{i}",
-                    IsTransientTool = true
-                };
-                furos.Add(furo);
-                i++;
-            }
-        }
+        var furo_fixacao_1 = new CylinderFeature(new Point3D(xEsquerda, yFrente, zFuro), Vector3D.UnitZ, diametroFuro / 2, profundidadeFuro) { Name = "furo_fixacao_1", IsTransientTool = true };
+        var furo_fixacao_2 = new CylinderFeature(new Point3D(xEsquerda, yTras, zFuro), Vector3D.UnitZ, diametroFuro / 2, profundidadeFuro) { Name = "furo_fixacao_2", IsTransientTool = true };
+        var furo_fixacao_3 = new CylinderFeature(new Point3D(xDireita, yFrente, zFuro), Vector3D.UnitZ, diametroFuro / 2, profundidadeFuro) { Name = "furo_fixacao_3", IsTransientTool = true };
+        var furo_fixacao_4 = new CylinderFeature(new Point3D(xDireita, yTras, zFuro), Vector3D.UnitZ, diametroFuro / 2, profundidadeFuro) { Name = "furo_fixacao_4", IsTransientTool = true };
 
-        return BooleanFeature.CreateDifference("carrinho_mgn9c", corpo, furos.ToArray());
+        return BooleanFeature.CreateDifference("carrinho_mgn9c", corpo, furo_fixacao_1, furo_fixacao_2, furo_fixacao_3, furo_fixacao_4);
     }
 }

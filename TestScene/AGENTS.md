@@ -23,6 +23,11 @@ O app AvaloniaCad observa esta pasta e redesenha o modelo sempre que um arquivo 
 - `Build()` devolve a geometria em coordenadas locais (origem da peça em 0,0,0) e não chama `AddFeature`/`Add`.
   Para peças compostas (corpo + furos + eixo etc.), combine tudo dentro do próprio `Build()` com
   `BooleanFeature.CreateUnion`/`CreateDifference`/`CreateIntersection` e devolva a `IFeature` final.
+- Sólidos rastreáveis por nome: variáveis, `const`, laços e funções locais podem CALCULAR valores (posições,
+  diâmetros, passos), mas cada sólido (`BoxFeature`, `CylinderFeature`, `PrismFeature`, `BooleanFeature`...) é
+  criado numa declaração própria com `Name` literal igual ao nome da variável e único na peça:
+  `var furo_1 = new CylinderFeature(...)` com `Name = "furo_1"`. Nunca crie sólidos dentro de laços/LINQ nem use
+  nome interpolado ou concatenado (ex.: `"furo_" + i`); para N furos, declare `furo_1 ... furo_N`, um por linha.
 - Na cena: `var p = Add(new MinhaPeca(...), at: Placement.At(x, y, z));`. Variantes: expressão `with` do C# sobre `p.Part` (ex.: mudar só a espessura).
 - Pontos da peça no mundo: `p.World(peca => peca.AlgumPonto)`.
 - Exemplo completo em `.cad/api.md` (seção PEÇAS PARAMÉTRICAS).

@@ -99,6 +99,33 @@ public class CadScriptProtocol : IAiProtocol<CadScriptContext, string>
                 return BooleanFeature.CreateDifference("chapa_furada", corpo, furo_1, furo_2);
             }
         }
+        """,
+
+        // Medidas calculadas com const/variáveis, mas cada sólido declarado um a um com nome literal
+        """
+        public sealed record BlocoQuatroFuros(double Largura = 20, double Comprimento = 30, double Altura = 10) : Part
+        {
+            protected override IFeature Build()
+            {
+                const double passoX = 15;
+                const double passoY = 10;
+                const double diametroFuro = 3;
+                const double profundidadeFuro = 3;
+
+                var x1 = Largura / 2 - passoX / 2;
+                var x2 = Largura / 2 + passoX / 2;
+                var y1 = Comprimento / 2 - passoY / 2;
+                var y2 = Comprimento / 2 + passoY / 2;
+                var zFuro = Altura - profundidadeFuro;
+
+                var corpo = new BoxFeature(Point3D.Origin, Largura, Comprimento, Altura) { Name = "corpo" };
+                var furo_1 = new CylinderFeature(new Point3D(x1, y1, zFuro), Vector3D.UnitZ, diametroFuro / 2, profundidadeFuro) { Name = "furo_1", IsTransientTool = true };
+                var furo_2 = new CylinderFeature(new Point3D(x2, y1, zFuro), Vector3D.UnitZ, diametroFuro / 2, profundidadeFuro) { Name = "furo_2", IsTransientTool = true };
+                var furo_3 = new CylinderFeature(new Point3D(x1, y2, zFuro), Vector3D.UnitZ, diametroFuro / 2, profundidadeFuro) { Name = "furo_3", IsTransientTool = true };
+                var furo_4 = new CylinderFeature(new Point3D(x2, y2, zFuro), Vector3D.UnitZ, diametroFuro / 2, profundidadeFuro) { Name = "furo_4", IsTransientTool = true };
+                return BooleanFeature.CreateDifference("bloco_quatro_furos", corpo, furo_1, furo_2, furo_3, furo_4);
+            }
+        }
         """
     };
 
@@ -141,6 +168,13 @@ public class CadScriptProtocol : IAiProtocol<CadScriptContext, string>
         sb.AppendLine("- NÃO use Console, System.IO, threads, reflexão ou qualquer tipo de I/O.");
         sb.AppendLine("- Todo número decimal usa ponto ('.'), nunca vírgula.");
         sb.AppendLine("- Nomes de variáveis são únicos, curtos e em snake_case (ex.: box_a1, hole_b2, fillet_c3).");
+        sb.AppendLine("- SÓLIDOS RASTREÁVEIS POR NOME: variáveis, const, arrays, laços e funções locais podem ser usados para");
+        sb.AppendLine("  CALCULAR valores (posições, diâmetros, passos), mas cada sólido (BoxFeature, CylinderFeature, PrismFeature,");
+        sb.AppendLine("  ExtrudeFeature, FilletFeature, BooleanFeature...) deve ser criado numa declaração própria, com Name LITERAL");
+        sb.AppendLine("  igual ao nome da variável e único no arquivo/peça: var furo_1 = new CylinderFeature(...) { Name = \"furo_1\" };");
+        sb.AppendLine("  NUNCA crie sólidos dentro de laços, LINQ (Select(... new CylinderFeature ...)) ou listas montadas");
+        sb.AppendLine("  dinamicamente, e NUNCA use nome interpolado ou concatenado ($\"furo_{i}\"). Para N furos iguais, calcule as");
+        sb.AppendLine("  posições em variáveis e declare furo_1 ... furo_N, um por linha.");
         sb.AppendLine("- Prefira reaproveitar/editar o ARQUIVO ATUAL em vez de recomeçar do zero, a menos que o pedido peça algo totalmente novo.");
         sb.AppendLine();
         sb.AppendLine("API DISPONÍVEL (extraída automaticamente do código-fonte atual do projeto — sempre confie nela, não invente membros):");

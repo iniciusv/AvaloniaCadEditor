@@ -94,6 +94,16 @@ public static class CadScriptApiReference
         sb.AppendLine("            return BooleanFeature.CreateDifference(\"chapa_furada\", corpo, furo);");
         sb.AppendLine("        }");
         sb.AppendLine("    }");
+        sb.AppendLine("  Sólidos rastreáveis por nome: variáveis, const, arrays, laços e funções locais podem CALCULAR valores");
+        sb.AppendLine("  (posições, diâmetros, passos), mas cada sólido (BoxFeature, CylinderFeature, PrismFeature, ExtrudeFeature,");
+        sb.AppendLine("  FilletFeature, BooleanFeature...) é criado numa declaração própria, com Name LITERAL igual ao nome da variável");
+        sb.AppendLine("  e único na peça. NUNCA crie sólidos dentro de laços, LINQ ou listas montadas dinamicamente, e NUNCA use nome");
+        sb.AppendLine("  interpolado/concatenado ($\"furo_{i}\"). Para N furos iguais, calcule as posições e declare furo_1 ... furo_N:");
+        sb.AppendLine("            const double diametroFuro = 3;");
+        sb.AppendLine("            var x1 = Largura / 2 - 7.5;");
+        sb.AppendLine("            var x2 = Largura / 2 + 7.5;");
+        sb.AppendLine("            var furo_1 = new CylinderFeature(new Point3D(x1, 5, 0), Vector3D.UnitZ, diametroFuro / 2, Espessura) { Name = \"furo_1\", IsTransientTool = true };");
+        sb.AppendLine("            var furo_2 = new CylinderFeature(new Point3D(x2, 5, 0), Vector3D.UnitZ, diametroFuro / 2, Espessura) { Name = \"furo_2\", IsTransientTool = true };");
         sb.AppendLine("  Parâmetros podem ter [System.ComponentModel.DataAnnotations.Range(min, max)]; valores fora do intervalo viram erro.");
         sb.AppendLine("  Método global: PartInstance<T> Add<T>(T part, Placement? at = null, string? name = null, string? color = null) — coloca uma instância na cena.");
         sb.AppendLine("  color (\"#RRGGBB\") é opcional e pinta o sólido inteiro; só use se o pedido envolver cores.");
