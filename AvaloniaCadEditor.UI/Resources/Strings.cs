@@ -31,6 +31,7 @@ public static class Strings
     public static string ExitSketch => ResourceManager.GetString("ExitSketch") ?? "Exit Sketch";
     public static string ImportStl => ResourceManager.GetString("ImportStl") ?? "Import STL";
     public static string ExportStl => ResourceManager.GetString("ExportStl") ?? "Export STL";
+    public static string ExportStlTooltip => ResourceManager.GetString("ExportStlTooltip") ?? "Exports the selected solid(s); if none are selected, exports the whole scene";
     public static string DeduceSolid => ResourceManager.GetString("DeduceSolid") ?? "✨ Deduce Solid";
     public static string DeduceSolidTooltip => ResourceManager.GetString("DeduceSolidTooltip") ?? "Deduces CSG geometry from the selected STL mesh";
     public static string ExtrudeTool => ResourceManager.GetString("ExtrudeTool") ?? "Extrude (P)";

@@ -712,19 +712,31 @@ public class CadViewModel : INotifyPropertyChanged
 
 		ExportStlCommand = new RelayCommand(async () =>
 		{
-			if (SolidMesh == null || SolidMesh.TriangleCount == 0) return;
+			var meshToExport = GetExportMesh();
+			if (meshToExport == null || meshToExport.TriangleCount == 0) return;
 
 			var path = await _filePickerService.SaveFileAsync("Save STL File", "stl", "model");
 			if (string.IsNullOrEmpty(path)) return;
 
-			await _stlService.ExportAsync(SolidMesh, path, asBinary: true);
+			await _stlService.ExportAsync(meshToExport, path, asBinary: true);
 		});
 
 		ReconstructMeshCommand = new RelayCommand(async () =>
 		{
 			if (_selectionService.SelectedObject is ImportedMeshFeature importedFeature && _reconstructionService != null)
 			{
-				var reconstructedFeature = await _reconstructionService.ReconstructMeshAsync(importedFeature.Mesh);
+				StatusText = "Deduzindo sólido a partir da malha...";
+				IFeature? reconstructedFeature;
+				try
+				{
+					reconstructedFeature = await _reconstructionService.ReconstructMeshAsync(importedFeature.Mesh);
+				}
+				catch (Exception ex)
+				{
+					StatusText = $"✗ Deduce Solid: falhou ({ex.Message}).";
+					return;
+				}
+
 				if (reconstructedFeature != null)
 				{
 					importedFeature.IsVisible = false;
@@ -736,6 +748,10 @@ public class CadViewModel : INotifyPropertyChanged
 
 					RefreshSolidMesh();
 					ModelTree.RebuildTree();
+				}
+				else
+				{
+					StatusText = "✗ Deduce Solid: nenhum algoritmo encontrou um sólido com acurácia volumétrica suficiente (mínimo 50%).";
 				}
 			}
 		}, () => _selectionService.SelectedObject is ImportedMeshFeature);
@@ -825,6 +841,23 @@ public class CadViewModel : INotifyPropertyChanged
 		{
 			ScriptEditor.GenerateCodeCommand.Execute(null);
 		}
+	}
+
+	/// <summary>
+	/// Malha a exportar para STL: se houver features selecionadas na cena, exporta só essas;
+	/// caso contrário, exporta a cena inteira (SolidMesh).
+	/// </summary>
+	private TriangleMesh GetExportMesh()
+	{
+		var selectedFeatures = Sketch.Features.Where(f => f.IsSelected).ToList();
+		if (selectedFeatures.Count == 0) return SolidMesh;
+
+		var meshes = selectedFeatures
+			.Select(f => MeshManager.GetFeatureMesh(Sketch, f.Id, null))
+			.Where(m => m != null && m.TriangleCount > 0)
+			.ToList();
+
+		return TriangleMesh.Combine(meshes, includeFeatureNormals: false);
 	}
 
 	public void EnterSketchMode(AvaloniaCadEditor.Domain.Features.WorkPlaneFeature wpf)

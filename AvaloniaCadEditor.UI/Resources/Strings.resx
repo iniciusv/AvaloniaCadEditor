@@ -24,6 +24,7 @@
   <data name="ExitSketch" xml:space="preserve"><value>Exit Sketch</value></data>
   <data name="ImportStl" xml:space="preserve"><value>Import STL</value></data>
   <data name="ExportStl" xml:space="preserve"><value>Export STL</value></data>
+  <data name="ExportStlTooltip" xml:space="preserve"><value>Exports the selected solid(s); if none are selected, exports the whole scene</value></data>
   <data name="DeduceSolid" xml:space="preserve"><value>✨ Deduce Solid</value></data>
   <data name="DeduceSolidTooltip" xml:space="preserve"><value>Deduces CSG geometry from the selected STL mesh</value></data>
   <data name="ExtrudeTool" xml:space="preserve"><value>Extrude (P)</value></data>

@@ -1,0 +1,93 @@
+using System;
+using System.Collections.Generic;
+
+/// <summary>
+/// Suporte frontal impresso para fixação do Hotend V6 ao BlocoFixacaoMgn9 do carrinho MGN9C.
+/// Encaixa na face frontal do bloco de fixação (Y = 0 na coordenada local) e se conecta a ele
+/// através dos mesmos 3 furos M3 (espaçamento X = 0 e X = ±DistanciaFurosLateraisX).
+/// Na parte frontal, abraça/aloja o colar cilíndrico superior de fixação do Hotend V6 (Ø16 mm x 10 mm altura)
+/// localizado a uma distância configurável (padrão 15 mm à frente da face de contato, alinhado com o bico em Y = -25 na cena).
+/// Possui chanfro (Bevel) configurável em todas as arestas do sólido original.
+/// </summary>
+public sealed record SuporteHotendV6(
+    double Altura = 10,
+    double Largura = 28.9,
+    double DistanciaYHotend = 15.0,
+    double DiametroColar = 16.2,
+    double EspessuraParedeFrontal = 5.0,
+    double DiametroFuroM3 = 3.2,
+    double DistanciaFurosLateraisX = 10.0,
+    double DiametroRebaixo = 6.0,
+    double ProfundidadeRebaixo = 4.0,
+    double RaioChanfro = 1.0) : Part
+{
+    protected override IFeature Build()
+    {
+        var comprimentoTotal = DistanciaYHotend + DiametroColar / 2.0 + EspessuraParedeFrontal;
+        var baseCorner = new Point3D(-Largura / 2.0, -comprimentoTotal, 0);
+        var corpoBase = new BoxFeature(baseCorner, Largura, comprimentoTotal, Altura) { Name = "corpo_base" };
+
+        var corpo = RaioChanfro > 0.001
+            ? new FilletFeature("corpo_chanfrado", corpoBase, RaioChanfro)
+            {
+                Mode = FilletMode.Bevel,
+                ApplyToAllEdges = true
+            }
+            : (IFeature)corpoBase;
+
+        var cortes = new List<IFeature>();
+
+        // 1. Alojamento cilíndrico para o colar de fixação do Hotend V6 (Ø16 mm)
+        var furoColar = new CylinderFeature(
+            globalBaseCenter: new Point3D(0, -DistanciaYHotend, -1),
+            globalDirection: Vector3D.UnitZ,
+            radius: DiametroColar / 2.0,
+            height: Altura + 2)
+        {
+            Name = "alojamento_colar_hotend",
+            IsTransientTool = true
+        };
+        cortes.Add(furoColar);
+
+        // 2. Três furos M3 alinhados com o BlocoFixacaoMgn9 (sentido Y, Z = Altura / 2)
+        var zCentro = Altura / 2.0;
+        var posicoesX = new[]
+        {
+            ("central", 0.0, false),
+            ("lateral_esq", -DistanciaFurosLateraisX, true),
+            ("lateral_dir", DistanciaFurosLateraisX, true)
+        };
+
+        foreach (var (nome, posX, comRebaixo) in posicoesX)
+        {
+            // Furo passante M3
+            var furoM3 = new CylinderFeature(
+                globalBaseCenter: new Point3D(posX, -comprimentoTotal - 1, zCentro),
+                globalDirection: Vector3D.UnitY,
+                radius: DiametroFuroM3 / 2.0,
+                height: comprimentoTotal + 2)
+            {
+                Name = $"furo_m3_{nome}",
+                IsTransientTool = true
+            };
+            cortes.Add(furoM3);
+
+            // Rebaixo frontal para embutir a cabeça do parafuso M3 (apenas nos furos laterais acessíveis)
+            if (comRebaixo)
+            {
+                var rebaixo = new CylinderFeature(
+                    globalBaseCenter: new Point3D(posX, -comprimentoTotal - 1, zCentro),
+                    globalDirection: Vector3D.UnitY,
+                    radius: DiametroRebaixo / 2.0,
+                    height: ProfundidadeRebaixo + 1)
+                {
+                    Name = $"rebaixo_m3_{nome}",
+                    IsTransientTool = true
+                };
+                cortes.Add(rebaixo);
+            }
+        }
+
+        return BooleanFeature.CreateDifference("suporte_hotend_v6", corpo, cortes.ToArray());
+    }
+}

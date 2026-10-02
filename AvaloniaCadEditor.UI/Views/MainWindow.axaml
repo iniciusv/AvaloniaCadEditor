@@ -321,7 +321,7 @@
                     <TabItem Header="{x:Static res:Strings.IOTab}" Padding="10,5">
                         <StackPanel Spacing="10" Margin="10">
                             <Button Content="{x:Static res:Strings.ImportStl}" Command="{Binding ImportStlCommand}" Background="#34495E" Foreground="White" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
-                            <Button Content="{x:Static res:Strings.ExportStl}" Command="{Binding ExportStlCommand}" Background="#34495E" Foreground="White" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                            <Button Content="{x:Static res:Strings.ExportStl}" Command="{Binding ExportStlCommand}" Background="#34495E" Foreground="White" ToolTip.Tip="{x:Static res:Strings.ExportStlTooltip}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                             <Button Content="{x:Static res:Strings.DeduceSolid}" Command="{Binding ReconstructMeshCommand}" Background="#8E44AD" Foreground="White" ToolTip.Tip="{x:Static res:Strings.DeduceSolidTooltip}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                         </StackPanel>
                     </TabItem>
