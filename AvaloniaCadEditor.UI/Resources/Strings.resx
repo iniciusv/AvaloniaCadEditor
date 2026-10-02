@@ -52,6 +52,7 @@
   <data name="IOTab" xml:space="preserve"><value>Tools</value></data>
   <data name="NewScene" xml:space="preserve"><value>New</value></data>
   <data name="OpenScene" xml:space="preserve"><value>Open</value></data>
+  <data name="LoadLastScene" xml:space="preserve"><value>Last</value></data>
   <data name="NewFileWatermark" xml:space="preserve"><value>New part file</value></data>
   <data name="NewFileTooltip" xml:space="preserve"><value>Create Pecas/&lt;name&gt;.cs with a part template (e.g. Bracket or Pecas/Bracket)</value></data>
   <data name="SceneErrorTitle" xml:space="preserve"><value>⚠ Scene error: showing the last model that ran successfully</value></data>

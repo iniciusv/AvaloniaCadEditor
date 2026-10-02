@@ -59,6 +59,7 @@ public static class Strings
     public static string IOTab => ResourceManager.GetString("IOTab") ?? "Tools";
     public static string NewScene => ResourceManager.GetString("NewScene") ?? "New";
     public static string OpenScene => ResourceManager.GetString("OpenScene") ?? "Open";
+    public static string LoadLastScene => ResourceManager.GetString("LoadLastScene") ?? "Last";
     public static string NewFileWatermark => ResourceManager.GetString("NewFileWatermark") ?? "New part file";
     public static string NewFileTooltip => ResourceManager.GetString("NewFileTooltip") ?? "Create Pecas/<name>.cs with a part template (e.g. Bracket or Pecas/Bracket)";
     public static string SceneErrorTitle => ResourceManager.GetString("SceneErrorTitle") ?? "⚠ Scene error: showing the last model that ran successfully";

@@ -35,6 +35,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
     private readonly CodeHistoryManager _history = new();
     private readonly Action<Action> _uiInvoker;
     private readonly ISceneCodeNavigator _codeNavigator;
+    private readonly ILastSceneProvider _lastSceneProvider;
 
     // Modo projeto: texto de cada arquivo em memória e o último conteúdo visto em disco.
     private SceneProject? _project;
@@ -50,13 +51,15 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         ISceneEvaluator? sceneEvaluator,
         IFilePickerService? filePickerService,
         Action<Action>? uiInvoker = null,
-        ISceneCodeNavigator? codeNavigator = null)
+        ISceneCodeNavigator? codeNavigator = null,
+        ILastSceneProvider? lastSceneProvider = null)
     {
         _codeNavigator = codeNavigator ?? new AvaloniaCadEditor.Infrastructure.Scripting.RoslynCodeNavigator();
         _cadViewModel = cadViewModel;
         _sceneEvaluator = sceneEvaluator;
         _filePickerService = filePickerService;
         _uiInvoker = uiInvoker ?? (action => Avalonia.Threading.Dispatcher.UIThread.Post(action));
+        _lastSceneProvider = lastSceneProvider ?? new AvaloniaCadEditor.Infrastructure.Settings.JsonLastSceneProvider();
 
         GenerateCodeCommand = new RelayCommand(() =>
         {
@@ -91,6 +94,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
 
         NewSceneCommand = new RelayCommand(async () => await NewSceneAsync());
         OpenSceneCommand = new RelayCommand(async () => await OpenSceneAsync());
+        LoadLastSceneCommand = new RelayCommand(async () => await LoadLastSceneAsync());
         CreateFileCommand = new RelayCommand(async () => await CreateFileAsync());
         GoToFirstErrorCommand = new RelayCommand(GoToFirstError);
         InsertPartCommand = new RelayCommand(async () => await InsertPartAsync(SelectedPartType));
@@ -105,6 +109,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
     public ICommand SaveCodeToFileCommand { get; }
     public ICommand NewSceneCommand { get; }
     public ICommand OpenSceneCommand { get; }
+    public ICommand LoadLastSceneCommand { get; }
     public ICommand CreateFileCommand { get; }
     public ICommand GoToFirstErrorCommand { get; }
     public ICommand InsertPartCommand { get; }
@@ -221,6 +226,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         {
             _generatedCSharpCode = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(ShowLoadLastSceneButton));
         }
     }
 
@@ -313,12 +319,33 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         SwitchActiveFile(_entryFile);
         StartWatcher();
 
+        _lastSceneProvider.SetLastScenePath(folder);
+
         OnPropertyChanged(nameof(Project));
         OnPropertyChanged(nameof(IsProjectOpen));
         OnPropertyChanged(nameof(ProjectName));
+        OnPropertyChanged(nameof(ShowLoadLastSceneButton));
 
         await RunCodeAsync();
     }
+
+    /// <summary>Carrega a cena da última inicialização, se houver uma registrada e ela ainda existir.</summary>
+    public async Task LoadLastSceneAsync()
+    {
+        string? folder = _lastSceneProvider.GetLastScenePath();
+        if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
+        {
+            _cadViewModel.StatusText = "Nenhuma última cena encontrada.";
+            return;
+        }
+        await OpenProjectAsync(folder);
+    }
+
+    /// <summary>Só mostra o botão "Última" quando nada foi aberto/digitado ainda nesta sessão (estado inicial).</summary>
+    public bool ShowLoadLastSceneButton =>
+        !IsProjectOpen && GeneratedCSharpCode.StartsWith("// Pressione") && HasLastScene;
+
+    public bool HasLastScene => !string.IsNullOrEmpty(_lastSceneProvider.GetLastScenePath());
 
     /// <summary>Volta ao modo de arquivo único (o texto atual do editor permanece).</summary>
     public void CloseProject()
@@ -340,6 +367,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         OnPropertyChanged(nameof(IsProjectOpen));
         OnPropertyChanged(nameof(ProjectName));
         OnPropertyChanged(nameof(ActiveFile));
+        OnPropertyChanged(nameof(ShowLoadLastSceneButton));
     }
 
     /// <summary>
@@ -886,6 +914,10 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
     private string SourceFileOf(SourceOrigin origin) =>
         _project != null ? _project.ToRelativePath(origin.FilePath) : ScriptDocument.DefaultSceneFile;
 
+    /// <summary>Caminho de <see cref="SourceOrigin.FilePath"/> no formato de <see cref="GetSceneDocuments"/>.</summary>
+    public string ToSceneRelativePath(string path) =>
+        _project != null ? _project.ToRelativePath(path) : ScriptDocument.DefaultSceneFile;
+
     private string? GetDocumentText(string file)
     {
         if (_project == null)
@@ -1261,6 +1293,35 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         EnsureEntryDocumentActive();
         _history.SaveState(GeneratedCSharpCode);
         GeneratedCSharpCode = code;
+        await RunCodeAsync();
+    }
+
+    /// <summary>
+    /// Aplica de uma vez os arquivos devolvidos pela IA no modo multi-arquivo (cria os que ainda não
+    /// existem, ex.: uma peça nova em Pecas/) e reexecuta a cena uma única vez. Sem projeto aberto,
+    /// equivale a <see cref="ApplyExternalCode"/>.
+    /// </summary>
+    public async Task ApplyExternalChangesAsync(IReadOnlyList<ScriptDocument> changes)
+    {
+        if (changes.Count == 0) return;
+        if (_project == null)
+        {
+            await ApplyExternalCode(changes[^1].Text);
+            return;
+        }
+
+        SyncActiveDocument();
+        bool created = false;
+        foreach (var change in changes)
+        {
+            created |= !_documents.ContainsKey(change.FilePath);
+            SetDocumentText(change.FilePath, change.Text);
+        }
+        if (created)
+        {
+            _entryFile = SceneProject.FindEntryFile(_documents.Select(kv => new ScriptDocument(kv.Key, kv.Value)));
+            RefreshFileList();
+        }
         await RunCodeAsync();
     }
 

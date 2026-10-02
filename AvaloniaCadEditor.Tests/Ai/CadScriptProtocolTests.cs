@@ -1,4 +1,7 @@
+using System.Collections.Generic;
+using System.Linq;
 using AvaloniaCadEditor.Application.Ai;
+using AvaloniaCadEditor.Application.Interfaces;
 using FluentAssertions;
 using Xunit;
 
@@ -16,7 +19,7 @@ public class CadScriptProtocolTests
         var result = _protocol.ParseResponse(raw);
 
         result.HasPayload.Should().BeTrue();
-        result.Payload.Should().Contain("AddFeature(box_a1)");
+        result.Payload!.Files.Single().Code.Should().Contain("AddFeature(box_a1)");
         result.ChatMessage.Should().Contain("Adicionei uma caixa.");
         result.ChatMessage.Should().NotContain("```");
     }
@@ -29,7 +32,7 @@ public class CadScriptProtocolTests
         var result = _protocol.ParseResponse(raw);
 
         result.HasPayload.Should().BeTrue();
-        result.Payload.Should().Contain("AddFeature(x_1)");
+        result.Payload!.Files.Single().Code.Should().Contain("AddFeature(x_1)");
     }
 
     [Fact]
@@ -42,8 +45,8 @@ public class CadScriptProtocolTests
 
         var result = _protocol.ParseResponse(raw);
 
-        result.Payload.Should().Contain("final_1");
-        result.Payload.Should().NotContain("versão antiga");
+        result.Payload!.Files.Single().Code.Should().Contain("final_1");
+        result.Payload.Files.Single().Code.Should().NotContain("versão antiga");
     }
 
     [Fact]
@@ -120,5 +123,59 @@ public class CadScriptProtocolTests
 
         message.Should().Contain("Cena.cs");
         message.Should().Contain("script");
+    }
+
+    [Fact]
+    public void ParseResponse_ComVariosBlocosFile_ExtraiUmArquivoPorBloco()
+    {
+        string raw =
+            "Aumentei a placa e reposicionei.\n" +
+            "```cadscript file=Pecas/Placa.cs\npublic sealed record Placa(double Largura = 120) : Part { }\n```\n" +
+            "```cadscript file=Cena.cs\nvar placa_1 = Add(new Placa());\n```";
+
+        var result = _protocol.ParseResponse(raw);
+
+        result.Payload!.Files.Select(f => f.FilePath).Should().Equal("Pecas/Placa.cs", "Cena.cs");
+        result.Payload.Files[1].Code.Should().Be("var placa_1 = Add(new Placa());");
+        result.ChatMessage.Should().Be("Aumentei a placa e reposicionei.");
+    }
+
+    [Fact]
+    public void ParseResponse_BlocoSemFile_FicaSemCaminho()
+    {
+        var result = _protocol.ParseResponse("```cadscript\nAddFeature(x);\n```");
+
+        result.Payload!.Files.Single().FilePath.Should().BeNull("bloco sem file= vale para o arquivo ativo");
+    }
+
+    [Fact]
+    public void BuildUserMessage_MultiArquivo_EnviaCadaArquivoComCaminhoEFormato()
+    {
+        var context = new CadScriptContext(
+            CurrentCode: "",
+            Scope: new MultiFileScope(
+                new[]
+                {
+                    new ScriptDocument("Cena.cs", "var a = Add(new Placa());"),
+                    new ScriptDocument("Pecas/Placa.cs", "public sealed record Placa(double Largura = 100) : Part { protected override IFeature Build() => null!; }"),
+                    new ScriptDocument("Pecas/Medidas.cs", "public static class Medidas { public const double E = 5; }"),
+                },
+                new Dictionary<string, CadFileKind>
+                {
+                    ["Cena.cs"] = CadFileKind.SceneEntry,
+                    ["Pecas/Placa.cs"] = CadFileKind.PartFile,
+                    ["Pecas/Medidas.cs"] = CadFileKind.SupportFile,
+                },
+                new[] { "Placa_1 (peça Placa) — Cena.cs, linha 1" }));
+
+        string message = _protocol.BuildUserMessage(context, "Aumente a placa");
+
+        message.Should().Contain("### ARQUIVOS NO CONTEXTO");
+        message.Should().Contain("```cadscript file=Pecas/Placa.cs");
+        message.Should().Contain("Cena.cs — formato: script");
+        message.Should().Contain("Pecas/Placa.cs — formato: peça");
+        message.Should().Contain("Pecas/Medidas.cs — formato: auxiliar");
+        message.Should().Contain("Placa_1 (peça Placa)");
+        message.Should().NotContain("### ARQUIVO ATIVO");
     }
 }

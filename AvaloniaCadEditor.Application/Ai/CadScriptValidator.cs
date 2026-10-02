@@ -46,10 +46,15 @@ public static class CadScriptValidator
             return new CadScriptValidationResult(false, "O arquivo não pode declarar 'namespace'.");
         }
 
-        return kind == CadFileKind.PartFile ? ValidatePartFile(root) : ValidateScriptFile(root);
+        return kind switch
+        {
+            CadFileKind.PartFile => ValidatePartFile(root),
+            CadFileKind.SupportFile => ValidateSupportFile(root),
+            _ => ValidateScriptFile(root, kind)
+        };
     }
 
-    private static CadScriptValidationResult ValidateScriptFile(SyntaxNode root)
+    private static CadScriptValidationResult ValidateScriptFile(SyntaxNode root, CadFileKind kind)
     {
         if (root.DescendantNodes().OfType<TypeDeclarationSyntax>().Any())
         {
@@ -57,9 +62,11 @@ public static class CadScriptValidator
                 "O script não pode declarar 'class', 'struct', 'record' ou 'interface' — peças reutilizáveis vão num arquivo próprio em Pecas/ (um record que herda de Part).");
         }
 
+        // O arquivo de entrada de um projeto pode registrar só instâncias de peça, com Add(...).
         bool hasAddFeature = root.DescendantNodes()
             .OfType<InvocationExpressionSyntax>()
-            .Any(inv => inv.Expression is IdentifierNameSyntax id && id.Identifier.Text == "AddFeature");
+            .Any(inv => inv.Expression is IdentifierNameSyntax id &&
+                        (id.Identifier.Text == "AddFeature" || (kind == CadFileKind.SceneEntry && id.Identifier.Text == "Add")));
         if (!hasAddFeature)
         {
             return new CadScriptValidationResult(false, "O script precisa registrar ao menos uma feature com AddFeature(...).");
@@ -107,6 +114,17 @@ public static class CadScriptValidator
         {
             return new CadScriptValidationResult(false,
                 "Build() não deve chamar AddFeature/Add — só devolve a IFeature da peça; quem registra e posiciona a instância é o arquivo de entrada da cena.");
+        }
+
+        return new CadScriptValidationResult(true, null);
+    }
+
+    private static CadScriptValidationResult ValidateSupportFile(SyntaxNode root)
+    {
+        if (root.DescendantNodes().OfType<GlobalStatementSyntax>().Any())
+        {
+            return new CadScriptValidationResult(false,
+                "Um arquivo auxiliar (tipos/constantes) não pode ter statements soltos — isso pertence ao arquivo de entrada da cena.");
         }
 
         return new CadScriptValidationResult(true, null);

@@ -204,6 +204,16 @@ PEÇAS PARAMÉTRICAS (em projetos de cena com vários arquivos):
             return BooleanFeature.CreateDifference("chapa_furada", corpo, furo);
         }
     }
+  Sólidos rastreáveis por nome: variáveis, const, arrays, laços e funções locais podem CALCULAR valores
+  (posições, diâmetros, passos), mas cada sólido (BoxFeature, CylinderFeature, PrismFeature, ExtrudeFeature,
+  FilletFeature, BooleanFeature...) é criado numa declaração própria, com Name LITERAL igual ao nome da variável
+  e único na peça. NUNCA crie sólidos dentro de laços, LINQ ou listas montadas dinamicamente, e NUNCA use nome
+  interpolado/concatenado ($"furo_{i}"). Para N furos iguais, calcule as posições e declare furo_1 ... furo_N:
+            const double diametroFuro = 3;
+            var x1 = Largura / 2 - 7.5;
+            var x2 = Largura / 2 + 7.5;
+            var furo_1 = new CylinderFeature(new Point3D(x1, 5, 0), Vector3D.UnitZ, diametroFuro / 2, Espessura) { Name = "furo_1", IsTransientTool = true };
+            var furo_2 = new CylinderFeature(new Point3D(x2, 5, 0), Vector3D.UnitZ, diametroFuro / 2, Espessura) { Name = "furo_2", IsTransientTool = true };
   Parâmetros podem ter [System.ComponentModel.DataAnnotations.Range(min, max)]; valores fora do intervalo viram erro.
   Método global: PartInstance<T> Add<T>(T part, Placement? at = null, string? name = null, string? color = null) — coloca uma instância na cena.
   color ("#RRGGBB") é opcional e pinta o sólido inteiro; só use se o pedido envolver cores.

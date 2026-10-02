@@ -8,8 +8,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using AvaloniaCadEditor.Application.Ai;
+using AvaloniaCadEditor.Application.Ai.Context;
 using AvaloniaCadEditor.Application.Interfaces;
-using AvaloniaCadEditor.Application.Scenes;
 using AvaloniaCadEditor.Domain.Settings;
 
 namespace AvaloniaCadEditor.UI.ViewModels;
@@ -20,6 +20,8 @@ namespace AvaloniaCadEditor.UI.ViewModels;
 /// vigente através de <see cref="AiChatMessageItem.ApplyCommand"/>.
 /// A chave/modelo/URL da IA são editáveis pela própria UI (<see cref="ApiKeyInput"/> etc.)
 /// e persistidos entre execuções via <see cref="IAiSettingsProvider"/>.
+/// Com um projeto aberto, a IA recebe só os arquivos relevantes para a seleção atual
+/// (<see cref="ContextFiles"/>, calculados por <see cref="IAiContextBuilder"/>) e pode alterar vários deles.
 /// </summary>
 public class AiChatViewModel : INotifyPropertyChanged
 {
@@ -30,7 +32,34 @@ public class AiChatViewModel : INotifyPropertyChanged
     private CadScriptChatSession? _session;
     private CancellationTokenSource? _cts;
 
+    private readonly IAiContextBuilder _contextBuilder;
+
+    // Ajustes manuais do contexto: valem até a próxima "New chat" ou troca de projeto.
+    private readonly AiContextAdjustments _contextAdjustments = new();
+    private string? _contextProjectName;
+
     public ObservableCollection<AiChatMessageItem> Messages { get; } = new();
+
+    /// <summary>Arquivos que irão, com o código completo, na próxima mensagem à IA.</summary>
+    public ObservableCollection<AiContextFileChip> ContextFiles { get; } = new();
+
+    /// <summary>Arquivos do projeto que podem ser adicionados ao contexto (os que estão fora dele).</summary>
+    public ObservableCollection<string> AddableContextFiles { get; } = new();
+
+    public bool HasContextFiles => ContextFiles.Count > 0;
+
+    /// <summary>Escolher um item aqui fixa o arquivo no contexto (e o combo volta a ficar vazio).</summary>
+    public string? FileToAdd
+    {
+        get => null;
+        set
+        {
+            if (string.IsNullOrEmpty(value)) return;
+            _contextAdjustments.Pin(value);
+            RefreshContextFiles();
+            OnPropertyChanged();
+        }
+    }
 
     public bool IsAvailable => _session != null;
 
@@ -147,12 +176,14 @@ public class AiChatViewModel : INotifyPropertyChanged
         CadViewModel cadViewModel,
         SceneScriptViewModel scriptEditor,
         ISceneEvaluator evaluator,
-        IAiSettingsProvider settingsProvider)
+        IAiSettingsProvider settingsProvider,
+        IAiContextBuilder? contextBuilder = null)
     {
         _cadViewModel = cadViewModel;
         _scriptEditor = scriptEditor;
         _evaluator = evaluator;
         _settingsProvider = settingsProvider;
+        _contextBuilder = contextBuilder ?? new AiContextBuilder();
 
         var settings = _settingsProvider.GetSettings();
         _apiKeyInput = settings.ApiKey;
@@ -168,9 +199,75 @@ public class AiChatViewModel : INotifyPropertyChanged
         {
             _session?.NewConversation();
             Messages.Clear();
+            _contextAdjustments.Reset();
+            RefreshContextFiles();
         }, () => IsAvailable && !IsBusy);
         ToggleSettingsCommand = new RelayCommand(() => IsSettingsOpen = !IsSettingsOpen);
         SaveSettingsCommand = new RelayCommand(SaveSettings);
+
+        _cadViewModel.SelectionService.SelectionChanged += RefreshContextFiles;
+        _scriptEditor.ProjectFiles.CollectionChanged += (_, _) => RefreshContextFiles();
+        _scriptEditor.PropertyChanged += (_, e) =>
+        {
+            if (e.PropertyName is nameof(SceneScriptViewModel.ActiveFile) or nameof(SceneScriptViewModel.ProjectName))
+            {
+                RefreshContextFiles();
+            }
+        };
+        RefreshContextFiles();
+    }
+
+    // ---------------------------------------------------------------- Contexto (arquivos enviados)
+
+    /// <summary>O estado do editor de que o contexto depende (o builder faz o resto).</summary>
+    private AiContextRequest CurrentContextRequest() => new(
+        _scriptEditor.GetSceneDocuments(),
+        _scriptEditor.EntryFile,
+        _scriptEditor.IsProjectOpen ? _scriptEditor.ActiveFile : null,
+        _cadViewModel.Sketch.Features.Where(f => f.IsSelected).ToList(),
+        _scriptEditor.IsProjectOpen,
+        _scriptEditor.ToSceneRelativePath,
+        _contextAdjustments);
+
+    /// <summary>Recalcula os chips a partir da seleção, do arquivo ativo e dos ajustes manuais.</summary>
+    private void RefreshContextFiles()
+    {
+        if (_contextProjectName != _scriptEditor.ProjectName)
+        {
+            _contextProjectName = _scriptEditor.ProjectName;
+            _contextAdjustments.Reset();
+        }
+
+        var scope = _contextBuilder.ResolveScope(CurrentContextRequest());
+
+        ContextFiles.Clear();
+        foreach (var file in scope.Files)
+        {
+            ContextFiles.Add(new AiContextFileChip(file, _contextAdjustments.IsPinned(file.FilePath), RemoveContextFile, TogglePinContextFile));
+        }
+
+        AddableContextFiles.Clear();
+        if (_scriptEditor.IsProjectOpen)
+        {
+            foreach (var path in _scriptEditor.ProjectFiles.Where(p => !scope.Contains(p)))
+            {
+                AddableContextFiles.Add(path);
+            }
+        }
+        OnPropertyChanged(nameof(HasContextFiles));
+    }
+
+    private void RemoveContextFile(AiContextFileChip chip)
+    {
+        _contextAdjustments.Exclude(chip.FilePath);
+        RefreshContextFiles();
+    }
+
+    /// <summary>Fixar mantém o arquivo no contexto mesmo quando a seleção muda.</summary>
+    private void TogglePinContextFile(AiContextFileChip chip)
+    {
+        _contextAdjustments.TogglePin(chip.FilePath);
+        RefreshContextFiles();
     }
 
     /// <summary>A conversa inteira (prompts e respostas) como texto, para debug.</summary>
@@ -242,17 +339,25 @@ public class AiChatViewModel : INotifyPropertyChanged
         _cts = new CancellationTokenSource();
         try
         {
-            var context = BuildContext();
+            RefreshContextFiles();
+            var context = _contextBuilder.Build(CurrentContextRequest());
 
             var result = await _session.SendAsync(instruction, context, _cts.Token);
 
             Messages.Remove(thinking);
 
-            var item = new AiChatMessageItem(isUser: false, text: result.ChatText, code: result.Code, reasoning: result.Reasoning);
-            if (result.Code != null)
+            var changes = result.Changes;
+            string? code = !context.IsMultiFile
+                ? result.Code
+                : changes.Count == 0 ? null : string.Join("\n\n", changes.Select(c => $"// ===== {c.FilePath} =====\n{c.Text}"));
+
+            var item = new AiChatMessageItem(isUser: false, text: result.ChatText, code: code, reasoning: result.Reasoning);
+            if (code != null)
             {
                 item.IsValid = result.IsValid;
-                string kindNoun = context.Kind == CadFileKind.PartFile ? "part" : "script";
+                string kindNoun = context.IsMultiFile
+                    ? $"change in {string.Join(", ", changes.Select(c => c.FilePath))}"
+                    : context.Kind == CadFileKind.PartFile ? "part" : "script";
                 string autoFixSuffix = result.Attempts > 1 ? $" — auto-fixed ({result.Attempts - 1}x)" : "";
                 item.ValidationText = result.IsValid
                     ? $"✓ Valid {kindNoun} ({result.FeatureCount} feature(s)){autoFixSuffix}"
@@ -260,10 +365,9 @@ public class AiChatViewModel : INotifyPropertyChanged
 
                 if (result.IsValid)
                 {
-                    string codeToApply = result.Code;
                     item.ApplyCommand = new RelayCommand(async () =>
                     {
-                        await _scriptEditor.ApplyExternalCode(codeToApply);
+                        await _scriptEditor.ApplyExternalChangesAsync(changes);
                         item.IsApplied = true;
                     });
                 }
@@ -287,53 +391,6 @@ public class AiChatViewModel : INotifyPropertyChanged
             _cts = null;
         }
     }
-
-    /// <summary>
-    /// Monta o contexto passado à IA a partir do estado atual do editor: qual arquivo está ativo e em
-    /// qual dos dois formatos (script ou peça — ver <see cref="CadFileKind"/>), as peças já declaradas
-    /// na cena (para a IA reaproveitá-las em vez de redeclará-las) e os demais arquivos do projeto
-    /// (para validar/executar a resposta no contexto completo da cena, não isolada).
-    /// </summary>
-    private CadScriptContext BuildContext()
-    {
-        string fileName = _scriptEditor.IsProjectOpen
-            ? _scriptEditor.ActiveFile ?? _scriptEditor.EntryFile
-            : ScriptDocument.DefaultSceneFile;
-
-        CadFileKind kind = !_scriptEditor.IsProjectOpen
-            ? CadFileKind.StandaloneScript
-            : string.Equals(fileName, _scriptEditor.EntryFile, StringComparison.OrdinalIgnoreCase)
-                ? CadFileKind.SceneEntry
-                : CadFileKind.PartFile;
-
-        IReadOnlyList<ScriptDocument>? projectDocuments = null;
-        IReadOnlyList<string>? partSummaries = null;
-        if (_scriptEditor.IsProjectOpen)
-        {
-            var all = _scriptEditor.GetSceneDocuments();
-            // Num arquivo de peça, o arquivo de entrada real não entra no contexto de avaliação: ele
-            // é substituído por um arquivo sintético que só instancia a peça (ver CadScriptChatSession).
-            projectDocuments = kind == CadFileKind.PartFile
-                ? all.Where(d => !string.Equals(d.FilePath, _scriptEditor.EntryFile, StringComparison.OrdinalIgnoreCase)).ToList()
-                : all;
-            partSummaries = PartSourceEditor.FindPartTypes(all)
-                .Where(t => !string.Equals(t.FilePath, fileName, StringComparison.OrdinalIgnoreCase))
-                .Select(FormatPartSignature)
-                .ToList();
-        }
-
-        return new CadScriptContext(
-            _scriptEditor.GeneratedCSharpCode,
-            _cadViewModel.SelectedFeature?.Name,
-            Kind: kind,
-            FileName: fileName,
-            PartSummaries: partSummaries,
-            ProjectDocuments: projectDocuments);
-    }
-
-    private static string FormatPartSignature(PartTypeInfo type) =>
-        $"{type.Name}({string.Join(", ", type.Parameters.Select(p =>
-            p.DefaultValue == null ? $"{p.TypeName} {p.Name}" : $"{p.TypeName} {p.Name} = {p.DefaultValue}"))})";
 
     public event PropertyChangedEventHandler? PropertyChanged;
 

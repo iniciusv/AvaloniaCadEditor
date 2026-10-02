@@ -19,6 +19,12 @@
         <Style Selector="TextBlock.validationOk">
             <Setter Property="Foreground" Value="#6EDB8F" />
         </Style>
+        <Style Selector="Button.pin">
+            <Setter Property="Opacity" Value="0.35" />
+        </Style>
+        <Style Selector="Button.pin.pinned">
+            <Setter Property="Opacity" Value="1" />
+        </Style>
         <Style Selector="TextBlock.validationFail">
             <Setter Property="Foreground" Value="#FF8080" />
         </Style>
@@ -152,10 +158,40 @@
             </ScrollViewer>
 
             <!-- Input -->
-            <Grid Grid.Row="3" RowDefinitions="Auto,Auto" Margin="8" IsVisible="{Binding IsAvailable}">
-                <TextBlock Grid.Row="0" Text="Thinking..." Foreground="#888888" FontSize="11"
+            <Grid Grid.Row="3" RowDefinitions="Auto,Auto,Auto" Margin="8" IsVisible="{Binding IsAvailable}">
+                <!-- Arquivos enviados à IA (calculados a partir da seleção; × remove, 📌 fixa, + adiciona) -->
+                <Grid Grid.Row="0" ColumnDefinitions="*,Auto" Margin="0,0,0,6" IsVisible="{Binding HasContextFiles}">
+                    <ItemsControl Grid.Column="0" ItemsSource="{Binding ContextFiles}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <WrapPanel />
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="vm:AiContextFileChip">
+                                <Border Background="#2D3B4A" CornerRadius="10" Padding="8,1,2,1" Margin="0,0,4,4"
+                                        ToolTip.Tip="{Binding ToolTip}">
+                                    <StackPanel Orientation="Horizontal" Spacing="2">
+                                        <TextBlock Text="{Binding DisplayName}" Foreground="#DDDDDD" FontSize="10" VerticalAlignment="Center" />
+                                        <Button Classes="pin" Content="📌" Command="{Binding TogglePinCommand}" IsVisible="{Binding CanPin}"
+                                                Classes.pinned="{Binding IsPinned}"
+                                                ToolTip.Tip="Keep this file in the context when the selection changes"
+                                                Background="Transparent" FontSize="8" Padding="2,0" />
+                                        <Button Content="×" Command="{Binding RemoveCommand}" IsVisible="{Binding CanRemove}"
+                                                ToolTip.Tip="Do not send this file to the AI"
+                                                Background="Transparent" Foreground="#AAAAAA" FontSize="11" Padding="3,0" />
+                                    </StackPanel>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                    <ComboBox Grid.Column="1" ItemsSource="{Binding AddableContextFiles}" SelectedItem="{Binding FileToAdd}"
+                              PlaceholderText="+ file" ToolTip.Tip="Add a file to the AI context"
+                              FontSize="10" MinWidth="60" VerticalAlignment="Top" />
+                </Grid>
+                <TextBlock Grid.Row="1" Text="Thinking..." Foreground="#888888" FontSize="11"
                            IsVisible="{Binding IsBusy}" Margin="0,0,0,4" />
-                <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto">
+                <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto">
                     <TextBox Grid.Column="0" x:Name="InputBox" Text="{Binding InputText, Mode=TwoWay}"
                              Watermark="Describe what you want to model or change... (Ctrl+Enter to send)"
                              AcceptsReturn="True" TextWrapping="Wrap" MaxHeight="90"

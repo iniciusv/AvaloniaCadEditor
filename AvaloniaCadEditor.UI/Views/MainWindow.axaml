@@ -237,6 +237,8 @@
                                             ToolTip.Tip="Run" Margin="0,0,4,4"/>
                                     <Button Content="{x:Static res:Strings.NewScene}" Command="{Binding ScriptEditor.NewSceneCommand}" FontSize="11" Padding="8,4" Margin="0,0,4,4"/>
                                     <Button Content="{x:Static res:Strings.OpenScene}" Command="{Binding ScriptEditor.OpenSceneCommand}" FontSize="11" Padding="8,4" Margin="0,0,4,4"/>
+                                    <Button Content="{x:Static res:Strings.LoadLastScene}" Command="{Binding ScriptEditor.LoadLastSceneCommand}"
+                                            IsVisible="{Binding ScriptEditor.ShowLoadLastSceneButton}" FontSize="11" Padding="8,4" Margin="0,0,4,4"/>
                                     <Button Content="{x:Static res:Strings.LoadCode}" Command="{Binding ScriptEditor.LoadCodeFromFileCommand}" FontSize="11" Padding="8,4" Margin="0,0,4,4"/>
                                     <Button Content="{x:Static res:Strings.SaveCode}" Command="{Binding ScriptEditor.SaveCodeToFileCommand}" FontSize="11" Padding="8,4" Margin="0,0,4,4"/>
                                     <Button Content="{x:Static res:Strings.UpdateCode}" Command="{Binding ScriptEditor.GenerateCodeCommand}" FontSize="11" Padding="8,4" Margin="0,0,4,4"/>

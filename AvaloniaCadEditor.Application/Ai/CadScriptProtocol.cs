@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -13,11 +14,13 @@ namespace AvaloniaCadEditor.Application.Ai;
 /// arquivo ativo tanto pode ser o de entrada (mesmo formato) quanto um arquivo de peça em Pecas/
 /// (um record que herda de Part). O formato exigido em cada turno vem em <see cref="CadScriptContext.Kind"/>
 /// e é repetido na mensagem do usuário, já que pode mudar de um turno para o outro.
+/// Num projeto, o contexto pode trazer vários arquivos (<see cref="CadScriptContext.Scope"/>):
+/// a IA então devolve um bloco <c>```cadscript file=Caminho.cs</c> por arquivo alterado.
 /// </summary>
-public class CadScriptProtocol : IAiProtocol<CadScriptContext, string>
+public class CadScriptProtocol : IAiProtocol<CadScriptContext, CadScriptChanges>
 {
     private static readonly Regex CodeBlockRegex = new(
-        @"```(?:cadscript|csharp|cs)?\s*\r?\n(?<code>.*?)```",
+        @"```(?:cadscript|csharp|cs)?[ \t]*(?:file\s*=\s*""?(?<file>[^\s""`]+)""?)?[ \t]*\r?\n(?<code>.*?)```",
         RegexOptions.Singleline | RegexOptions.IgnoreCase);
 
     /// <summary>
@@ -138,9 +141,11 @@ public class CadScriptProtocol : IAiProtocol<CadScriptContext, string>
         sb.AppendLine("- um SCRIPT ÚNICO: statements top-level que descrevem toda a geometria (formato \"script\");");
         sb.AppendLine("- um PROJETO com vários arquivos: um arquivo de entrada (ex.: Cena.cs, também formato \"script\") e,");
         sb.AppendLine("  em Pecas/, arquivos de PEÇA que declaram tipos reutilizáveis (formato \"peça\").");
-        sb.AppendLine("Cada pedido traz uma seção \"### ARQUIVO ATIVO\" dizendo o nome do arquivo em edição e qual desses");
-        sb.AppendLine("dois formatos ele segue AGORA. Leia essa seção a cada turno — o formato pode mudar de um turno para");
-        sb.AppendLine("o outro se o usuário trocar de arquivo — e responda EXATAMENTE nesse formato.");
+        sb.AppendLine("Cada pedido traz OU uma seção \"### ARQUIVO ATIVO\" (um só arquivo em edição) OU uma seção");
+        sb.AppendLine("\"### ARQUIVOS NO CONTEXTO\" (vários arquivos do projeto, cada um com seu caminho e formato). Leia essas");
+        sb.AppendLine("seções a cada turno — os arquivos e formatos podem mudar de um turno para o outro — e escreva cada");
+        sb.AppendLine("arquivo EXATAMENTE no formato indicado para ele. Em Pecas/ também pode haver arquivos AUXILIARES");
+        sb.AppendLine("(ex.: uma static class Medidas com constantes): só declarações de tipos, sem statements soltos.");
         sb.AppendLine();
         sb.AppendLine("FORMATO \"script\" (arquivo único, ou o arquivo de entrada de um projeto):");
         sb.AppendLine("- Contém APENAS declarações e chamadas soltas (statements top-level).");
@@ -149,9 +154,10 @@ public class CadScriptProtocol : IAiProtocol<CadScriptContext, string>
         sb.AppendLine("- Ferramentas booleanas transitórias (ex.: o cilindro usado apenas para furar) devem ter IsTransientTool = true e também devem ser registradas com AddFeature.");
         sb.AppendLine("- Para usar uma peça JÁ DECLARADA em Pecas/ (ver \"PEÇAS DISPONÍVEIS\" abaixo, se houver), NÃO redeclare o");
         sb.AppendLine("  tipo aqui: chame var p = Add(new NomeDaPeca(...), at: Placement.At(x, y, z));");
-        sb.AppendLine("- Se o pedido pedir uma peça/objeto reutilizável NOVO (ex.: \"crie um motor X\") enquanto este arquivo de");
-        sb.AppendLine("  entrada está ativo, NÃO declare o tipo aqui (é proibido); responda só em texto pedindo para abrir ou");
-        sb.AppendLine("  criar o arquivo da peça em Pecas/ primeiro, sem bloco de código.");
+        sb.AppendLine("- NUNCA declare uma peça/objeto reutilizável NOVO (ex.: \"crie um motor X\") dentro deste arquivo. Com");
+        sb.AppendLine("  \"### ARQUIVOS NO CONTEXTO\", crie-o num arquivo novo (bloco file=Pecas/NomeDaPeca.cs) e instancie-o aqui");
+        sb.AppendLine("  com Add(...). Com \"### ARQUIVO ATIVO\", responda só em texto pedindo para abrir ou criar o arquivo");
+        sb.AppendLine("  da peça em Pecas/ primeiro, sem bloco de código.");
         sb.AppendLine();
         sb.AppendLine("FORMATO \"peça\" (arquivo em Pecas/):");
         sb.AppendLine("- Contém EXATAMENTE UM 'public sealed record NomeDaPeca(<parâmetros com valor padrão>) : Part { ... }'.");
@@ -202,11 +208,20 @@ public class CadScriptProtocol : IAiProtocol<CadScriptContext, string>
         sb.AppendLine();
         sb.AppendLine("FORMATO OBRIGATÓRIO DA RESPOSTA:");
         sb.AppendLine("1. Um parágrafo curto (1 a 3 frases), em português, explicando o que foi feito ou respondendo à pergunta.");
-        sb.AppendLine("2. Se — e somente se — o pedido exigir alterar o arquivo ativo, inclua logo em seguida UM ÚNICO bloco de");
-        sb.AppendLine("   código delimitado por ```cadscript e ``` contendo o ARQUIVO COMPLETO resultante (nunca um trecho, nunca");
-        sb.AppendLine("   um diff: sempre o arquivo inteiro, pronto para substituir o arquivo ativo e ser executado), no formato");
-        sb.AppendLine("   indicado em \"### ARQUIVO ATIVO\".");
-        sb.AppendLine("3. Se o pedido for apenas uma pergunta, ou pedir algo que não cabe no formato do arquivo ativo (ver acima),");
+        sb.AppendLine("2. Com \"### ARQUIVO ATIVO\": se — e somente se — o pedido exigir alterar o arquivo, inclua logo em seguida");
+        sb.AppendLine("   UM ÚNICO bloco de código delimitado por ```cadscript e ``` contendo o ARQUIVO COMPLETO resultante (nunca");
+        sb.AppendLine("   um trecho, nunca um diff: sempre o arquivo inteiro, pronto para substituí-lo e ser executado).");
+        sb.AppendLine("3. Com \"### ARQUIVOS NO CONTEXTO\": inclua UM bloco por arquivo ALTERADO (ou criado), cada um aberto com");
+        sb.AppendLine("   ```cadscript file=<caminho exato do arquivo> e contendo o ARQUIVO COMPLETO resultante. NÃO repita arquivos");
+        sb.AppendLine("   que não mudaram. Só altere arquivos listados no contexto; o único arquivo novo permitido é uma peça em");
+        sb.AppendLine("   Pecas/. Exemplo de resposta que altera dois arquivos:");
+        sb.AppendLine("   ```cadscript file=Pecas/Placa.cs");
+        sb.AppendLine("   public sealed record Placa(double Largura = 120, double Comprimento = 60, double Espessura = 5) : Part { ... }");
+        sb.AppendLine("   ```");
+        sb.AppendLine("   ```cadscript file=Cena.cs");
+        sb.AppendLine("   var placa_1 = Add(new Placa(), at: Placement.At(0, 0, 0));");
+        sb.AppendLine("   ```");
+        sb.AppendLine("4. Se o pedido for apenas uma pergunta, ou pedir algo que não cabe nos formatos indicados (ver acima),");
         sb.AppendLine("   responda somente com o texto, sem bloco de código.");
 
         return sb.ToString();
@@ -219,33 +234,59 @@ public class CadScriptProtocol : IAiProtocol<CadScriptContext, string>
         sb.AppendLine("### PEDIDO");
         sb.AppendLine(userInstruction);
         sb.AppendLine();
-        sb.AppendLine("### ARQUIVO ATIVO");
-        string fileName = string.IsNullOrWhiteSpace(currentContext.FileName) ? "Cena.cs" : currentContext.FileName;
-        string kindLabel = currentContext.Kind switch
+
+        if (currentContext.IsMultiFile)
         {
-            CadFileKind.PartFile => "peça (record que herda de Part; sem statements soltos, sem AddFeature/Add)",
-            CadFileKind.SceneEntry => "script — arquivo de entrada da cena (statements soltos + AddFeature/Add)",
-            _ => "script (statements soltos + AddFeature)"
-        };
-        sb.AppendLine($"{fileName} — formato: {kindLabel}");
+            AppendScopeFileList(sb, currentContext);
+        }
+        else
+        {
+            sb.AppendLine("### ARQUIVO ATIVO");
+            string fileName = string.IsNullOrWhiteSpace(currentContext.FileName) ? "Cena.cs" : currentContext.FileName;
+            sb.AppendLine($"{fileName} — formato: {KindLabel(currentContext.Kind)}");
+        }
 
         if (currentContext.PartSummaries is { Count: > 0 })
         {
             sb.AppendLine();
-            sb.AppendLine("### PEÇAS JÁ DECLARADAS NA CENA (reaproveite com Add(...); não redeclare)");
+            sb.AppendLine(currentContext.IsMultiFile
+                ? "### OUTRAS PEÇAS DECLARADAS NA CENA (fora do contexto; reaproveite com Add(...); não redeclare)"
+                : "### PEÇAS JÁ DECLARADAS NA CENA (reaproveite com Add(...); não redeclare)");
             foreach (var summary in currentContext.PartSummaries)
             {
                 sb.AppendLine("  " + summary);
             }
         }
 
-        sb.AppendLine();
-        sb.AppendLine("### CÓDIGO ATUAL DESTE ARQUIVO");
-        sb.AppendLine("```cadscript");
-        sb.AppendLine(string.IsNullOrWhiteSpace(currentContext.CurrentCode) ? "// (vazio)" : currentContext.CurrentCode.TrimEnd());
-        sb.AppendLine("```");
+        if (currentContext.IsMultiFile)
+        {
+            foreach (var doc in currentContext.Scope!.Documents)
+            {
+                sb.AppendLine();
+                sb.AppendLine($"```cadscript file={doc.FilePath}");
+                sb.AppendLine(string.IsNullOrWhiteSpace(doc.Text) ? "// (vazio)" : doc.Text.TrimEnd());
+                sb.AppendLine("```");
+            }
+        }
+        else
+        {
+            sb.AppendLine();
+            sb.AppendLine("### CÓDIGO ATUAL DESTE ARQUIVO");
+            sb.AppendLine("```cadscript");
+            sb.AppendLine(string.IsNullOrWhiteSpace(currentContext.CurrentCode) ? "// (vazio)" : currentContext.CurrentCode.TrimEnd());
+            sb.AppendLine("```");
+        }
 
-        if (!string.IsNullOrWhiteSpace(currentContext.SelectedFeatureName))
+        if (currentContext.Scope?.SelectedFeatures is { Count: > 0 } selectedFeatures)
+        {
+            sb.AppendLine();
+            sb.AppendLine("### SÓLIDOS SELECIONADOS");
+            foreach (var selected in selectedFeatures)
+            {
+                sb.AppendLine("  " + selected);
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(currentContext.SelectedFeatureName))
         {
             sb.AppendLine();
             sb.AppendLine("### FEATURE SELECIONADA");
@@ -262,29 +303,56 @@ public class CadScriptProtocol : IAiProtocol<CadScriptContext, string>
         return sb.ToString();
     }
 
-    public ProtocolParseResult<string> ParseResponse(string rawAiResponse)
+    private static void AppendScopeFileList(StringBuilder sb, CadScriptContext context)
+    {
+        sb.AppendLine("### ARQUIVOS NO CONTEXTO (responda com um bloco ```cadscript file=<caminho> por arquivo alterado)");
+        foreach (var doc in context.Scope!.Documents)
+        {
+            sb.AppendLine($"{doc.FilePath} — formato: {KindLabel(context.KindOf(doc.FilePath))}");
+        }
+    }
+
+    private static string KindLabel(CadFileKind kind) => kind switch
+    {
+        CadFileKind.PartFile => "peça (record que herda de Part; sem statements soltos, sem AddFeature/Add)",
+        CadFileKind.SupportFile => "auxiliar (só declarações de tipos/constantes; sem statements soltos)",
+        CadFileKind.SceneEntry => "script — arquivo de entrada da cena (statements soltos + AddFeature/Add)",
+        _ => "script (statements soltos + AddFeature)"
+    };
+
+    /// <summary>
+    /// Extrai o conteúdo de cada arquivo devolvido. Bloco com <c>file=</c> → aquele arquivo; bloco sem →
+    /// o arquivo ativo (<see cref="CadScriptFileEdit.FilePath"/> null). Se o mesmo arquivo vier repetido,
+    /// vale o último bloco.
+    /// </summary>
+    public ProtocolParseResult<CadScriptChanges> ParseResponse(string rawAiResponse)
     {
         if (string.IsNullOrWhiteSpace(rawAiResponse))
         {
-            return new ProtocolParseResult<string> { ChatMessage = string.Empty, Payload = null };
+            return new ProtocolParseResult<CadScriptChanges> { ChatMessage = string.Empty, Payload = null };
         }
 
         var matches = CodeBlockRegex.Matches(rawAiResponse);
         if (matches.Count == 0)
         {
-            return new ProtocolParseResult<string> { ChatMessage = rawAiResponse.Trim(), Payload = null };
+            return new ProtocolParseResult<CadScriptChanges> { ChatMessage = rawAiResponse.Trim(), Payload = null };
         }
 
-        var lastMatch = matches[matches.Count - 1];
-        string code = lastMatch.Groups["code"].Value.Trim();
+        var files = new List<CadScriptFileEdit>();
+        foreach (Match match in matches)
+        {
+            string? file = match.Groups["file"].Success ? match.Groups["file"].Value.Replace('\\', '/') : null;
+            string code = match.Groups["code"].Value.Trim();
+            files.RemoveAll(f => string.Equals(f.FilePath, file, StringComparison.OrdinalIgnoreCase));
+            if (!string.IsNullOrWhiteSpace(code)) files.Add(new CadScriptFileEdit(file, code));
+        }
 
-        string chatText = rawAiResponse.Remove(lastMatch.Index, lastMatch.Length);
-        chatText = CodeBlockRegex.Replace(chatText, string.Empty).Trim();
+        string chatText = CodeBlockRegex.Replace(rawAiResponse, string.Empty).Trim();
 
-        return new ProtocolParseResult<string>
+        return new ProtocolParseResult<CadScriptChanges>
         {
             ChatMessage = string.IsNullOrWhiteSpace(chatText) ? "Código gerado." : chatText,
-            Payload = string.IsNullOrWhiteSpace(code) ? null : code
+            Payload = files.Count == 0 ? null : new CadScriptChanges(files)
         };
     }
 }

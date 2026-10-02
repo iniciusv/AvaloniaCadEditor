@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using AiCore.Abstractions;
 using AiCore.Models;
 using AiCore.Services;
+using AvaloniaCadEditor.Application.Ai.Context;
 using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Application.Scenes;
 using AvaloniaCadEditor.Domain.Features;
@@ -19,7 +20,12 @@ namespace AvaloniaCadEditor.Application.Ai;
 public class CadScriptTurnResult
 {
     public string ChatText { get; init; } = string.Empty;
-    public string? Code { get; init; }
+
+    /// <summary>Conteúdo completo de cada arquivo alterado/criado pela resposta (vazio se ela só tinha texto).</summary>
+    public IReadOnlyList<ScriptDocument> Changes { get; init; } = Array.Empty<ScriptDocument>();
+
+    /// <summary>Código do primeiro arquivo alterado (atalho para o modo de arquivo único).</summary>
+    public string? Code => Changes.Count > 0 ? Changes[0].Text : null;
     public string? Reasoning { get; init; }
     public bool IsValid { get; init; }
     public string? Error { get; init; }
@@ -30,8 +36,9 @@ public class CadScriptTurnResult
 }
 
 /// <summary>
-/// Orquestra uma conversa multi-round com a IA para gerar/editar o CadScript da cena.
-/// Quando o script retornado não compila/executa, reenvia o erro à IA automaticamente
+/// Orquestra uma conversa multi-round com a IA para gerar/editar o CadScript da cena — um arquivo
+/// por vez, ou vários (os do <see cref="CadScriptContext.Scope"/>) num projeto.
+/// Quando o código retornado não compila/executa, reenvia o erro à IA automaticamente
 /// (até <see cref="MaxAttempts"/> tentativas no total) antes de reportar falha.
 /// </summary>
 public class CadScriptChatSession
@@ -42,7 +49,7 @@ public class CadScriptChatSession
     public delegate Task<LlmResult> SendDelegate(IReadOnlyList<ChatMessage> messages, LlmOptions options, CancellationToken cancellationToken);
 
     private LlmOptions _options;
-    private readonly IAiProtocol<CadScriptContext, string> _protocol;
+    private readonly IAiProtocol<CadScriptContext, CadScriptChanges> _protocol;
     private readonly ISceneEvaluator _evaluator;
     private readonly SendDelegate _send;
     private readonly List<ChatMessage> _history = new();
@@ -51,7 +58,7 @@ public class CadScriptChatSession
 
     public CadScriptChatSession(
         LlmOptions options,
-        IAiProtocol<CadScriptContext, string> protocol,
+        IAiProtocol<CadScriptContext, CadScriptChanges> protocol,
         ISceneEvaluator evaluator,
         SendDelegate? send = null)
     {
@@ -112,37 +119,43 @@ public class CadScriptChatSession
                 };
             }
 
-            string code = parsed.Payload!;
-            var syntaxResult = CadScriptValidator.Validate(code, context.Kind);
-            SceneEvaluationResult? evalResult = syntaxResult.IsValid
-                ? await EvaluateAsync(code, context)
-                : null;
+            var (changes, error) = AiEditScopePolicy.ResolveEdits(parsed.Payload!, context);
+            SceneEvaluationResult? evalResult = null;
+            if (error == null)
+            {
+                error = changes
+                    .Select(c => (c.FilePath, Result: CadScriptValidator.Validate(c.Text, context.KindOf(c.FilePath))))
+                    .Where(v => !v.Result.IsValid)
+                    .Select(v => context.IsMultiFile ? $"{v.FilePath}: {v.Result.Error}" : v.Result.Error)
+                    .FirstOrDefault();
+            }
+            if (error == null)
+            {
+                evalResult = await EvaluateAsync(changes, context);
+                if (!evalResult.Success) error = evalResult.ErrorMessage ?? "Erro desconhecido ao executar o script.";
+            }
 
-            if (syntaxResult.IsValid && evalResult!.Success)
+            if (error == null)
             {
                 return new CadScriptTurnResult
                 {
                     ChatText = parsed.ChatMessage,
-                    Code = code,
+                    Changes = changes,
                     Reasoning = raw.ReasoningContent,
                     IsValid = true,
-                    FeatureCount = evalResult.Features.Count,
+                    FeatureCount = evalResult!.Features.Count,
                     Attempts = attempt,
                     PromptTokens = promptTokens,
                     CompletionTokens = completionTokens
                 };
             }
 
-            string error = !syntaxResult.IsValid
-                ? syntaxResult.Error!
-                : (evalResult!.ErrorMessage ?? "Erro desconhecido ao executar o script.");
-
             if (attempt == MaxAttempts)
             {
                 return new CadScriptTurnResult
                 {
                     ChatText = parsed.ChatMessage,
-                    Code = code,
+                    Changes = changes,
                     Reasoning = raw.ReasoningContent,
                     IsValid = false,
                     Error = error,
@@ -152,29 +165,63 @@ public class CadScriptChatSession
                 };
             }
 
-            var fixContext = context with { CurrentCode = code, ErrorFeedback = error };
+            var fixContext = WithProposedChanges(context, changes) with { ErrorFeedback = error };
             _history.Add(new ChatMessage
             {
                 Role = "user",
                 Content = _protocol.BuildUserMessage(
                     fixContext,
-                    "O script anterior falhou ao compilar/executar. Corrija o problema e responda novamente com o SCRIPT COMPLETO corrigido.")
+                    context.IsMultiFile
+                        ? "A resposta anterior falhou ao compilar/executar. Os arquivos acima já incluem as suas alterações. Corrija o problema e responda novamente com um bloco ```cadscript file=<caminho> COMPLETO por arquivo que precisar mudar."
+                        : "O script anterior falhou ao compilar/executar. Corrija o problema e responda novamente com o SCRIPT COMPLETO corrigido.")
             });
         }
 
         throw new InvalidOperationException("Loop de tentativas do CadScriptChatSession terminou sem retornar um resultado.");
     }
 
-    /// <summary>
-    /// Avalia o código proposto pela IA no contexto certo: um script de arquivo único é avaliado
-    /// sozinho; um arquivo de uma cena com vários arquivos (entrada ou peça) é avaliado junto dos
-    /// demais arquivos do projeto (<see cref="CadScriptContext.ProjectDocuments"/>), para que tipos
-    /// declarados noutros arquivos (peças, constantes) resolvam normalmente. Um arquivo de peça não
-    /// tem statements próprios para executar, então ganha um arquivo de entrada sintético que só
-    /// instancia a peça (<c>Add(new Peca(...))</c>), forçando o <c>Build()</c> a rodar.
-    /// </summary>
-    private Task<SceneEvaluationResult> EvaluateAsync(string code, CadScriptContext context)
+    /// <summary>O contexto com as alterações propostas sobrepostas (para o round de correção).</summary>
+    private static CadScriptContext WithProposedChanges(CadScriptContext context, IReadOnlyList<ScriptDocument> changes)
     {
+        if (!context.IsMultiFile)
+        {
+            return context with { CurrentCode = changes.Count > 0 ? changes[0].Text : context.CurrentCode };
+        }
+
+        return context with
+        {
+            Scope = context.Scope! with { Documents = Overlay(context.Scope!.Documents, changes) },
+            ProjectDocuments = context.ProjectDocuments == null ? null : Overlay(context.ProjectDocuments, changes)
+        };
+    }
+
+    /// <summary><paramref name="documents"/> com o texto de <paramref name="changes"/> no lugar (e arquivos novos no fim).</summary>
+    private static IReadOnlyList<ScriptDocument> Overlay(IReadOnlyList<ScriptDocument> documents, IReadOnlyList<ScriptDocument> changes)
+    {
+        var result = documents
+            .Select(d => changes.FirstOrDefault(c => string.Equals(c.FilePath, d.FilePath, StringComparison.OrdinalIgnoreCase)) ?? d)
+            .ToList();
+        result.AddRange(changes.Where(c => !documents.Any(d => string.Equals(d.FilePath, c.FilePath, StringComparison.OrdinalIgnoreCase))));
+        return result;
+    }
+
+    /// <summary>
+    /// Avalia as alterações propostas no contexto certo. No modo multi-arquivo, a cena inteira
+    /// (<see cref="CadScriptContext.ProjectDocuments"/>, com o arquivo de entrada real) é avaliada com as
+    /// alterações sobrepostas. No modo de arquivo único, um script é avaliado sozinho (ou com os demais
+    /// arquivos do projeto); um arquivo de peça não tem statements próprios para executar, então ganha um
+    /// arquivo de entrada sintético que só instancia a peça (<c>Add(new Peca(...))</c>), forçando o
+    /// <c>Build()</c> a rodar.
+    /// </summary>
+    private Task<SceneEvaluationResult> EvaluateAsync(IReadOnlyList<ScriptDocument> changes, CadScriptContext context)
+    {
+        if (context.IsMultiFile)
+        {
+            var project = context.ProjectDocuments ?? context.Scope!.Documents;
+            return _evaluator.EvaluateAsync(Overlay(project, changes));
+        }
+
+        string code = changes[0].Text;
         string fileName = context.FileName ?? ScriptDocument.DefaultSceneFile;
         var others = context.ProjectDocuments ?? Array.Empty<ScriptDocument>();
 
