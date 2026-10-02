@@ -5,6 +5,8 @@ var carrinhoXPeca = new CarrinhoMgn9C();
 var hotendPeca = new HotendV6();
 var blocoFixacaoPeca = new BlocoFixacaoMgn9(Altura: 10);
 var suporteHotendPeca = new SuporteHotendV6(Largura: blocoFixacaoPeca.Largura, DistanciaYHotend: 25.0 - blocoFixacaoPeca.Comprimento / 2);
+var motorNema17Peca = new MotorNema17();
+var suporteMotorNema17Peca = new SuporteMotorNema17();
 
 // Espaçamento (centro a centro) entre os dois trilhos Y: igual à distância entre os dois últimos
 // furos do trilho X — é por eles que o trilho MGN9 é parafusado diretamente nos carrinhos Y.
@@ -50,23 +52,52 @@ var blocoFixacao = Add(blocoFixacaoPeca, at: Placement.At(0, 0, alturaTopoCarrin
 var suporteHotend = Add(suporteHotendPeca, at: Placement.At(0, -blocoFixacaoPeca.Comprimento / 2, alturaTopoCarrinhosY + carrinhoXPeca.Altura), name: "suporte_hotend_v6", color: "#00CC6A");
 
 // --- Extrusões de alumínio 2020: estrutura de apoio dos trilhos ---
-var extrusaoSobTrilhoYPeca = new Extrusao2020(Comprimento: trilhoYPeca.Comprimento);
+// Mais longas que os trilhos Y (300 mm) — os trilhos ficam centralizados nelas.
+var extrusaoSobTrilhoYPeca = new Extrusao2020(Comprimento: 300);
 // Comprimento suficiente só até encostar nos carrinhos Y, sem avançar sobre eles.
 var extrusaoSobTrilhoXPeca = new Extrusao2020(Comprimento: espacamentoTrilhosY - carrinhoYPeca.Largura);
 
-// Centrada sob o trilho Y correspondente: mesmo X central (largura diferente) e mesmo Y
-// (mesmo Comprimento do trilho), só descendo em Z.
+// Centrada sob o trilho Y correspondente: mesmo X central (largura diferente); em Y, centralizada
+// no meio do comprimento do trilho (que é menor que o da extrusão), só descendo em Z.
+var folgaComprimentoY = (extrusaoSobTrilhoYPeca.Comprimento - trilhoYPeca.Comprimento) / 2;
 var extrusaoSobTrilhoYA = Add(
     extrusaoSobTrilhoYPeca,
-    at: Placement.At(trilhoYAX + trilhoYPeca.Largura / 2 - extrusaoSobTrilhoYPeca.Largura / 2, trilhoYAY, -extrusaoSobTrilhoYPeca.Altura),
+    at: Placement.At(trilhoYAX + trilhoYPeca.Largura / 2 - extrusaoSobTrilhoYPeca.Largura / 2, trilhoYAY - folgaComprimentoY, -extrusaoSobTrilhoYPeca.Altura),
     name: "extrusao_2020_sob_trilho_y_a");
 var extrusaoSobTrilhoYB = Add(
     extrusaoSobTrilhoYPeca,
-    at: Placement.At(trilhoYBX + trilhoYPeca.Largura / 2 - extrusaoSobTrilhoYPeca.Largura / 2, trilhoYBY, -extrusaoSobTrilhoYPeca.Altura),
+    at: Placement.At(trilhoYBX + trilhoYPeca.Largura / 2 - extrusaoSobTrilhoYPeca.Largura / 2, trilhoYBY - folgaComprimentoY, -extrusaoSobTrilhoYPeca.Altura),
     name: "extrusao_2020_sob_trilho_y_b");
 
 var extrusaoSobTrilhoX = Add(
     extrusaoSobTrilhoXPeca,
     at: Placement.At(-extrusaoSobTrilhoXPeca.Comprimento / 2, extrusaoSobTrilhoXPeca.Largura / 2, alturaTopoCarrinhosY - extrusaoSobTrilhoXPeca.Altura, rotationZDegrees: -90),
     name: "extrusao_2020_sob_trilho_x");
+
+// --- Motor NEMA17, montado mais baixo, ao lado do carrinho X, apoiado em cima da extrusão 2020 ---
+var topoExtrusaoSobTrilhoX = alturaTopoCarrinhosY;
+var xMotorNema17 = carrinhoXPeca.Comprimento / 2 + suporteMotorNema17Peca.Largura / 2 + 5;
+
+// Suporte alinhado pela face livre (lado de fora, sem nada montado) da extrusão sob o trilho X:
+// a borda do suporte encosta exatamente nessa face e a placa avança para fora dela (lado livre),
+// de modo que o motor (pendurado por baixo da placa) fique ao lado da extrusão, não sobre ela.
+var faceLivreYExtrusaoSobTrilhoX = extrusaoSobTrilhoXPeca.Largura / 2;
+var yMotorSuporte = faceLivreYExtrusaoSobTrilhoX + suporteMotorNema17Peca.Comprimento / 2;
+
+var suporteMotorNema17 = Add(
+    suporteMotorNema17Peca,
+    at: Placement.At(xMotorNema17, yMotorSuporte, topoExtrusaoSobTrilhoX),
+    name: "suporte_motor_nema17",
+    color: "#00CC6A");
+
+// Motor voltado para cima (eixo em +Z, orientação normal da peça), mas pendurado por baixo do
+// suporte: os furos de fixação do motor ficam na face de cima (lado do eixo/boss), então é essa
+// face que precisa encostar na base do suporte — o corpo do motor fica por baixo, pendurado, e o
+// eixo sobe através do furo de alívio central, se projetando por cima do suporte.
+var alturaMontagemMotor = topoExtrusaoSobTrilhoX - motorNema17Peca.Comprimento;
+
+var motorNema17 = Add(
+    motorNema17Peca,
+    at: Placement.At(xMotorNema17, yMotorSuporte, alturaMontagemMotor),
+    name: "motor_nema17");
 

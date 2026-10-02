@@ -11,6 +11,8 @@ public sealed record TrilhoMgn9(double Comprimento = 200, double Largura = 9, do
     private const double DiametroFuroPassante = 3.5;
     private const double DiametroRebaixo = 6;
     private const double ProfundidadeRebaixo = 3.5;
+    private const double DiametroPistaEsferas = 1.5;
+    private const double AlturaPistaEsferas = 3.5;
 
     private int NumFuros => Math.Max(2, (int)Math.Floor((Comprimento - 2 * MargemMinima) / Passo) + 1);
 
@@ -49,6 +51,20 @@ public sealed record TrilhoMgn9(double Comprimento = 200, double Largura = 9, do
             furos.Add(passante);
             furos.Add(rebaixo);
         }
+
+        // Pistas de rolamento das esferas: ranhuras longitudinais nas duas laterais do trilho.
+        var pistaEsquerda = new CylinderFeature(new Point3D(0, 0, AlturaPistaEsferas), Vector3D.UnitY, DiametroPistaEsferas / 2, Comprimento)
+        {
+            Name = "pista_esquerda",
+            IsTransientTool = true
+        };
+        var pistaDireita = new CylinderFeature(new Point3D(Largura, 0, AlturaPistaEsferas), Vector3D.UnitY, DiametroPistaEsferas / 2, Comprimento)
+        {
+            Name = "pista_direita",
+            IsTransientTool = true
+        };
+        furos.Add(pistaEsquerda);
+        furos.Add(pistaDireita);
 
         return BooleanFeature.CreateDifference("trilho_mgn9", corpo, furos.ToArray());
     }
