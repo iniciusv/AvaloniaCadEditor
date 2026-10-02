@@ -3,7 +3,7 @@ using System.Collections.Generic;
 
 /// <summary>
 /// Bloco impresso intermediário para conectar o SuporteMotorNema17 ao perfil de alumínio 2020.
-/// Dimensões: 40 mm (Largura, X) x 20 mm (Profundidade, Y) x 20 mm (Altura, Z).
+/// Dimensões: 40 mm (Largura, X) x 20 mm (Profundidade, Y) x 28 mm (Altura, Z).
 /// Furos no sentido Y:
 /// 1. Dois furos passantes M3 alinhados com os furos laterais do SuporteMotorNema17 (passo 15 mm em X),
 ///    com rebaixo para a cabeça do parafuso na face frontal (Y = -Profundidade / 2).
@@ -18,13 +18,13 @@ using System.Collections.Generic;
 public sealed record BlocoConexaoMotor2020(
     double Largura = 40.0,
     double Profundidade = 20.0,
-    double Altura = 30.0,
+    double Altura = 28.0,
     double PassoFurosSuporte = 10.0,
     double PassoFurosExtrusao = 20.0,
     double DiametroFuroM3 = 3.2,
     double DiametroRebaixo = 6.0,
     double ProfundidadeRebaixo = 3.0,
-    double AlturaFurosSuporteZ = 25.0,//
+    double AlturaFurosSuporteZ = 23.0,
     double AlturaFurosExtrusaoZ = 10.0,
     double RaioChanfro = 1.0,
     double PassoFurosVerticaisZ = 30.0,

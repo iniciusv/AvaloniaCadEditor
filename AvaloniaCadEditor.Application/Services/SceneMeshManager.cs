@@ -136,6 +136,43 @@ public class SceneMeshManager : ISceneMeshManager
         return bestHit;
     }
 
+    public IReadOnlyList<RaycastHit> RaycastAll3D(Sketch sketch, Ray ray, Func<IFeature, bool>? includeFilter = null)
+    {
+        var hits = new List<RaycastHit>();
+        if (sketch.Features.Count == 0) return hits;
+
+        foreach (var feature in sketch.Features)
+        {
+            bool shouldProcess = feature.IsVisible || (includeFilter != null && includeFilter(feature));
+            if (!shouldProcess) continue;
+
+            if (!_featureMeshCache.TryGetValue(feature.Id, out var mesh))
+            {
+                mesh = _geometryKernel.BuildSolidMesh(new[] { feature }, _settingsProvider.GetSettings());
+                if (mesh != null)
+                {
+                    _featureMeshCache[feature.Id] = mesh;
+                }
+            }
+
+            if (mesh != null)
+            {
+                var hit = ray.IntersectMesh(mesh);
+                if (hit.HasValue)
+                {
+                    hits.Add(new RaycastHit(
+                        hit.Value.Distance,
+                        hit.Value.Point,
+                        hit.Value.Normal,
+                        feature.Id));
+                }
+            }
+        }
+
+        hits.Sort((a, b) => a.Distance.CompareTo(b.Distance));
+        return hits;
+    }
+
     public TriangleMesh BuildCompositeMesh(Sketch sketch, IFeature? previewFeature)
     {
         var currentIds = new HashSet<Guid>(sketch.Features.Select(f => f.Id));

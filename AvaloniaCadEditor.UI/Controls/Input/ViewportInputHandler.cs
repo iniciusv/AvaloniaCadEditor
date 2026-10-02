@@ -198,75 +198,45 @@ public sealed class ViewportInputHandler
                             }
                             else if (viewModel.CurrentSelectionMode == CadViewModel.TargetSelectionMode.Face)
                             {
-                                var normal = hit.Value.Normal;
-                                var plane = GetStableWorkPlane(viewModel, hit.Value);
-                                var baseFeature = viewModel.Sketch.Features.FirstOrDefault(f => f.Id == hit.Value.FeatureId.Value);
-                                if (baseFeature != null) 
+                                var selectedProfile = BuildFaceProfile(viewModel, hit.Value);
+                                if (selectedProfile != null)
                                 {
-                                    var mesh = viewModel.GetFeatureMesh(hit.Value.FeatureId.Value);
-                                    if (mesh != null)
+                                    selectedProfile.IsSelected = true;
+                                    bool isCtrlPressed = (e.KeyModifiers & Avalonia.Input.KeyModifiers.Control) != 0;
+                                    if (isCtrlPressed || viewModel.IsCtrlPressed)
                                     {
-                                        AvaloniaCadEditor.Domain.Profiles.IProfile selectedProfile = null;
-                                        
-                                        if (baseFeature is AvaloniaCadEditor.Domain.Features.BoxFeature boxFeature)
-                                        {
-                                            var faceType = boxFeature.GetFaceTypeFromNormal(new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(normal.X, normal.Y, normal.Z));
-                                            if (faceType.HasValue)
-                                            {
-                                                selectedProfile = new AvaloniaCadEditor.Domain.Profiles.ParametricBoxFace(boxFeature, faceType.Value);
-                                            }
-                                        }
-                                        else if (baseFeature is AvaloniaCadEditor.Domain.Features.CylinderFeature cylinderFeature)
-                                        {
-                                            var faceType = cylinderFeature.GetFaceTypeFromNormal(new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(normal.X, normal.Y, normal.Z));
-                                            if (faceType.HasValue)
-                                            {
-                                                selectedProfile = new AvaloniaCadEditor.Domain.Profiles.ParametricCylinderFace(cylinderFeature, faceType.Value);
-                                            }
-                                        }
+                                        var currentSelection = viewModel.SelectionService.SelectedObject as AvaloniaCadEditor.Domain.Profiles.IProfile;
+                                        var subs = new System.Collections.Generic.List<AvaloniaCadEditor.Domain.Profiles.IProfile>();
+                                        if (currentSelection is AvaloniaCadEditor.Domain.Profiles.CompoundProfile compound)
+                                            subs.AddRange(compound.SubProfiles);
+                                        else if (currentSelection != null)
+                                            subs.Add(currentSelection);
 
-                                        if (selectedProfile == null)
-                                        {
-                                            selectedProfile = new AvaloniaCadEditor.Domain.Profiles.FaceProfile(baseFeature, plane, mesh);
-                                        }
+                                        var existing = subs.FirstOrDefault(p =>
+                                            (p is AvaloniaCadEditor.Domain.Profiles.ParametricBoxFace pb && selectedProfile is AvaloniaCadEditor.Domain.Profiles.ParametricBoxFace spb && pb.ParentBox.Id == spb.ParentBox.Id && pb.SelectedFace == spb.SelectedFace) ||
+                                            (p is AvaloniaCadEditor.Domain.Profiles.ParametricCylinderFace pc && selectedProfile is AvaloniaCadEditor.Domain.Profiles.ParametricCylinderFace spc && pc.ParentCylinder.Id == spc.ParentCylinder.Id && pc.SelectedFace == spc.SelectedFace));
 
-                                                                                selectedProfile.IsSelected = true;
-                                        bool isCtrlPressed = (e.KeyModifiers & Avalonia.Input.KeyModifiers.Control) != 0;
-                                        if (isCtrlPressed || viewModel.IsCtrlPressed)
-                                        {
-                                            var currentSelection = viewModel.SelectionService.SelectedObject as AvaloniaCadEditor.Domain.Profiles.IProfile;
-                                            var subs = new System.Collections.Generic.List<AvaloniaCadEditor.Domain.Profiles.IProfile>();
-                                            if (currentSelection is AvaloniaCadEditor.Domain.Profiles.CompoundProfile compound)
-                                                subs.AddRange(compound.SubProfiles);
-                                            else if (currentSelection != null)
-                                                subs.Add(currentSelection);
-                                            
-                                            var existing = subs.FirstOrDefault(p => 
-                                                (p is AvaloniaCadEditor.Domain.Profiles.ParametricBoxFace pb && selectedProfile is AvaloniaCadEditor.Domain.Profiles.ParametricBoxFace spb && pb.ParentBox.Id == spb.ParentBox.Id && pb.SelectedFace == spb.SelectedFace) ||
-                                                (p is AvaloniaCadEditor.Domain.Profiles.ParametricCylinderFace pc && selectedProfile is AvaloniaCadEditor.Domain.Profiles.ParametricCylinderFace spc && pc.ParentCylinder.Id == spc.ParentCylinder.Id && pc.SelectedFace == spc.SelectedFace));
-                                            
-                                            if (existing != null)
-                                                subs.Remove(existing);
-                                            else
-                                                subs.Add(selectedProfile);
-                                            
-                                            if (subs.Count == 0)
-                                                viewModel.SelectionService.ClearSelection();
-                                            else if (subs.Count == 1)
-                                                viewModel.SelectionService.SelectProfile(subs[0]);
-                                            else
-                                            {
-                                                var newComp = new AvaloniaCadEditor.Domain.Profiles.CompoundProfile(subs) { IsSelected = true };
-                                                foreach (var s in newComp.SubProfiles) s.IsSelected = true;
-                                                viewModel.SelectionService.SelectProfile(newComp);
-                                            }
-                                        }
+                                        if (existing != null)
+                                            subs.Remove(existing);
+                                        else
+                                            subs.Add(selectedProfile);
+
+                                        if (subs.Count == 0)
+                                            viewModel.SelectionService.ClearSelection();
+                                        else if (subs.Count == 1)
+                                            viewModel.SelectionService.SelectProfile(subs[0]);
                                         else
                                         {
-                                            viewModel.SelectionService.SelectProfile(selectedProfile);
+                                            var newComp = new AvaloniaCadEditor.Domain.Profiles.CompoundProfile(subs) { IsSelected = true };
+                                            foreach (var s in newComp.SubProfiles) s.IsSelected = true;
+                                            viewModel.SelectionService.SelectProfile(newComp);
                                         }
-                                        requestRender();
                                     }
+                                    else
+                                    {
+                                        viewModel.SelectionService.SelectProfile(selectedProfile);
+                                    }
+                                    requestRender();
                                 }
                             }
                         }
@@ -278,41 +248,11 @@ public sealed class ViewportInputHandler
                             var hit = viewModel.Raycast3D(ray);
                             if (hit.HasValue && hit.Value.FeatureId.HasValue)
                             {
-                                var normal = hit.Value.Normal;
-                                var plane = GetStableWorkPlane(viewModel, hit.Value);
-                                var baseFeature = viewModel.Sketch.Features.FirstOrDefault(f => f.Id == hit.Value.FeatureId.Value);
-                                if (baseFeature != null) 
+                                var selectedProfile = BuildFaceProfile(viewModel, hit.Value);
+                                if (selectedProfile != null)
                                 {
-                                    var mesh = viewModel.GetFeatureMesh(hit.Value.FeatureId.Value);
-                                    if (mesh != null)
-                                    {
-                                        AvaloniaCadEditor.Domain.Profiles.IProfile selectedProfile = null;
-                                        
-                                        if (baseFeature is AvaloniaCadEditor.Domain.Features.BoxFeature boxFeature)
-                                        {
-                                            var faceType = boxFeature.GetFaceTypeFromNormal(new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(normal.X, normal.Y, normal.Z));
-                                            if (faceType.HasValue)
-                                            {
-                                                selectedProfile = new AvaloniaCadEditor.Domain.Profiles.ParametricBoxFace(boxFeature, faceType.Value);
-                                            }
-                                        }
-                                        else if (baseFeature is AvaloniaCadEditor.Domain.Features.CylinderFeature cylinderFeature)
-                                        {
-                                            var faceType = cylinderFeature.GetFaceTypeFromNormal(new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(normal.X, normal.Y, normal.Z));
-                                            if (faceType.HasValue)
-                                            {
-                                                selectedProfile = new AvaloniaCadEditor.Domain.Profiles.ParametricCylinderFace(cylinderFeature, faceType.Value);
-                                            }
-                                        }
-
-                                        if (selectedProfile == null)
-                                        {
-                                            selectedProfile = new AvaloniaCadEditor.Domain.Profiles.FaceProfile(baseFeature, plane, mesh);
-                                        }
-
-                                        extCmd.StartDirectExtrusion(viewModel.Sketch, selectedProfile, hit.Value.Point);
-                                        requestRender();
-                                    }
+                                    extCmd.StartDirectExtrusion(viewModel.Sketch, selectedProfile, hit.Value.Point);
+                                    requestRender();
                                 }
                             }
                         }
@@ -438,9 +378,11 @@ public sealed class ViewportInputHandler
                 }
             }
             
-            if (viewModel.CurrentTool is Application.Commands.BooleanTool || 
-                viewModel.CurrentTool is Application.Commands.ExtrudeCommand || 
-                viewModel.CurrentTool is Application.Commands.FilletTool)
+            if (viewModel.CurrentTool is Application.Commands.BooleanTool ||
+                viewModel.CurrentTool is Application.Commands.ExtrudeCommand ||
+                viewModel.CurrentTool is Application.Commands.FilletTool ||
+                viewModel.CurrentTool is Application.Commands.SelectTool ||
+                viewModel.CurrentTool is Application.Commands.SetWorkPlaneCommand)
             {
                 viewModel.ProcessHover(ray);
             }
@@ -506,6 +448,45 @@ public sealed class ViewportInputHandler
         double unitsPerPixel = hitAtCursor.DistanceTo(neighbor.Value);
         if (unitsPerPixel > 0 && double.IsFinite(unitsPerPixel))
             viewModel.WorldUnitsPerPixel = unitsPerPixel;
+    }
+
+    /// <summary>
+    /// Constrói o perfil de face (box/cilindro paramétrico, ou genérico a partir da malha) correspondente
+    /// a um hit de raycast. Usado tanto pelo clique (SelectTool/ExtrudeCommand) quanto pelo hover de face.
+    /// </summary>
+    internal static AvaloniaCadEditor.Domain.Profiles.IProfile? BuildFaceProfile(CadViewModel viewModel, AvaloniaCadEditor.Domain.ValueObjects.RaycastHit hit)
+    {
+        if (!hit.FeatureId.HasValue) return null;
+
+        var normal = hit.Normal;
+        var plane = GetStableWorkPlane(viewModel, hit);
+        var baseFeature = viewModel.Sketch.Features.FirstOrDefault(f => f.Id == hit.FeatureId.Value);
+        if (baseFeature == null) return null;
+
+        var mesh = viewModel.GetFeatureMesh(hit.FeatureId.Value);
+        if (mesh == null) return null;
+
+        AvaloniaCadEditor.Domain.Profiles.IProfile? selectedProfile = null;
+
+        if (baseFeature is AvaloniaCadEditor.Domain.Features.BoxFeature boxFeature)
+        {
+            var faceType = boxFeature.GetFaceTypeFromNormal(new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(normal.X, normal.Y, normal.Z));
+            if (faceType.HasValue)
+            {
+                selectedProfile = new AvaloniaCadEditor.Domain.Profiles.ParametricBoxFace(boxFeature, faceType.Value);
+            }
+        }
+        else if (baseFeature is AvaloniaCadEditor.Domain.Features.CylinderFeature cylinderFeature)
+        {
+            var faceType = cylinderFeature.GetFaceTypeFromNormal(new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(normal.X, normal.Y, normal.Z));
+            if (faceType.HasValue)
+            {
+                selectedProfile = new AvaloniaCadEditor.Domain.Profiles.ParametricCylinderFace(cylinderFeature, faceType.Value);
+            }
+        }
+
+        selectedProfile ??= new AvaloniaCadEditor.Domain.Profiles.FaceProfile(baseFeature, plane, mesh);
+        return selectedProfile;
     }
 
     internal static AvaloniaCadEditor.Domain.ValueObjects.WorkPlane GetStableWorkPlane(CadViewModel viewModel, AvaloniaCadEditor.Domain.ValueObjects.RaycastHit hit)

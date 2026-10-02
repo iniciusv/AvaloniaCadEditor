@@ -22,7 +22,7 @@ var trilhoYBX = centroXTrilhoB - trilhoYPeca.Largura / 2 + 12.5;
 var trilhoYBY = -trilhoYPeca.Comprimento / 2 - 12.5;
 var trilhoYA = Add(trilhoYPeca, at: Placement.At(trilhoYAX, trilhoYAY, 0), name: "trilho_mgn15_y_a");
 var trilhoYB = Add(trilhoYPeca, at: Placement.At(trilhoYBX, trilhoYBY, 0), name: "trilho_mgn15_y_b");
-var carrinhoYA = Add(carrinhoYPeca, at: Placement.At(centroXTrilhoA - carrinhoYPeca.Largura / 2 - 12.5, -carrinhoYPeca.Comprimento / 2 - 12.5, 0), name: "carrinho_mgn15h_a");
+var carrinhoYA = Add(carrinhoYPeca, at: Placement.At(centroXTrilhoA - carrinhoYPeca.Largura / 2 - 12.5, -carrinhoYPeca.Comprimento / 2 + 12.5, 0), name: "carrinho_mgn15h_a");
 var carrinhoYB = Add(carrinhoYPeca, at: Placement.At(centroXTrilhoB - carrinhoYPeca.Largura / 2 + 12.5, -carrinhoYPeca.Comprimento / 2 - 12.5, 0), name: "carrinho_mgn15h_b");
 // --- Trilho X: MGN9 (250 mm), girado 90° para correr no sentido X, apoiado no topo dos carrinhos Y ---
 var alturaTopoCarrinhosY = carrinhoYPeca.Altura;
@@ -56,7 +56,6 @@ var faceLivreYExtrusaoSobTrilhoX = extrusaoSobTrilhoXPeca.Largura / 2;
 var yBlocoConexao = faceLivreYExtrusaoSobTrilhoX + blocoConexaoMotorPeca.Profundidade / 2;
 var zBlocoConexao = topoExtrusaoSobTrilhoX - extrusaoSobTrilhoXPeca.Altura;
 var blocoConexaoMotor = Add(blocoConexaoMotorPeca, at: Placement.At(xMotorNema17, yBlocoConexao, zBlocoConexao), name: "bloco_conexao_motor_2020", color: "#00CC6A");
-
 var yMotorSuporte = faceLivreYExtrusaoSobTrilhoX + blocoConexaoMotorPeca.Profundidade + suporteMotorNema17Peca.ComprimentoFrente;
 var zSuporteMotor = zBlocoConexao + blocoConexaoMotorPeca.AlturaFurosSuporteZ - suporteMotorNema17Peca.Espessura / 2.0;
 var suporteMotorNema17 = Add(suporteMotorNema17Peca with { LarguraPorcaLateral = 5.83 }, at: Placement.At(xMotorNema17, yMotorSuporte, zSuporteMotor), name: "suporte_motor_nema17", color: "#00CC6A");
@@ -66,27 +65,7 @@ var suporteMotorNema17 = Add(suporteMotorNema17Peca with { LarguraPorcaLateral =
 // eixo sobe através do furo de alívio central, se projetando por cima do suporte.
 var alturaMontagemMotor = zSuporteMotor - motorNema17Peca.Comprimento;
 var motorNema17 = Add(motorNema17Peca, at: Placement.At(xMotorNema17, yMotorSuporte, alturaMontagemMotor), name: "motor_nema17");
-var box_0578 = new BoxFeature(baseCorner: new Point3D(-6.05, 10, 25.99999), width: 20.5, length: 16.5, height: 13)
-{
-    Name = "box_0578"
-}.Transformed(Placement.Translate(new Vector3D(-14.565334, 0.5, 0.584834)));
-AddFeature(box_0578);
-var prism_bb82_verts = new[]
-{
-    new Point3D(15, 8.25, 0),
-    new Point3D(15, 5.25, 0),
-    new Point3D(0, 5.25, 0),
-    new Point3D(0, 11.25, 0),
-    new Point3D(15, 11.25, 0)
-};
-var prism_bb82_plane = new WorkPlane(new Point3D(-20.61533, 10.5, 39.58398), new Vector3D(0, 0, 1), new Vector3D(1, 0, 0));
-var prism_bb82 = new PrismFeature(prism_bb82_verts, height: -9, plane: prism_bb82_plane)
-{
-    Name = "prism_bb82"
-};
-AddFeature(prism_bb82);
-var cylinder_3345 = new CylinderFeature(globalBaseCenter: new Point3D(-5.61533, 18.75, 39.58398), globalDirection: new Vector3D(0, 0, 1), radius: 3, height: -9)
-{
-    Name = "cylinder_3345"
-};
-AddFeature(cylinder_3345);
+
+
+// --- Bloco de pressao da correia (belt), fixado na lateral do bloco_fixacao_mgn9 ---
+var blocoFixacaoBelt = Add(new BlocoFixacaoBelt(), at: Placement.At(0, 0, alturaTopoCarrinhosY + carrinhoXPeca.Altura), name: "bloco_fixacao_belt", color: "#00CC6A");

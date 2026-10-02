@@ -82,6 +82,7 @@ public partial class MainWindow : Window
         {
             bool isCtrl = e.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Control);
             vm.OnKeyDown(e.Key.ToString(), isCtrl);
+            if (e.Key == Avalonia.Input.Key.Tab) e.Handled = true;
             ViewportControl.RequestNextFrameRendering();
         }
     }

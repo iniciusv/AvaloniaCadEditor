@@ -43,10 +43,15 @@ public sealed class ProfileFaceRenderPass : IRenderPass
             ? new System.Collections.Generic.List<AvaloniaCadEditor.Domain.Profiles.IProfile>(vm.Sketch.Profiles)
             : new System.Collections.Generic.List<AvaloniaCadEditor.Domain.Profiles.IProfile>();
 
-        if (vm.SelectionService.SelectedObject is AvaloniaCadEditor.Domain.Profiles.IProfile selectedProfile && 
+        if (vm.SelectionService.SelectedObject is AvaloniaCadEditor.Domain.Profiles.IProfile selectedProfile &&
             !profilesToRender.Contains(selectedProfile))
         {
             profilesToRender.Add(selectedProfile);
+        }
+
+        if (vm.HoveredFaceProfile != null && !profilesToRender.Contains(vm.HoveredFaceProfile))
+        {
+            profilesToRender.Add(vm.HoveredFaceProfile);
         }
 
         if (profilesToRender.Count == 0) return;
@@ -68,7 +73,7 @@ public sealed class ProfileFaceRenderPass : IRenderPass
             {
                 r = 1.00f; g = 0.65f; b = 0.15f; a = 0.50f; // Selected = Amber Gold
             }
-            else if (profile == vm.HoveredProfile)
+            else if (profile == vm.HoveredProfile || profile == vm.HoveredFaceProfile)
             {
                 r = 0.20f; g = 0.80f; b = 1.00f; a = 0.42f; // Hover = Luminous Cyan
             }

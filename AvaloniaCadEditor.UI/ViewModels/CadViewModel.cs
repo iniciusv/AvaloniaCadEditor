@@ -104,17 +104,51 @@ public class CadViewModel : INotifyPropertyChanged
 		}
 	}
 
+	private IProfile? _hoveredFaceProfile;
+	/// <summary>
+	/// Face realçada pelo hover 3D quando a ferramenta ativa escolhe uma face (modo Face, ou
+	/// ExtrudeCommand) - nesse caso o sólido inteiro não deve realçar, só a face sob o cursor.
+	/// Distinto de <see cref="HoveredProfile"/>, que é o hover de região 2D em modo Sketch.
+	/// </summary>
+	public IProfile? HoveredFaceProfile
+	{
+		get => _hoveredFaceProfile;
+		set
+		{
+			if (_hoveredFaceProfile != value)
+			{
+				_hoveredFaceProfile = value;
+				OnPropertyChanged();
+			}
+		}
+	}
+
+	private bool IsFacePickMode() =>
+		CurrentTool is ExtrudeCommand || CurrentSelectionMode == TargetSelectionMode.Face;
+
 	private Ray? _lastHoverRay;
 	private Avalonia.Threading.DispatcherTimer? _hoverTimer;
+	private List<RaycastHit>? _pickCandidates;
+	private int _pickCandidateIndex = -1;
+	private RaycastHit? _pickOverride;
 
 	public void ProcessHover(Ray ray)
 	{
 		_lastHoverRay = ray;
 
+		// O cursor se moveu de verdade: qualquer ciclo TAB em andamento perde o sentido.
+		_pickCandidates = null;
+		_pickCandidateIndex = -1;
+		_pickOverride = null;
+
 		// Remove the highlight immediately when mouse starts moving
 		if (HoveredFeatureId != null)
 		{
 			HoveredFeatureId = null;
+		}
+		if (HoveredFaceProfile != null)
+		{
+			HoveredFaceProfile = null;
 		}
 
 		_hoverTimer?.Stop();
@@ -128,7 +162,16 @@ public class CadViewModel : INotifyPropertyChanged
 				if (_lastHoverRay.HasValue)
 				{
 					var hit = MeshManager.Raycast3D(Sketch, _lastHoverRay.Value);
-					HoveredFeatureId = hit?.FeatureId;
+					if (hit?.FeatureId != null && IsFacePickMode())
+					{
+						HoveredFeatureId = null;
+						HoveredFaceProfile = AvaloniaCadEditor.UI.Controls.Input.ViewportInputHandler.BuildFaceProfile(this, hit.Value);
+					}
+					else
+					{
+						HoveredFaceProfile = null;
+						HoveredFeatureId = hit?.FeatureId;
+					}
 				}
 			};
 		}
@@ -824,7 +867,56 @@ public class CadViewModel : INotifyPropertyChanged
 
 	public RaycastHit? Raycast3D(Ray ray)
 	{
+		if (_pickOverride.HasValue)
+		{
+			var over = _pickOverride.Value;
+			_pickOverride = null;
+			_pickCandidates = null;
+			return over;
+		}
+
 		return MeshManager.Raycast3D(Sketch, ray, f => ActiveBooleanGroup != null && ActiveBooleanGroup.ToolFeatures.Contains(f));
+	}
+
+	/// <summary>
+	/// Alterna o realce (e o próximo alvo de clique) entre sólidos sobrepostos no ponto onde o mouse
+	/// está parado, usando o último raio de hover. Disparado pela tecla TAB.
+	/// </summary>
+	public void CycleHoveredFeature()
+	{
+		if (_lastHoverRay is not { } ray) return;
+
+		bool isPickTool = CurrentTool is Application.Commands.SelectTool
+			or Application.Commands.FilletTool
+			or Application.Commands.BooleanTool
+			or Application.Commands.ExtrudeCommand
+			or Application.Commands.SetWorkPlaneCommand;
+		if (!isPickTool) return;
+
+		if (_pickCandidates == null)
+		{
+			_pickCandidates = MeshManager
+				.RaycastAll3D(Sketch, ray, f => ActiveBooleanGroup != null && ActiveBooleanGroup.ToolFeatures.Contains(f))
+				.ToList();
+			_pickCandidateIndex = -1;
+		}
+
+		if (_pickCandidates.Count == 0) return;
+
+		_pickCandidateIndex = (_pickCandidateIndex + 1) % _pickCandidates.Count;
+		var candidate = _pickCandidates[_pickCandidateIndex];
+		_pickOverride = candidate;
+
+		if (IsFacePickMode())
+		{
+			HoveredFeatureId = null;
+			HoveredFaceProfile = AvaloniaCadEditor.UI.Controls.Input.ViewportInputHandler.BuildFaceProfile(this, candidate);
+		}
+		else
+		{
+			HoveredFaceProfile = null;
+			HoveredFeatureId = candidate.FeatureId;
+		}
 	}
 
 	public void RefreshProfiles()
@@ -1134,6 +1226,9 @@ public class CadViewModel : INotifyPropertyChanged
 
 		switch (upperKey)
 		{
+			case "TAB":
+				CycleHoveredFeature();
+				break;
 			case "L":
 				SelectLineToolCommand.Execute(null);
 				break;

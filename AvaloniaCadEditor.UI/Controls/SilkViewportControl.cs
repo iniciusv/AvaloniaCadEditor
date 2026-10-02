@@ -57,6 +57,7 @@ public class SilkViewportControl : OpenGlControlBase
         };
 
         Focusable = true;
+        KeyboardNavigation.SetTabNavigation(this, KeyboardNavigationMode.None);
     }
 
     protected override void OnPropertyChanged(AvaloniaPropertyChangedEventArgs change)
