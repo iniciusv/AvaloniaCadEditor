@@ -9,6 +9,7 @@ Propriedades comuns a TODAS as features (herdadas de FeatureBase):
   bool IsVisible { get; set; }
   bool IsSelected { get; set; }
   bool IsTransientTool { get; set; }
+  string Color { get; set; }
 
 ### BoxFeature : FeatureBase
   new BoxFeature(Point3D baseCorner, double width, double length, double height, string? name = null)
@@ -204,7 +205,8 @@ PEÇAS PARAMÉTRICAS (em projetos de cena com vários arquivos):
         }
     }
   Parâmetros podem ter [System.ComponentModel.DataAnnotations.Range(min, max)]; valores fora do intervalo viram erro.
-  Método global: PartInstance<T> Add<T>(T part, Placement? at = null, string? name = null) — coloca uma instância na cena.
+  Método global: PartInstance<T> Add<T>(T part, Placement? at = null, string? name = null, string? color = null) — coloca uma instância na cena.
+  color ("#RRGGBB") é opcional e pinta o sólido inteiro; só use se o pedido envolver cores.
     var p1 = Add(new Placa(100, 60));
     var p2 = Add(p1.Part with { Espessura = 8 }, at: Placement.At(150, 0, 0, rotationZDegrees: 90));
     Point3D canto = p2.World(p => new Point3D(p.Largura, 0, 0)); // ponto local da peça convertido para o mundo

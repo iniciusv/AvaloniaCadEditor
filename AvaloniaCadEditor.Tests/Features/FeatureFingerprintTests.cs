@@ -136,7 +136,7 @@ public class FeatureFingerprintTests
     [InlineData(typeof(PartInstance<PlacaTeste>), new[] { "Definition", "Placement", "Part", "PartTypeName" })]
     public void FingerprintCobreTodasAsPropriedadesPublicas(Type featureType, string[] cobertas)
     {
-        var naoGeometricas = new HashSet<string> { "Id", "Name", "IsEnabled", "IsVisible", "IsSelected", "IsTransientTool", "Dependencies" };
+        var naoGeometricas = new HashSet<string> { "Id", "Name", "IsEnabled", "IsVisible", "IsSelected", "IsTransientTool", "Color", "Dependencies" };
 
         var faltando = featureType
             .GetProperties(BindingFlags.Public | BindingFlags.Instance)

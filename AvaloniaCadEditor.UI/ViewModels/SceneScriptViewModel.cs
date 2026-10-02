@@ -1111,6 +1111,18 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         return null;
     }
 
+    public async Task<string?> SetPartInstanceColorAsync(PartInstance instance, string? color)
+    {
+        string instanceName = instance.Name;
+        if (!EditFeatureCalls(new[] { instance }, (source, line) => PartSourceEditor.SetInstanceColor(source, line, color)))
+            return null;
+
+        await RunCodeAsync();
+        if (HasErrors) return ErrorSummary;
+        SelectFeatureByName(instanceName);
+        return null;
+    }
+
     // ---------------------------------------------------------------- Edições geradas pelo app
 
     public void AppendCode(string codeSnippet)

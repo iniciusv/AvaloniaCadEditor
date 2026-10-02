@@ -13,6 +13,9 @@ public interface IFeature
     bool IsSelected { get; set; }
     bool IsTransientTool { get; set; }
 
+    /// <summary>Cor do sólido no viewport ("#RRGGBB"); null usa a cor padrão.</summary>
+    string? Color { get; set; }
+
     /// <summary>
     /// Gets the features that this feature depends on.
     /// This forms the Directed Acyclic Graph (DAG) for the CSG.

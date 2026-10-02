@@ -5,6 +5,8 @@ using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
+using Avalonia.Media;
+using Avalonia.Threading;
 using AvaloniaCadEditor.Application.Scenes;
 using AvaloniaCadEditor.Application.Services;
 using AvaloniaCadEditor.Domain.Entities;
@@ -31,6 +33,14 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
         _onModelParametricModified = onModelParametricModified;
         _partCodeEditor = partCodeEditor ?? (() => null);
         _selectionService.SelectionChanged += RefreshProperties;
+        _colorWriteTimer = new DispatcherTimer { Interval = TimeSpan.FromMilliseconds(400) };
+        _colorWriteTimer.Tick += async (_, _) => await WritePartColorAsync();
+        ResetPartColorCommand = new RelayCommand(() =>
+        {
+            _pendingColor = null;
+            _colorWriteTimer.Stop();
+            _colorWriteTimer.Start();
+        });
         OpenPartDefinitionCommand = new RelayCommand(() =>
         {
             if (_selectionService.SelectedObject is PartInstance instance)
@@ -60,6 +70,59 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
     }
 
     public ICommand OpenPartDefinitionCommand { get; }
+
+    // --- Cor da peça: o seletor muda muito rápido ao arrastar, então o código só é reescrito
+    // depois de uma pausa (o timer), numa única reexecução.
+    private static readonly Color DefaultPartColor = Color.Parse("#EBEBF2");
+    private readonly DispatcherTimer _colorWriteTimer;
+    private string? _pendingColor;
+    private Color _partColor = DefaultPartColor;
+
+    public Color PartColor
+    {
+        get => _partColor;
+        set
+        {
+            if (_partColor == value) return;
+            _partColor = value;
+            OnPropertyChanged();
+            _pendingColor = $"#{value.R:X2}{value.G:X2}{value.B:X2}";
+            _colorWriteTimer.Stop();
+            _colorWriteTimer.Start();
+        }
+    }
+
+    private bool _hasPartColor;
+    /// <summary>A instância tem <c>color:</c> próprio (mostra o botão de voltar ao padrão).</summary>
+    public bool HasPartColor
+    {
+        get => _hasPartColor;
+        private set { _hasPartColor = value; OnPropertyChanged(); }
+    }
+
+    public ICommand ResetPartColorCommand { get; }
+
+    private async System.Threading.Tasks.Task WritePartColorAsync()
+    {
+        _colorWriteTimer.Stop();
+        if (_selectionService.SelectedObject is not PartInstance instance || _partCodeEditor() is not { } editor) return;
+        if (instance.Color == _pendingColor) return;
+
+        string? error = await editor.SetPartInstanceColorAsync(instance, _pendingColor);
+        if (error != null)
+        {
+            PartNote = error;
+        }
+    }
+
+    private void LoadPartColor(PartInstance instance)
+    {
+        // Enquanto uma gravação está pendente, a reexecução não deve devolver o seletor à cor antiga.
+        if (_colorWriteTimer.IsEnabled) return;
+        HasPartColor = instance.Color != null;
+        _partColor = instance.Color != null && Color.TryParse(instance.Color, out var color) ? color : DefaultPartColor;
+        OnPropertyChanged(nameof(PartColor));
+    }
 
     private bool _hasSelection;
     public bool HasSelection
@@ -321,6 +384,7 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
             AdditionalInfo = "";
 
             LoadPartParameters(instance);
+            LoadPartColor(instance);
             IsPartInstance = true;
             NotifyAllFields();
         }

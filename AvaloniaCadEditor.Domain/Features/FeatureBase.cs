@@ -12,6 +12,7 @@ public abstract class FeatureBase : IFeature
     public bool IsVisible { get; set; } = true;
     public bool IsSelected { get; set; } = false;
     public bool IsTransientTool { get; set; } = false;
+    public string? Color { get; set; }
 
     // By default, features might not have dependencies unless overridden
     public virtual IEnumerable<IFeature> Dependencies => Array.Empty<IFeature>();

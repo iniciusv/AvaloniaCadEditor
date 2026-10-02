@@ -125,15 +125,17 @@ public sealed class ViewportShaderManager
 
     public static (float R, float G, float B, float A) ParseHexColor(string hex, (float, float, float, float) fallback)
     {
-        if (string.IsNullOrWhiteSpace(hex) || !hex.StartsWith("#") || hex.Length != 9)
+        // Aceita #AARRGGBB e #RRGGBB (opaco).
+        if (string.IsNullOrWhiteSpace(hex) || !hex.StartsWith("#") || (hex.Length != 9 && hex.Length != 7))
             return fallback;
             
         try 
         {
-            float a = Convert.ToInt32(hex.Substring(1, 2), 16) / 255f;
-            float r = Convert.ToInt32(hex.Substring(3, 2), 16) / 255f;
-            float g = Convert.ToInt32(hex.Substring(5, 2), 16) / 255f;
-            float b = Convert.ToInt32(hex.Substring(7, 2), 16) / 255f;
+            int i = hex.Length == 9 ? 3 : 1;
+            float a = hex.Length == 9 ? Convert.ToInt32(hex.Substring(1, 2), 16) / 255f : 1f;
+            float r = Convert.ToInt32(hex.Substring(i, 2), 16) / 255f;
+            float g = Convert.ToInt32(hex.Substring(i + 2, 2), 16) / 255f;
+            float b = Convert.ToInt32(hex.Substring(i + 4, 2), 16) / 255f;
             return (r, g, b, a);
         }
         catch 

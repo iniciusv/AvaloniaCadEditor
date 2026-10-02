@@ -22,6 +22,9 @@ public interface IPartCodeEditor
 
     /// <summary>Move a instância (reescrevendo o <c>at:</c>) e reexecuta. Retorna a mensagem de erro, ou null.</summary>
     Task<string?> MovePartInstanceAsync(PartInstance instance, AvaloniaCadEditor.Domain.ValueObjects.Vector3D offset);
+
+    /// <summary>Grava o <c>color:</c> ("#RRGGBB" ou null = padrão) e reexecuta. Retorna a mensagem de erro, ou null.</summary>
+    Task<string?> SetPartInstanceColorAsync(PartInstance instance, string? color);
 }
 
 /// <summary>Comandos de navegação disparados pelo teclado no editor (F12, Shift+F12, F2).</summary>

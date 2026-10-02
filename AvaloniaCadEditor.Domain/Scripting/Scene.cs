@@ -37,19 +37,23 @@ public static class Scene
     /// <param name="part">A peça (um record que herda de <see cref="Part"/>).</param>
     /// <param name="at">Posição e rotação; padrão: na origem, sem rotação.</param>
     /// <param name="name">Nome exibido na árvore; padrão: TipoDaPeca_N.</param>
+    /// <param name="color">Cor "#RRGGBB"; padrão: a <see cref="IFeature.Color"/> da geometria da peça, se houver.</param>
     public static PartInstance<T> Add<T>(
         T part,
         Placement? at = null,
         string? name = null,
+        string? color = null,
         [CallerArgumentExpression(nameof(part))] string? expression = null,
         [CallerFilePath] string filePath = "",
         [CallerLineNumber] int line = 0) where T : Part
     {
         ArgumentNullException.ThrowIfNull(part);
         var builder = SceneHost.CurrentBuilder;
-        var instance = new PartInstance<T>(part, builder.GetOrBuildDefinition(part), at ?? Placement.Identity)
+        var definition = builder.GetOrBuildDefinition(part);
+        var instance = new PartInstance<T>(part, definition, at ?? Placement.Identity)
         {
-            Name = name ?? builder.NextInstanceName(part.GetType().Name)
+            Name = name ?? builder.NextInstanceName(part.GetType().Name),
+            Color = color ?? definition.Color
         };
         FeatureOrigin.Set(instance, new SourceOrigin(filePath, line, expression));
         builder.AddFeature(instance);

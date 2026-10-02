@@ -217,6 +217,45 @@ public static class PartSourceEditor
         return Replace(source, at.Expression.Span, $"{target}.Then({TranslationCall(dx, dy, dz)})");
     }
 
+    // ---------------------------------------------------------------- Cor de uma instância
+
+    /// <summary>
+    /// Define o <c>color:</c> da chamada <c>Add(...)</c> da linha dada: troca o que já existe ou
+    /// acrescenta no fim. <paramref name="color"/> null remove o argumento (volta à cor padrão).
+    /// </summary>
+    public static string SetInstanceColor(string source, int line, string? color)
+    {
+        var root = Parse(source);
+        var call = FindAddCall(root, line)
+            ?? throw new InvalidOperationException($"Não achei a chamada Add(...) na linha {line}.");
+
+        var args = call.ArgumentList.Arguments;
+        int index = -1;
+        for (int i = 0; i < args.Count; i++)
+        {
+            // color é o 4º parâmetro de Add(part, at, name, color).
+            if (args[i].NameColon?.Name.Identifier.ValueText == "color" || (i == 3 && args[i].NameColon == null))
+            {
+                index = i;
+                break;
+            }
+        }
+
+        string? literal = color == null ? null : $"\"{color}\"";
+        if (index < 0)
+        {
+            return literal == null ? source : Insert(source, call.ArgumentList.CloseParenToken.SpanStart, $", color: {literal}");
+        }
+        if (literal != null)
+        {
+            return Replace(source, args[index].Expression.Span, literal);
+        }
+
+        // Remove o argumento junto com a vírgula que o precede.
+        var separator = args.GetSeparator(index - 1);
+        return Replace(source, TextSpan.FromBounds(separator.SpanStart, args[index].Span.End), string.Empty);
+    }
+
     // ---------------------------------------------------------------- Copiar uma instância
 
     /// <summary>

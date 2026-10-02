@@ -137,6 +137,19 @@ public class PartEditingTests
         PartSourceEditor.TranslateInstance(code, 1, dx, dy, dz).Should().Be(expected);
     }
 
+    // ------------------------------------------------------------ Cor de instâncias
+
+    [Theory]
+    [InlineData("Add(new Chapa(100));", "#FF8800", "Add(new Chapa(100), color: \"#FF8800\");")]
+    [InlineData("Add(new Chapa(100), name: \"a\", color: \"#000000\");", "#FF8800", "Add(new Chapa(100), name: \"a\", color: \"#FF8800\");")]
+    [InlineData("Add(new Chapa(100), at: p, name: \"a\", color: \"#000000\");", null, "Add(new Chapa(100), at: p, name: \"a\");")]
+    [InlineData("Add(new Chapa(100), p, \"a\", \"#000000\");", "#FF8800", "Add(new Chapa(100), p, \"a\", \"#FF8800\");")]
+    [InlineData("Add(new Chapa(100));", null, "Add(new Chapa(100));")]
+    public void SetInstanceColor_TrocaAcrescentaOuRemoveOColor(string code, string? color, string expected)
+    {
+        PartSourceEditor.SetInstanceColor(code, 1, color).Should().Be(expected);
+    }
+
     // ------------------------------------------------------------ Girar instâncias
 
     [Theory]

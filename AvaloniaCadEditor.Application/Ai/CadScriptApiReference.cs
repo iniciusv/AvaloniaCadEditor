@@ -95,7 +95,8 @@ public static class CadScriptApiReference
         sb.AppendLine("        }");
         sb.AppendLine("    }");
         sb.AppendLine("  Parâmetros podem ter [System.ComponentModel.DataAnnotations.Range(min, max)]; valores fora do intervalo viram erro.");
-        sb.AppendLine("  Método global: PartInstance<T> Add<T>(T part, Placement? at = null, string? name = null) — coloca uma instância na cena.");
+        sb.AppendLine("  Método global: PartInstance<T> Add<T>(T part, Placement? at = null, string? name = null, string? color = null) — coloca uma instância na cena.");
+        sb.AppendLine("  color (\"#RRGGBB\") é opcional e pinta o sólido inteiro; só use se o pedido envolver cores.");
         sb.AppendLine("    var p1 = Add(new Placa(100, 60));");
         sb.AppendLine("    var p2 = Add(p1.Part with { Espessura = 8 }, at: Placement.At(150, 0, 0, rotationZDegrees: 90));");
         sb.AppendLine("    Point3D canto = p2.World(p => new Point3D(p.Largura, 0, 0)); // ponto local da peça convertido para o mundo");

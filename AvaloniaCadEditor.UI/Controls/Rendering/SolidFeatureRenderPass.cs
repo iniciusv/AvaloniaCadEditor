@@ -154,6 +154,13 @@ public sealed class SolidFeatureRenderPass : IRenderPass
             {
                 faceR = 0.10f; faceG = 0.40f; faceB = 1.00f; // Strong Vivid Blue Selection Highlight
                 edgeR = 0.00f; edgeG = 0.20f; edgeB = 0.80f;
+
+                // Com cor própria, mistura com o azul: a seleção continua visível e a cor escolhida também.
+                if (feature.Color != null)
+                {
+                    var (r, g, b, _) = ViewportShaderManager.ParseHexColor(feature.Color, (faceR, faceG, faceB, 1f));
+                    faceR = (faceR + r) / 2; faceG = (faceG + g) / 2; faceB = (faceB + b) / 2;
+                }
             }
             else if (vm.HoveredFeatureId == feature.Id)
             {
@@ -164,6 +171,11 @@ public sealed class SolidFeatureRenderPass : IRenderPass
             {
                 faceR = 0.92f; faceG = 0.92f; faceB = 0.95f; // Near white / light grey Base Color
                 edgeR = 0.60f; edgeG = 0.60f; edgeB = 0.65f;
+
+                if (feature.Color != null)
+                {
+                    (faceR, faceG, faceB, _) = ViewportShaderManager.ParseHexColor(feature.Color, (faceR, faceG, faceB, 1f));
+                }
                 
                 // Dim background objects if we are in a custom workplane
                 if (!vm.ActiveWorkPlane.Equals(AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.XY))

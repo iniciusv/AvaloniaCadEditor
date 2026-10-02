@@ -88,6 +88,17 @@
                         </StackPanel>
                     </Border>
 
+                    <!-- Cor da peça: grava o color: na chamada Add(...) e reexecuta -->
+                    <Border Background="#262626" CornerRadius="4" Padding="8" IsVisible="{Binding IsPartInstance}">
+                        <Grid ColumnDefinitions="100,*,Auto">
+                            <TextBlock Text="🎨 Cor" FontWeight="SemiBold" Foreground="#AAAAAA" FontSize="11" VerticalAlignment="Center" />
+                            <ColorPicker Grid.Column="1" Color="{Binding PartColor, Mode=TwoWay}" IsAlphaEnabled="False"
+                                         HorizontalAlignment="Left" ToolTip.Tip="Grava color: na chamada Add(...)" />
+                            <Button Grid.Column="2" Content="Padrão" Command="{Binding ResetPartColorCommand}" IsVisible="{Binding HasPartColor}"
+                                    FontSize="11" Padding="6,2" ToolTip.Tip="Remove o color: e volta à cor padrão" />
+                        </Grid>
+                    </Border>
+
                     <!-- Radius & Diameter (for Cylinder/Circle) -->
                     <Border Background="#262626" CornerRadius="4" Padding="8" IsVisible="{Binding IsCylinder}">
                         <StackPanel Spacing="6">
