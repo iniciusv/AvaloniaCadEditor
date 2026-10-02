@@ -86,4 +86,14 @@ public partial class MainWindow : Window
             ViewportControl.RequestNextFrameRendering();
         }
     }
+
+    protected override void OnKeyUp(Avalonia.Input.KeyEventArgs e)
+    {
+        base.OnKeyUp(e);
+        if (DataContext is AvaloniaCadEditor.UI.ViewModels.CadViewModel vm)
+        {
+            vm.OnKeyUp(e.Key.ToString());
+            ViewportControl.RequestNextFrameRendering();
+        }
+    }
 }

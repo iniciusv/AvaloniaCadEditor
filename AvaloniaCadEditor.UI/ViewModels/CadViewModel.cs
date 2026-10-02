@@ -1222,7 +1222,13 @@ public class CadViewModel : INotifyPropertyChanged
 		}
 
 		if (CurrentTool is SelectTool)
-			CurrentTool.OnMouseDown(Sketch, localRaw);
+		{
+			// Fora do SketchEdit, a seleção de sólidos 3D é feita pelo raycast 3D no
+			// ViewportInputHandler (que suporta Ctrl+clique para somar à seleção). Chamar
+			// SelectTool.OnMouseDown aqui limparia a seleção antes desse fallback rodar.
+			if (CurrentMode == EditorMode.SketchEdit)
+				CurrentTool.OnMouseDown(Sketch, localRaw);
+		}
 		else
 			CurrentTool?.OnMouseDown(Sketch, localSnapped);
 

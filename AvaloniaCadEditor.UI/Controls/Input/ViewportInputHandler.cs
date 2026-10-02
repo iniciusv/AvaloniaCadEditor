@@ -256,6 +256,17 @@ public sealed class ViewportInputHandler
                                 }
                             }
                         }
+                        else if (viewModel.CurrentTool is Application.Commands.SelectTool)
+                        {
+                            // Clique em espaço vazio: limpa a seleção, exceto com Ctrl (que só
+                            // acumula, nunca remove tudo ao errar o alvo).
+                            bool isCtrl = e.KeyModifiers.HasFlag(KeyModifiers.Control) || viewModel.IsCtrlPressed;
+                            if (!isCtrl)
+                            {
+                                viewModel.SelectionService.ClearSelection(viewModel.Sketch);
+                                requestRender();
+                            }
+                        }
                     }
                     if (viewModel.CurrentTool is Application.Commands.ExtrudeCommand extCmd)
                     {
