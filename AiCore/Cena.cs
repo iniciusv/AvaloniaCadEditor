@@ -4,7 +4,7 @@ var trilhoXPeca = new TrilhoMgn9(Comprimento: 250);
 var carrinhoXPeca = new CarrinhoMgn9C();
 var hotendPeca = new HotendV6();
 var blocoFixacaoPeca = new BlocoFixacaoMgn9(Altura: 10);
-var suporteHotendPeca = new SuporteHotendV6(Largura: blocoFixacaoPeca.Largura, DistanciaYHotend: 23.0 - blocoFixacaoPeca.Comprimento / 2);
+var suporteHotendPeca = new SuporteHotendV6(Largura: 50, DistanciaYHotend: 23.0 - blocoFixacaoPeca.Comprimento / 2);
 var motorNema17Peca = new MotorNema17();
 var suporteMotorNema17Peca = new SuporteMotorNema17(Espessura: 10);
 var blocoConexaoMotorPeca = new BlocoConexaoMotor2020();
@@ -65,7 +65,5 @@ var suporteMotorNema17 = Add(suporteMotorNema17Peca with { LarguraPorcaLateral =
 // eixo sobe através do furo de alívio central, se projetando por cima do suporte.
 var alturaMontagemMotor = zSuporteMotor - motorNema17Peca.Comprimento;
 var motorNema17 = Add(motorNema17Peca, at: Placement.At(xMotorNema17, yMotorSuporte, alturaMontagemMotor), name: "motor_nema17");
-
-
 // --- Bloco de pressao da correia (belt), fixado na lateral do bloco_fixacao_mgn9 ---
 var blocoFixacaoBelt = Add(new BlocoFixacaoBelt(), at: Placement.At(0, 0, alturaTopoCarrinhosY + carrinhoXPeca.Altura), name: "bloco_fixacao_belt", color: "#00CC6A");

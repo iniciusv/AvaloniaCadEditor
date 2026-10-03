@@ -1,25 +1,25 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 
 /// <summary>
-/// Bloco impresso intermediário para conectar o SuporteMotorNema17 ao perfil de alumínio 2020.
-/// Dimensões: 40 mm (Largura, X) x 20 mm (Profundidade, Y) x 28 mm (Altura, Z).
+/// Bloco impresso intermediÃ¡rio para conectar o SuporteMotorNema17 ao perfil de alumÃ­nio 2020.
+/// DimensÃµes: 40 mm (Largura, X) x 20 mm (Profundidade, Y) x 28 mm (Altura, Z).
 /// Furos no sentido Y:
 /// 1. Dois furos passantes M3 alinhados com os furos laterais do SuporteMotorNema17 (passo 15 mm em X),
-///    com rebaixo para a cabeça do parafuso na face frontal (Y = -Profundidade / 2).
-/// 2. Dois furos passantes M3 para fixação ao perfil 2020 (passo 30 mm em X),
-///    com rebaixo para a cabeça do parafuso no lado oposto (face traseira, Y = +Profundidade / 2).
-/// 3. Rebaixo (vazio) na face superior, cobrindo metade da área do retângulo (toda a Largura,
-///    metade da Profundidade), 10 mm de profundidade, do lado mais próximo do carrinho MGN9C na montagem.
-///    Esse rebaixo é cortado ANTES do chanfro de quinas (bevel), para que a aresta externa que ele
-///    cria na face de cima também saia chanfrada.
+///    com rebaixo para a cabeÃ§a do parafuso na face frontal (Y = -Profundidade / 2).
+/// 2. Dois furos passantes M3 para fixaÃ§Ã£o ao perfil 2020 (passo 30 mm em X),
+///    com rebaixo para a cabeÃ§a do parafuso no lado oposto (face traseira, Y = +Profundidade / 2).
+/// 3. Rebaixo (vazio) na face superior, cobrindo metade da Ã¡rea do retÃ¢ngulo (toda a Largura,
+///    metade da Profundidade), 10 mm de profundidade, do lado mais prÃ³ximo do carrinho MGN9C na montagem.
+///    Esse rebaixo Ã© cortado ANTES do chanfro de quinas (bevel), para que a aresta externa que ele
+///    cria na face de cima tambÃ©m saia chanfrada.
 /// Origem (0, 0, 0) no centro em X e Y, base em Z = 0.
 /// </summary>
 public sealed record BlocoConexaoMotor2020(
     double Largura = 40.0,
     double Profundidade = 20.0,
     double Altura = 28.0,
-    double PassoFurosSuporte = 10.0,
+    double PassoFurosSuporte = 15.0,
     double PassoFurosExtrusao = 20.0,
     double DiametroFuroM3 = 3.2,
     double DiametroRebaixo = 6.0,
@@ -40,10 +40,10 @@ public sealed record BlocoConexaoMotor2020(
         var baseCorner = new Point3D(-Largura / 2.0, -Profundidade / 2.0, 0);
         var corpoBase = new BoxFeature(baseCorner, Largura, Profundidade, Altura) { Name = "corpo_base" };
 
-        // O rebaixo superior (seção 4) é cortado ANTES do chanfro, não depois: assim a aresta
-        // externa que ele cria na face de cima também é chanfrada junto com o resto do corpo. A
-        // aresta interna do degrau (côncava) não é afetada pelo chanfro de qualquer forma — o
-        // kernel pula arestas côncavas no fillet genérico (ver OpenCascadeGeometryKernel.BuildFillet).
+        // O rebaixo superior (seÃ§Ã£o 4) Ã© cortado ANTES do chanfro, nÃ£o depois: assim a aresta
+        // externa que ele cria na face de cima tambÃ©m Ã© chanfrada junto com o resto do corpo. A
+        // aresta interna do degrau (cÃ´ncava) nÃ£o Ã© afetada pelo chanfro de qualquer forma â€” o
+        // kernel pula arestas cÃ´ncavas no fillet genÃ©rico (ver OpenCascadeGeometryKernel.BuildFillet).
         IFeature corpoPreChanfro = corpoBase;
         if (ProfundidadeRebaixoSuperior > 0.001)
         {
@@ -77,7 +77,7 @@ public sealed record BlocoConexaoMotor2020(
 
         // 1. Furos M3 conectados ao SuporteMotorNema17 (passo 15 mm)
         // O suporte encosta na face traseira (+Y) do bloco. O rebaixo fica na face frontal (Y = -Profundidade / 2)
-        // para a cabeça do parafuso M3 que entra de -Y para +Y e rosqueia na porca do suporte.
+        // para a cabeÃ§a do parafuso M3 que entra de -Y para +Y e rosqueia na porca do suporte.
         foreach (var sinalX in new[] { -1.0, 1.0 })
         {
             var posX = sinalX * PassoFurosSuporte / 2.0;
@@ -108,7 +108,7 @@ public sealed record BlocoConexaoMotor2020(
 
         // 2. Furos M3 conectados ao perfil 2020 (passo 30 mm)
         // O perfil encosta na face frontal (-Y) do bloco. O rebaixo fica na face traseira (Y = +Profundidade / 2)
-        // para a cabeça do parafuso M3 entrar por trás (+Y para -Y) e prender a porca T no perfil.
+        // para a cabeÃ§a do parafuso M3 entrar por trÃ¡s (+Y para -Y) e prender a porca T no perfil.
         foreach (var sinalX in new[] { -1.0, 1.0 })
         {
             var posX = sinalX * PassoFurosExtrusao / 2.0;
@@ -144,8 +144,8 @@ public sealed record BlocoConexaoMotor2020(
             var r = DiametroFuroVertical / 2.0;
 
             // Dois pares de furos em Y:
-            // - Traseiro: próximo da face ligada ao suporte (+Y)
-            // - Frontal: próximo da face oposta, ligada ao perfil 2020 (-Y)
+            // - Traseiro: prÃ³ximo da face ligada ao suporte (+Y)
+            // - Frontal: prÃ³ximo da face oposta, ligada ao perfil 2020 (-Y)
             var posicoesY = new[]
             {
                 ("tras", Profundidade / 2.0 - DistanciaFurosVerticaisDaFaceTraseiraY),
@@ -165,7 +165,7 @@ public sealed record BlocoConexaoMotor2020(
                     var xMin = Math.Min(x1, x2);
                     var xMax = Math.Max(x1, x2);
 
-                    // Cilindro na posição de 30 mm
+                    // Cilindro na posiÃ§Ã£o de 30 mm
                     cortes.Add(new CylinderFeature(
                         globalBaseCenter: new Point3D(x1, yFuroVertical, -1.0),
                         globalDirection: Vector3D.UnitZ,
@@ -178,7 +178,7 @@ public sealed record BlocoConexaoMotor2020(
 
                     if (FolgaLateralFuroVertical > 0.001)
                     {
-                        // Cilindro na posição expandida (31 mm)
+                        // Cilindro na posiÃ§Ã£o expandida (31 mm)
                         cortes.Add(new CylinderFeature(
                             globalBaseCenter: new Point3D(x2, yFuroVertical, -1.0),
                             globalDirection: Vector3D.UnitZ,
@@ -189,7 +189,7 @@ public sealed record BlocoConexaoMotor2020(
                             IsTransientTool = true
                         });
 
-                        // Caixa de união entre os dois cilindros formando o furo oblongo contínuo
+                        // Caixa de uniÃ£o entre os dois cilindros formando o furo oblongo contÃ­nuo
                         cortes.Add(new BoxFeature(
                             baseCorner: new Point3D(xMin, yFuroVertical - r, -1.0),
                             width: xMax - xMin,
@@ -204,9 +204,9 @@ public sealed record BlocoConexaoMotor2020(
             }
         }
 
-        // 4. Rebaixo (vazio) na face superior, ocupando metade da área do retângulo (Largura inteira x metade
-        // da Profundidade), do lado mais próximo do carrinho MGN9C na montagem (lado -Y, face frontal).
-        // Já foi cortado acima, antes do chanfro — ver "corpoPreChanfro".
+        // 4. Rebaixo (vazio) na face superior, ocupando metade da Ã¡rea do retÃ¢ngulo (Largura inteira x metade
+        // da Profundidade), do lado mais prÃ³ximo do carrinho MGN9C na montagem (lado -Y, face frontal).
+        // JÃ¡ foi cortado acima, antes do chanfro â€” ver "corpoPreChanfro".
 
         return BooleanFeature.CreateDifference("bloco_conexao_motor_2020", corpo, cortes.ToArray());
     }

@@ -11,13 +11,16 @@ using System.Collections.Generic;
 /// </summary>
 public sealed record SuporteHotendV6(
     double Altura = 10,
-    double Largura = 28.9,
+    double Largura = 50,
     double DistanciaYHotend = 13.0,
     double DiametroColar = 16.2,
     double EspessuraParedeFrontal = 7.0,
     double DiametroFuroM3 = 3.2,
     double DistanciaFurosLateraisX = 10.0,
-    double DiametroRebaixo = 6.0,
+    double DistanciaFurosMotorX = 43.0,
+    double DiametroFuroMotor = 3.2,
+    double DistanciaFuroFrontalX = 16.0,
+    double DiametroRebaixo = 6.5,
     double ProfundidadeRebaixo = 10.0,
     double RaioChanfro = 1.0,
     double EspessuraRasgo = 1.0,
@@ -53,6 +56,40 @@ public sealed record SuporteHotendV6(
             IsTransientTool = true
         };
         cortes.Add(furoColar);
+
+        // 1b. Dois furos verticais (eixo Z) para prender o motor, na mesma linha X da extrusora,
+        //     com o furo da extrusora no centro (X = 0) e 43 mm entre eles (X = ±DistanciaFurosMotorX / 2).
+        if (DistanciaFurosMotorX > 0.001 && DiametroFuroMotor > 0.001)
+        {
+            foreach (var (nome, posX) in new[]
+            {
+                ("esq", -DistanciaFurosMotorX / 2.0),
+                ("dir", DistanciaFurosMotorX / 2.0)
+            })
+            {
+                var furoMotor = new CylinderFeature(
+                    globalBaseCenter: new Point3D(posX, -DistanciaYHotend, -1),
+                    globalDirection: Vector3D.UnitZ,
+                    radius: DiametroFuroMotor / 2.0,
+                    height: Altura + 2)
+                {
+                    Name = $"furo_motor_{nome}",
+                    IsTransientTool = true
+                };
+                cortes.Add(furoMotor);
+
+                // Alojamento hexagonal para porca M3 na base inferior (Z = 0) do furo, aberto para baixo.
+                if (LarguraPorca > 0.001 && EspessuraPorca > 0.001)
+                {
+                    cortes.Add(CriarAlojamentoPorcaInferior(
+                        nome: $"porca_motor_{nome}",
+                        x: posX,
+                        y: -DistanciaYHotend,
+                        larguraPorca: LarguraPorca,
+                        espessuraPorca: EspessuraPorca));
+                }
+            }
+        }
 
         // 2. Três furos M3 alinhados com o BlocoFixacaoMgn9 (sentido Y, Z = Altura / 2)
         var zCentro = Altura / 2.0;
@@ -93,13 +130,28 @@ public sealed record SuporteHotendV6(
             }
         }
 
+        // 2b. Furo frontal horizontal (eixo Y) na parte da frente, à direita do furo M3 lateral direito.
+        if (DistanciaFuroFrontalX > 0.001)
+        {
+            var furoFrontal = new CylinderFeature(
+                globalBaseCenter: new Point3D(DistanciaFuroFrontalX, -comprimentoTotal - 1, zCentro),
+                globalDirection: Vector3D.UnitY,
+                radius: DiametroFuroM3 / 2.0,
+                height: comprimentoTotal + 2)
+            {
+                Name = "furo_frontal_dir",
+                IsTransientTool = true
+            };
+            cortes.Add(furoFrontal);
+        }
+
         // 3. Rasgo lateral vertical (eixo Z) que vai da face externa direita (+X) até o vazio do hotend
         if (EspessuraRasgo > 0.001)
         {
             // Rasgo partindo do raio do colar (X = DiametroColar / 2) até ultrapassar a lateral externa direita (X = Largura / 2)
-            var xMinRasgo = DiametroColar / 2.0 - 0.5; // penetra ligeiramente no vazio para garantir união limpa
-            var xMaxRasgo = Largura / 2.0 + 1.0;
-            var yMinRasgo = -DistanciaYHotend - EspessuraRasgo / 2.0;
+            var xMinRasgo = DiametroColar / 2.0 - 0.5 -3; // penetra ligeiramente no vazio para garantir união limpa
+            var xMaxRasgo = Largura / 2.0 + 1.0 +3;
+            var yMinRasgo = (-DistanciaYHotend - EspessuraRasgo / 2.0)+5;
             var zMinRasgo = -1.0;
 
             var rasgoLateral = new BoxFeature(
@@ -164,6 +216,45 @@ public sealed record SuporteHotendV6(
         return new PrismFeature(
             verticesAlojamento,
             height: espessuraPorca,
+            plane: planoAlojamento,
+            name: nome)
+        {
+            IsTransientTool = true
+        };
+    }
+
+    /// <summary>
+    /// Alojamento hexagonal para porca M3 na base inferior (Z = 0) de um furo vertical (eixo Z),
+    /// aberto para baixo e centrado no eixo do furo.
+    /// </summary>
+    private static IFeature CriarAlojamentoPorcaInferior(
+        string nome,
+        double x,
+        double y,
+        double larguraPorca,
+        double espessuraPorca)
+    {
+        var s = larguraPorca;
+        var r = (s / 2.0) / (Math.Sqrt(3.0) / 2.0); // raio até os vértices
+
+        var verticesAlojamento = new[]
+        {
+            new Point3D(0, -r, 0),
+            new Point3D(s / 2.0, -r / 2.0, 0),
+            new Point3D(s / 2.0, r / 2.0, 0),
+            new Point3D(0, r, 0),
+            new Point3D(-s / 2.0, r / 2.0, 0),
+            new Point3D(-s / 2.0, -r / 2.0, 0)
+        };
+
+        var planoAlojamento = new WorkPlane(
+            origin: new Point3D(x, y, -1),
+            normal: Vector3D.UnitZ,
+            xAxis: Vector3D.UnitX);
+
+        return new PrismFeature(
+            verticesAlojamento,
+            height: espessuraPorca + 1,
             plane: planoAlojamento,
             name: nome)
         {
