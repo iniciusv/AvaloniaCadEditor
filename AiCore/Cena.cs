@@ -8,6 +8,7 @@ var suporteHotendPeca = new SuporteHotendV6(Largura: 50, DistanciaYHotend: 23.0 
 var motorNema17Peca = new MotorNema17();
 var suporteMotorNema17Peca = new SuporteMotorNema17(Espessura: 10);
 var blocoConexaoMotorPeca = new BlocoConexaoMotor2020();
+var placaSuporteCarrinhoYPeca = new PlacaSuporteCarrinhoY();
 // Espaçamento (centro a centro) entre os dois trilhos Y: igual à distância entre os dois últimos
 // furos do trilho X — é por eles que o trilho MGN9 é parafusado diretamente nos carrinhos Y.
 var espacamentoTrilhosY = trilhoXPeca.DistanciaEntreUltimosFuros;
@@ -22,10 +23,24 @@ var trilhoYBX = centroXTrilhoB - trilhoYPeca.Largura / 2 + 12.5;
 var trilhoYBY = -trilhoYPeca.Comprimento / 2 - 12.5;
 var trilhoYA = Add(trilhoYPeca, at: Placement.At(trilhoYAX, trilhoYAY, 0), name: "trilho_mgn15_y_a");
 var trilhoYB = Add(trilhoYPeca, at: Placement.At(trilhoYBX, trilhoYBY, 0), name: "trilho_mgn15_y_b");
-var carrinhoYA = Add(carrinhoYPeca, at: Placement.At(centroXTrilhoA - carrinhoYPeca.Largura / 2 - 12.5, -carrinhoYPeca.Comprimento / 2 + 12.5, 0), name: "carrinho_mgn15h_a");
-var carrinhoYB = Add(carrinhoYPeca, at: Placement.At(centroXTrilhoB - carrinhoYPeca.Largura / 2 + 12.5, -carrinhoYPeca.Comprimento / 2 - 12.5, 0), name: "carrinho_mgn15h_b");
+// Os dois carrinhos Y compartilham a mesma coordenada Y (a do carrinho B).
+var carrinhoYY = -carrinhoYPeca.Comprimento / 2 - 12.5;
+var carrinhoYA = Add(carrinhoYPeca, at: Placement.At(centroXTrilhoA - carrinhoYPeca.Largura / 2 - 12.5, carrinhoYY, 0), name: "carrinho_mgn15h_a");
+var carrinhoYB = Add(carrinhoYPeca, at: Placement.At(centroXTrilhoB - carrinhoYPeca.Largura / 2 + 12.5, carrinhoYY, 0), name: "carrinho_mgn15h_b");
 // --- Trilho X: MGN9 (250 mm), girado 90° para correr no sentido X, apoiado no topo dos carrinhos Y ---
 var alturaTopoCarrinhosY = carrinhoYPeca.Altura;
+// --- Placas de suporte impressas, uma parafusada no topo de cada carrinho MGN15H ---
+// Base da placa (Z local = -5,5) encosta no topo do carrinho (Z = 16); os 3 furos passantes
+// alinham com a malha 25 × 25 dos furos M3 do topo do carrinho. As duas peças são giradas 180°
+// e seus centros ficam deslocados meia-malha (12,5 mm) em X e Y, de modo que os 3 furos
+// coincidam com 3 dos 4 furos M3 do carrinho (o 4º canto é o recorte da placa).
+// A placa B é espelhada no eixo Y (EspelhadoNoEixoY), tornando-se a imagem especular da placa A.
+var placaSuporteYA = Add(placaSuporteCarrinhoYPeca,
+    at: Placement.At(centroXTrilhoA - 12.5, -12.5, alturaTopoCarrinhosY + 5.5, rotationZDegrees: 180),
+    name: "placa_suporte_carrinho_y_a", color: "#00CC6A");
+var placaSuporteYB = Add(placaSuporteCarrinhoYPeca with { EspelhadoNoEixoY = true },
+    at: Placement.At(centroXTrilhoB + 12.5, -12.5, alturaTopoCarrinhosY + 5.5, rotationZDegrees: 180),
+    name: "placa_suporte_carrinho_y_b", color: "#00CC6A");
 var trilhoX = Add(trilhoXPeca, at: Placement.At(-trilhoXPeca.Comprimento / 2, trilhoXPeca.Largura / 2, alturaTopoCarrinhosY, rotationZDegrees: -90), name: "trilho_mgn9_x");
 var carrinhoX = Add(carrinhoXPeca, at: Placement.At(-carrinhoXPeca.Comprimento / 2, carrinhoXPeca.Largura / 2, alturaTopoCarrinhosY, rotationZDegrees: -90), name: "carrinho_mgn9c_x");
 // --- Hotend V6, pendurado sob o carrinho X ---
@@ -45,7 +60,7 @@ var extrusaoSobTrilhoXPeca = new Extrusao2020(Comprimento: espacamentoTrilhosY -
 var folgaComprimentoY = (extrusaoSobTrilhoYPeca.Comprimento - trilhoYPeca.Comprimento) / 2;
 var extrusaoSobTrilhoYA = Add(extrusaoSobTrilhoYPeca, at: Placement.At(trilhoYAX + trilhoYPeca.Largura / 2 - extrusaoSobTrilhoYPeca.Largura / 2, trilhoYAY - folgaComprimentoY, -extrusaoSobTrilhoYPeca.Altura), name: "extrusao_2020_sob_trilho_y_a");
 var extrusaoSobTrilhoYB = Add(extrusaoSobTrilhoYPeca, at: Placement.At(trilhoYBX + trilhoYPeca.Largura / 2 - extrusaoSobTrilhoYPeca.Largura / 2, trilhoYBY - folgaComprimentoY, -extrusaoSobTrilhoYPeca.Altura), name: "extrusao_2020_sob_trilho_y_b");
-var extrusaoSobTrilhoX = Add(extrusaoSobTrilhoXPeca, at: Placement.At(-extrusaoSobTrilhoXPeca.Comprimento / 2, extrusaoSobTrilhoXPeca.Largura / 2, alturaTopoCarrinhosY - extrusaoSobTrilhoXPeca.Altura, rotationZDegrees: -90), name: "extrusao_2020_sob_trilho_x");
+var extrusaoSobTrilhoX = Add(extrusaoSobTrilhoXPeca with { Comprimento = 208 }, at: Placement.At(-extrusaoSobTrilhoXPeca.Comprimento / 2 - 11, extrusaoSobTrilhoXPeca.Largura / 2, alturaTopoCarrinhosY - extrusaoSobTrilhoXPeca.Altura, rotationZDegrees: -90), name: "extrusao_2020_sob_trilho_x");
 // --- Motor NEMA17, montado mais baixo, ao lado do carrinho X, apoiado em cima da extrusão 2020 ---
 var topoExtrusaoSobTrilhoX = alturaTopoCarrinhosY;
 // Centralizado no perfil de alumínio 2020 (extrusao_2020_sob_trilho_x), cujo centro em X é 0.

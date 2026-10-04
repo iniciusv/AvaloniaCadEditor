@@ -42,134 +42,69 @@ public sealed record BlocoFixacaoMgn9(
             }
             : (IFeature)corpoBase;
 
-        var cortes = new List<IFeature>();
-
-        // 1. Furos verticais de fixação ao carrinho linear MGN9C
-        var i = 0;
-        foreach (var sinalX in new[] { -1.0, 1.0 })
-        {
-            foreach (var sinalY in new[] { -1.0, 1.0 })
-            {
-                var x = sinalX * PassoFurosX / 2;
-                var y = sinalY * PassoFurosY / 2;
-                var furo = new CylinderFeature(
-                    new Point3D(x, y, 0),
-                    Vector3D.UnitZ,
-                    DiametroFuroFixacao / 2,
-                    Altura)
-                {
-                    Name = $"furo_fixacao_{i}",
-                    IsTransientTool = true
-                };
-                cortes.Add(furo);
-                i++;
-            }
-        }
-
-        // 2. Três furos M3 passantes e alojamentos duplos para porcas (frontal e traseiro)
         var zCentro = Altura / 2.0;
-        var posicoesX = new[]
+
+        // Perfil hexagonal da porca M3 + canal de inserção vertical (+Z): função local que
+        // só CALCULA os pontos (o sólido é declarado em cada porca_* abaixo).
+        List<Point3D> PerfilPorca()
         {
-            ("central", 0.0),
-            ("lateral_esq", -DistanciaFurosLateraisX),
-            ("lateral_dir", DistanciaFurosLateraisX)
-        };
-
-        foreach (var (nome, posX) in posicoesX)
-        {
-            // Furo horizontal passante para parafuso M3
-            cortes.Add(CriarFuroPassante(
-                nome: $"furo_m3_{nome}",
-                x: posX,
-                zCentro: zCentro,
-                comprimentoBloco: Comprimento,
-                diametroFuro: DiametroFuroM3));
-
-            // Alojamento de porca frontal (fixação frontal / suporte hotend)
-            cortes.Add(CriarAlojamentoPorca(
-                nome: $"porca_frontal_{nome}",
-                x: posX,
-                yPorca: PosicaoPorcaY,
-                zCentro: zCentro,
-                alturaBloco: Altura,
-                larguraPorca: LarguraPorca,
-                espessuraPorca: EspessuraPorca));
-
-            // Alojamento de porca traseiro (fixação traseira de outros componentes)
-            cortes.Add(CriarAlojamentoPorca(
-                nome: $"porca_traseira_{nome}",
-                x: posX,
-                yPorca: PosicaoPorcaTraseiraY,
-                zCentro: zCentro,
-                alturaBloco: Altura,
-                larguraPorca: LarguraPorca,
-                espessuraPorca: EspessuraPorca));
+            var s = LarguraPorca;
+            var r = (s / 2.0) / (Math.Sqrt(3.0) / 2.0); // raio até os vértices
+            var hTopo = Altura - zCentro + 1.0;         // extrapola o topo p/ corte limpo
+            return new List<Point3D>
+            {
+                new Point3D(0, -r, 0),
+                new Point3D(s / 2.0, -r / 2.0, 0),
+                new Point3D(s / 2.0, r / 2.0, 0),
+                new Point3D(s / 2.0, hTopo, 0),
+                new Point3D(-s / 2.0, hTopo, 0),
+                new Point3D(-s / 2.0, r / 2.0, 0),
+                new Point3D(-s / 2.0, -r / 2.0, 0)
+            };
         }
 
-        return BooleanFeature.CreateDifference("bloco_fixacao_mgn9", corpo, cortes.ToArray());
-    }
-
-    /// <summary>
-    /// Cria o furo cilíndrico passante no eixo Y para o parafuso M3.
-    /// </summary>
-    private static IFeature CriarFuroPassante(
-        string nome,
-        double x,
-        double zCentro,
-        double comprimentoBloco,
-        double diametroFuro)
-    {
-        return new CylinderFeature(
-            globalBaseCenter: new Point3D(x, -comprimentoBloco / 2.0 - 1.0, zCentro),
-            globalDirection: Vector3D.UnitY,
-            radius: diametroFuro / 2.0,
-            height: comprimentoBloco + 2.0)
+        // Plano do alojamento da porca (captive nut) numa posição (x, yPorca): função local
+        // que só CALCULA um WorkPlane, com o canal de inserção apontando p/ +Z.
+        WorkPlane PlanoPorca(double x, double yPorca)
         {
-            Name = nome,
-            IsTransientTool = true
-        };
-    }
+            var yInicio = yPorca - EspessuraPorca / 2.0;
+            return new WorkPlane(new Point3D(x, yInicio, zCentro), Vector3D.UnitY, new Vector3D(-1, 0, 0));
+        }
 
-    /// <summary>
-    /// Gera o alojamento hexagonal para porca M3 com saída vertical para cima (+Z) (captive nut slot).
-    /// </summary>
-    private static IFeature CriarAlojamentoPorca(
-        string nome,
-        double x,
-        double yPorca,
-        double zCentro,
-        double alturaBloco,
-        double larguraPorca,
-        double espessuraPorca)
-    {
-        var s = larguraPorca;
-        var r = (s / 2.0) / (Math.Sqrt(3.0) / 2.0); // raio até os vértices
-        var hTopo = alturaBloco - zCentro + 1.0;     // extrapola o topo para corte limpo
+        // 1. Furos verticais de fixação ao carrinho linear MGN9C (malha PassoFurosX × PassoFurosY).
+        var xFix = PassoFurosX / 2.0;
+        var yFix = PassoFurosY / 2.0;
+        var furo_fixacao_1 = new CylinderFeature(new Point3D(-xFix, -yFix, 0), Vector3D.UnitZ, DiametroFuroFixacao / 2.0, Altura) { Name = "furo_fixacao_1", IsTransientTool = true };
+        var furo_fixacao_2 = new CylinderFeature(new Point3D(-xFix, yFix, 0), Vector3D.UnitZ, DiametroFuroFixacao / 2.0, Altura) { Name = "furo_fixacao_2", IsTransientTool = true };
+        var furo_fixacao_3 = new CylinderFeature(new Point3D(xFix, -yFix, 0), Vector3D.UnitZ, DiametroFuroFixacao / 2.0, Altura) { Name = "furo_fixacao_3", IsTransientTool = true };
+        var furo_fixacao_4 = new CylinderFeature(new Point3D(xFix, yFix, 0), Vector3D.UnitZ, DiametroFuroFixacao / 2.0, Altura) { Name = "furo_fixacao_4", IsTransientTool = true };
 
-        var verticesAlojamento = new[]
-        {
-            new Point3D(0, -r, 0),
-            new Point3D(s / 2.0, -r / 2.0, 0),
-            new Point3D(s / 2.0, r / 2.0, 0),
-            new Point3D(s / 2.0, hTopo, 0),
-            new Point3D(-s / 2.0, hTopo, 0),
-            new Point3D(-s / 2.0, r / 2.0, 0),
-            new Point3D(-s / 2.0, -r / 2.0, 0)
-        };
+        // 2. Três colunas de fixação M3 (central e laterais): furo passante no eixo Y +
+        //    alojamentos de porca frontal (Y-) e traseiro (Y+). Cada furo e cada porca é uma
+        //    declaração própria, com posições derivadas das mesmas variáveis de coluna.
+        var raioM3 = DiametroFuroM3 / 2.0;
+        var yFuroInicio = -Comprimento / 2.0 - 1.0;   // começa fora da face frontal
+        var comprimentoFuro = Comprimento + 2.0;      // atravessa as duas faces p/ corte limpo
+        var xCentral = 0.0;
+        var xEsq = -DistanciaFurosLateraisX;
+        var xDir = DistanciaFurosLateraisX;
 
-        var yInicio = yPorca - espessuraPorca / 2.0;
-        var planoAlojamento = new WorkPlane(
-            origin: new Point3D(x, yInicio, zCentro),
-            normal: Vector3D.UnitY,
-            xAxis: new Vector3D(-1, 0, 0));
+        var furo_m3_central = new CylinderFeature(new Point3D(xCentral, yFuroInicio, zCentro), Vector3D.UnitY, raioM3, comprimentoFuro) { Name = "furo_m3_central", IsTransientTool = true };
+        var porca_frontal_central = new PrismFeature(PerfilPorca(), EspessuraPorca, PlanoPorca(xCentral, PosicaoPorcaY), "porca_frontal_central") { IsTransientTool = true };
+        var porca_traseira_central = new PrismFeature(PerfilPorca(), EspessuraPorca, PlanoPorca(xCentral, PosicaoPorcaTraseiraY), "porca_traseira_central") { IsTransientTool = true };
 
-        return new PrismFeature(
-            verticesAlojamento,
-            height: espessuraPorca,
-            plane: planoAlojamento,
-            name: nome)
-        {
-            IsTransientTool = true
-        };
+        var furo_m3_lateral_esq = new CylinderFeature(new Point3D(xEsq, yFuroInicio, zCentro), Vector3D.UnitY, raioM3, comprimentoFuro) { Name = "furo_m3_lateral_esq", IsTransientTool = true };
+        var porca_frontal_lateral_esq = new PrismFeature(PerfilPorca(), EspessuraPorca, PlanoPorca(xEsq, PosicaoPorcaY), "porca_frontal_lateral_esq") { IsTransientTool = true };
+        var porca_traseira_lateral_esq = new PrismFeature(PerfilPorca(), EspessuraPorca, PlanoPorca(xEsq, PosicaoPorcaTraseiraY), "porca_traseira_lateral_esq") { IsTransientTool = true };
+
+        var furo_m3_lateral_dir = new CylinderFeature(new Point3D(xDir, yFuroInicio, zCentro), Vector3D.UnitY, raioM3, comprimentoFuro) { Name = "furo_m3_lateral_dir", IsTransientTool = true };
+        var porca_frontal_lateral_dir = new PrismFeature(PerfilPorca(), EspessuraPorca, PlanoPorca(xDir, PosicaoPorcaY), "porca_frontal_lateral_dir") { IsTransientTool = true };
+        var porca_traseira_lateral_dir = new PrismFeature(PerfilPorca(), EspessuraPorca, PlanoPorca(xDir, PosicaoPorcaTraseiraY), "porca_traseira_lateral_dir") { IsTransientTool = true };
+
+        return BooleanFeature.CreateDifference("bloco_fixacao_mgn9", corpo,
+            furo_fixacao_1, furo_fixacao_2, furo_fixacao_3, furo_fixacao_4,
+            furo_m3_central, porca_frontal_central, porca_traseira_central,
+            furo_m3_lateral_esq, porca_frontal_lateral_esq, porca_traseira_lateral_esq,
+            furo_m3_lateral_dir, porca_frontal_lateral_dir, porca_traseira_lateral_dir);
     }
 }

@@ -12,34 +12,24 @@ public sealed record CarrinhoMgn15H(double Largura = 32, double Comprimento = 58
     // base do trilho (o carrinho "abraça" o trilho por baixo até a altura dele).
     protected override IFeature Build()
     {
-        var corpo = new BoxFeature(Point3D.Origin, Largura, Comprimento, Altura) { Name = "corpo" };
-
         const double passoTransversal = 25; // entre furos, no sentido da largura
         const double passoLongitudinal = 25; // entre furos, no sentido do comprimento
         const double diametroFuro = 3; // M3
         const double profundidadeFuro = 4; // Mxl = M3x4
 
-        var xCentro = Largura / 2;
-        var yCentro = Comprimento / 2;
+        var x1 = Largura / 2 - passoTransversal / 2;
+        var x2 = Largura / 2 + passoTransversal / 2;
+        var y1 = Comprimento / 2 - passoLongitudinal / 2;
+        var y2 = Comprimento / 2 + passoLongitudinal / 2;
+        var zFuro = Altura - profundidadeFuro;
 
-        var furos = new List<IFeature>();
-        var i = 0;
-        foreach (var sinalX in new[] { -1.0, 1.0 })
-        {
-            foreach (var sinalY in new[] { -1.0, 1.0 })
-            {
-                var x = xCentro + sinalX * passoTransversal / 2;
-                var y = yCentro + sinalY * passoLongitudinal / 2;
-                var furo = new CylinderFeature(new Point3D(x, y, Altura - profundidadeFuro), Vector3D.UnitZ, diametroFuro / 2, profundidadeFuro)
-                {
-                    Name = $"furo_fixacao_{i}",
-                    IsTransientTool = true
-                };
-                furos.Add(furo);
-                i++;
-            }
-        }
+        var corpo = new BoxFeature(Point3D.Origin, Largura, Comprimento, Altura) { Name = "corpo" };
 
-        return BooleanFeature.CreateDifference("carrinho_mgn15h", corpo, furos.ToArray());
+        var furo_1 = new CylinderFeature(new Point3D(x1, y1, zFuro), Vector3D.UnitZ, diametroFuro / 2, profundidadeFuro) { Name = "furo_1", IsTransientTool = true };
+        var furo_2 = new CylinderFeature(new Point3D(x2, y1, zFuro), Vector3D.UnitZ, diametroFuro / 2, profundidadeFuro) { Name = "furo_2", IsTransientTool = true };
+        var furo_3 = new CylinderFeature(new Point3D(x1, y2, zFuro), Vector3D.UnitZ, diametroFuro / 2, profundidadeFuro) { Name = "furo_3", IsTransientTool = true };
+        var furo_4 = new CylinderFeature(new Point3D(x2, y2, zFuro), Vector3D.UnitZ, diametroFuro / 2, profundidadeFuro) { Name = "furo_4", IsTransientTool = true };
+
+        return BooleanFeature.CreateDifference("carrinho_mgn15h", corpo, furo_1, furo_2, furo_3, furo_4);
     }
 }
