@@ -61,10 +61,11 @@ public static class SceneProjectTemplate
     /// </summary>
     public static void RefreshGeneratedFiles(SceneProject project)
     {
-        string content =
+        string content = (
             "# API do AvaloniaCad (gerada automaticamente — não edite)\n\n" +
             "Tipos e membros disponíveis no código das cenas. Gerado a partir do código do AvaloniaCad.\n\n" +
-            "```\n" + CadScriptApiReference.Build().Replace("\r\n", "\n") + "```\n";
+            "```\n" + CadScriptApiReference.Build() + "```\n\n" +
+            BuildRulesSection()).Replace("\r\n", "\n");
 
         string path = project.ToFullPath(ApiReferenceFile);
         if (!File.Exists(path) || File.ReadAllText(path) != content)
@@ -73,6 +74,49 @@ public static class SceneProjectTemplate
             File.WriteAllText(path, content);
         }
     }
+
+    /// <summary>
+    /// As regras e exemplos de como escrever o código de uma cena, para o fim do
+    /// <see cref="ApiReferenceFile"/>. Texto vem inteiro de <see cref="CadScriptRules"/> — a mesma
+    /// fonte do system prompt do chat e do <see cref="AgentsFile"/>.
+    /// </summary>
+    public static string BuildRulesSection() => $"""
+        ## Como escrever o código da cena
+
+        ### Qualquer arquivo
+        {CadScriptRules.Common}
+        {CadScriptRules.TrackableSolids}
+
+        ### Arquivo de entrada ({SceneProject.DefaultEntryFile}) — statements top-level
+        {CadScriptRules.SceneFile}
+
+        ### Peças (Pecas/*.cs)
+        {CadScriptRules.PartFile}
+
+        ### Instanciando uma peça no arquivo de entrada
+        {CadScriptRules.PartUsage}
+
+        ### Exemplos de peça
+
+        ```csharp
+        {CadScriptRules.PartExamplePlaca}
+        ```
+
+        ```csharp
+        {CadScriptRules.PartExampleChapaFurada}
+        ```
+
+        ```csharp
+        {CadScriptRules.PartExampleBlocoQuatroFuros}
+        ```
+
+        E o arquivo de entrada que usa a `Placa` acima (sem redeclarar o tipo):
+
+        ```csharp
+        {CadScriptRules.SceneUsingPartExample}
+        ```
+
+        """;
 
     public static string BuildProjectFile(SceneToolPaths tools)
     {
@@ -126,33 +170,26 @@ public static class SceneProjectTemplate
         O app AvaloniaCad observa esta pasta e redesenha o modelo sempre que um arquivo muda.
 
         ## Estrutura
-        - `{SceneProject.DefaultEntryFile}`: a cena (top-level statements). Registra cada feature com `AddFeature(variavel)`.
-        - `Pecas/`: classes e funções reutilizáveis usadas pela cena. Arquivos aqui NÃO podem ter top-level statements.
+        - `{SceneProject.DefaultEntryFile}`: a cena (top-level statements).
+        - `Pecas/`: as peças e os tipos reutilizáveis usados pela cena.
         - `{ApiReferenceFile}`: referência completa da API disponível (gerada pelo app; não edite).
         - `.cad/`: arquivos gerados pelo app. Não edite.
 
-        ## Regras
-        - Unidades em milímetros; o eixo Z aponta para cima.
-        - Use apenas os tipos de `{ApiReferenceFile}` e da biblioteca padrão do .NET. Não use System.IO, rede, threads ou reflexão.
-        - Toda feature visível deve ser registrada com `AddFeature(...)`. Dê a cada feature `Name` igual ao nome da variável.
-        - Ferramentas de operações booleanas (ex.: o cilindro que fura) usam `IsTransientTool = true` e também são registradas.
+        ## Regras (qualquer arquivo)
+        {CadScriptRules.Common}
+        - Use apenas os tipos de `{ApiReferenceFile}` e da biblioteca padrão do .NET.
+        {CadScriptRules.TrackableSolids}
 
-        ## Peças paramétricas
-        - Peças reutilizáveis são `record`s em `Pecas/` que herdam de `Part`; os parâmetros são o construtor primário.
-        - Um objeto/sólido reutilizável (motor, parafuso, suporte etc.) é uma peça: crie/edite o arquivo dele em `Pecas/`
-          nesse formato, mesmo que só apareça uma vez na cena. NUNCA escreva `var x = new BoxFeature(...); AddFeature(x);`
-          num arquivo de `Pecas/` — isso só existe no arquivo de entrada (`{SceneProject.DefaultEntryFile}`).
-        - `Build()` devolve a geometria em coordenadas locais (origem da peça em 0,0,0) e não chama `AddFeature`/`Add`.
-          Para peças compostas (corpo + furos + eixo etc.), combine tudo dentro do próprio `Build()` com
-          `BooleanFeature.CreateUnion`/`CreateDifference`/`CreateIntersection` e devolva a `IFeature` final.
-        - Sólidos rastreáveis por nome: variáveis, `const`, laços e funções locais podem CALCULAR valores (posições,
-          diâmetros, passos), mas cada sólido (`BoxFeature`, `CylinderFeature`, `PrismFeature`, `BooleanFeature`...) é
-          criado numa declaração própria com `Name` literal igual ao nome da variável e único na peça:
-          `var furo_1 = new CylinderFeature(...)` com `Name = "furo_1"`. Nunca crie sólidos dentro de laços/LINQ nem use
-          nome interpolado ou concatenado (ex.: `"furo_" + i`); para N furos, declare `furo_1 ... furo_N`, um por linha.
-        - Na cena: `var p = Add(new MinhaPeca(...), at: Placement.At(x, y, z));`. Variantes: expressão `with` do C# sobre `p.Part` (ex.: mudar só a espessura).
-        - Pontos da peça no mundo: `p.World(peca => peca.AlgumPonto)`.
-        - Exemplo completo em `{ApiReferenceFile}` (seção PEÇAS PARAMÉTRICAS).
+        ## Arquivo de entrada (`{SceneProject.DefaultEntryFile}`)
+        {CadScriptRules.SceneFile}
+
+        ## Peças paramétricas (`Pecas/`)
+        {CadScriptRules.PartFile}
+
+        ### Instanciando uma peça na cena
+        {CadScriptRules.PartUsage}
+
+        Exemplos completos em `{ApiReferenceFile}` (seção "Como escrever o código da cena").
 
         ## Verificação (obrigatória depois de qualquer edição)
         1. `dotnet build` — garante que o código compila (tipos e referências entre arquivos).

@@ -68,68 +68,19 @@ public class CadScriptProtocol : IAiProtocol<CadScriptContext, CadScriptChanges>
     /// é mostrado ao lado do primeiro <see cref="PartExamples"/> (que declara Placa) e testado junto
     /// dele, como os dois arquivos de um projeto de verdade.
     /// </summary>
-    public const string SceneUsingPartExample =
-        """
-        var placa_1 = Add(new Placa(100, 60));
-        var placa_2 = Add(new Placa(100, 60), at: Placement.At(0, 80, 0));
-        """;
+    public const string SceneUsingPartExample = CadScriptRules.SceneUsingPartExample;
 
     /// <summary>
     /// Exemplos few-shot de ARQUIVO DE PEÇA (Pecas/*.cs): um único record que herda de Part.
+    /// Vêm de <see cref="CadScriptRules"/>, que também os entrega ao <c>.cad/api.md</c> da cena.
     /// Cobertos por teste que compõe cada exemplo com um arquivo de entrada sintético
     /// (<c>Add(new Peca(...))</c>) e confirma que compila e executa no <c>RoslynSceneEvaluator</c>.
     /// </summary>
     public static readonly IReadOnlyList<string> PartExamples = new[]
     {
-        // Peça simples: uma chapa retangular
-        """
-        public sealed record Placa(double Largura = 100, double Comprimento = 60, double Espessura = 5) : Part
-        {
-            protected override IFeature Build() =>
-                new BoxFeature(Point3D.Origin, Largura, Comprimento, Espessura) { Name = "placa" };
-        }
-        """,
-
-        // Peça composta: corpo com furos de fixação (diferença booleana dentro do Build())
-        """
-        public sealed record ChapaFurada(double Largura = 50, double Comprimento = 30, double Espessura = 5, double DiametroFuro = 5) : Part
-        {
-            protected override IFeature Build()
-            {
-                var corpo = new BoxFeature(Point3D.Origin, Largura, Comprimento, Espessura) { Name = "corpo" };
-                var furo_1 = new CylinderFeature(new Point3D(DiametroFuro, DiametroFuro, 0), Vector3D.UnitZ, DiametroFuro / 2, Espessura) { Name = "furo_1", IsTransientTool = true };
-                var furo_2 = new CylinderFeature(new Point3D(Largura - DiametroFuro, Comprimento - DiametroFuro, 0), Vector3D.UnitZ, DiametroFuro / 2, Espessura) { Name = "furo_2", IsTransientTool = true };
-                return BooleanFeature.CreateDifference("chapa_furada", corpo, furo_1, furo_2);
-            }
-        }
-        """,
-
-        // Medidas calculadas com const/variáveis, mas cada sólido declarado um a um com nome literal
-        """
-        public sealed record BlocoQuatroFuros(double Largura = 20, double Comprimento = 30, double Altura = 10) : Part
-        {
-            protected override IFeature Build()
-            {
-                const double passoX = 15;
-                const double passoY = 10;
-                const double diametroFuro = 3;
-                const double profundidadeFuro = 3;
-
-                var x1 = Largura / 2 - passoX / 2;
-                var x2 = Largura / 2 + passoX / 2;
-                var y1 = Comprimento / 2 - passoY / 2;
-                var y2 = Comprimento / 2 + passoY / 2;
-                var zFuro = Altura - profundidadeFuro;
-
-                var corpo = new BoxFeature(Point3D.Origin, Largura, Comprimento, Altura) { Name = "corpo" };
-                var furo_1 = new CylinderFeature(new Point3D(x1, y1, zFuro), Vector3D.UnitZ, diametroFuro / 2, profundidadeFuro) { Name = "furo_1", IsTransientTool = true };
-                var furo_2 = new CylinderFeature(new Point3D(x2, y1, zFuro), Vector3D.UnitZ, diametroFuro / 2, profundidadeFuro) { Name = "furo_2", IsTransientTool = true };
-                var furo_3 = new CylinderFeature(new Point3D(x1, y2, zFuro), Vector3D.UnitZ, diametroFuro / 2, profundidadeFuro) { Name = "furo_3", IsTransientTool = true };
-                var furo_4 = new CylinderFeature(new Point3D(x2, y2, zFuro), Vector3D.UnitZ, diametroFuro / 2, profundidadeFuro) { Name = "furo_4", IsTransientTool = true };
-                return BooleanFeature.CreateDifference("bloco_quatro_furos", corpo, furo_1, furo_2, furo_3, furo_4);
-            }
-        }
-        """
+        CadScriptRules.PartExamplePlaca,
+        CadScriptRules.PartExampleChapaFurada,
+        CadScriptRules.PartExampleBlocoQuatroFuros
     };
 
     public string GetSystemPrompt()
@@ -144,43 +95,23 @@ public class CadScriptProtocol : IAiProtocol<CadScriptContext, CadScriptChanges>
         sb.AppendLine("Cada pedido traz OU uma seção \"### ARQUIVO ATIVO\" (um só arquivo em edição) OU uma seção");
         sb.AppendLine("\"### ARQUIVOS NO CONTEXTO\" (vários arquivos do projeto, cada um com seu caminho e formato). Leia essas");
         sb.AppendLine("seções a cada turno — os arquivos e formatos podem mudar de um turno para o outro — e escreva cada");
-        sb.AppendLine("arquivo EXATAMENTE no formato indicado para ele. Em Pecas/ também pode haver arquivos AUXILIARES");
-        sb.AppendLine("(ex.: uma static class Medidas com constantes): só declarações de tipos, sem statements soltos.");
+        sb.AppendLine("arquivo EXATAMENTE no formato indicado para ele.");
         sb.AppendLine();
         sb.AppendLine("FORMATO \"script\" (arquivo único, ou o arquivo de entrada de um projeto):");
-        sb.AppendLine("- Contém APENAS declarações e chamadas soltas (statements top-level).");
-        sb.AppendLine("- NUNCA use 'using', 'namespace', 'class', 'struct', 'interface', 'record' ou declare métodos.");
-        sb.AppendLine("- Toda feature deve ter Name = \"<mesmo nome da variável>\" e ser registrada com AddFeature(variavel).");
-        sb.AppendLine("- Ferramentas booleanas transitórias (ex.: o cilindro usado apenas para furar) devem ter IsTransientTool = true e também devem ser registradas com AddFeature.");
-        sb.AppendLine("- Para usar uma peça JÁ DECLARADA em Pecas/ (ver \"PEÇAS DISPONÍVEIS\" abaixo, se houver), NÃO redeclare o");
-        sb.AppendLine("  tipo aqui: chame var p = Add(new NomeDaPeca(...), at: Placement.At(x, y, z));");
-        sb.AppendLine("- NUNCA declare uma peça/objeto reutilizável NOVO (ex.: \"crie um motor X\") dentro deste arquivo. Com");
-        sb.AppendLine("  \"### ARQUIVOS NO CONTEXTO\", crie-o num arquivo novo (bloco file=Pecas/NomeDaPeca.cs) e instancie-o aqui");
-        sb.AppendLine("  com Add(...). Com \"### ARQUIVO ATIVO\", responda só em texto pedindo para abrir ou criar o arquivo");
-        sb.AppendLine("  da peça em Pecas/ primeiro, sem bloco de código.");
+        sb.AppendLine(CadScriptRules.SceneFile);
+        sb.AppendLine("- Ao pedirem uma peça nova (ex.: \"crie um motor X\"): com \"### ARQUIVOS NO CONTEXTO\", crie-a num arquivo");
+        sb.AppendLine("  novo (bloco file=Pecas/NomeDaPeca.cs) e instancie-a aqui com Add(...). Com \"### ARQUIVO ATIVO\", responda");
+        sb.AppendLine("  só em texto pedindo para abrir ou criar o arquivo da peça em Pecas/ primeiro, sem bloco de código.");
         sb.AppendLine();
         sb.AppendLine("FORMATO \"peça\" (arquivo em Pecas/):");
-        sb.AppendLine("- Contém EXATAMENTE UM 'public sealed record NomeDaPeca(<parâmetros com valor padrão>) : Part { ... }'.");
-        sb.AppendLine("- NUNCA use statements soltos, 'using', nem chame AddFeature ou Add — isso é do arquivo de entrada da cena.");
-        sb.AppendLine("- 'protected override IFeature Build()' constrói a geometria em coordenadas LOCAIS (origem em 0,0,0) e");
-        sb.AppendLine("  devolve UMA ÚNICA IFeature. Para combinar partes (ex.: corpo + furos + eixo), monte tudo DENTRO do");
-        sb.AppendLine("  próprio Build() com BooleanFeature.CreateUnion/CreateDifference/CreateIntersection e devolva o resultado");
-        sb.AppendLine("  final — instâncias de peça (PartInstance) ainda não podem ser operandos de BooleanFeature.");
-        sb.AppendLine("- Dê a cada parâmetro um nome em português e um valor padrão sensato (para que 'new NomeDaPeca()' já");
-        sb.AppendLine("  funcione sozinho); pode usar [System.ComponentModel.DataAnnotations.Range(min, max)] (nome completo, sem using).");
+        sb.AppendLine(CadScriptRules.PartFile);
+        sb.AppendLine();
+        sb.AppendLine("USANDO UMA PEÇA NO ARQUIVO DE ENTRADA:");
+        sb.AppendLine(CadScriptRules.PartUsage);
         sb.AppendLine();
         sb.AppendLine("REGRAS COMUNS AOS DOIS FORMATOS:");
-        sb.AppendLine("- Unidades em milímetros. O eixo Z aponta para cima.");
-        sb.AppendLine("- NÃO use Console, System.IO, threads, reflexão ou qualquer tipo de I/O.");
-        sb.AppendLine("- Todo número decimal usa ponto ('.'), nunca vírgula.");
-        sb.AppendLine("- Nomes de variáveis são únicos, curtos e em snake_case (ex.: box_a1, hole_b2, fillet_c3).");
-        sb.AppendLine("- SÓLIDOS RASTREÁVEIS POR NOME: variáveis, const, arrays, laços e funções locais podem ser usados para");
-        sb.AppendLine("  CALCULAR valores (posições, diâmetros, passos), mas cada sólido (BoxFeature, CylinderFeature, PrismFeature,");
-        sb.AppendLine("  ExtrudeFeature, FilletFeature, BooleanFeature...) deve ser criado numa declaração própria, com Name LITERAL");
-        sb.AppendLine("  igual ao nome da variável e único no arquivo/peça: var furo_1 = new CylinderFeature(...) { Name = \"furo_1\" };");
-        sb.AppendLine("  NUNCA crie sólidos dentro de laços, LINQ (Select(... new CylinderFeature ...)) ou listas montadas");
-        sb.AppendLine("  dinamicamente, e NUNCA use nome interpolado ou concatenado ($\"furo_{i}\"). Para N furos iguais, calcule as");
-        sb.AppendLine("  posições em variáveis e declare furo_1 ... furo_N, um por linha.");
+        sb.AppendLine(CadScriptRules.Common);
+        sb.AppendLine(CadScriptRules.TrackableSolids);
         sb.AppendLine("- Prefira reaproveitar/editar o ARQUIVO ATUAL em vez de recomeçar do zero, a menos que o pedido peça algo totalmente novo.");
         sb.AppendLine();
         sb.AppendLine("API DISPONÍVEL (extraída automaticamente do código-fonte atual do projeto — sempre confie nela, não invente membros):");

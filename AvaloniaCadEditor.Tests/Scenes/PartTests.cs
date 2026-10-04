@@ -200,9 +200,12 @@ public class PartTests
     {
         string reference = CadScriptApiReference.Build();
 
-        reference.Should().Contain("PEÇAS PARAMÉTRICAS");
         reference.Should().Contain("Add<T>(T part");
         reference.Should().Contain("static Placement Placement.At(");
+
+        // As regras de como escrever uma peça não ficam na referência da API (só a superfície da API
+        // fica lá): vêm de CadScriptRules e entram no .cad/api.md pela seção de regras.
+        SceneProjectTemplate.BuildRulesSection().Should().Contain(": Part").And.Contain("Build()");
     }
 
     private static float MinX(TriangleMesh mesh) =>

@@ -13,6 +13,9 @@ namespace AvaloniaCadEditor.Application.Ai;
 /// (o sub-dialeto de C# usado para descrever a cena) a ser injetada no system prompt da IA.
 /// Como o texto é extraído do código real (construtores, propriedades e métodos públicos),
 /// ele nunca fica desatualizado em relação às features/`ValueObjects` do projeto.
+/// Só a SUPERFÍCIE da API vive aqui; as regras de como escrever o código e os exemplos ficam
+/// em <see cref="CadScriptRules"/>, de onde o prompt, o <c>.cad/api.md</c> e o <c>AGENTS.md</c>
+/// os leem (antes cada um tinha a sua cópia).
 /// </summary>
 public static class CadScriptApiReference
 {
@@ -69,48 +72,10 @@ public static class CadScriptApiReference
             AppendEnum(sb, type);
         }
 
-        sb.AppendLine("Método global disponível no script: void AddFeature(IFeature feature) — registra a feature na cena.");
-        sb.AppendLine();
-        sb.AppendLine("PEÇAS PARAMÉTRICAS (em projetos de cena com vários arquivos):");
-        sb.AppendLine("  Declare em Pecas/ um record que herda de Part; os parâmetros são o construtor primário. Cada arquivo em");
-        sb.AppendLine("  Pecas/ declara EXATAMENTE UM record desses — nunca statements soltos, nunca AddFeature/Add (isso é só");
-        sb.AppendLine("  do arquivo de entrada da cena, ex.: Cena.cs). Um objeto/sólido reutilizável (motor, parafuso, suporte,");
-        sb.AppendLine("  etc.) É uma peça: crie/edite o arquivo dele em Pecas/ neste formato, mesmo que ele só apareça uma vez na cena.");
-        sb.AppendLine("    public sealed record Placa(double Largura, double Comprimento, double Espessura = 5) : Part");
-        sb.AppendLine("    {");
-        sb.AppendLine("        protected override IFeature Build() =>");
-        sb.AppendLine("            new BoxFeature(Point3D.Origin, Largura, Comprimento, Espessura) { Name = \"placa\" };");
-        sb.AppendLine("    }");
-        sb.AppendLine("  Build() constrói a peça em coordenadas LOCAIS (origem em 0,0,0) e NÃO chama AddFeature/Add. Para peças");
-        sb.AppendLine("  compostas (corpo + furos + eixo, etc.), combine tudo DENTRO do próprio Build() com");
-        sb.AppendLine("  BooleanFeature.CreateUnion/CreateDifference/CreateIntersection e devolva a IFeature final — instâncias de");
-        sb.AppendLine("  peça (PartInstance) ainda não podem ser operandos de BooleanFeature, só as features criadas dentro do Build():");
-        sb.AppendLine("    public sealed record ChapaFurada(double Largura = 50, double Comprimento = 30, double Espessura = 5) : Part");
-        sb.AppendLine("    {");
-        sb.AppendLine("        protected override IFeature Build()");
-        sb.AppendLine("        {");
-        sb.AppendLine("            var corpo = new BoxFeature(Point3D.Origin, Largura, Comprimento, Espessura) { Name = \"corpo\" };");
-        sb.AppendLine("            var furo = new CylinderFeature(new Point3D(Largura / 2, Comprimento / 2, 0), Vector3D.UnitZ, 3, Espessura) { Name = \"furo\", IsTransientTool = true };");
-        sb.AppendLine("            return BooleanFeature.CreateDifference(\"chapa_furada\", corpo, furo);");
-        sb.AppendLine("        }");
-        sb.AppendLine("    }");
-        sb.AppendLine("  Sólidos rastreáveis por nome: variáveis, const, arrays, laços e funções locais podem CALCULAR valores");
-        sb.AppendLine("  (posições, diâmetros, passos), mas cada sólido (BoxFeature, CylinderFeature, PrismFeature, ExtrudeFeature,");
-        sb.AppendLine("  FilletFeature, BooleanFeature...) é criado numa declaração própria, com Name LITERAL igual ao nome da variável");
-        sb.AppendLine("  e único na peça. NUNCA crie sólidos dentro de laços, LINQ ou listas montadas dinamicamente, e NUNCA use nome");
-        sb.AppendLine("  interpolado/concatenado ($\"furo_{i}\"). Para N furos iguais, calcule as posições e declare furo_1 ... furo_N:");
-        sb.AppendLine("            const double diametroFuro = 3;");
-        sb.AppendLine("            var x1 = Largura / 2 - 7.5;");
-        sb.AppendLine("            var x2 = Largura / 2 + 7.5;");
-        sb.AppendLine("            var furo_1 = new CylinderFeature(new Point3D(x1, 5, 0), Vector3D.UnitZ, diametroFuro / 2, Espessura) { Name = \"furo_1\", IsTransientTool = true };");
-        sb.AppendLine("            var furo_2 = new CylinderFeature(new Point3D(x2, 5, 0), Vector3D.UnitZ, diametroFuro / 2, Espessura) { Name = \"furo_2\", IsTransientTool = true };");
-        sb.AppendLine("  Parâmetros podem ter [System.ComponentModel.DataAnnotations.Range(min, max)]; valores fora do intervalo viram erro.");
-        sb.AppendLine("  Método global: PartInstance<T> Add<T>(T part, Placement? at = null, string? name = null, string? color = null) — coloca uma instância na cena.");
-        sb.AppendLine("  color (\"#RRGGBB\") é opcional e pinta o sólido inteiro; só use se o pedido envolver cores.");
-        sb.AppendLine("    var p1 = Add(new Placa(100, 60));");
-        sb.AppendLine("    var p2 = Add(p1.Part with { Espessura = 8 }, at: Placement.At(150, 0, 0, rotationZDegrees: 90));");
-        sb.AppendLine("    Point3D canto = p2.World(p => new Point3D(p.Largura, 0, 0)); // ponto local da peça convertido para o mundo");
-        sb.AppendLine("  Peças com os mesmos parâmetros compartilham a geometria (construída uma vez). Instâncias ainda não podem ser operandos de BooleanFeature.");
+        sb.AppendLine("Métodos globais disponíveis no código da cena:");
+        sb.AppendLine("  void AddFeature(IFeature feature) — registra a feature na cena (só no arquivo de entrada).");
+        sb.AppendLine("  PartInstance<T> Add<T>(T part, Placement? at = null, string? name = null, string? color = null) where T : Part");
+        sb.AppendLine("    — coloca uma instância de peça na cena (só no arquivo de entrada). color é \"#RRGGBB\" e pinta o sólido inteiro.");
 
         return sb.ToString();
     }
