@@ -938,6 +938,37 @@ public static class PartSourceEditor
     }
 
     /// <summary>
+    /// Troca o valor padrão de um parâmetro no record da peça (<c>double Altura = 16.625</c>),
+    /// afetando todas as instâncias que não passam esse parâmetro na chamada <c>Add(...)</c>.
+    /// Diferente de <see cref="SetArgument"/>, que edita uma instância só.
+    /// Recusa (InvalidOperationException) quando o padrão atual é uma expressão em vez de um
+    /// literal: sobrescrever <c>Medidas.Espessura * 2</c> apagaria a lógica do usuário.
+    /// </summary>
+    public static string SetPartTypeParameterDefault(string source, string partTypeName, string parameterName, string valueCode)
+    {
+        var type = Parse(source).DescendantNodes().OfType<RecordDeclarationSyntax>()
+            .FirstOrDefault(t => t.Identifier.ValueText == partTypeName)
+            ?? throw new InvalidOperationException($"Não achei o record {partTypeName} neste arquivo.");
+
+        var parameter = type.ParameterList?.Parameters
+            .FirstOrDefault(p => p.Identifier.ValueText == parameterName)
+            ?? throw new InvalidOperationException($"{partTypeName} não tem o parâmetro {parameterName}.");
+
+        if (parameter.Default?.Value is { } current)
+        {
+            if (!IsLiteral(current))
+            {
+                throw new InvalidOperationException(
+                    $"O padrão de {parameterName} é calculado no código ({current}); edite essa expressão no editor.");
+            }
+            return Replace(source, current.Span, valueCode);
+        }
+
+        // Parâmetro sem valor padrão: acrescenta um (a peça passa a funcionar sem argumento).
+        return Insert(source, parameter.Span.End, $" = {valueCode}");
+    }
+
+    /// <summary>
     /// Onde um sólido criado dentro do <c>Build()</c> de uma peça é declarado: a variável com o mesmo
     /// nome (<c>var furo_1 = new CylinderFeature(...)</c>, o padrão ensinado à IA) ou, na falta dela, o
     /// literal com o nome (<c>Name = "furo_1"</c> / <c>name: "furo_1"</c>). Null se não achar — por

@@ -93,6 +93,7 @@ public static class CodeEditorBehavior
         ErrorLinesProperty.Changed.AddClassHandler<TextEditor>((editor, e) => HandleErrorLinesChanged(editor, e));
         DocumentTextProperty.Changed.AddClassHandler<TextEditor>((editor, e) => HandleDocumentTextChanged(editor, e));
         RevealLineProperty.Changed.AddClassHandler<TextEditor>((editor, e) => HandleRevealLineChanged(editor, e));
+        PartSolidSpansProperty.Changed.AddClassHandler<TextEditor>((editor, e) => HandlePartSolidSpansChanged(editor, e));
         CodeCommandsProperty.Changed.AddClassHandler<TextEditor>((editor, e) => HandleCodeCommandsChanged(editor));
         FocusWhenProperty.Changed.AddClassHandler<TextBox>((box, e) => HandleFocusWhenChanged(box, e));
     }
@@ -170,6 +171,35 @@ public static class CodeEditorBehavior
             }
         }
         editor.TextArea.TextView.Redraw();
+    }
+
+    /// <summary>
+    /// Trechos da cadeia do sólido de peça selecionado (declaração + o que a alimenta), pintados
+    /// com o mesmo realce do <c>SelectedFeature</c>. São dois caminhos escrevendo no mesmo
+    /// colorizer, e isso é de propósito: clicar num sólido-ferramenta de peça não mexe na seleção
+    /// (ver <c>ViewportInputHandler</c>), então os dois nunca disparam no mesmo gesto e vale sempre
+    /// o último — que é o que o usuário acabou de pedir.
+    /// </summary>
+    public static readonly AttachedProperty<System.Collections.Generic.IReadOnlyList<TextSpan>?> PartSolidSpansProperty =
+        AvaloniaProperty.RegisterAttached<TextEditor, System.Collections.Generic.IReadOnlyList<TextSpan>?>("PartSolidSpans", typeof(CodeEditorBehavior));
+
+    public static System.Collections.Generic.IReadOnlyList<TextSpan>? GetPartSolidSpans(AvaloniaObject element) => element.GetValue(PartSolidSpansProperty);
+    public static void SetPartSolidSpans(AvaloniaObject element, System.Collections.Generic.IReadOnlyList<TextSpan>? value) => element.SetValue(PartSolidSpansProperty, value);
+
+    private static void HandlePartSolidSpansChanged(TextEditor editor, AvaloniaPropertyChangedEventArgs e)
+    {
+        var spans = e.NewValue as System.Collections.Generic.IReadOnlyList<TextSpan>;
+
+        // Adiado: o pedido chega junto com a troca de arquivo, antes do documento novo estar no
+        // editor — mesmo motivo do HandleRevealLineChanged.
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            var colorizer = GetOrCreateColorizer(editor);
+            colorizer.HighlightSpans = spans == null
+                ? new System.Collections.Generic.List<TextSpan>()
+                : spans.Where(span => editor.Document != null && span.End <= editor.Document.TextLength).ToList();
+            editor.TextArea.TextView.Redraw();
+        }, Avalonia.Threading.DispatcherPriority.Loaded);
     }
 
     /// <summary>Linha que o editor deve mostrar (rola até ela e põe o cursor no início).</summary>

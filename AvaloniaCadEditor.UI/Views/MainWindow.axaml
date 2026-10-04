@@ -307,6 +307,7 @@
                                      SyntaxHighlighting="C#"
                                      controls:CodeEditorBehavior.DocumentText="{Binding ScriptEditor.GeneratedCSharpCode, Mode=TwoWay}"
                                      controls:CodeEditorBehavior.SelectedFeature="{Binding SelectedFeature}"
+                                     controls:CodeEditorBehavior.PartSolidSpans="{Binding ScriptEditor.PartSolidSpans}"
                                      controls:CodeEditorBehavior.ErrorLines="{Binding ScriptEditor.ActiveFileErrorLines}"
                                      controls:CodeEditorBehavior.RevealLine="{Binding ScriptEditor.RevealLine}"
                                      controls:CodeEditorBehavior.CodeCommands="{Binding ScriptEditor}"

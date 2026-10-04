@@ -14,6 +14,7 @@ using AvaloniaCadEditor.Application.Services;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.Scripting;
 using AvaloniaCadEditor.UI.Services;
+using Microsoft.CodeAnalysis.Text;
 
 namespace AvaloniaCadEditor.UI.ViewModels;
 
@@ -35,6 +36,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
     private readonly CodeHistoryManager _history = new();
     private readonly Action<Action> _uiInvoker;
     private readonly ISceneCodeNavigator _codeNavigator;
+    private readonly IPartSolidTracer _partSolidTracer;
     private readonly ILastSceneProvider _lastSceneProvider;
 
     // Modo projeto: texto de cada arquivo em memória e o último conteúdo visto em disco.
@@ -52,9 +54,11 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         IFilePickerService? filePickerService,
         Action<Action>? uiInvoker = null,
         ISceneCodeNavigator? codeNavigator = null,
-        ILastSceneProvider? lastSceneProvider = null)
+        ILastSceneProvider? lastSceneProvider = null,
+        IPartSolidTracer? partSolidTracer = null)
     {
         _codeNavigator = codeNavigator ?? new AvaloniaCadEditor.Infrastructure.Scripting.RoslynCodeNavigator();
+        _partSolidTracer = partSolidTracer ?? new AvaloniaCadEditor.Infrastructure.Scripting.RoslynPartSolidTracer();
         _cadViewModel = cadViewModel;
         _sceneEvaluator = sceneEvaluator;
         _filePickerService = filePickerService;
@@ -464,17 +468,71 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
     /// <summary>
     /// Seleciona no editor a declaração de um sólido criado dentro do <c>Build()</c> de uma peça
     /// (ver <see cref="PartSourceEditor.FindToolDeclaration"/>); sem ela, abre a declaração do record.
+    /// Também destaca a cadeia que produz o sólido e devolve o que a alimenta, para o inspector
+    /// saber quais parâmetros da peça afetam este sólido — null quando não dá para rastrear.
     /// </summary>
-    public void RevealPartTool(string partTypeName, string toolName)
+    public PartSolidInputs? RevealPartTool(string partTypeName, string toolName)
     {
         var location = PartSourceEditor.FindToolDeclaration(CurrentDocuments(), partTypeName, toolName);
         if (location == null)
         {
             GoToPartDefinition(partTypeName);
             _cadViewModel.StatusText = $"{toolName}: declaração não encontrada em {partTypeName} (nome gerado em laço?).";
-            return;
+            return null;
         }
         NavigateTo(location);
+
+        PartSolidInputs? traced;
+        try
+        {
+            traced = _partSolidTracer.Trace(CurrentDocuments(), partTypeName, toolName);
+        }
+        catch (Exception ex)
+        {
+            // Rastrear é um extra: se a compilação da cena estiver quebrada, navegar até a
+            // declaração (acima) já valeu o clique.
+            _cadViewModel.StatusText = $"{toolName}: não deu para rastrear a cadeia ({ex.Message}).";
+            return null;
+        }
+
+        HighlightSolidChain(traced);
+        return traced;
+    }
+
+    /// <summary>
+    /// Pinta no editor a declaração do sólido e a de cada coisa que o alimenta (as que estiverem no
+    /// arquivo aberto — o da peça, que <see cref="RevealPartTool"/> acabou de abrir).
+    /// </summary>
+    private void HighlightSolidChain(PartSolidInputs? traced)
+    {
+        if (traced == null)
+        {
+            PartSolidSpans = Array.Empty<TextSpan>();
+            return;
+        }
+
+        // Numa cena de arquivo único o documento é sempre o padrão; num projeto, o arquivo aberto.
+        string activeFile = _project == null ? ScriptDocument.DefaultSceneFile : (_activeFile ?? string.Empty);
+
+        PartSolidSpans = traced.Inputs
+            .SelectMany(input => input.Spans)
+            .Prepend(traced.Declaration)
+            .Where(location => string.Equals(location.FilePath, activeFile, StringComparison.OrdinalIgnoreCase))
+            .Select(location => new TextSpan(location.Start, location.Length))
+            .Distinct()
+            .ToList();
+    }
+
+    private IReadOnlyList<TextSpan> _partSolidSpans = Array.Empty<TextSpan>();
+
+    /// <summary>
+    /// Trechos do arquivo aberto que formam a cadeia do sólido selecionado (declaração + o que o
+    /// alimenta). Vazio quando não há sólido de peça selecionado.
+    /// </summary>
+    public IReadOnlyList<TextSpan> PartSolidSpans
+    {
+        get => _partSolidSpans;
+        private set { _partSolidSpans = value; OnPropertyChanged(); }
     }
 
     /// <summary>Seleciona no editor a linha onde uma feature solta foi registrada (AddFeature).</summary>
@@ -490,6 +548,9 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
     private void SwitchActiveFile(string file)
     {
         SyncActiveDocument();
+        // Os spans são posições no texto do arquivo anterior; sem limpar, pintariam trechos ao
+        // acaso do arquivo novo. Quem navegou até aqui recalcula depois (ver RevealPartTool).
+        PartSolidSpans = Array.Empty<TextSpan>();
         _activeFile = file;
         _history.Clear();
         GeneratedCSharpCode = _documents.TryGetValue(file, out var text) ? text : string.Empty;
@@ -748,6 +809,75 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         SelectFeatureByName(instanceName);
         _cadViewModel.StatusText = $"✓ {instance.PartTypeName}.{parameterName} = {valueCode}  ({file}, linha {origin.Line})";
         return null;
+    }
+
+    /// <summary>
+    /// Troca o valor PADRÃO de um parâmetro no record da peça e reexecuta a cena — então vale para
+    /// todas as instâncias, e não só para a que está selecionada (o que
+    /// <see cref="SetPartParameterAsync"/> faz). É o caminho usado ao editar um parâmetro a partir
+    /// de um sólido do <c>Build()</c>: o furo é da peça, não de uma instância.
+    /// </summary>
+    public async Task<string?> SetPartTypeParameterDefaultAsync(PartInstance owner, string parameterName, string text)
+    {
+        var parameter = owner.Part.GetParameters().FirstOrDefault(p => p.Name == parameterName);
+        if (parameter == null) return $"{owner.PartTypeName} não tem o parâmetro {parameterName}.";
+
+        if (!PartSourceEditor.IsEditableType(parameter.Type))
+            return $"Parâmetros do tipo {parameter.Type.Name} só podem ser editados no código.";
+        if (!PartSourceEditor.TryParseValue(parameter.Type, text, out var value, out var parseError))
+            return parseError;
+        if (parameter.Range != null && !parameter.Range.IsValid(value))
+            return $"{parameterName} deve ficar entre {FormatInvariant(parameter.Range.Minimum)} e {FormatInvariant(parameter.Range.Maximum)}.";
+
+        // O arquivo da PEÇA, não o da instância: o FeatureOrigin da instância aponta para a cena.
+        var type = PartSourceEditor.FindPartTypes(CurrentDocuments())
+            .FirstOrDefault(t => t.Name == owner.PartTypeName);
+        if (type == null) return $"Não achei a declaração de {owner.PartTypeName} nos arquivos da cena.";
+
+        string? source = GetDocumentText(type.FilePath);
+        if (source == null) return $"O arquivo {type.FilePath} não faz parte da cena aberta.";
+
+        string valueCode = PartSourceEditor.FormatValue(value!);
+        string updated;
+        try
+        {
+            updated = PartSourceEditor.SetPartTypeParameterDefault(source, owner.PartTypeName, parameterName, valueCode);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message;
+        }
+        if (updated == source) return null;
+
+        SetDocumentText(type.FilePath, updated);
+        await RunCodeAsync();
+        if (HasErrors) return ErrorSummary;
+
+        // A cena reexecutou: as features são outras. Reencontra o sólido pelo nome para o realce no
+        // 3D, o destaque no código e o inspector continuarem apontando para ele.
+        _cadViewModel.RestoreSelectedPartSolid();
+
+        _cadViewModel.StatusText =
+            $"✓ {owner.PartTypeName}.{parameterName} = {valueCode} em todas as instâncias  ({type.FilePath})";
+        return null;
+    }
+
+    /// <summary>
+    /// Quantas instâncias de <paramref name="partTypeName"/> na cena passam
+    /// <paramref name="parameterName"/> na própria chamada <c>Add(...)</c> — essas não sentem uma
+    /// mudança no valor padrão do record, e o inspector precisa dizer isso.
+    /// </summary>
+    public (int Overriding, int Total) CountInstancesOverriding(string partTypeName, string parameterName)
+    {
+        var instances = _cadViewModel.Sketch.Features
+            .OfType<PartInstance>()
+            .Where(i => i.PartTypeName == partTypeName)
+            .ToList();
+
+        int overriding = instances.Count(instance =>
+            ReadPartArguments(instance)?.FirstOrDefault(a => a.Name == parameterName)?.Expression != null);
+
+        return (overriding, instances.Count);
     }
 
     /// <summary>

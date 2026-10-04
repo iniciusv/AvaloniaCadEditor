@@ -545,6 +545,92 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
         PartNote = string.Join(" ", notes);
     }
 
+    /// <summary>
+    /// Mostra os parâmetros da peça ranqueados pelo que afeta um sólido do <c>Build()</c> (um furo,
+    /// um reforço): primeiro os que mexem só nele, depois os que mexem nele e em outros, e por fim
+    /// os que não o afetam. Usa a mesma lista e as mesmas linhas de
+    /// <see cref="LoadPartParameters"/> — o que muda é a ordem, a dica e o destino da edição, que
+    /// aqui é o valor padrão do record (o sólido é da peça, não de uma instância).
+    /// </summary>
+    public void ShowPartSolid(PartInstance owner, AvaloniaCadEditor.Application.Interfaces.PartSolidInputs solid)
+    {
+        var editor = _partCodeEditor();
+        PartParameters.Clear();
+        IsPartInstance = true;
+        Title = solid.SolidName;
+        TypeBadge = $"SÓLIDO · {owner.PartTypeName}";
+
+        // Só os parâmetros do record são editáveis aqui; os locais e funções locais da cadeia
+        // aparecem destacados no editor, que é onde se mexe neles.
+        var relevant = solid.Inputs
+            .Where(i => i.Kind == AvaloniaCadEditor.Application.Interfaces.SolidInputKind.PartParameter)
+            .ToDictionary(i => i.Name, StringComparer.Ordinal);
+
+        int Rank(string name) =>
+            !relevant.TryGetValue(name, out var input) ? 2 : input.IsExclusive ? 0 : 1;
+
+        var parameters = owner.Part.GetParameters()
+            .OrderBy(p => Rank(p.Name))
+            .ThenBy(p => p.Name, StringComparer.Ordinal)
+            .ToList();
+
+        foreach (var parameter in parameters)
+        {
+            relevant.TryGetValue(parameter.Name, out var input);
+            bool typeOk = PartSourceEditor.IsEditableType(parameter.Type);
+            bool editable = editor != null && typeOk;
+
+            string? hint;
+            if (!typeOk)
+                hint = "edite no código";
+            else if (input == null)
+                hint = null;
+            else if (input.IsExclusive)
+                hint = $"move só {solid.SolidName}";
+            else
+                hint = $"move também {string.Join(", ", input.SharedWith)}";
+
+            PartParameters.Add(new PartParameterItem(
+                parameter.Name,
+                parameter.Type.Name,
+                Format(parameter.Value),
+                editable,
+                hint,
+                (name, text) => editor != null
+                    ? editor.SetPartTypeParameterDefaultAsync(owner, name, text)
+                    : System.Threading.Tasks.Task.FromResult<string?>("Editor de código indisponível.")));
+        }
+
+        var notes = new System.Collections.Generic.List<string>
+        {
+            $"{relevant.Count} dos {parameters.Count} parâmetros de {owner.PartTypeName} afetam {solid.SolidName}.",
+            "Editar aqui muda o padrão da peça: vale para todas as instâncias."
+        };
+
+        // Uma instância que passa o parâmetro no Add(...) ignora o padrão do record. Sem avisar, a
+        // edição simplesmente não surtiria efeito nela e o app não explicaria por quê.
+        if (editor != null)
+        {
+            var ignoring = relevant.Keys
+                .Select(name => (Name: name, Counts: editor.CountInstancesOverriding(owner.PartTypeName, name)))
+                .Where(x => x.Counts.Overriding > 0)
+                .ToList();
+            foreach (var (name, counts) in ignoring)
+            {
+                notes.Add($"{counts.Overriding} de {counts.Total} instâncias passam {name} na chamada Add(...); essas não mudam.");
+            }
+        }
+
+        PartNote = string.Join(" ", notes);
+        NotifyAllFields();
+    }
+
+    /// <summary>
+    /// Desfaz <see cref="ShowPartSolid"/>, voltando a mostrar o que estiver selecionado (a
+    /// instância inteira, ou nada). Chamado ao sair do modo de edição de grupo booleano.
+    /// </summary>
+    public void ClearPartSolid() => RefreshProperties();
+
     private static string Format(object? value) =>
         value is IFormattable f ? f.ToString(null, CultureInfo.InvariantCulture) : value?.ToString() ?? "";
 

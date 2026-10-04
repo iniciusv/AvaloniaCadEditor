@@ -17,6 +17,18 @@ public interface IPartCodeEditor
     /// <summary>Reescreve o parâmetro no código e reexecuta. Retorna a mensagem de erro, ou null.</summary>
     Task<string?> SetPartParameterAsync(PartInstance instance, string parameterName, string text);
 
+    /// <summary>
+    /// Troca o valor PADRÃO do parâmetro no record da peça — vale para todas as instâncias, não só
+    /// a selecionada. Retorna a mensagem de erro, ou null.
+    /// </summary>
+    Task<string?> SetPartTypeParameterDefaultAsync(PartInstance owner, string parameterName, string text);
+
+    /// <summary>
+    /// Quantas instâncias da peça passam esse parâmetro na própria chamada <c>Add(...)</c> (e
+    /// portanto não sentem uma mudança no padrão do record), e quantas existem no total.
+    /// </summary>
+    (int Overriding, int Total) CountInstancesOverriding(string partTypeName, string parameterName);
+
     /// <summary>Abre no editor o arquivo e a linha onde o tipo da peça é declarado.</summary>
     bool GoToPartDefinition(string typeName);
 

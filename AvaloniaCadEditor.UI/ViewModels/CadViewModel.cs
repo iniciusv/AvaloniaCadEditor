@@ -852,6 +852,7 @@ public class CadViewModel : INotifyPropertyChanged
 			{
 				_activeBooleanGroupName = value;
 				HighlightedToolId = null;
+				SelectedPartSolid = null;
 				OnPropertyChanged();
 				OnPropertyChanged(nameof(IsEditingBooleanGroup));
 				OnPropertyChanged(nameof(ActiveBooleanGroup));
@@ -927,7 +928,9 @@ public class CadViewModel : INotifyPropertyChanged
 
 	/// <summary>
 	/// Clique num sólido vermelho: realça, mostra o nome no status e seleciona a declaração no código
-	/// (em Pecas/ para ferramentas de peça, no arquivo da cena para booleanas soltas).
+	/// (em Pecas/ para ferramentas de peça, no arquivo da cena para booleanas soltas). Num sólido de
+	/// peça, também guarda em <see cref="SelectedPartSolid"/> a cadeia que o produz, para o inspector
+	/// listar só os parâmetros que o afetam.
 	/// </summary>
 	public void RevealToolFeature(IFeature tool)
 	{
@@ -937,13 +940,68 @@ public class CadViewModel : INotifyPropertyChanged
 		{
 			var local = wrapper.Source;
 			StatusText = $"{local.Name} ({local.GetType().Name}) — {_partToolsOwner.PartTypeName}";
-			ScriptEditor?.RevealPartTool(_partToolsOwner.PartTypeName, local.Name);
+			SelectedPartSolidOwner = _partToolsOwner;
+			SelectedPartSolid = ScriptEditor?.RevealPartTool(_partToolsOwner.PartTypeName, local.Name);
+			if (SelectedPartSolid != null)
+			{
+				PropertyInspector.ShowPartSolid(_partToolsOwner, SelectedPartSolid);
+			}
 		}
 		else
 		{
 			StatusText = $"{tool.Name} ({tool.GetType().Name})";
+			SelectedPartSolid = null;
 			ScriptEditor?.RevealLooseFeatureLine(tool);
 		}
+	}
+
+	private AvaloniaCadEditor.Application.Interfaces.PartSolidInputs? _selectedPartSolid;
+
+	/// <summary>
+	/// A cadeia que produz o sólido de peça clicado em <see cref="RevealToolFeature"/> — o que o
+	/// alimenta e o que é exclusivo dele. Null quando não há sólido de peça selecionado (ou quando
+	/// não deu para rastrear, ex.: sólido criado num laço).
+	/// </summary>
+	public AvaloniaCadEditor.Application.Interfaces.PartSolidInputs? SelectedPartSolid
+	{
+		get => _selectedPartSolid;
+		private set
+		{
+			if (_selectedPartSolid == value) return;
+			bool had = _selectedPartSolid != null;
+			_selectedPartSolid = value;
+			if (value == null)
+			{
+				SelectedPartSolidOwner = null;
+				// Sair do modo booleano não muda a seleção, então o inspector não se atualizaria
+				// sozinho e continuaria mostrando os parâmetros do sólido.
+				if (had) PropertyInspector.ClearPartSolid();
+			}
+			OnPropertyChanged();
+		}
+	}
+
+	/// <summary>A instância de peça a que <see cref="SelectedPartSolid"/> pertence.</summary>
+	public PartInstance? SelectedPartSolidOwner { get; private set; }
+
+	/// <summary>
+	/// Reencontra o sólido de peça selecionado depois de a cena ser reexecutada (editar um
+	/// parâmetro refaz tudo: as features são objetos novos e o <see cref="HighlightedToolId"/>,
+	/// um Guid, fica obsoleto). A busca é por nome, como o resto do app faz depois de um re-run.
+	/// </summary>
+	public void RestoreSelectedPartSolid()
+	{
+		string? solidName = _selectedPartSolid?.SolidName;
+		if (solidName == null) return;
+
+		var tool = ActiveToolFeatures
+			.FirstOrDefault(f => f is TransformedFeature w && w.Source.Name == solidName);
+		if (tool == null)
+		{
+			SelectedPartSolid = null;
+			return;
+		}
+		RevealToolFeature(tool);
 	}
 
 	public System.Windows.Input.ICommand ExitBooleanEditModeCommand { get; }
