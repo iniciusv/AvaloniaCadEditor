@@ -80,6 +80,13 @@
                         <TextBox Text="{Binding BaseUrlInput}" Watermark="https://api.deepseek.com/ (default)" FontSize="11" />
                     </StackPanel>
 
+                    <CheckBox IsChecked="{Binding EnableReasoningInput}" FontSize="11" Foreground="#DDDDDD"
+                              Content="Reasoning (thinking mode)"
+                              ToolTip.Tip="Deixa o modelo 'pensar' antes de responder — melhor em pedidos complexos, porém mais lento e caro. Só vale para modelos compatíveis (deepseek-v4)." />
+                    <CheckBox IsChecked="{Binding KeepHistoryInput}" FontSize="11" Foreground="#DDDDDD"
+                              Content="Manter histórico (multi-round)"
+                              ToolTip.Tip="Ligado: a IA lembra dos turnos anteriores. Desligado: cada envio é independente (só o estado atual dos arquivos), mais barato e sem versões antigas acumuladas." />
+
                     <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
                         <TextBlock Grid.Column="0" Text="Saved locally in %AppData%\AvaloniaCadEditor\ai_settings.json"
                                    Foreground="#777777" FontSize="9" TextWrapping="Wrap" VerticalAlignment="Center" />
@@ -106,13 +113,40 @@
                                     Classes.assistantBubble="{Binding !IsUser}"
                                     CornerRadius="6" Padding="8" Margin="0,0,0,10">
                                 <StackPanel Spacing="6">
-                                    <Grid ColumnDefinitions="*,Auto">
+                                    <Grid ColumnDefinitions="*,Auto,Auto">
                                         <TextBlock Grid.Column="0" Text="{Binding Text}" Foreground="#EEEEEE" TextWrapping="Wrap" FontSize="12" />
                                         <Button Grid.Column="1" Content="⧉" Click="OnCopyMessageClick"
                                                 ToolTip.Tip="Copy this message"
                                                 VerticalAlignment="Top" Background="Transparent" Foreground="#AAAAAA"
                                                 FontSize="11" Padding="4,0" Margin="6,0,0,0" />
+                                        <Button Grid.Column="2" Content="🗑" Command="{Binding DeleteCommand}"
+                                                IsVisible="{Binding CanDelete}"
+                                                ToolTip.Tip="Delete this exchange (question + answer)"
+                                                VerticalAlignment="Top" Background="Transparent" Foreground="#AAAAAA"
+                                                FontSize="11" Padding="4,0" Margin="2,0,0,0" />
                                     </Grid>
+
+                                    <!-- Contexto enviado à IA neste turno (arquivos + sólidos selecionados) -->
+                                    <ItemsControl ItemsSource="{Binding SentContext}" IsVisible="{Binding HasSentContext}">
+                                        <ItemsControl.ItemsPanel>
+                                            <ItemsPanelTemplate>
+                                                <WrapPanel />
+                                            </ItemsPanelTemplate>
+                                        </ItemsControl.ItemsPanel>
+                                        <ItemsControl.ItemTemplate>
+                                            <DataTemplate x:DataType="vm:AiSentContextItem">
+                                                <Border CornerRadius="10" Padding="7,1" Margin="0,0,4,4"
+                                                        Background="#2D3B4A"
+                                                        ToolTip.Tip="{Binding ToolTip}">
+                                                    <StackPanel Orientation="Horizontal" Spacing="3">
+                                                        <TextBlock Text="◆" Foreground="#9CC1F0" FontSize="8" VerticalAlignment="Center"
+                                                                   IsVisible="{Binding IsSolid}" />
+                                                        <TextBlock Text="{Binding DisplayName}" Foreground="#CFE0F0" FontSize="10" VerticalAlignment="Center" />
+                                                    </StackPanel>
+                                                </Border>
+                                            </DataTemplate>
+                                        </ItemsControl.ItemTemplate>
+                                    </ItemsControl>
 
                                     <Expander Header="Reasoning" IsVisible="{Binding HasReasoning}" FontSize="10" Padding="0">
                                         <TextBlock Text="{Binding Reasoning}" Foreground="#999999" TextWrapping="Wrap" FontSize="10" Margin="4" />

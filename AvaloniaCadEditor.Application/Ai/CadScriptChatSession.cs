@@ -54,7 +54,18 @@ public class CadScriptChatSession
     private readonly SendDelegate _send;
     private readonly List<ChatMessage> _history = new();
 
+    /// <summary>Índice em <see cref="_history"/> onde começa a mensagem de usuário de cada turno da UI.
+    /// Um turno pode ocupar vários itens do histórico (pares de correção automática do auto-fix).</summary>
+    private readonly List<int> _turnStarts = new();
+
     public IReadOnlyList<ChatMessage> History => _history;
+
+    /// <summary>
+    /// Manter o histórico entre turnos (multi-round). Quando false, cada <see cref="SendAsync"/> começa
+    /// com só o system prompt — o estado atual dos arquivos já é reenviado inteiro a cada envio, evitando
+    /// acumular versões antigas no histórico. O auto-fix dentro do turno continua em ambos os modos.
+    /// </summary>
+    public bool KeepHistory { get; set; } = true;
 
     public CadScriptChatSession(
         LlmOptions options,
@@ -84,11 +95,37 @@ public class CadScriptChatSession
     private void ResetHistory()
     {
         _history.Clear();
+        _turnStarts.Clear();
         _history.Add(new ChatMessage { Role = "system", Content = _protocol.GetSystemPrompt() });
+    }
+
+    /// <summary>
+    /// Remove um turno inteiro do histórico (a mensagem do usuário, a resposta da IA e quaisquer
+    /// pares de correção automática daquele turno), mantendo os demais turnos coerentes.
+    /// <paramref name="turnIndex"/> é a posição ordinal do turno (0 = primeiro turno ainda presente).
+    /// </summary>
+    public void DeleteTurn(int turnIndex)
+    {
+        if (turnIndex < 0 || turnIndex >= _turnStarts.Count) return;
+
+        int start = _turnStarts[turnIndex];
+        int end = turnIndex + 1 < _turnStarts.Count ? _turnStarts[turnIndex + 1] : _history.Count;
+        int removed = end - start;
+
+        _history.RemoveRange(start, removed);
+        _turnStarts.RemoveAt(turnIndex);
+        for (int i = turnIndex; i < _turnStarts.Count; i++)
+        {
+            _turnStarts[i] -= removed;
+        }
     }
 
     public async Task<CadScriptTurnResult> SendAsync(string instruction, CadScriptContext context, CancellationToken cancellationToken = default)
     {
+        // Modo stateless: descarta turnos anteriores; cada envio = system + arquivos atuais + pedido.
+        if (!KeepHistory) ResetHistory();
+
+        _turnStarts.Add(_history.Count);
         _history.Add(new ChatMessage { Role = "user", Content = _protocol.BuildUserMessage(context, instruction) });
 
         int promptTokens = 0;
@@ -274,7 +311,7 @@ public class CadScriptChatSession
             return (null, "No DeepSeek API key configured. Set it in the AI chat panel (⚙ Settings) or via the DEEPSEEK_API_KEY environment variable.");
         }
 
-        var options = new LlmOptions { ApiKey = apiKey };
+        var options = new LlmOptions { ApiKey = apiKey, EnableThinkingMode = settings.EnableReasoning };
 
         string? baseUrl = !string.IsNullOrWhiteSpace(settings.BaseUrl)
             ? settings.BaseUrl

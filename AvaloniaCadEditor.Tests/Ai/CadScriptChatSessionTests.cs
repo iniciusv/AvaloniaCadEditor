@@ -139,6 +139,54 @@ public class CadScriptChatSessionTests
     }
 
     [Fact]
+    public async Task SendAsync_ComKeepHistoryFalse_NaoAcumulaTurnosEntreEnvios()
+    {
+        var session = new CadScriptChatSession(
+            FakeOptions(),
+            new CadScriptProtocol(),
+            new RoslynSceneEvaluator(),
+            send: (_, _, _) => Task.FromResult(new LlmResult { Content = $"```cadscript\n{ValidScript}\n```" }))
+        {
+            KeepHistory = false
+        };
+
+        await session.SendAsync("Crie uma caixa", new CadScriptContext(""));
+        await session.SendAsync("Crie outra caixa", new CadScriptContext(""));
+
+        // Stateless: cada envio recomeça do zero → só system + user + assistant do último turno.
+        session.History.Should().HaveCount(3);
+        session.History[0].Role.Should().Be("system");
+        session.History[1].Role.Should().Be("user");
+        session.History[2].Role.Should().Be("assistant");
+    }
+
+    [Fact]
+    public async Task SendAsync_ComKeepHistoryTrue_AcumulaTurnosEntreEnvios()
+    {
+        var session = new CadScriptChatSession(
+            FakeOptions(),
+            new CadScriptProtocol(),
+            new RoslynSceneEvaluator(),
+            send: (_, _, _) => Task.FromResult(new LlmResult { Content = $"```cadscript\n{ValidScript}\n```" }));
+
+        await session.SendAsync("Crie uma caixa", new CadScriptContext(""));
+        await session.SendAsync("Crie outra caixa", new CadScriptContext(""));
+
+        // Multi-round: system + (user+assistant) * 2.
+        session.History.Should().HaveCount(5);
+    }
+
+    [Fact]
+    public void LoadOptions_MapeiaEnableReasoningParaEnableThinkingMode()
+    {
+        var ligado = new FakeAiSettingsProvider(new AiSettings { ApiKey = "k", EnableReasoning = true });
+        CadScriptChatSession.LoadOptions(ligado).Options!.EnableThinkingMode.Should().BeTrue();
+
+        var desligado = new FakeAiSettingsProvider(new AiSettings { ApiKey = "k", EnableReasoning = false });
+        CadScriptChatSession.LoadOptions(desligado).Options!.EnableThinkingMode.Should().BeFalse();
+    }
+
+    [Fact]
     public void NewConversation_LimpaHistoricoMasMantemSystemPrompt()
     {
         var session = new CadScriptChatSession(

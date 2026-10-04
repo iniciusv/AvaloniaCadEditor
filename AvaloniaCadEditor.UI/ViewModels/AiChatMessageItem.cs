@@ -1,3 +1,5 @@
+using System;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
 using System.Windows.Input;
@@ -17,6 +19,29 @@ public class AiChatMessageItem : INotifyPropertyChanged
 
     public bool HasCode => !string.IsNullOrWhiteSpace(Code);
     public bool HasReasoning => !string.IsNullOrWhiteSpace(Reasoning);
+
+    /// <summary>Turno (par pergunta/resposta) a que este balão pertence; usado pela deleção.</summary>
+    public int TurnId { get; init; }
+
+    private IReadOnlyList<AiSentContextItem> _sentContext = Array.Empty<AiSentContextItem>();
+
+    /// <summary>O contexto (arquivos + sólidos) enviado à IA neste turno; preenchido no balão do usuário.</summary>
+    public IReadOnlyList<AiSentContextItem> SentContext
+    {
+        get => _sentContext;
+        set { _sentContext = value; OnPropertyChanged(); OnPropertyChanged(nameof(HasSentContext)); }
+    }
+
+    public bool HasSentContext => SentContext.Count > 0;
+
+    private ICommand? _deleteCommand;
+    public ICommand? DeleteCommand
+    {
+        get => _deleteCommand;
+        set { _deleteCommand = value; OnPropertyChanged(); OnPropertyChanged(nameof(CanDelete)); }
+    }
+
+    public bool CanDelete => _deleteCommand != null;
 
     private bool? _isValid;
 

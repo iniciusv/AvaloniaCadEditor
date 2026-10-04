@@ -38,6 +38,9 @@ public class AiChatViewModel : INotifyPropertyChanged
     private readonly AiContextAdjustments _contextAdjustments = new();
     private string? _contextProjectName;
 
+    // Id crescente do turno (par pergunta/resposta), usado para deletar o turno inteiro.
+    private int _nextTurnId;
+
     public ObservableCollection<AiChatMessageItem> Messages { get; } = new();
 
     /// <summary>Arquivos que irão, com o código completo, na próxima mensagem à IA.</summary>
@@ -142,6 +145,22 @@ public class AiChatViewModel : INotifyPropertyChanged
         set { _baseUrlInput = value; OnPropertyChanged(); }
     }
 
+    private bool _keepHistoryInput = true;
+    /// <summary>Multi-round: manter o histórico da conversa entre turnos (aplicado ao salvar as configurações).</summary>
+    public bool KeepHistoryInput
+    {
+        get => _keepHistoryInput;
+        set { _keepHistoryInput = value; OnPropertyChanged(); }
+    }
+
+    private bool _enableReasoningInput;
+    /// <summary>Reasoning/thinking mode (aplicado ao salvar as configurações).</summary>
+    public bool EnableReasoningInput
+    {
+        get => _enableReasoningInput;
+        set { _enableReasoningInput = value; OnPropertyChanged(); }
+    }
+
     private string _inputText = string.Empty;
     public string InputText
     {
@@ -190,6 +209,8 @@ public class AiChatViewModel : INotifyPropertyChanged
         _selectedModelOption = ResolveModelOption(ModelOptions, settings.Model);
         _modelInput = _selectedModelOption.ModelId;
         _baseUrlInput = settings.BaseUrl;
+        _keepHistoryInput = settings.KeepConversationHistory;
+        _enableReasoningInput = settings.EnableReasoning;
 
         InitializeSession();
 
@@ -199,6 +220,7 @@ public class AiChatViewModel : INotifyPropertyChanged
         {
             _session?.NewConversation();
             Messages.Clear();
+            _nextTurnId = 0;
             _contextAdjustments.Reset();
             RefreshContextFiles();
         }, () => IsAvailable && !IsBusy);
@@ -270,6 +292,69 @@ public class AiChatViewModel : INotifyPropertyChanged
         RefreshContextFiles();
     }
 
+    /// <summary>O que foi enviado à IA neste turno (arquivos de contexto + sólidos selecionados), para registro no balão.</summary>
+    private IReadOnlyList<AiSentContextItem> BuildSentContextSnapshot(CadScriptContext context)
+    {
+        var items = new List<AiSentContextItem>();
+
+        foreach (var chip in ContextFiles)
+        {
+            items.Add(new AiSentContextItem(chip.DisplayName, chip.ToolTip, isSolid: false));
+        }
+
+        var solids = context.Scope?.SelectedFeatures;
+        if (solids is { Count: > 0 })
+        {
+            foreach (var solid in solids)
+            {
+                items.Add(new AiSentContextItem(FirstToken(solid), solid, isSolid: true));
+            }
+        }
+        else if (!string.IsNullOrWhiteSpace(context.SelectedFeatureName))
+        {
+            items.Add(new AiSentContextItem(FirstToken(context.SelectedFeatureName!), context.SelectedFeatureName!, isSolid: true));
+        }
+
+        return items;
+    }
+
+    /// <summary>O nome curto de uma descrição de sólido (ex.: "trilho_a (peça...) — Cena.cs" → "trilho_a").</summary>
+    private static string FirstToken(string description)
+    {
+        string trimmed = description.Trim();
+        int space = trimmed.IndexOf(' ');
+        return space > 0 ? trimmed[..space] : trimmed;
+    }
+
+    /// <summary>Apaga o turno inteiro (pergunta + resposta) dos balões e do histórico da API.</summary>
+    private void DeleteTurn(int turnId)
+    {
+        if (IsBusy) return;
+
+        // Posição ordinal do turno entre os turnos ainda presentes (= índice no histórico da sessão).
+        int position = Messages
+            .Where(m => m.IsUser)
+            .Select(m => m.TurnId)
+            .Distinct()
+            .TakeWhile(id => id != turnId)
+            .Count();
+
+        bool removedAny = false;
+        for (int i = Messages.Count - 1; i >= 0; i--)
+        {
+            if (Messages[i].TurnId == turnId)
+            {
+                Messages.RemoveAt(i);
+                removedAny = true;
+            }
+        }
+
+        if (removedAny)
+        {
+            _session?.DeleteTurn(position);
+        }
+    }
+
     /// <summary>A conversa inteira (prompts e respostas) como texto, para debug.</summary>
     public string GetConversationText() =>
         string.Join("\n\n", Messages.Select(m => m.ToClipboardText(includeRole: true)));
@@ -287,6 +372,7 @@ public class AiChatViewModel : INotifyPropertyChanged
             {
                 _session.UpdateOptions(options);
             }
+            _session.KeepHistory = _settingsProvider.GetSettings().KeepConversationHistory;
             ModelName = ResolveModelOption(ModelOptions, options.Model).DisplayName;
             ConfigError = null;
         }
@@ -308,11 +394,17 @@ public class AiChatViewModel : INotifyPropertyChanged
         {
             ApiKey = ApiKeyInput.Trim(),
             Model = ModelInput.Trim(),
-            BaseUrl = BaseUrlInput.Trim()
+            BaseUrl = BaseUrlInput.Trim(),
+            KeepConversationHistory = KeepHistoryInput,
+            EnableReasoning = EnableReasoningInput
         };
         _settingsProvider.SaveSettings(settings);
 
+        // Trocar de modo (ex.: multi-round ↔ stateless) reinicia a conversa para manter Messages e o
+        // histórico da API em sincronia.
+        _session?.NewConversation();
         Messages.Clear();
+        _nextTurnId = 0;
         InitializeSession();
         IsSettingsOpen = false;
     }
@@ -331,8 +423,11 @@ public class AiChatViewModel : INotifyPropertyChanged
         string instruction = InputText.Trim();
         InputText = string.Empty;
 
-        Messages.Add(new AiChatMessageItem(isUser: true, text: instruction));
-        var thinking = new AiChatMessageItem(isUser: false, text: "Thinking...");
+        int turnId = _nextTurnId++;
+        var userItem = new AiChatMessageItem(isUser: true, text: instruction) { TurnId = turnId };
+        userItem.DeleteCommand = new RelayCommand(() => DeleteTurn(turnId), () => !IsBusy);
+        Messages.Add(userItem);
+        var thinking = new AiChatMessageItem(isUser: false, text: "Thinking...") { TurnId = turnId };
         Messages.Add(thinking);
 
         IsBusy = true;
@@ -341,6 +436,7 @@ public class AiChatViewModel : INotifyPropertyChanged
         {
             RefreshContextFiles();
             var context = _contextBuilder.Build(CurrentContextRequest());
+            userItem.SentContext = BuildSentContextSnapshot(context);
 
             var result = await _session.SendAsync(instruction, context, _cts.Token);
 
@@ -351,7 +447,11 @@ public class AiChatViewModel : INotifyPropertyChanged
                 ? result.Code
                 : changes.Count == 0 ? null : string.Join("\n\n", changes.Select(c => $"// ===== {c.FilePath} =====\n{c.Text}"));
 
-            var item = new AiChatMessageItem(isUser: false, text: result.ChatText, code: code, reasoning: result.Reasoning);
+            var item = new AiChatMessageItem(isUser: false, text: result.ChatText, code: code, reasoning: result.Reasoning)
+            {
+                TurnId = turnId,
+                DeleteCommand = new RelayCommand(() => DeleteTurn(turnId), () => !IsBusy)
+            };
             if (code != null)
             {
                 item.IsValid = result.IsValid;
@@ -378,12 +478,20 @@ public class AiChatViewModel : INotifyPropertyChanged
         catch (OperationCanceledException)
         {
             Messages.Remove(thinking);
-            Messages.Add(new AiChatMessageItem(isUser: false, text: "Cancelled."));
+            Messages.Add(new AiChatMessageItem(isUser: false, text: "Cancelled.")
+            {
+                TurnId = turnId,
+                DeleteCommand = new RelayCommand(() => DeleteTurn(turnId), () => !IsBusy)
+            });
         }
         catch (Exception ex)
         {
             Messages.Remove(thinking);
-            Messages.Add(new AiChatMessageItem(isUser: false, text: $"Error talking to the AI: {ex.Message}"));
+            Messages.Add(new AiChatMessageItem(isUser: false, text: $"Error talking to the AI: {ex.Message}")
+            {
+                TurnId = turnId,
+                DeleteCommand = new RelayCommand(() => DeleteTurn(turnId), () => !IsBusy)
+            });
         }
         finally
         {
