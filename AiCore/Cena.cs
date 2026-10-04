@@ -43,13 +43,22 @@ var placaSuporteYB = Add(placaSuporteCarrinhoYPeca with { EspelhadoNoEixoY = tru
     name: "placa_suporte_carrinho_y_b", color: "#00CC6A");
 var trilhoX = Add(trilhoXPeca, at: Placement.At(-trilhoXPeca.Comprimento / 2, trilhoXPeca.Largura / 2, alturaTopoCarrinhosY, rotationZDegrees: -90), name: "trilho_mgn9_x");
 var carrinhoX = Add(carrinhoXPeca, at: Placement.At(-carrinhoXPeca.Comprimento / 2, carrinhoXPeca.Largura / 2, alturaTopoCarrinhosY, rotationZDegrees: -90), name: "carrinho_mgn9c_x");
+// --- Lados da extrusora e do motor em relação ao trilho X (plano Y = 0) ---
+// Os dois subconjuntos ficam em lados opostos do trilho. Trocar os dois sinais abaixo inverte
+// um pelo outro; a rotação de 180° em Z acompanha o sinal, porque as peças são simétricas em X
+// e precisam continuar voltadas para o trilho depois de mudar de lado.
+const double ladoExtrusoraY = 1;    // extrusora em +Y
+const double ladoMotorY = -1;       // motor (e bloco da correia) em -Y
+var rotacaoExtrusoraZ = ladoExtrusoraY > 0 ? 180.0 : 0.0;
+var rotacaoMotorZ = ladoMotorY > 0 ? 0.0 : 180.0;
 // --- Hotend V6, pendurado sob o carrinho X ---
 var alturaHotend = hotendPeca.AlturaBico + hotendPeca.AlturaBloco + hotendPeca.AlturaPescoco + hotendPeca.AlturaHeatsink;
-var hotend = Add(hotendPeca, at: Placement.At(0, -23, alturaTopoCarrinhosY - alturaHotend + 10), name: "hotend_v6");
+var hotend = Add(hotendPeca, at: Placement.At(0, ladoExtrusoraY * 23, alturaTopoCarrinhosY - alturaHotend + 10, rotationZDegrees: rotacaoExtrusoraZ), name: "hotend_v6");
 // --- Bloco impresso para fixação ao carrinho MGN9C ---
+// Simétrico em Y (alojamentos de porca frontal e traseiro), então não muda com a inversão.
 var blocoFixacao = Add(blocoFixacaoPeca, at: Placement.At(0, 0, alturaTopoCarrinhosY + carrinhoXPeca.Altura), name: "bloco_fixacao_mgn9", color: "#00CC6A");
 // --- Suporte impresso do Hotend V6 ---
-var suporteHotend = Add(suporteHotendPeca, at: Placement.At(0, -blocoFixacaoPeca.Comprimento / 2, alturaTopoCarrinhosY + carrinhoXPeca.Altura), name: "suporte_hotend_v6", color: "#00CC6A");
+var suporteHotend = Add(suporteHotendPeca, at: Placement.At(0, ladoExtrusoraY * blocoFixacaoPeca.Comprimento / 2, alturaTopoCarrinhosY + carrinhoXPeca.Altura, rotationZDegrees: rotacaoExtrusoraZ), name: "suporte_hotend_v6", color: "#00CC6A");
 // --- Extrusões de alumínio 2020: estrutura de apoio dos trilhos ---
 // Mais longas que os trilhos Y (300 mm) — os trilhos ficam centralizados nelas.
 var extrusaoSobTrilhoYPeca = new Extrusao2020(Comprimento: 300);
@@ -61,25 +70,45 @@ var folgaComprimentoY = (extrusaoSobTrilhoYPeca.Comprimento - trilhoYPeca.Compri
 var extrusaoSobTrilhoYA = Add(extrusaoSobTrilhoYPeca, at: Placement.At(trilhoYAX + trilhoYPeca.Largura / 2 - extrusaoSobTrilhoYPeca.Largura / 2, trilhoYAY - folgaComprimentoY, -extrusaoSobTrilhoYPeca.Altura), name: "extrusao_2020_sob_trilho_y_a");
 var extrusaoSobTrilhoYB = Add(extrusaoSobTrilhoYPeca, at: Placement.At(trilhoYBX + trilhoYPeca.Largura / 2 - extrusaoSobTrilhoYPeca.Largura / 2, trilhoYBY - folgaComprimentoY, -extrusaoSobTrilhoYPeca.Altura), name: "extrusao_2020_sob_trilho_y_b");
 var extrusaoSobTrilhoX = Add(extrusaoSobTrilhoXPeca with { Comprimento = 208 }, at: Placement.At(-extrusaoSobTrilhoXPeca.Comprimento / 2 - 11, extrusaoSobTrilhoXPeca.Largura / 2, alturaTopoCarrinhosY - extrusaoSobTrilhoXPeca.Altura, rotationZDegrees: -90), name: "extrusao_2020_sob_trilho_x");
+// --- Cantoneira impressa que amarra a placa do carrinho Y ao perfil 2020 transversal ---
+// Origem na interseção de três planos da montagem: face interna da placa A (a placa é girada
+// 180°, logo sua face local x = -16 vira +16), face lateral -Y do perfil (é para esse lado que
+// apontam os furos com porca da placa) e meia-altura do perfil, que é a altura do rasgo T.
+// O bloco_conexao_motor_2020 usa a mesma face, mas no centro do perfil (X de -20 a 20), longe
+// da faixa desta cantoneira.
+// A do lado B é a imagem especular da do lado A (cresce em -X a partir da face daquela placa).
+var cantoneiraPlacaExtrusaoPeca = new CantoneiraPlacaExtrusao2020();
+var xFaceInternaPlacaA = centroXTrilhoA - 12.5 + 16;
+var xFaceInternaPlacaB = centroXTrilhoB + 12.5 - 16;
+var yFaceFrontalExtrusaoX = -extrusaoSobTrilhoXPeca.Largura / 2;
+var zMeioExtrusaoX = alturaTopoCarrinhosY - extrusaoSobTrilhoXPeca.Altura / 2;
+var cantoneiraPlacaExtrusaoA = Add(cantoneiraPlacaExtrusaoPeca,
+    at: Placement.At(xFaceInternaPlacaA, yFaceFrontalExtrusaoX, zMeioExtrusaoX),
+    name: "cantoneira_placa_extrusao_a", color: "#00CC6A");
+var cantoneiraPlacaExtrusaoB = Add(cantoneiraPlacaExtrusaoPeca with { EspelhadoNoEixoX = true },
+    at: Placement.At(xFaceInternaPlacaB, yFaceFrontalExtrusaoX, zMeioExtrusaoX),
+    name: "cantoneira_placa_extrusao_b", color: "#00CC6A");
 // --- Motor NEMA17, montado mais baixo, ao lado do carrinho X, apoiado em cima da extrusão 2020 ---
 var topoExtrusaoSobTrilhoX = alturaTopoCarrinhosY;
 // Centralizado no perfil de alumínio 2020 (extrusao_2020_sob_trilho_x), cujo centro em X é 0.
 var xMotorNema17 = 0;
 // com o blocoConexaoMotorPeca de 8 mm de profundidade encaixado entre a extrusão e o suporte;
-// a placa avança para fora dela (lado livre), de modo que o motor (pendurado por baixo da placa)
-// fique ao lado da extrusão, não sobre ela.
-var faceLivreYExtrusaoSobTrilhoX = extrusaoSobTrilhoXPeca.Largura / 2;
-var yBlocoConexao = faceLivreYExtrusaoSobTrilhoX + blocoConexaoMotorPeca.Profundidade / 2;
+// a placa avança para fora dela (lado do motor), de modo que o motor (pendurado por baixo da
+// placa) fique ao lado da extrusão, não sobre ela.
+var faceLateralYExtrusaoSobTrilhoX = extrusaoSobTrilhoXPeca.Largura / 2;
+var yBlocoConexao = ladoMotorY * (faceLateralYExtrusaoSobTrilhoX + blocoConexaoMotorPeca.Profundidade / 2);
 var zBlocoConexao = topoExtrusaoSobTrilhoX - extrusaoSobTrilhoXPeca.Altura;
-var blocoConexaoMotor = Add(blocoConexaoMotorPeca, at: Placement.At(xMotorNema17, yBlocoConexao, zBlocoConexao), name: "bloco_conexao_motor_2020", color: "#00CC6A");
-var yMotorSuporte = faceLivreYExtrusaoSobTrilhoX + blocoConexaoMotorPeca.Profundidade + suporteMotorNema17Peca.ComprimentoFrente;
+var blocoConexaoMotor = Add(blocoConexaoMotorPeca, at: Placement.At(xMotorNema17, yBlocoConexao, zBlocoConexao, rotationZDegrees: rotacaoMotorZ), name: "bloco_conexao_motor_2020", color: "#00CC6A");
+var yMotorSuporte = ladoMotorY * (faceLateralYExtrusaoSobTrilhoX + blocoConexaoMotorPeca.Profundidade + suporteMotorNema17Peca.ComprimentoFrente);
 var zSuporteMotor = zBlocoConexao + blocoConexaoMotorPeca.AlturaFurosSuporteZ - suporteMotorNema17Peca.Espessura / 2.0;
-var suporteMotorNema17 = Add(suporteMotorNema17Peca with { LarguraPorcaLateral = 5.83 }, at: Placement.At(xMotorNema17, yMotorSuporte, zSuporteMotor), name: "suporte_motor_nema17", color: "#00CC6A");
+var suporteMotorNema17 = Add(suporteMotorNema17Peca with { LarguraPorcaLateral = 5.83 }, at: Placement.At(xMotorNema17, yMotorSuporte, zSuporteMotor, rotationZDegrees: rotacaoMotorZ), name: "suporte_motor_nema17", color: "#00CC6A");
 // Motor voltado para cima (eixo em +Z, orientação normal da peça), mas pendurado por baixo do
 // suporte: os furos de fixação do motor ficam na face de cima (lado do eixo/boss), então é essa
 // face que precisa encostar na base do suporte — o corpo do motor fica por baixo, pendurado, e o
 // eixo sobe através do furo de alívio central, se projetando por cima do suporte.
 var alturaMontagemMotor = zSuporteMotor - motorNema17Peca.Comprimento;
-var motorNema17 = Add(motorNema17Peca, at: Placement.At(xMotorNema17, yMotorSuporte, alturaMontagemMotor), name: "motor_nema17");
+var motorNema17 = Add(motorNema17Peca, at: Placement.At(xMotorNema17, yMotorSuporte, alturaMontagemMotor, rotationZDegrees: rotacaoMotorZ), name: "motor_nema17");
 // --- Bloco de pressao da correia (belt), fixado na lateral do bloco_fixacao_mgn9 ---
-var blocoFixacaoBelt = Add(new BlocoFixacaoBelt(), at: Placement.At(0, 0, alturaTopoCarrinhosY + carrinhoXPeca.Altura), name: "bloco_fixacao_belt", color: "#00CC6A");
+// Acompanha o lado do motor: a correia vem da polia e o rebaixo inferior do bloco existe
+// justamente para passar livre do bloco_conexao_motor_2020.
+var blocoFixacaoBelt = Add(new BlocoFixacaoBelt(), at: Placement.At(0, 0, alturaTopoCarrinhosY + carrinhoXPeca.Altura, rotationZDegrees: rotacaoMotorZ), name: "bloco_fixacao_belt", color: "#00CC6A");
