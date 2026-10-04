@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
+using System.Linq;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.Profiles;
 using AvaloniaCadEditor.Domain.ValueObjects;
@@ -195,6 +196,96 @@ public class OpenCascadeKernelTests
         double volume = MeshVolumeCalculator.ComputeVolume(mesh);
 
         volume.Should().BeApproximately(1760.0, 1760.0 * 0.01);
+    }
+
+    // --- ConeFeature: tronco de cone por revolução exata ---
+    // A lateral é uma superfície cônica de verdade, então a malha é um polígono INSCRITO de N lados
+    // e o volume medido fica abaixo do exato. N vem do piso de facetas de TessellateShape
+    // (ProfileSegments = 32), o que dá k = (N/2π)·sin(2π/N) = 0,9968 → 0,32% abaixo, dentro da
+    // tolerância de 1% usada aqui. Sem esse piso, a deflexão padrão daria 13-23 facetas e 1,2-3,8%.
+
+    [Fact]
+    public void TroncoDeCone_VolumeDeveSerExato()
+    {
+        var cone = new ConeFeature(Point3D.Origin, new Vector3D(0, 0, 1), bottomRadius: 10, topRadius: 5, height: 20);
+        var kernel = new OpenCascadeGeometryKernel();
+
+        double volume = MeshVolumeCalculator.ComputeVolume(kernel.BuildFeatureMesh(cone));
+        double expected = Math.PI * 20 / 3.0 * (10 * 10 + 10 * 5 + 5 * 5);
+
+        volume.Should().BeApproximately(expected, expected * 0.01);
+    }
+
+    [Fact]
+    public void ConeCompleto_TopRadiusZero_VolumeDeveSerExato()
+    {
+        // O ápice entra como UM ponto só no perfil; repetir (0, h) daria uma aresta de comprimento zero.
+        var cone = new ConeFeature(Point3D.Origin, new Vector3D(0, 0, 1), bottomRadius: 10, topRadius: 0, height: 20);
+        var kernel = new OpenCascadeGeometryKernel();
+
+        double volume = MeshVolumeCalculator.ComputeVolume(kernel.BuildFeatureMesh(cone));
+        double expected = Math.PI * 10 * 10 * 20 / 3.0;
+
+        volume.Should().BeApproximately(expected, expected * 0.01);
+    }
+
+    [Fact]
+    public void ConeComRaiosIguais_TemOVolumeDeUmCilindro()
+    {
+        // Conferência independente: se o revolve tivesse gerado um ANEL em vez de um sólido
+        // (perfil que não encosta no eixo), este número sairia inconfundivelmente errado.
+        var cone = new ConeFeature(Point3D.Origin, new Vector3D(0, 0, 1), bottomRadius: 6, topRadius: 6, height: 15);
+        var kernel = new OpenCascadeGeometryKernel();
+
+        double volume = MeshVolumeCalculator.ComputeVolume(kernel.BuildFeatureMesh(cone));
+        double expected = Math.PI * 6 * 6 * 15;
+
+        volume.Should().BeApproximately(expected, expected * 0.01);
+    }
+
+    [Fact]
+    public void CaixaMenosCone_FuroEscareado_VolumeDeveSerExato()
+    {
+        var chapa = new BoxFeature(new Point3D(0, 0, 0), width: 40, length: 40, height: 10);
+        var escareado = new ConeFeature(new Point3D(20, 20, 10), new Vector3D(0, 0, -1), bottomRadius: 6, topRadius: 3, height: 4);
+        var cut = BooleanFeature.CreateDifference("Escareado", chapa, escareado);
+        var kernel = new OpenCascadeGeometryKernel();
+
+        double volume = MeshVolumeCalculator.ComputeVolume(kernel.BuildFeatureMesh(cut));
+        double expected = 40 * 40 * 10 - Math.PI * 4 / 3.0 * (6 * 6 + 6 * 3 + 3 * 3);
+
+        volume.Should().BeApproximately(expected, expected * 0.01);
+    }
+
+    [Fact]
+    public void ConeGirado_ComoFeatureTransformada_MantemOVolumeEMudaDeLugar()
+    {
+        // O único teste que exercita o 'transform' de BuildCone. Um revolve feito em torno do eixo
+        // NÃO transformado pode ter o volume certo e estar na orientação errada — daí a asserção
+        // de posição: depois de girar 90° em torno de X, o ápice tem que ir de +Z para -Y.
+        var cone = new ConeFeature(Point3D.Origin, new Vector3D(0, 0, 1), bottomRadius: 8, topRadius: 0, height: 20);
+        var kernel = new OpenCascadeGeometryKernel();
+
+        double originalVolume = MeshVolumeCalculator.ComputeVolume(kernel.BuildFeatureMesh(cone));
+        originalVolume.Should().BeApproximately(Math.PI * 8 * 8 * 20 / 3.0, Math.PI * 8 * 8 * 20 / 3.0 * 0.01);
+
+        var girado = cone.Transformed(Placement.RotationAbout(Point3D.Origin, Vector3D.UnitX, 90));
+        var mesh = kernel.BuildFeatureMesh(girado);
+
+        MeshVolumeCalculator.ComputeVolume(mesh).Should().BeApproximately(originalVolume, originalVolume * 0.02);
+
+        var ys = mesh.Positions.Where((_, i) => i % 3 == 1).ToList();
+        ys.Min().Should().BeApproximately(-20f, 0.1f, "o ápice foi de +Z para -Y");
+        ys.Max().Should().BeApproximately(0f, 0.1f, "a base ficou no plano y = 0");
+    }
+
+    [Fact]
+    public void ConeDegenerado_AlturaZero_DevolveMalhaVaziaSemExcecao()
+    {
+        var cone = new ConeFeature(Point3D.Origin, new Vector3D(0, 0, 1), bottomRadius: 10, topRadius: 5, height: 0);
+        var kernel = new OpenCascadeGeometryKernel();
+
+        kernel.BuildFeatureMesh(cone).VertexCount.Should().Be(0);
     }
 
     // --- TransformedFeature: copiar/girar/mover uma feature solta (ver prism_60e9 do usuário) ---

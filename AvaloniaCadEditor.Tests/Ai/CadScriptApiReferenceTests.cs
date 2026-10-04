@@ -1,4 +1,4 @@
-using AvaloniaCadEditor.Application.Ai;
+﻿using AvaloniaCadEditor.Application.Ai;
 using FluentAssertions;
 using Xunit;
 
@@ -13,6 +13,7 @@ public class CadScriptApiReferenceTests
 
         reference.Should().Contain("new BoxFeature(");
         reference.Should().Contain("new CylinderFeature(");
+        reference.Should().Contain("new ConeFeature(");
         reference.Should().Contain("new PrismFeature(");
         reference.Should().Contain("new FilletFeature(");
     }

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Text;
 using System.Text.RegularExpressions;
@@ -44,6 +44,17 @@ public class CadScriptProtocol : IAiProtocol<CadScriptContext, CadScriptChanges>
         AddFeature(hole_5678);
         var boolOp_9abc = BooleanFeature.CreateDifference("boolOp_9abc", box_1234, hole_5678);
         AddFeature(boolOp_9abc);
+        """,
+
+        // Furo escareado: cone truncado subtraído a partir da face de cima (topRadius menor = fundo do furo).
+        // ConeFeature cobre cone completo (topRadius: 0), tronco de cone e chanfro cônico de furo.
+        """
+        var chapa_a1 = new BoxFeature(baseCorner: new Point3D(0, 0, 0), width: 40, length: 40, height: 10) { Name = "chapa_a1" };
+        AddFeature(chapa_a1);
+        var escareado_b2 = new ConeFeature(globalBaseCenter: new Point3D(20, 20, 10), globalDirection: new Vector3D(0, 0, -1), bottomRadius: 6, topRadius: 3, height: 4) { Name = "escareado_b2", IsTransientTool = true };
+        AddFeature(escareado_b2);
+        var boolOp_c3 = BooleanFeature.CreateDifference("boolOp_c3", chapa_a1, escareado_b2);
+        AddFeature(boolOp_c3);
         """,
 
         // Fillet (arredondamento) em todas as arestas de uma caixa

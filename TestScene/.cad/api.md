@@ -48,6 +48,19 @@ Propriedades comuns a TODAS as features (herdadas de FeatureBase):
   FaceType? GetFaceTypeFromNormal(Vector3D normal)
   IReadOnlyList<Point3D> GetVertices()
 
+### ConeFeature : FeatureBase
+  new ConeFeature(Point3D globalBaseCenter, Vector3D globalDirection, double bottomRadius, double topRadius, double height, string? name = null)
+  Point3D GlobalBaseCenter { get; set; }
+  Vector3D GlobalDirection { get; set; }
+  double BottomRadius { get; set; }
+  double TopRadius { get; set; }
+  double Height { get; set; }
+  bool IsFullCone { get; }
+  Point3D GetFaceCenter(FaceType faceType)
+  Vector3D GetFaceNormal(FaceType faceType)
+  FaceType? GetFaceTypeFromNormal(Vector3D normal)
+  IReadOnlyList<Point3D> GetVertices()
+
 ### PrismFeature : FeatureBase
   new PrismFeature(IEnumerable<Point3D> vertices, double height, WorkPlane? plane = null, string? name = null)
   IReadOnlyList<Point3D> Vertices { get; }
@@ -194,8 +207,8 @@ Métodos globais disponíveis no código da cena:
 - Nomes de variáveis são únicos, curtos e em snake_case (ex.: box_a1, hole_b2, fillet_c3).
 - SÓLIDOS RASTREÁVEIS POR NOME: variáveis, const, arrays, laços e funções locais podem ser usados
   para CALCULAR valores (posições, diâmetros, passos), mas cada sólido (BoxFeature, CylinderFeature,
-  PrismFeature, ExtrudeFeature, FilletFeature, BooleanFeature...) deve ser criado numa declaração
-  própria, com Name LITERAL igual ao nome da variável e único no arquivo:
+  ConeFeature, PrismFeature, ExtrudeFeature, FilletFeature, BooleanFeature...) deve ser criado numa
+  declaração própria, com Name LITERAL igual ao nome da variável e único no arquivo:
   var furo_1 = new CylinderFeature(...) { Name = "furo_1" };
 - NUNCA crie sólidos dentro de laços, LINQ (Select(... new CylinderFeature ...)) ou listas montadas
   dinamicamente, e NUNCA use nome interpolado ou concatenado ($"furo_{i}", "furo_" + i). Para N

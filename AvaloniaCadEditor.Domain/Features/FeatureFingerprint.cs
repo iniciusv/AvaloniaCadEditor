@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
@@ -42,6 +42,7 @@ public static class FeatureFingerprint
         {
             BoxFeature box => AppendBox(sb, box),
             CylinderFeature cylinder => AppendCylinder(sb, cylinder),
+            ConeFeature cone => AppendCone(sb, cone),
             PrismFeature prism => AppendPrism(sb, prism),
             BooleanFeature boolean => AppendBoolean(sb, boolean),
             FilletFeature fillet => AppendFillet(sb, fillet),
@@ -73,6 +74,16 @@ public static class FeatureFingerprint
         AppendVector(sb, cylinder.GlobalDirection);
         AppendDouble(sb, cylinder.Radius);
         AppendDouble(sb, cylinder.Height);
+        return true;
+    }
+
+    private static bool AppendCone(StringBuilder sb, ConeFeature cone)
+    {
+        AppendPoint(sb, cone.GlobalBaseCenter);
+        AppendVector(sb, cone.GlobalDirection);
+        AppendDouble(sb, cone.BottomRadius);
+        AppendDouble(sb, cone.TopRadius);
+        AppendDouble(sb, cone.Height);
         return true;
     }
 

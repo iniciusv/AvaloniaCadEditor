@@ -1,4 +1,4 @@
-namespace AvaloniaCadEditor.Application.Ai;
+﻿namespace AvaloniaCadEditor.Application.Ai;
 
 /// <summary>
 /// Fonte única das regras e dos exemplos do "CadScript" — o sub-dialeto de C# usado para descrever
@@ -31,8 +31,8 @@ public static class CadScriptRules
         """
         - SÓLIDOS RASTREÁVEIS POR NOME: variáveis, const, arrays, laços e funções locais podem ser usados
           para CALCULAR valores (posições, diâmetros, passos), mas cada sólido (BoxFeature, CylinderFeature,
-          PrismFeature, ExtrudeFeature, FilletFeature, BooleanFeature...) deve ser criado numa declaração
-          própria, com Name LITERAL igual ao nome da variável e único no arquivo:
+          ConeFeature, PrismFeature, ExtrudeFeature, FilletFeature, BooleanFeature...) deve ser criado numa
+          declaração própria, com Name LITERAL igual ao nome da variável e único no arquivo:
           var furo_1 = new CylinderFeature(...) { Name = "furo_1" };
         - NUNCA crie sólidos dentro de laços, LINQ (Select(... new CylinderFeature ...)) ou listas montadas
           dinamicamente, e NUNCA use nome interpolado ou concatenado ($"furo_{i}", "furo_" + i). Para N

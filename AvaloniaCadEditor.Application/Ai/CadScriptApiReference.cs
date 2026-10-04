@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
@@ -23,6 +23,7 @@ public static class CadScriptApiReference
     {
         typeof(BoxFeature),
         typeof(CylinderFeature),
+        typeof(ConeFeature),
         typeof(PrismFeature),
         typeof(BooleanFeature),
         typeof(FilletFeature)

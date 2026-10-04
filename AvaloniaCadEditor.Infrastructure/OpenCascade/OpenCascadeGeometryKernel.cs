@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using AvaloniaCadEditor.Application.Interfaces;
@@ -186,6 +186,10 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             {
                 result = BuildCylinder(cyl, settings, transform);
             }
+            else if (feature is ConeFeature cone && cone.IsEnabled)
+            {
+                result = BuildCone(cone, settings, transform);
+            }
             else if (feature is BoxFeature box && box.IsEnabled)
             {
                 result = BuildBox(box, settings, transform);
@@ -284,19 +288,97 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         return local.Translate(new OcctVector3d(t.X, t.Y, t.Z));
     }
 
-    private OcctShape CreateCylinderCutter(CylinderFeature cyl, double filletRadius, bool isTop, bool isRound, TessellationSettings settings)
+    /// <summary>
+    /// Revolve 360° um perfil 2D (r = distância ao eixo, z = altura ao longo do eixo) em torno do
+    /// eixo (<paramref name="origin"/>, <paramref name="dir"/>). O perfil é fechado implicitamente
+    /// (o último ponto liga no primeiro) e PODE encostar no eixo (r = 0): uma aresta sobre o eixo é
+    /// invariante pela rotação e o OCCT não gera face para ela — é assim que sai o ápice de um cone
+    /// em <see cref="BuildCone"/>. Um perfil que NÃO encosta no eixo gera um anel, que é o que
+    /// <see cref="CreateCylinderCutter"/> quer.
+    /// </summary>
+    private static OcctShape RevolveProfile(IReadOnlyList<(double r, double z)> points2D, Point3D origin, Vector3D dir)
     {
-        var origin = cyl.GlobalBaseCenter;
-        var dir = cyl.GlobalDirection;
-        
+        // Um vetor qualquer perpendicular ao eixo: é o "r" do perfil levado para o espaço.
         Vector3D u;
         if (Math.Abs(dir.X) > 0.1 || Math.Abs(dir.Y) > 0.1)
             u = new Vector3D(-dir.Y, dir.X, 0);
         else
             u = new Vector3D(1, 0, 0);
-            
+
         double uLen = Math.Sqrt(u.X * u.X + u.Y * u.Y + u.Z * u.Z);
         u = new Vector3D(u.X / uLen, u.Y / uLen, u.Z / uLen);
+
+        var vertices = new System.Collections.Generic.List<Point3D>();
+        foreach (var p in points2D)
+        {
+            vertices.Add(new Point3D(
+                origin.X + u.X * p.r + dir.X * p.z,
+                origin.Y + u.Y * p.r + dir.Y * p.z,
+                origin.Z + u.Z * p.r + dir.Z * p.z
+            ));
+        }
+
+        // Pontos coincidentes consecutivos (ex.: o ápice, que é topo e eixo ao mesmo tempo) virariam
+        // uma aresta de comprimento zero. 1e-9, e não o 1e-5 de BuildExtrude: num fillet de raio
+        // pequeno os pontos do cutter podem estar legitimamente a menos de 1e-5 um do outro, e
+        // mesclá-los corromperia o perfil do chanfro.
+        for (int i = vertices.Count - 1; i > 0; i--)
+        {
+            if (vertices[i].DistanceTo(vertices[i - 1]) < 1e-9) vertices.RemoveAt(i);
+        }
+        if (vertices.Count > 1 && vertices[0].DistanceTo(vertices[^1]) < 1e-9) vertices.RemoveAt(vertices.Count - 1);
+        if (vertices.Count < 3) return null;
+
+        // Calculate polygon normal using Newell's method to check winding order
+        double nx = 0, ny = 0, nz = 0;
+        int n = vertices.Count;
+        for (int i = 0; i < n; i++)
+        {
+            var p1 = vertices[i];
+            var p2 = vertices[(i + 1) % n];
+            nx += (p1.Y - p2.Y) * (p1.Z + p2.Z);
+            ny += (p1.Z - p2.Z) * (p1.X + p2.X);
+            nz += (p1.X - p2.X) * (p1.Y + p2.Y);
+        }
+
+        // Cross product of u and dir gives the normal of the plane
+        var expectedNormal = new Vector3D(
+            u.Y * dir.Z - u.Z * dir.Y,
+            u.Z * dir.X - u.X * dir.Z,
+            u.X * dir.Y - u.Y * dir.X
+        );
+
+        if (nx * expectedNormal.X + ny * expectedNormal.Y + nz * expectedNormal.Z < 0)
+        {
+            vertices.Reverse();
+        }
+
+        var edges = new System.Collections.Generic.List<OcctEdge>();
+        for (int i = 0; i < vertices.Count; i++)
+        {
+            var p1 = vertices[i];
+            var p2 = vertices[(i + 1) % vertices.Count];
+            var edge = new OcctEdge(
+                new OcctPointCoordinates(p1.X, p1.Y, p1.Z),
+                new OcctPointCoordinates(p2.X, p2.Y, p2.Z)
+            );
+            edges.Add(edge);
+        }
+
+        var wire = new OcctWire(edges.ToArray());
+        var face = new OcctFace(wire);
+
+        var axis = new OcctAxis1d(
+            new OcctPointCoordinates(origin.X, origin.Y, origin.Z),
+            new OcctVector3d(dir.X, dir.Y, dir.Z)
+        );
+
+        return face.Revolve(axis, 2.0 * Math.PI);
+    }
+    private OcctShape CreateCylinderCutter(CylinderFeature cyl, double filletRadius, bool isTop, bool isRound, TessellationSettings settings)
+    {
+        var origin = cyl.GlobalBaseCenter;
+        var dir = cyl.GlobalDirection;
         
         var points2D = new System.Collections.Generic.List<(double r, double z)>();
         double R = cyl.Radius;
@@ -352,61 +434,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             }
         }
         
-        var vertices = new System.Collections.Generic.List<Point3D>();
-        foreach (var p in points2D)
-        {
-            vertices.Add(new Point3D(
-                origin.X + u.X * p.r + dir.X * p.z,
-                origin.Y + u.Y * p.r + dir.Y * p.z,
-                origin.Z + u.Z * p.r + dir.Z * p.z
-            ));
-        }
-        
-        // Calculate polygon normal using Newell's method to check winding order
-        double nx = 0, ny = 0, nz = 0;
-        int n = vertices.Count;
-        for (int i = 0; i < n; i++)
-        {
-            var p1 = vertices[i];
-            var p2 = vertices[(i + 1) % n];
-            nx += (p1.Y - p2.Y) * (p1.Z + p2.Z);
-            ny += (p1.Z - p2.Z) * (p1.X + p2.X);
-            nz += (p1.X - p2.X) * (p1.Y + p2.Y);
-        }
-        
-        // Cross product of u and dir gives the normal of the plane
-        var expectedNormal = new Vector3D(
-            u.Y * dir.Z - u.Z * dir.Y,
-            u.Z * dir.X - u.X * dir.Z,
-            u.X * dir.Y - u.Y * dir.X
-        );
-        
-        if (nx * expectedNormal.X + ny * expectedNormal.Y + nz * expectedNormal.Z < 0)
-        {
-            vertices.Reverse();
-        }
-        
-        var edges = new System.Collections.Generic.List<OcctEdge>();
-        for (int i = 0; i < vertices.Count; i++)
-        {
-            var p1 = vertices[i];
-            var p2 = vertices[(i + 1) % vertices.Count];
-            var edge = new OcctEdge(
-                new OcctPointCoordinates(p1.X, p1.Y, p1.Z),
-                new OcctPointCoordinates(p2.X, p2.Y, p2.Z)
-            );
-            edges.Add(edge);
-        }
-        
-        var wire = new OcctWire(edges.ToArray());
-        var face = new OcctFace(wire);
-        
-        var axis = new OcctAxis1d(
-            new OcctPointCoordinates(origin.X, origin.Y, origin.Z),
-            new OcctVector3d(dir.X, dir.Y, dir.Z)
-        );
-        
-        return face.Revolve(axis, 2.0 * Math.PI);
+        return RevolveProfile(points2D, origin, dir);
     }
 
     private OcctShape BuildFillet(FilletFeature fillet, TessellationSettings settings)
@@ -652,6 +680,56 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         return BuildExtrude(extrude, settings, transform);
     }
 
+    /// <summary>
+    /// Tronco de cone EXATO: revolução de 360° do trapézio (0,0) → (R,0) → (r,h) → (0,h) em torno do
+    /// próprio eixo. O lado que fecha corre SOBRE o eixo e é invariante pela rotação, então não vira
+    /// face: o sólido sai com tampa de baixo, lateral cônica exata e tampa de cima — esta última
+    /// ausente quando TopRadius é 0 (o trapézio vira o triângulo (0,0) → (R,0) → (0,h) e o topo é o
+    /// ápice).
+    /// <para>
+    /// Diferente de <see cref="BuildCylinder"/>, que ainda baixa para a extrusão de um polígono de
+    /// ProfileSegments lados: aqui a lateral é uma superfície cônica de verdade e a aproximação
+    /// existe só na malha. Quem decide a finura dela é a tesselação
+    /// (<see cref="TessellateShape"/>), que usa ProfileSegments como piso de facetas.
+    /// </para>
+    /// </summary>
+    private OcctShape BuildCone(ConeFeature cone, TessellationSettings settings, Placement? transform = null)
+    {
+        double bottomRadius = cone.BottomRadius;
+        double topRadius = cone.TopRadius;
+        double height = cone.Height;
+
+        // Degenerado: sem sólido, do mesmo jeito que BuildExtrude devolve null para um perfil com
+        // menos de 3 pontos. BuildFeatureMesh transforma isso em TriangleMesh.Empty, sem exceção.
+        // Altura NEGATIVA é válida (cone para trás): o trapézio espelha e o Newell corrige o sentido.
+        if (bottomRadius < 0 || topRadius < 0) return null;
+        if (Math.Abs(height) < 1e-9) return null;
+        if (bottomRadius <= ConeFeature.ApexTolerance && topRadius <= ConeFeature.ApexTolerance) return null;
+
+        // Instância de peça girada: o EIXO INTEIRO (origem + direção) vai para o mundo antes de montar
+        // o perfil. Não dá para transformar só os pontos, como BuildExtrude faz — o perfil giraria em
+        // torno do eixo antigo e sairia um sólido plausível na orientação errada, sem erro nenhum.
+        // Com o eixo já no mundo, o 'u' que RevolveProfile deriva dele também nasce certo.
+        var origin = cone.GlobalBaseCenter;
+        var dir = cone.GlobalDirection;
+        if (transform != null && !transform.IsIdentity)
+        {
+            origin = transform.Apply(origin);
+            dir = transform.ApplyVector(dir);
+        }
+        if (dir.Length < 1e-9) return null;
+        dir = dir.Normalize();
+
+        // O perfil fechado, encostando no eixo nas duas pontas. Um raio nulo entra como UM ponto só:
+        // repetir (0, h) criaria uma aresta de comprimento zero.
+        var points2D = new System.Collections.Generic.List<(double r, double z)> { (0, 0) };
+        if (bottomRadius > ConeFeature.ApexTolerance) points2D.Add((bottomRadius, 0));
+        if (topRadius > ConeFeature.ApexTolerance) points2D.Add((topRadius, height));
+        points2D.Add((0, height));
+
+        return RevolveProfile(points2D, origin, dir);
+    }
+
     private OcctShape BuildBox(BoxFeature box, TessellationSettings settings, Placement? transform = null)
     {
         Point3D bottomCenter = new Point3D(
@@ -858,7 +936,16 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
 
     private TriangleMesh TessellateShape(OcctShape shape, TessellationSettings settings)
     {
-        var occtMesh = shape.Triangulate(settings.LinearDeflection, settings.AngularDeflection);
+        // ProfileSegments é o knob de "quão redondo é redondo" em todo o app: o cilindro e a caixa o
+        // usam direto (polígono extrudado) e aqui ele vira um PISO de facetas para as superfícies
+        // curvas exatas (cone, fillet), para um cone e um cilindro de mesmo raio não saírem com
+        // contagens de faceta diferentes. Faces planas ignoram a deflexão, então isto só alcança
+        // geometria curva. GeometryKey já inclui ProfileSegments, então o cache continua coerente.
+        double angularDeflection = Math.Min(
+            settings.AngularDeflection,
+            2.0 * Math.PI / Math.Max(settings.ProfileSegments, 3));
+
+        var occtMesh = shape.Triangulate(settings.LinearDeflection, angularDeflection);
         if (occtMesh == null || occtMesh.TriangleCount == 0)
             return TriangleMesh.Empty;
 

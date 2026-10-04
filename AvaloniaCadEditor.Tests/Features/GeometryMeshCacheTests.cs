@@ -1,4 +1,4 @@
-using AvaloniaCadEditor.Domain.Features;
+﻿using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.Settings;
 using AvaloniaCadEditor.Domain.ValueObjects;
 using AvaloniaCadEditor.Infrastructure.OpenCascade;
@@ -73,6 +73,20 @@ public class GeometryMeshCacheTests
 
         kernel.MeshBuildCount.Should().Be(2);
         alterada.Positions.Where((_, i) => i % 3 == 2).Max().Should().BeApproximately(20, 1e-3f);
+    }
+
+    [Fact]
+    public void ConeIgualRecriado_EntreExecucoes_NaoRetessela()
+    {
+        var kernel = new OpenCascadeGeometryKernel();
+        var settings = new TessellationSettings();
+        ConeFeature Novo() => new(Point3D.Origin, new Vector3D(0, 0, 1), 10, 4, 20);
+
+        kernel.BuildFeatureMesh(Novo(), settings);
+        kernel.BeginSceneRebuild();
+        kernel.BuildFeatureMesh(Novo(), settings);
+
+        kernel.MeshBuildCount.Should().Be(1, "o fingerprint do cone cobre toda a sua geometria");
     }
 
     [Fact]

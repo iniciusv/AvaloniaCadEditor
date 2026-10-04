@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.Profiles;
 using AvaloniaCadEditor.Domain.ValueObjects;
@@ -15,6 +15,7 @@ public class FeatureFingerprintTests
 
     private static BoxFeature Box() => new(new Point3D(1, 2, 3), 10, 20, 5) { Name = "box" };
     private static CylinderFeature Cylinder() => new(new Point3D(5, 5, 0), new Vector3D(0, 0, 1), 2, 10);
+    private static ConeFeature Cone() => new(new Point3D(5, 5, 0), new Vector3D(0, 0, 1), 6, 3, 10);
     private static PrismFeature Prism() => new(new[] { new Point3D(0, 0, 0), new Point3D(4, 0, 0), new Point3D(0, 3, 0) }, 7);
 
     private static string Fp(IFeature feature) => FeatureFingerprint.Compute(feature)!;
@@ -58,6 +59,25 @@ public class FeatureFingerprintTests
     public void MudarQualquerParametroGeometrico_MudaAChave(string caso, Func<IFeature> mutada)
     {
         Fp(mutada()).Should().NotBe(Fp(Box()), caso);
+    }
+
+    [Fact]
+    public void ParametrosDoCone_MudamAChave()
+    {
+        var baseCone = Fp(Cone());
+        var c1 = Cone(); c1.GlobalBaseCenter = new Point3D(5, 5, 1);
+        var c2 = Cone(); c2.GlobalDirection = new Vector3D(0, 1, 0);
+        var c3 = Cone(); c3.BottomRadius = 6.5;
+        var c4 = Cone(); c4.TopRadius = 0;      // tronco vs. cone completo: geometrias diferentes
+        var c5 = Cone(); c5.Height = 11;
+        new[] { c1, c2, c3, c4, c5 }.Select(Fp).Should().AllSatisfy(k => k.Should().NotBe(baseCone));
+    }
+
+    [Fact]
+    public void ConeECilindroComOsMesmosNumeros_TemChavesDiferentes()
+    {
+        Fp(new ConeFeature(Point3D.Origin, new Vector3D(0, 0, 1), 5, 5, 10))
+            .Should().NotBe(Fp(new CylinderFeature(Point3D.Origin, new Vector3D(0, 0, 1), 5, 10)));
     }
 
     [Fact]
@@ -208,6 +228,8 @@ public class FeatureFingerprintTests
     [Theory]
     [InlineData(typeof(BoxFeature), new[] { "BaseCorner", "Width", "Length", "Height", "DirectionX", "DirectionY", "DirectionZ" })]
     [InlineData(typeof(CylinderFeature), new[] { "GlobalBaseCenter", "GlobalDirection", "Radius", "Height" })]
+    // IsFullCone é derivada de TopRadius.
+    [InlineData(typeof(ConeFeature), new[] { "GlobalBaseCenter", "GlobalDirection", "BottomRadius", "TopRadius", "Height", "IsFullCone" })]
     [InlineData(typeof(PrismFeature), new[] { "Vertices", "Height", "Plane" })]
     [InlineData(typeof(BooleanFeature), new[] { "Operation", "BaseFeatures", "ToolFeatures", "BaseFeature" })]
     [InlineData(typeof(TransformedFeature), new[] { "Source", "Placement" })]
@@ -227,5 +249,31 @@ public class FeatureFingerprintTests
             .ToList();
 
         faltando.Should().BeEmpty($"{featureType.Name} ganhou propriedades que o FeatureFingerprint não conhece");
+    }
+
+    /// <summary>
+    /// A theory acima só checa os tipos que alguém lembrou de listar num [InlineData] — uma feature
+    /// nova que ninguém liste simplesmente nunca é verificada, e o teste passa verde enquanto o
+    /// fingerprint ignora o tipo. Este teste fecha esse buraco.
+    /// </summary>
+    [Fact]
+    public void TodaFeatureConcretaDoDominio_EstaNaTheoryDeCobertura()
+    {
+        var listados = typeof(FeatureFingerprintTests)
+            .GetMethod(nameof(FingerprintCobreTodasAsPropriedadesPublicas))!
+            .GetCustomAttributes<InlineDataAttribute>()
+            .Select(d => (Type)d.GetData(null!).First()[0]!)
+            .Select(t => t.IsGenericType ? t.GetGenericTypeDefinition() : t)
+            .ToHashSet();
+
+        // Sem geometria paramétrica própria: não são cacheáveis por desenho (FeatureFingerprint
+        // devolve null para elas, e quem chama simplesmente não usa o cache).
+        var fora = new HashSet<Type> { typeof(ImportedMeshFeature), typeof(WorkPlaneFeature) };
+
+        typeof(FeatureBase).Assembly.GetTypes()
+            .Where(t => t.IsPublic && !t.IsAbstract && typeof(FeatureBase).IsAssignableFrom(t))
+            .Where(t => !fora.Contains(t))
+            .Select(t => t.IsGenericType ? t.GetGenericTypeDefinition() : t)
+            .Should().BeSubsetOf(listados, "toda feature nova precisa entrar na theory de cobertura do fingerprint");
     }
 }
