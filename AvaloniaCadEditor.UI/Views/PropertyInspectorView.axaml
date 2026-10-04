@@ -81,8 +81,9 @@
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate x:DataType="vm:PartParameterItem">
                                         <Grid ColumnDefinitions="100,*" RowDefinitions="Auto,Auto" Margin="0,2">
-                                            <TextBlock Grid.Column="0" Text="{Binding Name}" ToolTip.Tip="{Binding TypeName}"
-                                                       Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center" />
+                                            <TextBlock Grid.Column="0" Text="{Binding Name}" ToolTip.Tip="{Binding Name}"
+                                                       Foreground="#CCCCCC" FontSize="11" VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis" />
                                             <TextBox Grid.Column="1" Text="{Binding Text, Mode=TwoWay}" IsReadOnly="{Binding !IsEditable}"
                                                      Height="26" FontSize="11" ToolTip.Tip="Enter aplica no código">
                                                 <TextBox.KeyBindings>

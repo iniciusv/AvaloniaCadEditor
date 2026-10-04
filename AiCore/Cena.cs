@@ -48,7 +48,8 @@ var extrusaoSobTrilhoYB = Add(extrusaoSobTrilhoYPeca, at: Placement.At(trilhoYBX
 var extrusaoSobTrilhoX = Add(extrusaoSobTrilhoXPeca, at: Placement.At(-extrusaoSobTrilhoXPeca.Comprimento / 2, extrusaoSobTrilhoXPeca.Largura / 2, alturaTopoCarrinhosY - extrusaoSobTrilhoXPeca.Altura, rotationZDegrees: -90), name: "extrusao_2020_sob_trilho_x");
 // --- Motor NEMA17, montado mais baixo, ao lado do carrinho X, apoiado em cima da extrusão 2020 ---
 var topoExtrusaoSobTrilhoX = alturaTopoCarrinhosY;
-var xMotorNema17 = carrinhoXPeca.Comprimento / 2 + suporteMotorNema17Peca.Largura / 2 + 5;
+// Centralizado no perfil de alumínio 2020 (extrusao_2020_sob_trilho_x), cujo centro em X é 0.
+var xMotorNema17 = 0;
 // com o blocoConexaoMotorPeca de 8 mm de profundidade encaixado entre a extrusão e o suporte;
 // a placa avança para fora dela (lado livre), de modo que o motor (pendurado por baixo da placa)
 // fique ao lado da extrusão, não sobre ela.

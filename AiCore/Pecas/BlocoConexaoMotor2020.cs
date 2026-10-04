@@ -3,14 +3,14 @@ using System.Collections.Generic;
 
 /// <summary>
 /// Bloco impresso intermediÃ¡rio para conectar o SuporteMotorNema17 ao perfil de alumÃ­nio 2020.
-/// DimensÃµes: 40 mm (Largura, X) x 20 mm (Profundidade, Y) x 28 mm (Altura, Z).
+/// DimensÃµes: 40 mm (Largura, X) x 20 mm (Profundidade, Y) x 33 mm (Altura, Z).
 /// Furos no sentido Y:
 /// 1. Dois furos passantes M3 alinhados com os furos laterais do SuporteMotorNema17 (passo 15 mm em X),
 ///    com rebaixo para a cabeÃ§a do parafuso na face frontal (Y = -Profundidade / 2).
 /// 2. Dois furos passantes M3 para fixaÃ§Ã£o ao perfil 2020 (passo 30 mm em X),
 ///    com rebaixo para a cabeÃ§a do parafuso no lado oposto (face traseira, Y = +Profundidade / 2).
 /// 3. Rebaixo (vazio) na face superior, cobrindo metade da Ã¡rea do retÃ¢ngulo (toda a Largura,
-///    metade da Profundidade), 10 mm de profundidade, do lado mais prÃ³ximo do carrinho MGN9C na montagem.
+///    metade da Profundidade), 15 mm de profundidade, do lado mais prÃ³ximo do carrinho MGN9C na montagem.
 ///    Esse rebaixo Ã© cortado ANTES do chanfro de quinas (bevel), para que a aresta externa que ele
 ///    cria na face de cima tambÃ©m saia chanfrada.
 /// Origem (0, 0, 0) no centro em X e Y, base em Z = 0.
@@ -18,13 +18,13 @@ using System.Collections.Generic;
 public sealed record BlocoConexaoMotor2020(
     double Largura = 40.0,
     double Profundidade = 20.0,
-    double Altura = 28.0,
+    double Altura = 33.0,
     double PassoFurosSuporte = 15.0,
     double PassoFurosExtrusao = 20.0,
     double DiametroFuroM3 = 3.2,
     double DiametroRebaixo = 6.0,
     double ProfundidadeRebaixo = 3.0,
-    double AlturaFurosSuporteZ = 23.0,
+    double AlturaFurosSuporteZ = 28.0,
     double AlturaFurosExtrusaoZ = 10.0,
     double RaioChanfro = 1.0,
     double PassoFurosVerticaisZ = 30.0,
@@ -32,7 +32,7 @@ public sealed record BlocoConexaoMotor2020(
     double FolgaLateralFuroVertical = 1.0,
     double DistanciaFurosVerticaisDaFaceTraseiraY = 5.0,
     double DistanciaFurosVerticaisDaFaceFrontalY = 5.0,
-    double ProfundidadeRebaixoSuperior = 10.0,
+    double ProfundidadeRebaixoSuperior = 15.0,
     bool RebaixoSuperiorNoLadoNegativoY = true) : Part
 {
     protected override IFeature Build()
