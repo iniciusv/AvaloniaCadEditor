@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using AvaloniaCadEditor.Application.Interfaces;
@@ -157,6 +157,9 @@ public class SceneMeshManager : ISceneMeshManager
             }
         }
     }
+
+    /// <inheritdoc />
+    public IReadOnlyDictionary<Guid, string> BuildProblems => _geometryKernel.BuildProblems;
 
     public TriangleMesh BuildCompositeMesh(Sketch sketch, IFeature? previewFeature)
     {

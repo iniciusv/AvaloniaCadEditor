@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Domain.Entities;
@@ -28,6 +28,12 @@ public interface ISceneMeshManager
     IReadOnlyList<RaycastHit> RaycastAll3D(Sketch sketch, Ray ray, Func<IFeature, bool>? includeFilter = null, IEnumerable<IFeature>? extraFeatures = null);
     TriangleMesh BuildCompositeMesh(Sketch sketch, IFeature? previewFeature);
     void ClearCache();
+
+    /// <summary>
+    /// Repassa <see cref="Interfaces.IGeometryKernel.BuildProblems"/>: por que a geometria de uma
+    /// feature não saiu, por Id. Vazio quando está tudo bem.
+    /// </summary>
+    IReadOnlyDictionary<Guid, string> BuildProblems { get; }
 
     /// <summary>
     /// Prepara para uma cena recém-executada: esquece as malhas por Id, mas deixa o kernel reaproveitar

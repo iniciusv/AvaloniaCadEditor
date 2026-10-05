@@ -1129,6 +1129,7 @@ public class CadViewModel : INotifyPropertyChanged
 		}
 
 		SolidMesh = MeshManager.BuildCompositeMesh(Sketch, previewFeature);
+		ReportBuildProblems();
 
 		// The scene changed: the last guide analysis (if any) is now out of date. It is not
 		// recomputed here - that only happens when the user explicitly asks for it - so this
@@ -1139,6 +1140,26 @@ public class CadViewModel : INotifyPropertyChanged
 		{
 			ScriptEditor.GenerateCodeCommand.Execute(null);
 		}
+	}
+
+	/// <summary>
+	/// Leva à barra de status o motivo de uma feature não ter gerado geometria. Sem isto, uma
+	/// primitiva degenerada (caminho de varredura inválido, seção que não cabe no raio de
+	/// curvatura...) simplesmente some da viewport: o kernel devolve malha vazia, não erro, e a
+	/// explicação morre lá dentro. Só sobrescreve o status quando HÁ problema — quem chamou pode
+	/// ter acabado de escrever uma mensagem própria.
+	/// </summary>
+	private void ReportBuildProblems()
+	{
+		var problems = MeshManager.BuildProblems;
+		if (problems.Count == 0) return;
+
+		// A mensagem já traz o nome da feature. Com mais de uma, mostra a primeira e conta o resto:
+		// a barra de status é uma linha só, e a primeira costuma ser a causa das demais.
+		string first = problems.Values.First();
+		StatusText = problems.Count == 1
+			? $"✗ {first}"
+			: $"✗ {first} (+{problems.Count - 1} outra(s) feature(s) sem geometria)";
 	}
 
 	/// <summary>

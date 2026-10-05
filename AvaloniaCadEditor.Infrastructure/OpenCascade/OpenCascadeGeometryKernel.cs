@@ -25,6 +25,22 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
     // Teto de segurança: ferramentas interativas (preview) podem gerar uma chave nova por frame.
     private const int MaxMeshesByGeometry = 512;
 
+    // Por que a geometria de cada feature não saiu. Vive junto com _shapeCache: uma feature que
+    // falha nunca é cacheada, então o problema é recalculado a cada tentativa; mas o cache de
+    // malhas da CENA guarda a malha vazia, e por isso a mensagem precisa ficar guardada aqui em
+    // vez de valer só para a última chamada.
+    private readonly Dictionary<Guid, string> _buildProblems = new();
+
+    /// <inheritdoc />
+    public IReadOnlyDictionary<Guid, string> BuildProblems => _buildProblems;
+
+    /// <summary>Registra (ou limpa, com message null) por que a feature não gerou geometria.</summary>
+    private void ReportProblem(IFeature feature, string? message)
+    {
+        if (message == null) _buildProblems.Remove(feature.Id);
+        else _buildProblems[feature.Id] = $"{feature.Name}: {message}";
+    }
+
     /// <summary>Quantas malhas foram de fato tesseladas (cache miss). Usado por testes.</summary>
     public int MeshBuildCount { get; private set; }
 
@@ -36,6 +52,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             _shapeCache.Remove(featureId);
         }
         _definitionMeshCache.Remove(featureId);
+        _buildProblems.Remove(featureId);
     }
 
     public void InvalidateAll()
@@ -48,6 +65,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         _definitionMeshCache.Clear();
         _meshByGeometry.Clear();
         _geometryKeysInUse.Clear();
+        _buildProblems.Clear();
     }
 
     /// <summary>
@@ -62,6 +80,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         }
         _shapeCache.Clear();
         _definitionMeshCache.Clear();
+        _buildProblems.Clear();
         RemoveMeshesNotInUse();
         _geometryKeysInUse.Clear();
     }
@@ -230,12 +249,15 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         }
         catch (Exception ex)
         {
+            ReportProblem(feature, ex.Message);
             Console.WriteLine($"[BuildShape Error] {ex}");
         }
 
-        if (useCache && result != null && !result.IsNull)
+        if (result != null && !result.IsNull)
         {
-            _shapeCache[feature.Id] = result;
+            // Deu certo agora: o problema anterior (se havia) está resolvido.
+            ReportProblem(feature, null);
+            if (useCache) _shapeCache[feature.Id] = result;
         }
 
         return result;
@@ -866,7 +888,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         if (sweep.Section == null || sweep.Path == null) return null;
         if (sweep.Path.Error != null)
         {
-            Console.WriteLine($"[BuildSweep] '{sweep.Name}': {sweep.Path.Error}");
+            ReportProblem(sweep, sweep.Path.Error);
             return null;
         }
 
@@ -922,8 +944,8 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
                 {
                     if (bendRadius - (v - origin).DotProduct(bendDir) < -SweepFeature.DegenerateTolerance)
                     {
-                        Console.WriteLine(
-                            $"[BuildSweep] '{sweep.Name}': a seção não cabe no raio de curvatura {bendRadius:0.###} do trecho {i}.");
+                        ReportProblem(sweep,
+                            $"a seção não cabe no raio de curvatura {bendRadius:0.###} do trecho {i}.");
                         return null;
                     }
                 }

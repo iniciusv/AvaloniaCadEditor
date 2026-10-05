@@ -814,6 +814,78 @@ public class OpenCascadeKernelTests
         new OpenCascadeGeometryKernel().BuildFeatureMesh(tubo).VertexCount.Should().Be(0);
     }
 
+    // --- Diagnóstico: por que uma feature não gerou geometria ---
+    // Uma primitiva degenerada devolve malha VAZIA, não erro. Sem isto o sólido some da viewport e
+    // a explicação morre dentro do kernel. O problema fica guardado com a mesma vida do cache de
+    // formas, e não só da última chamada, porque o cache de malhas da cena guarda a malha vazia e
+    // não chamaria o kernel de novo.
+
+    [Fact]
+    public void CaminhoInvalido_RegistraOProblemaComONomeDaFeature()
+    {
+        var caminho = SweepPath.FromPolyline(
+            new[] { Point3D.Origin, new Point3D(100, 0, 0), new Point3D(150, 0, 0), new Point3D(150, 90, 0) },
+            cornerRadius: 60);
+        var tubo = new SweepFeature(SweepSection.Circle(5), caminho, name: "tubo_ruim");
+        var kernel = new OpenCascadeGeometryKernel();
+
+        kernel.BuildFeatureMesh(tubo).VertexCount.Should().Be(0);
+
+        kernel.BuildProblems.Should().ContainKey(tubo.Id);
+        kernel.BuildProblems[tubo.Id].Should().StartWith("tubo_ruim: ").And.Contain("não cabe");
+    }
+
+    [Fact]
+    public void SecaoQueNaoCabeNoRaio_RegistraQualTrechoFalhou()
+    {
+        // Este não é barrado pelo caminho (que é válido), e sim pelo kernel, que é quem conhece a
+        // seção — daí a mensagem citar o trecho.
+        var caminho = SweepPath.FromPolyline(
+            new[] { Point3D.Origin, new Point3D(100, 0, 0), new Point3D(100, 80, 0) },
+            cornerRadius: 3);
+        var tubo = new SweepFeature(SweepSection.Circle(5), caminho, name: "tubo_apertado");
+        var kernel = new OpenCascadeGeometryKernel();
+
+        kernel.BuildFeatureMesh(tubo);
+
+        kernel.BuildProblems[tubo.Id].Should().Contain("tubo_apertado").And.Contain("raio de curvatura");
+    }
+
+    [Fact]
+    public void FeatureQueConstroi_NaoDeixaProblemaPendurado()
+    {
+        var tubo = new SweepFeature(
+            SweepSection.Circle(5),
+            SweepPath.FromPolyline(new[] { Point3D.Origin, new Point3D(100, 0, 0), new Point3D(100, 80, 0) }, 30),
+            name: "tubo_bom");
+        var kernel = new OpenCascadeGeometryKernel();
+
+        kernel.BuildFeatureMesh(tubo).VertexCount.Should().BeGreaterThan(0);
+        kernel.BuildProblems.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void ConsertarAFeature_LimpaOProblemaAnterior()
+    {
+        // O cenário real: a IA (ou o usuário) escreve um raio que não cabe, vê a mensagem, corrige.
+        // Se o problema ficasse pendurado, a barra de status mentiria para sempre.
+        var tubo = new SweepFeature(
+            SweepSection.Circle(5),
+            SweepPath.FromPolyline(new[] { Point3D.Origin, new Point3D(100, 0, 0), new Point3D(100, 80, 0) }, 3),
+            name: "tubo");
+        var kernel = new OpenCascadeGeometryKernel();
+
+        kernel.BuildFeatureMesh(tubo);
+        kernel.BuildProblems.Should().ContainKey(tubo.Id);
+
+        tubo.Path = SweepPath.FromPolyline(
+            new[] { Point3D.Origin, new Point3D(100, 0, 0), new Point3D(100, 80, 0) }, 30);
+        kernel.InvalidateShape(tubo.Id);
+        kernel.BuildFeatureMesh(tubo).VertexCount.Should().BeGreaterThan(0);
+
+        kernel.BuildProblems.Should().BeEmpty();
+    }
+
     // --- TransformedFeature: copiar/girar/mover uma feature solta (ver prism_60e9 do usuário) ---
 
     [Fact]
