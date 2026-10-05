@@ -110,9 +110,13 @@ public class CadScriptProtocol : IAiProtocol<CadScriptContext, CadScriptChanges>
         sb.AppendLine();
         sb.AppendLine("FORMATO \"script\" (arquivo único, ou o arquivo de entrada de um projeto):");
         sb.AppendLine(CadScriptRules.SceneFile);
-        sb.AppendLine("- Ao pedirem uma peça nova (ex.: \"crie um motor X\"): com \"### ARQUIVOS NO CONTEXTO\", crie-a num arquivo");
-        sb.AppendLine("  novo (bloco file=Pecas/NomeDaPeca.cs) e instancie-a aqui com Add(...). Com \"### ARQUIVO ATIVO\", responda");
-        sb.AppendLine("  só em texto pedindo para abrir ou criar o arquivo da peça em Pecas/ primeiro, sem bloco de código.");
+        sb.AppendLine("- Ao pedirem uma peça nova (ex.: \"crie um motor X\"):");
+        sb.AppendLine("  - com \"### ARQUIVOS NO CONTEXTO\" (projeto): crie-a num arquivo novo (bloco file=Pecas/NomeDaPeca.cs) e");
+        sb.AppendLine("    instancie-a aqui com Add(...);");
+        sb.AppendLine("  - com \"### ARQUIVO ATIVO\" (arquivo único, SEM projeto: não existe Pecas/ nem Add(...)): as regras sobre");
+        sb.AppendLine("    Pecas/ não se aplicam. Construa a geometria direto neste arquivo, com features (BoxFeature, CylinderFeature,");
+        sb.AppendLine("    ConeFeature, BooleanFeature...) registradas com AddFeature, sem declarar record/classe. Nunca recuse nem");
+        sb.AppendLine("    peça para criar outro arquivo.");
         sb.AppendLine();
         sb.AppendLine("FORMATO \"peça\" (arquivo em Pecas/):");
         sb.AppendLine(CadScriptRules.PartFile);
@@ -163,7 +167,7 @@ public class CadScriptProtocol : IAiProtocol<CadScriptContext, CadScriptChanges>
         sb.AppendLine("   ```cadscript file=Cena.cs");
         sb.AppendLine("   var placa_1 = Add(new Placa(), at: Placement.At(0, 0, 0));");
         sb.AppendLine("   ```");
-        sb.AppendLine("4. Se o pedido for apenas uma pergunta, ou pedir algo que não cabe nos formatos indicados (ver acima),");
+        sb.AppendLine("4. Se o pedido for apenas uma pergunta, ou pedir algo que não cabe nos formatos indicados,");
         sb.AppendLine("   responda somente com o texto, sem bloco de código.");
 
         return sb.ToString();
@@ -259,7 +263,7 @@ public class CadScriptProtocol : IAiProtocol<CadScriptContext, CadScriptChanges>
         CadFileKind.PartFile => "peça (record que herda de Part; sem statements soltos, sem AddFeature/Add)",
         CadFileKind.SupportFile => "auxiliar (só declarações de tipos/constantes; sem statements soltos)",
         CadFileKind.SceneEntry => "script — arquivo de entrada da cena (statements soltos + AddFeature/Add)",
-        _ => "script (statements soltos + AddFeature)"
+        _ => "script — arquivo único, sem projeto (statements soltos + AddFeature; não existe Pecas/: construa toda a geometria aqui)"
     };
 
     /// <summary>

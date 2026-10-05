@@ -126,6 +126,17 @@ public class CadScriptProtocolTests
     }
 
     [Fact]
+    public void ArquivoUnicoSemProjeto_NaoMandaRecusarPecaNova()
+    {
+        string prompt = _protocol.GetSystemPrompt();
+        string message = _protocol.BuildUserMessage(new CadScriptContext(""), "Crie um conector de mangueira");
+
+        prompt.Should().NotContain("pedindo para abrir ou criar o arquivo da peça");
+        prompt.Should().Contain("Construa a geometria direto neste arquivo");
+        message.Should().Contain("arquivo único, sem projeto");
+    }
+
+    [Fact]
     public void ParseResponse_ComVariosBlocosFile_ExtraiUmArquivoPorBloco()
     {
         string raw =
