@@ -47,6 +47,7 @@ public static class FeatureFingerprint
             BooleanFeature boolean => AppendBoolean(sb, boolean),
             FilletFeature fillet => AppendFillet(sb, fillet),
             ExtrudeFeature extrude => AppendExtrude(sb, extrude),
+            SweepFeature sweep => AppendSweep(sb, sweep),
             PartInstance instance => AppendPlacement(sb, instance.Placement) && Append(sb, instance.Definition),
             TransformedFeature transformed => AppendPlacement(sb, transformed.Placement) && Append(sb, transformed.Source),
             _ => false
@@ -141,6 +142,38 @@ public static class FeatureFingerprint
         AppendDouble(sb, extrude.Height);
         AppendVector(sb, extrude.Direction);
         return AppendProfile(sb, extrude.Profile);
+    }
+
+    /// <summary>
+    /// Os trechos JÁ RESOLVIDOS, não a polilinha de entrada: duas polilinhas diferentes podem dar o
+    /// mesmo caminho (um ponto alinhado a mais não muda nada), e é a geometria que decide se duas
+    /// varreduras geram o mesmo sólido. O referencial inicial entra junto porque ele fixa a rotação
+    /// da seção em torno do caminho.
+    /// </summary>
+    private static bool AppendSweep(StringBuilder sb, SweepFeature sweep)
+    {
+        if (sweep.Section == null || sweep.Path == null || sweep.Path.Error != null) return false;
+        if (!AppendPlane(sb, sweep.StartPlane)) return false;
+
+        sb.Append('[');
+        foreach (var segment in sweep.Path.Segments)
+        {
+            if (segment.IsArc)
+            {
+                sb.Append('A');
+                AppendPoint(sb, segment.ArcCenter);
+                AppendVector(sb, segment.ArcAxis);
+                AppendDouble(sb, segment.ArcAngle);
+            }
+            else
+            {
+                sb.Append('L');
+                AppendVector(sb, segment.LineVector);
+            }
+        }
+        sb.Append(']');
+
+        return AppendProfile(sb, sweep.Section.Outline);
     }
 
     /// <summary>

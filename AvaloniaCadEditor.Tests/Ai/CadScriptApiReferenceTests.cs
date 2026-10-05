@@ -15,6 +15,7 @@ public class CadScriptApiReferenceTests
         reference.Should().Contain("new CylinderFeature(");
         reference.Should().Contain("new ConeFeature(");
         reference.Should().Contain("new PrismFeature(");
+        reference.Should().Contain("new SweepFeature(");
         reference.Should().Contain("new FilletFeature(");
     }
 

@@ -236,6 +236,9 @@ public class FeatureFingerprintTests
     [InlineData(typeof(FilletFeature), new[] { "BaseFeature", "Edges", "Faces", "Radius", "Mode", "ApplyToAllEdges" })]
     // BaseArea, Volume, BaseCenter, TopCenter e Centroid são derivadas de Profile/Height/Direction.
     [InlineData(typeof(ExtrudeFeature), new[] { "Profile", "Height", "Direction", "BaseArea", "Volume", "BaseCenter", "TopCenter", "Centroid" })]
+    // StartCenter/StartTangent são o StartPlane; EndCenter/EndTangent saem de percorrer Path a
+    // partir dele. Os parâmetros da dobra moram nos trechos de Path, não na feature.
+    [InlineData(typeof(SweepFeature), new[] { "Section", "Path", "StartPlane", "StartCenter", "StartTangent", "EndCenter", "EndTangent" })]
     [InlineData(typeof(PartInstance<PlacaTeste>), new[] { "Definition", "Placement", "Part", "PartTypeName" })]
     public void FingerprintCobreTodasAsPropriedadesPublicas(Type featureType, string[] cobertas)
     {

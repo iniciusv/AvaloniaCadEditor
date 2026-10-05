@@ -25,6 +25,7 @@ public static class CadScriptApiReference
         typeof(CylinderFeature),
         typeof(ConeFeature),
         typeof(PrismFeature),
+        typeof(SweepFeature),
         typeof(BooleanFeature),
         typeof(FilletFeature)
     };
@@ -38,7 +39,9 @@ public static class CadScriptApiReference
         typeof(Point3D),
         typeof(Vector3D),
         typeof(Placement),
-        typeof(PartInstance)
+        typeof(PartInstance),
+        typeof(SweepSection),
+        typeof(SweepPath)
     };
 
     private static readonly Type[] EnumTypes =

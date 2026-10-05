@@ -198,6 +198,10 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             {
                 result = BuildPrism(prism, settings, transform);
             }
+            else if (feature is SweepFeature sweep && sweep.IsEnabled)
+            {
+                result = BuildSweep(sweep, settings, transform);
+            }
             else if (feature is BooleanFeature boolean && boolean.IsEnabled)
             {
                 result = BuildBoolean(boolean, settings, transform);
@@ -768,6 +772,25 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
 
         var vec = new OcctVector3d(dir.X, dir.Y, dir.Z);
 
+        var face = BuildProfileFace(vertices, dir);
+        if (face == null) return null;
+
+        if (Math.Abs(extrude.Height) < 1e-6) return face;
+
+        return face.Extrude(vec);
+    }
+
+    /// <summary>
+    /// Face planar fechada a partir dos vértices do perfil JÁ EM COORDENADAS DO MUNDO, orientada
+    /// para que a normal dela aponte no sentido de <paramref name="sweepDirection"/> — o sentido em
+    /// que o perfil vai ser varrido (translação, em <see cref="BuildExtrude"/>; rotação, em
+    /// <see cref="BuildSweep"/>). Devolve null para um perfil degenerado (menos de 3 pontos
+    /// distintos). A lista é modificada no lugar.
+    /// </summary>
+    private static OcctFace BuildProfileFace(List<Point3D> vertices, Vector3D sweepDirection)
+    {
+        if (vertices.Count < 3) return null;
+
         // Calculate polygon normal using Newell's method to check winding order
         double nx = 0, ny = 0, nz = 0;
         int n = vertices.Count;
@@ -779,9 +802,9 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             ny += (p1.Z - p2.Z) * (p1.X + p2.X);
             nz += (p1.X - p2.X) * (p1.Y + p2.Y);
         }
-        
+
         // If Dot(polygonNormal, direction) < 0, vertices are clockwise relative to direction.
-        if (nx * dir.X + ny * dir.Y + nz * dir.Z < 0)
+        if (nx * sweepDirection.X + ny * sweepDirection.Y + nz * sweepDirection.Z < 0)
         {
             vertices.Reverse();
         }
@@ -814,11 +837,122 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         }
 
         var wire = new OcctWire(edges.ToArray());
-        var face = new OcctFace(wire);
+        return new OcctFace(wire);
+    }
 
-        if (Math.Abs(extrude.Height) < 1e-6) return face;
+    /// <summary>
+    /// Varredura: um sólido por trecho do caminho, fundidos num só.
+    /// <list type="bullet">
+    /// <item>reta → <c>Extrude</c> da seção pelo deslocamento do trecho;</item>
+    /// <item>arco → <c>Revolve</c> da seção em torno do eixo do arco. É EXATO porque o plano da
+    /// seção contém o eixo por construção (o eixo passa pelo centro do arco, que está no plano da
+    /// seção, na direção do próprio eixo) — a superfície do cotovelo é uma superfície de revolução
+    /// de verdade, não uma sequência de prismas facetados.</item>
+    /// </list>
+    /// <para>
+    /// Os trechos encostam face com face (o transporte do referencial em
+    /// <see cref="SweepFeature.GetStations"/> é a MESMA rotação que o <c>Revolve</c> aplica), então
+    /// o <see cref="FuseBalanced"/> elimina as faces coincidentes e devolve um sólido só. O wrapper
+    /// não expõe contagem de sólidos, então aqui não dá para conferir que a fusão aconteceu — quem
+    /// garante isso são os testes, que medem a ÁREA da malha (um compound guardaria as tampas).
+    /// </para>
+    /// <para>
+    /// Igual a <see cref="BuildCone"/>, transforma o referencial inteiro (origem e eixos), não só
+    /// os vértices: revolver em torno de um eixo não transformado daria o volume certo no lugar errado.
+    /// </para>
+    /// </summary>
+    private OcctShape BuildSweep(SweepFeature sweep, TessellationSettings settings, Placement? transform = null)
+    {
+        if (sweep.Section == null || sweep.Path == null) return null;
+        if (sweep.Path.Error != null)
+        {
+            Console.WriteLine($"[BuildSweep] '{sweep.Name}': {sweep.Path.Error}");
+            return null;
+        }
 
-        return face.Extrude(vec);
+        var outline = sweep.Section.GetPoints(settings.ProfileSegments);
+        if (outline == null || outline.Count < 3) return null;
+
+        var stations = sweep.GetStations();
+        var segments = sweep.Path.Segments;
+        if (stations.Count <= segments.Count) return null;
+
+        var pieces = new List<OcctShape>(segments.Count);
+
+        for (int i = 0; i < segments.Count; i++)
+        {
+            var segment = segments[i];
+            var station = stations[i];
+
+            var vertices = new List<Point3D>(outline.Count);
+            foreach (var (u, v) in outline) vertices.Add(station.ToWorldSpace(new Point3D(u, v, 0)));
+
+            var origin = station.Origin;
+            var tangent = station.Normal;
+            var lineVector = segment.LineVector;
+            var arcCenter = segment.ArcCenter;
+            var arcAxis = segment.ArcAxis;
+
+            if (transform != null && !transform.IsIdentity)
+            {
+                for (int k = 0; k < vertices.Count; k++) vertices[k] = transform.Apply(vertices[k]);
+                origin = transform.Apply(origin);
+                tangent = transform.ApplyVector(tangent);
+                lineVector = transform.ApplyVector(lineVector);
+                arcCenter = transform.Apply(arcCenter);
+                arcAxis = transform.ApplyVector(arcAxis);
+            }
+
+            OcctShape piece;
+
+            if (segment.IsArc)
+            {
+                if (segment.ArcAngle <= SweepFeature.DegenerateTolerance) continue;
+                if (arcAxis.Length < SweepFeature.DegenerateTolerance) return null;
+
+                // A seção não pode cruzar o eixo: um ponto a distância 'd' do eixo, do lado de
+                // dentro, acaba em raio negativo e o sólido dobra para dentro de si mesmo. É o raio
+                // mínimo de curvatura de uma dobra real, e o erro que mais aparece na prática.
+                var toCenter = arcCenter - origin;
+                double bendRadius = toCenter.Length;
+                if (bendRadius < SweepFeature.DegenerateTolerance) return null;
+                var bendDir = toCenter.Normalize();
+
+                foreach (var v in vertices)
+                {
+                    if (bendRadius - (v - origin).DotProduct(bendDir) < -SweepFeature.DegenerateTolerance)
+                    {
+                        Console.WriteLine(
+                            $"[BuildSweep] '{sweep.Name}': a seção não cabe no raio de curvatura {bendRadius:0.###} do trecho {i}.");
+                        return null;
+                    }
+                }
+
+                var face = BuildProfileFace(vertices, tangent);
+                if (face == null) return null;
+
+                var axis = new OcctAxis1d(
+                    new OcctPointCoordinates(arcCenter.X, arcCenter.Y, arcCenter.Z),
+                    new OcctVector3d(arcAxis.X, arcAxis.Y, arcAxis.Z)
+                );
+                piece = face.Revolve(axis, segment.ArcAngle);
+            }
+            else
+            {
+                if (lineVector.Length < SweepFeature.DegenerateTolerance) continue;
+
+                var face = BuildProfileFace(vertices, tangent);
+                if (face == null) return null;
+
+                piece = face.Extrude(new OcctVector3d(lineVector.X, lineVector.Y, lineVector.Z));
+            }
+
+            if (piece == null || piece.IsNull) return null;
+            pieces.Add(piece);
+        }
+
+        if (pieces.Count == 0) return null;
+        return FuseBalanced(pieces);
     }
     
     /// <summary>

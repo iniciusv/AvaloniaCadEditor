@@ -65,6 +65,26 @@ public class CadScriptProtocol : IAiProtocol<CadScriptContext, CadScriptChanges>
         AddFeature(fillet_edge2);
         """,
 
+        // Tubo dobrado: trecho reto + cotovelo (SweepFeature varre a seção ao longo de UM arco).
+        // bendDirection aponta do início do arco para o centro dele e define o sentido da dobra;
+        // o próximo trecho começa em curva_b2.EndCenter, na direção curva_b2.EndTangent.
+        """
+        var tubo_reto_a1 = new CylinderFeature(globalBaseCenter: new Point3D(0, 0, 0), globalDirection: new Vector3D(1, 0, 0), radius: 5, height: 50) { Name = "tubo_reto_a1" };
+        AddFeature(tubo_reto_a1);
+        var curva_b2 = new SweepFeature(start: new Point3D(50, 0, 0), startTangent: new Vector3D(1, 0, 0), sectionRadius: 5, bendDirection: new Vector3D(0, 1, 0), bendRadius: 30, angleDegrees: 90) { Name = "curva_b2" };
+        AddFeature(curva_b2);
+        var tubo_c3 = BooleanFeature.CreateUnion("tubo_c3", tubo_reto_a1, curva_b2);
+        AddFeature(tubo_c3);
+        """,
+
+        // Tubo dobrado por uma POLILINHA: um sólido só, com os cantos arredondados pelo raio dado.
+        // Prefira isto a emendar cilindros e cotovelos quando o caminho tiver mais de uma dobra.
+        """
+        var caminho_d1 = SweepPath.FromPolyline(new[] { new Point3D(0, 0, 0), new Point3D(120, 0, 0), new Point3D(120, 90, 0) }, cornerRadius: 25);
+        var tubo_d2 = new SweepFeature(SweepSection.Circle(6), caminho_d1) { Name = "tubo_d2" };
+        AddFeature(tubo_d2);
+        """,
+
         // Prisma extrudado a partir de um polígono (perfil em L) no plano padrão
         """
         var prism_L_verts = new[] { new Point3D(0, 0, 0), new Point3D(20, 0, 0), new Point3D(20, 10, 0), new Point3D(10, 10, 0), new Point3D(10, 20, 0), new Point3D(0, 20, 0) };

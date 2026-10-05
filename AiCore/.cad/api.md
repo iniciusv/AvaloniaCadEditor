@@ -68,6 +68,20 @@ Propriedades comuns a TODAS as features (herdadas de FeatureBase):
   WorkPlane Plane { get; set; }
   IReadOnlyList<Point3D> GetVertices()
 
+### SweepFeature : FeatureBase
+  new SweepFeature(SweepSection section, SweepPath path, Vector3D? upReference = null, string? name = null)
+  new SweepFeature(IProfile section, Vector3D bendDirection, double bendRadius, double angleDegrees, string? name = null)
+  new SweepFeature(Point3D start, Vector3D startTangent, double sectionRadius, Vector3D bendDirection, double bendRadius, double angleDegrees, string? name = null)
+  SweepSection Section { get; set; }
+  SweepPath Path { get; set; }
+  WorkPlane StartPlane { get; set; }
+  Point3D StartCenter { get; }
+  Vector3D StartTangent { get; }
+  Point3D EndCenter { get; }
+  Vector3D EndTangent { get; }
+  IReadOnlyList<WorkPlane> GetStations()
+  IReadOnlyList<Point3D> GetVertices()
+
 ### BooleanFeature : FeatureBase
   new BooleanFeature(string name, BooleanOperationType operation, IFeature baseFeature, IEnumerable<IFeature> toolFeatures)
   new BooleanFeature(string name, BooleanOperationType operation, IEnumerable<IFeature> baseFeatures, IEnumerable<IFeature> toolFeatures)
@@ -187,6 +201,26 @@ Propriedades comuns a TODAS as features (herdadas de FeatureBase):
   Vector3D ToWorld(Vector3D localDirection)
   IReadOnlyList<Point3D> GetVertices()
 
+### SweepSection
+  static SweepSection SweepSection.Circle(double radius)
+  static SweepSection SweepSection.Rectangle(double width, double height)
+  static SweepSection SweepSection.Polygon(IEnumerable<ValueTuple<double, double>> points)
+  static SweepSection SweepSection.FromProfile(IProfile profile)
+  IProfile Outline { get; }
+  IReadOnlyList<ValueTuple<double, double>> GetPoints(int segments)
+
+### SweepPath
+  static SweepPath SweepPath.Arc(Point3D start, Vector3D startTangent, Vector3D bendDirection, double bendRadius, double angleDegrees)
+  static SweepPath SweepPath.FromPolyline(IEnumerable<Point3D> points, double cornerRadius, bool closed = false)
+  IReadOnlyList<Point3D> Points { get; }
+  double CornerRadius { get; }
+  Point3D Start { get; }
+  bool IsClosed { get; }
+  IReadOnlyList<SweepSegment> Segments { get; }
+  string Error { get; }
+  Vector3D StartTangent { get; }
+  IReadOnlyList<WorkPlane> Stations(WorkPlane startPlane)
+
 enum FaceType { Top, Bottom, Front, Back, Left, Right }
 enum EdgeType { TopFront, TopBack, TopLeft, TopRight, BottomFront, BottomBack, BottomLeft, BottomRight, FrontLeft, FrontRight, BackLeft, BackRight }
 enum BooleanOperationType { Union, Subtract, Intersect }
@@ -207,7 +241,7 @@ Métodos globais disponíveis no código da cena:
 - Nomes de variáveis são únicos, curtos e em snake_case (ex.: box_a1, hole_b2, fillet_c3).
 - SÓLIDOS RASTREÁVEIS POR NOME: variáveis, const, arrays, laços e funções locais podem ser usados
   para CALCULAR valores (posições, diâmetros, passos), mas cada sólido (BoxFeature, CylinderFeature,
-  ConeFeature, PrismFeature, ExtrudeFeature, FilletFeature, BooleanFeature...) deve ser criado numa
+  ConeFeature, PrismFeature, SweepFeature, ExtrudeFeature, FilletFeature, BooleanFeature...) deve ser criado numa
   declaração própria, com Name LITERAL igual ao nome da variável e único no arquivo:
   var furo_1 = new CylinderFeature(...) { Name = "furo_1" };
 - NUNCA crie sólidos dentro de laços, LINQ (Select(... new CylinderFeature ...)) ou listas montadas

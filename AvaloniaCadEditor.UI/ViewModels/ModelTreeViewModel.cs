@@ -263,6 +263,39 @@ public class ModelTreeViewModel : INotifyPropertyChanged
                 name = $"Prisma (H={ef.Height:F1})";
             }
         }
+        // As primitivas nativas caíam todas no cubo genérico com o nome cru. Mostrar as cotas aqui
+        // é o que diferencia duas features do mesmo tipo na árvore sem ter que abrir o código.
+        else if (feature is BoxFeature box)
+        {
+            name = $"{box.Name} — Caixa ({box.Width:F1} × {box.Length:F1} × {box.Height:F1})";
+        }
+        else if (feature is CylinderFeature cyl)
+        {
+            icon = iconCylinder;
+            name = $"{cyl.Name} — Cilindro (R={cyl.Radius:F1}, H={cyl.Height:F1})";
+        }
+        else if (feature is ConeFeature cone)
+        {
+            icon = iconCylinder;
+            name = cone.IsFullCone
+                ? $"{cone.Name} — Cone (R={cone.BottomRadius:F1}, H={cone.Height:F1})"
+                : $"{cone.Name} — Tronco de cone (R={cone.BottomRadius:F1}→{cone.TopRadius:F1}, H={cone.Height:F1})";
+        }
+        else if (feature is PrismFeature prism)
+        {
+            name = $"{prism.Name} — Prisma ({prism.Vertices.Count} lados, H={prism.Height:F1})";
+        }
+        else if (feature is SweepFeature sweep)
+        {
+            icon = iconCylinder;
+            int trechos = sweep.Path?.Segments.Count ?? 0;
+            string forma = sweep.Path?.IsClosed == true ? "Varredura fechada" : "Varredura";
+            name = $"{sweep.Name} — {forma} ({trechos} trecho{(trechos == 1 ? "" : "s")})";
+        }
+        else if (feature is FilletFeature fillet)
+        {
+            name = $"{fillet.Name} — Fillet (R={fillet.Radius:F1})";
+        }
         else if (feature is BooleanFeature bf)
         {
             name = $"[{bf.Operation}] {bf.Name}";

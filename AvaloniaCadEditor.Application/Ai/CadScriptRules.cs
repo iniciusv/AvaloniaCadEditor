@@ -31,7 +31,7 @@ public static class CadScriptRules
         """
         - SÓLIDOS RASTREÁVEIS POR NOME: variáveis, const, arrays, laços e funções locais podem ser usados
           para CALCULAR valores (posições, diâmetros, passos), mas cada sólido (BoxFeature, CylinderFeature,
-          ConeFeature, PrismFeature, ExtrudeFeature, FilletFeature, BooleanFeature...) deve ser criado numa
+          ConeFeature, PrismFeature, SweepFeature, ExtrudeFeature, FilletFeature, BooleanFeature...) deve ser criado numa
           declaração própria, com Name LITERAL igual ao nome da variável e único no arquivo:
           var furo_1 = new CylinderFeature(...) { Name = "furo_1" };
         - NUNCA crie sólidos dentro de laços, LINQ (Select(... new CylinderFeature ...)) ou listas montadas
