@@ -43,7 +43,7 @@ public sealed record BlocoConexaoMotor2020(
         // O rebaixo superior (seÃ§Ã£o 4) Ã© cortado ANTES do chanfro, nÃ£o depois: assim a aresta
         // externa que ele cria na face de cima tambÃ©m Ã© chanfrada junto com o resto do corpo. A
         // aresta interna do degrau (cÃ´ncava) nÃ£o Ã© afetada pelo chanfro de qualquer forma â€” o
-        // kernel pula arestas cÃ´ncavas no fillet genÃ©rico (ver OpenCascadeGeometryKernel.BuildFillet).
+        // kernel pula arestas cÃ´ncavas no fillet genÃ©rico (ver OcctFilletBuilder).
         IFeature corpoPreChanfro = corpoBase;
         if (ProfundidadeRebaixoSuperior > 0.001)
         {

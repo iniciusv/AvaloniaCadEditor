@@ -10,7 +10,7 @@ namespace AvaloniaCadEditor.Tests.BehaviorTests;
 public class FilletConcaveEdgeTests
 {
     /// <summary>
-    /// O fillet genérico (base não-Box, ver OpenCascadeGeometryKernel.BuildFillet) precisa pular
+    /// O fillet genérico (base não-Box, ver OcctFilletBuilder.Build) precisa pular
     /// arestas côncavas: o cutter de chanfro/arredondamento só remove material, então numa aresta
     /// côncava — como a quina interna de um degrau — ele abriria um entalhe em vez de cortar a
     /// quina. Esse teste reproduz o caso do BlocoConexaoMotor2020: caixa com um rebaixo no topo,
