@@ -23,6 +23,31 @@ public static class FeatureCodeGenerator
 
     private static string F(double v) => Clean(v).ToString(CultureInfo.InvariantCulture);
 
+    /// <summary>
+    /// Tubo de seção circular varrido por uma polilinha, a partir dos pontos JÁ EM COORDENADAS DO
+    /// MUNDO. O caminho vira uma variável à parte porque ele não é um sólido: só o
+    /// <see cref="SweepFeature"/> precisa de nome literal igual ao da variável, pela regra de
+    /// sólidos rastreáveis.
+    /// </summary>
+    public static string GenerateSweepCode(IReadOnlyList<Point3D> worldPoints, double sectionRadius, double cornerRadius)
+    {
+        var sb = new StringBuilder();
+        string id = Guid.NewGuid().ToString("N").Substring(0, 4);
+        string pathVar = $"caminho_{id}";
+        string sweepVar = $"tubo_{id}";
+
+        string pontos = string.Join(", ", worldPoints.Select(p =>
+        {
+            var c = CleanP(p);
+            return $"new Point3D({F(c.X)}, {F(c.Y)}, {F(c.Z)})";
+        }));
+
+        sb.AppendLine($"var {pathVar} = SweepPath.FromPolyline(new[] {{ {pontos} }}, cornerRadius: {F(cornerRadius)});");
+        sb.AppendLine($"var {sweepVar} = new SweepFeature(SweepSection.Circle({F(sectionRadius)}), {pathVar}) {{ Name = \"{sweepVar}\" }};");
+        sb.AppendLine($"AddFeature({sweepVar});");
+        return sb.ToString();
+    }
+
     public static string GenerateExtrusionCode(IProfile profile, double height, Sketch? sketch)
     {
         var sb = new StringBuilder();

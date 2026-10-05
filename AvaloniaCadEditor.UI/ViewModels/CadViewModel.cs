@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.Linq;
@@ -553,6 +553,7 @@ public class CadViewModel : INotifyPropertyChanged
 	public ICommand SelectExtendToolCommand { get; }
 	public ICommand SelectOffsetToolCommand { get; }
 	public ICommand SelectExtrudeToolCommand { get; }
+	public ICommand SelectSweepToolCommand { get; }
 	public ICommand SelectBooleanCutCommand { get; }
 	public ICommand SelectBooleanFuseCommand { get; }
 	public ICommand SelectFilletToolCommand { get; }
@@ -719,6 +720,11 @@ public class CadViewModel : INotifyPropertyChanged
 				extrudeCmd.StartDirectExtrusion(Sketch, profile, new AvaloniaCadEditor.Domain.ValueObjects.Point3D(0, 0, 0));
 				RefreshSolidMesh(); // Force preview mesh update
 			}
+		});
+		SelectSweepToolCommand = new RelayCommand(() =>
+		{
+			CurrentMode = EditorMode.SketchEdit;
+			CurrentTool = new SweepCommand();
 		});
 		SelectBooleanCutCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Subtract, _selectionService, PreSelectedSolids()));
 		SelectBooleanFuseCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Union, _selectionService, PreSelectedSolids()));
@@ -1452,6 +1458,9 @@ public class CadViewModel : INotifyPropertyChanged
 			case "P":
 			case "E":
 				SelectExtrudeToolCommand.Execute(null);
+				break;
+			case "S":
+				SelectSweepToolCommand.Execute(null);
 				break;
 			case "T":
 				SelectTrimToolCommand.Execute(null);

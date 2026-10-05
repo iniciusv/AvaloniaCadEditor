@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Resources;
 
 namespace AvaloniaCadEditor.UI.Resources;
@@ -35,6 +35,7 @@ public static class Strings
     public static string DeduceSolid => ResourceManager.GetString("DeduceSolid") ?? "✨ Deduce Solid";
     public static string DeduceSolidTooltip => ResourceManager.GetString("DeduceSolidTooltip") ?? "Deduces CSG geometry from the selected STL mesh";
     public static string ExtrudeTool => ResourceManager.GetString("ExtrudeTool") ?? "Extrude (P)";
+    public static string SweepTool => ResourceManager.GetString("SweepTool") ?? "Sweep (S)";
     public static string CutTool => ResourceManager.GetString("CutTool") ?? "Cut (-)";
     public static string FuseTool => ResourceManager.GetString("FuseTool") ?? "Fuse (+)";
     public static string WorkPlaneTool => ResourceManager.GetString("WorkPlaneTool") ?? "WorkPlane (W)";

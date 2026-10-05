@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -153,6 +153,7 @@
                     <Separator Height="1" Background="#555" Margin="0,4" />
 
                     <Button Content="{x:Static res:Strings.ExtrudeTool}" Command="{Binding SelectExtrudeToolCommand}" Background="#007ACC" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                    <Button Content="{x:Static res:Strings.SweepTool}" Command="{Binding SelectSweepToolCommand}" Background="#007ACC" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     <Button Content="{x:Static res:Strings.CutTool}" Command="{Binding SelectBooleanCutCommand}" Background="#E67E22" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     <Button Content="{x:Static res:Strings.FuseTool}" Command="{Binding SelectBooleanFuseCommand}" Background="#27AE60" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     <Button Content="Fillet/Bevel" Background="#16A085" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">
