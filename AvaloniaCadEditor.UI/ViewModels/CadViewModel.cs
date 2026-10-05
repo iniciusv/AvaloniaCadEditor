@@ -396,9 +396,25 @@ public class CadViewModel : INotifyPropertyChanged
 	private System.Collections.Generic.List<AvaloniaCadEditor.Domain.Features.IFeature> PreSelectedSolids() =>
 		Sketch.Features.Where(f => f.IsSelected && f is not AvaloniaCadEditor.Domain.Features.WorkPlaneFeature).ToList();
 
-	/// <summary>Tecla H: com sólido(s) selecionado(s), oculta todo o restante do modelo (isolar seleção).</summary>
-	private void HideUnselectedSolids()
+	/// <summary>Sólidos que o último H escondeu (só os que estavam visíveis); o H seguinte os reexibe.</summary>
+	private System.Collections.Generic.List<AvaloniaCadEditor.Domain.Features.IFeature> _isolationHidden = new();
+
+	/// <summary>Tecla H: com sólido(s) selecionado(s), oculta todo o restante do modelo (isolar seleção);
+	/// apertando de novo, reexibe o que foi escondido.</summary>
+	private void ToggleIsolateSelection()
 	{
+		if (_isolationHidden.Count > 0)
+		{
+			foreach (var feature in _isolationHidden)
+			{
+				feature.IsVisible = true;
+			}
+
+			_isolationHidden = new();
+			RefreshProfiles();
+			return;
+		}
+
 		var selected = PreSelectedSolids();
 		if (selected.Count == 0)
 		{
@@ -407,12 +423,16 @@ public class CadViewModel : INotifyPropertyChanged
 
 		foreach (var feature in Sketch.Features)
 		{
-			if (feature is AvaloniaCadEditor.Domain.Features.WorkPlaneFeature)
+			if (feature is AvaloniaCadEditor.Domain.Features.WorkPlaneFeature || selected.Contains(feature))
 			{
 				continue;
 			}
 
-			feature.IsVisible = selected.Contains(feature);
+			if (feature.IsVisible)
+			{
+				feature.IsVisible = false;
+				_isolationHidden.Add(feature);
+			}
 		}
 
 		RefreshProfiles();
@@ -1464,7 +1484,7 @@ public class CadViewModel : INotifyPropertyChanged
 				}
 				break;
 			case "H":
-				HideUnselectedSolids();
+				ToggleIsolateSelection();
 				break;
 			case "F":
 				CurrentSelectionMode = CurrentSelectionMode switch
