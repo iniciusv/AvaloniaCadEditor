@@ -161,15 +161,21 @@ public class SceneCompilationTests
         const int runs = 30;
         await RunManyAsync(runs);
 
-        for (int i = 0; i < 10 && CountSceneAssemblies() > 0; i++)
+        // Outros testes podem estar avaliando em paralelo, e os assemblies DELES contam aqui
+        // (CountSceneAssemblies olha o processo inteiro). Por isso espera-se o limite ser atingido
+        // dentro de um prazo, em vez de medir uma vez depois de um orçamento fixo: o que o teste
+        // afirma é que ESTAS execuções não vazam 1 assembly cada, não que o processo esteja limpo
+        // num instante arbitrário.
+        const int limit = runs / 3;
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (CountSceneAssemblies() >= limit && DateTime.UtcNow < deadline)
         {
             GC.Collect();
             GC.WaitForPendingFinalizers();
             await Task.Delay(50);
         }
 
-        // Outros testes podem estar avaliando em paralelo; o que importa é não acumular 1 assembly por execução.
-        CountSceneAssemblies().Should().BeLessThan(runs / 3);
+        CountSceneAssemblies().Should().BeLessThan(limit);
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
