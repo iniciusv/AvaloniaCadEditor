@@ -14,12 +14,16 @@ public class JsonAiSettingsProvider : IAiSettingsProvider
 {
     private readonly string _filePath;
 
-    public JsonAiSettingsProvider()
+    /// <param name="folder">
+    /// Pasta do arquivo. Por padrão, %AppData%/AvaloniaCadEditor. Existe para os testes poderem
+    /// usar uma pasta temporária em vez do arquivo real do usuário.
+    /// </param>
+    public JsonAiSettingsProvider(string? folder = null)
     {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var appFolder = Path.Combine(appData, "AvaloniaCadEditor");
-        Directory.CreateDirectory(appFolder);
-        _filePath = Path.Combine(appFolder, "ai_settings.json");
+        folder ??= Path.Combine(
+            Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+            "AvaloniaCadEditor");
+        _filePath = Path.Combine(folder, "ai_settings.json");
     }
 
     public AiSettings GetSettings()
@@ -46,6 +50,7 @@ public class JsonAiSettingsProvider : IAiSettingsProvider
     {
         try
         {
+            Directory.CreateDirectory(Path.GetDirectoryName(_filePath)!);
             var json = JsonSerializer.Serialize(settings, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(_filePath, json);
         }
