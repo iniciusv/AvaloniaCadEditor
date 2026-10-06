@@ -519,6 +519,10 @@ public class CadViewModel : INotifyPropertyChanged
 
 	public bool IsInCustomWorkPlane => !ActiveWorkPlane.Equals(WorkPlane.XY);
 
+	/// <summary>Nome do plano ativo, para o painel esquerdo dizer em que plano o próximo clique cai.</summary>
+	public string ActiveWorkPlaneLabel =>
+		Sketch.WorkPlanes.FirstOrDefault(w => w.Plane.Equals(ActiveWorkPlane))?.Name ?? "Plano ativo";
+
 	/// <summary>Pick radius around the cursor, in screen pixels, for sketch entity hit-testing.</summary>
 	private const double HitTolerancePixels = 6.0;
 
@@ -561,6 +565,9 @@ public class CadViewModel : INotifyPropertyChanged
 	public ICommand SelectMoveToolCommand { get; }
 	public ICommand SelectRotateToolCommand { get; }
 	public ICommand SelectSetWorkPlaneCommand { get; }
+
+	/// <summary>Ativa um dos planos de origem ("XY", "XZ" ou "YZ") e entra em modo de esboço nele.</summary>
+	public ICommand SelectOriginWorkPlaneCommand { get; }
 	public ICommand DeleteSelectedCommand { get; }
 	public ICommand ExitWorkPlaneCommand { get; }
 	public ICommand ReconstructMeshCommand { get; }
@@ -757,6 +764,23 @@ public class CadViewModel : INotifyPropertyChanged
 		SelectMoveToolCommand = new RelayCommand(() => CurrentTool = new MoveTool { Plane = ActiveWorkPlane });
 		SelectRotateToolCommand = new RelayCommand(() => CurrentTool = new RotateTool { WorldUnitsPerPixel = WorldUnitsPerPixel, Plane = ActiveWorkPlane });
 		SelectSetWorkPlaneCommand = new RelayCommand(() => CurrentTool = new SetWorkPlaneCommand());
+
+		// Entra em esboço no plano, não só troca ActiveWorkPlane: a grade só gira em SketchEdit
+		// (ver GridRenderPass), e sem ela nada na viewport diz em que plano o próximo clique cai.
+		SelectOriginWorkPlaneCommand = new RelayCommand<string>(which =>
+		{
+			var plane = which switch
+			{
+				"XZ" => AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.XZ,
+				"YZ" => AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.YZ,
+				_ => AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.XY
+			};
+
+			var wpf = Sketch.WorkPlanes.FirstOrDefault(w => w.Plane.Equals(plane));
+			if (wpf == null) return;
+
+			EnterSketchMode(wpf);
+		});
 
 		ExitWorkPlaneCommand = new RelayCommand(() =>
 		{
@@ -1228,13 +1252,17 @@ public class CadViewModel : INotifyPropertyChanged
 
 			if (existingWpf == null)
 			{
-				var wpf = new AvaloniaCadEditor.Domain.Features.WorkPlaneFeature(value, $"Plano {Sketch.WorkPlanes.Count}");
+				// Só os planos derivados de face entram na conta: os de origem já têm nome próprio, e
+				// contar com eles faria o primeiro plano do usuário nascer como "Plano 3".
+				var derivados = Sketch.WorkPlanes.Count(w => !w.IsBasePlane);
+				var wpf = new AvaloniaCadEditor.Domain.Features.WorkPlaneFeature(value, $"Plano {derivados + 1}");
 				Sketch.AddFeature(wpf);
 			}
 
 			ModelTree.RebuildTree();
 			OnPropertyChanged();
 			OnPropertyChanged(nameof(IsInCustomWorkPlane));
+			OnPropertyChanged(nameof(ActiveWorkPlaneLabel));
 			RefreshSolidMesh();
 		}
 	}

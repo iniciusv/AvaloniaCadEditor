@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 
 namespace AvaloniaCadEditor.Domain.ValueObjects;
 
@@ -43,6 +43,17 @@ public class WorkPlane : IEquatable<WorkPlane>
     /// Default XY Plane (Z=0) used as the floor.
     /// </summary>
     public static WorkPlane XY => new WorkPlane(new Vector3D(0, 0, 1), Point3D.Origin);
+
+    /// <summary>
+    /// Plano XZ (Y=0), em pé: X local = X global, Y local = Z global. A normal é -Y, que é o que
+    /// X × Z dá — a mesma convenção dos CADs comerciais, e o que mantém a base destra.
+    /// </summary>
+    public static WorkPlane XZ => new WorkPlane(Point3D.Origin, new Vector3D(0, -1, 0), new Vector3D(1, 0, 0));
+
+    /// <summary>
+    /// Plano YZ (X=0), em pé: X local = Y global, Y local = Z global, normal +X (Y × Z).
+    /// </summary>
+    public static WorkPlane YZ => new WorkPlane(Point3D.Origin, new Vector3D(1, 0, 0), new Vector3D(0, 1, 0));
 
     public Point3D ToWorldSpace(Point3D localPoint)
     {

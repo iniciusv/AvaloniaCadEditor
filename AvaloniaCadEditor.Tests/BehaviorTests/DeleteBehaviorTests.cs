@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Linq;
 using AvaloniaCadEditor.Application.Commands;
 using AvaloniaCadEditor.Application.Services;
@@ -95,7 +95,8 @@ public class DeleteBehaviorTests
 
         // Assert
         vm.Sketch.Features.Should().BeEmpty();
-        vm.Sketch.WorkPlanes.Should().HaveCount(1);
+        // Os três planos de origem são de base e sobrevivem a qualquer deleção.
+        vm.Sketch.WorkPlanes.Should().HaveCount(3);
         selectionService.SelectedId.Should().BeNull();
         vm.SolidMesh.TriangleCount.Should().Be(0);
     }

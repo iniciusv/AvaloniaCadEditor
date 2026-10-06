@@ -112,3 +112,6 @@ var motorNema17 = Add(motorNema17Peca, at: Placement.At(xMotorNema17, yMotorSupo
 // Acompanha o lado do motor: a correia vem da polia e o rebaixo inferior do bloco existe
 // justamente para passar livre do bloco_conexao_motor_2020.
 var blocoFixacaoBelt = Add(new BlocoFixacaoBelt(), at: Placement.At(0, 0, alturaTopoCarrinhosY + carrinhoXPeca.Altura, rotationZDegrees: rotacaoMotorZ), name: "bloco_fixacao_belt", color: "#00CC6A");
+// --- Conexão em Y para mangueira de 5 mm ---
+// Boca inferior apoiada no plano: a peça vai de -20 a +25 em Z local, então o z do Placement é 20.
+var conexaoY = Add(new ConexaoYAdaptador5mm(ComprimentoRamal: 15), at: Placement.At(120, 120, 20), name: "conexao_y_5mm", color: "#C8A2C8");

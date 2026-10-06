@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.Profiles;
 
@@ -13,16 +13,26 @@ public class Sketch
 
     public ValueObjects.WorkPlane Plane { get; set; }
 
-    public Sketch()
+    public Sketch() : this(ValueObjects.WorkPlane.XY)
     {
-        Plane = ValueObjects.WorkPlane.XY;
-        _workPlanes.Add(new WorkPlaneFeature(Plane, "Plano Base (XY)", true));
     }
 
     public Sketch(ValueObjects.WorkPlane plane)
     {
         Plane = plane;
-        _workPlanes.Add(new WorkPlaneFeature(Plane, "Plano Base", true));
+
+        // Os três planos de origem nascem com o sketch, como em qualquer CAD. Sem eles, um plano
+        // em pé só existiria clicando numa face, e numa cena vazia não há face para clicar — nem
+        // como esboçar ou varrer um caminho fora do chão. São de base, então o SceneDeletionService
+        // não deixa apagá-los.
+        _workPlanes.Add(new WorkPlaneFeature(ValueObjects.WorkPlane.XY, "Plano Base (XY)", true));
+        _workPlanes.Add(new WorkPlaneFeature(ValueObjects.WorkPlane.XZ, "Plano Base (XZ)", true));
+        _workPlanes.Add(new WorkPlaneFeature(ValueObjects.WorkPlane.YZ, "Plano Base (YZ)", true));
+
+        if (!_workPlanes.Any(w => w.Plane.Equals(plane)))
+        {
+            _workPlanes.Add(new WorkPlaneFeature(plane, "Plano Base", true));
+        }
     }
 
     public IReadOnlyList<WorkPlaneFeature> WorkPlanes => _workPlanes.AsReadOnly();

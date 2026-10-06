@@ -39,6 +39,11 @@ public static class Strings
     public static string CutTool => ResourceManager.GetString("CutTool") ?? "Cut (-)";
     public static string FuseTool => ResourceManager.GetString("FuseTool") ?? "Fuse (+)";
     public static string WorkPlaneTool => ResourceManager.GetString("WorkPlaneTool") ?? "WorkPlane (W)";
+    public static string OriginPlanes => ResourceManager.GetString("OriginPlanes") ?? "Origin planes";
+    public static string PlaneXY => ResourceManager.GetString("PlaneXY") ?? "XY";
+    public static string PlaneXZ => ResourceManager.GetString("PlaneXZ") ?? "XZ";
+    public static string PlaneYZ => ResourceManager.GetString("PlaneYZ") ?? "YZ";
+    public static string OriginPlanesTooltip => ResourceManager.GetString("OriginPlanesTooltip") ?? "Sketches on one of the three origin planes — useful for sweeping a path that leaves the floor";
     public static string DeleteTool => ResourceManager.GetString("DeleteTool") ?? "Delete (Del)";
     public static string Osnap => ResourceManager.GetString("Osnap") ?? "OSnap";
     public static string OsnapSettings => ResourceManager.GetString("OsnapSettings") ?? "OSnap Settings";

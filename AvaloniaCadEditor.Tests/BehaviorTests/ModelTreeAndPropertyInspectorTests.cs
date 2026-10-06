@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Linq;
 using AvaloniaCadEditor.Application.Commands;
@@ -36,8 +36,9 @@ public class ModelTreeAndPropertyInspectorTests
         // entidades dentro) e volumes 3D — e cada item adicionado aparece nela.
         Assert.Equal(2, treeVm.RootNodes.Count);
         Assert.Equal("Geometria de Referência", treeVm.RootNodes[0].Name);
-        var plane = Assert.Single(treeVm.RootNodes[0].Children);
-        Assert.Equal("Plano Base (XY)", plane.Name);
+        Assert.Equal(
+            new[] { "Plano Base (XY)", "Plano Base (XZ)", "Plano Base (YZ)" },
+            treeVm.RootNodes[0].Children.Select(c => c.Name).ToArray());
         Assert.Equal("Volumes 3D (1)", treeVm.RootNodes[1].Name);
 
         var allTags = Flatten(treeVm.RootNodes).Select(n => n.Tag).ToList();

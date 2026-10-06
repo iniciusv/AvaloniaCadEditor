@@ -1,4 +1,4 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <root>
   <data name="AppTitle" xml:space="preserve"><value>Avalonia CAD Editor - 3D Parametric</value></data>
   <data name="Selection" xml:space="preserve"><value>Selection:</value></data>
@@ -31,6 +31,11 @@
   <data name="CutTool" xml:space="preserve"><value>Cut (-)</value></data>
   <data name="FuseTool" xml:space="preserve"><value>Fuse (+)</value></data>
   <data name="WorkPlaneTool" xml:space="preserve"><value>WorkPlane (W)</value></data>
+  <data name="OriginPlanes" xml:space="preserve"><value>Origin planes</value></data>
+  <data name="PlaneXY" xml:space="preserve"><value>XY</value></data>
+  <data name="PlaneXZ" xml:space="preserve"><value>XZ</value></data>
+  <data name="PlaneYZ" xml:space="preserve"><value>YZ</value></data>
+  <data name="OriginPlanesTooltip" xml:space="preserve"><value>Sketches on one of the three origin planes — useful for sweeping a path that leaves the floor</value></data>
   <data name="DeleteTool" xml:space="preserve"><value>Delete (Del)</value></data>
   <data name="Osnap" xml:space="preserve"><value>OSnap</value></data>
   <data name="OsnapSettings" xml:space="preserve"><value>OSnap Settings</value></data>
