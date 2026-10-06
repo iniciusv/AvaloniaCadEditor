@@ -596,6 +596,14 @@ public class CadViewModel : INotifyPropertyChanged
 		}
 	}
 
+	/// <summary>
+	/// Configuração de tesselação em vigor. Existe para o viewport montar o
+	/// <see cref="AvaloniaCadEditor.UI.Controls.Rendering.RenderContext"/> de cada frame sem
+	/// instanciar um provider de Infrastructure por conta própria.
+	/// </summary>
+	public AvaloniaCadEditor.Domain.Settings.TessellationSettings TessellationSettings =>
+		_settingsProvider.GetSettings();
+
 	public int ProfileSegments
 	{
 		get => _settingsProvider.GetSettings().ProfileSegments;

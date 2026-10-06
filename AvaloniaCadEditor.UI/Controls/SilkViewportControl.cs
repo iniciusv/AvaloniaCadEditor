@@ -165,7 +165,9 @@ public class SilkViewportControl : OpenGlControlBase
             Uniforms = _shaderManager.Uniforms,
             Camera = _camera,
             ViewModel = ViewModel,
-            Bounds = Bounds.Size
+            Bounds = Bounds.Size,
+            // Resolvido uma vez por frame, aqui, em vez de dentro de cada pass.
+            Tessellation = ViewModel?.TessellationSettings ?? new Domain.Settings.TessellationSettings()
         };
 
         foreach (var pass in _renderPasses)

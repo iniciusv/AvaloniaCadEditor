@@ -118,8 +118,7 @@ public sealed class SolidFeatureRenderPass : IRenderPass
 
         var identity = context.IdentityMatrix;
 
-        // Lido uma vez por frame (antes era por feature): GetSettings lê e desserializa o JSON do disco.
-        var settings = new AvaloniaCadEditor.Infrastructure.Settings.JsonTessellationSettingsProvider().GetSettings();
+        var settings = context.Tessellation;
 
         foreach (var (feature, isPreview, isToolFeature) in featuresToRender)
         {
