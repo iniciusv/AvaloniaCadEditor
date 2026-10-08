@@ -64,4 +64,13 @@ public interface IPartSolidTracer
     /// exemplo, um sólido criado num laço com nome interpolado.
     /// </summary>
     PartSolidInputs? Trace(IReadOnlyList<ScriptDocument> documents, string partTypeName, string solidName);
+
+    /// <summary>
+    /// Os parâmetros do record que alimentam UM argumento do construtor do sólido — por exemplo, o
+    /// <c>radius</c> de <c>new CylinderFeature(centro, eixo, RaioFuroPassante, ...)</c> devolve
+    /// <c>["RaioFuroPassante"]</c>. Atravessa locais e funções locais como <see cref="Trace"/>.
+    /// Null quando a peça, o sólido ou o argumento não são achados.
+    /// </summary>
+    /// <param name="constructorParameterName">Nome do parâmetro do construtor da feature (ex.: "radius").</param>
+    IReadOnlyList<string>? TraceArgument(IReadOnlyList<ScriptDocument> documents, string partTypeName, string solidName, string constructorParameterName);
 }

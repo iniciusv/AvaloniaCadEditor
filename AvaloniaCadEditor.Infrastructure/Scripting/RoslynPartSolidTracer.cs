@@ -65,6 +65,59 @@ public sealed class RoslynPartSolidTracer : IPartSolidTracer
         return null;
     }
 
+    public IReadOnlyList<string>? TraceArgument(
+        IReadOnlyList<ScriptDocument> documents, string partTypeName, string solidName, string constructorParameterName)
+    {
+        if (documents == null || string.IsNullOrEmpty(partTypeName) || string.IsNullOrEmpty(solidName) ||
+            string.IsNullOrEmpty(constructorParameterName)) return null;
+
+        var compilation = RoslynSceneEvaluator.CreateCompilation(documents, out var trees);
+
+        foreach (var tree in trees)
+        {
+            var record = tree.GetRoot().DescendantNodes()
+                .OfType<RecordDeclarationSyntax>()
+                .FirstOrDefault(r => r.Identifier.ValueText == partTypeName);
+            if (record == null) continue;
+
+            var model = compilation.GetSemanticModel(tree);
+            if (model.GetDeclaredSymbol(record) is not { } recordSymbol) return null;
+
+            var creation = FindSolidSeed(record, solidName)?
+                .DescendantNodesAndSelf()
+                .OfType<BaseObjectCreationExpressionSyntax>()
+                .FirstOrDefault();
+            if (creation?.ArgumentList == null || SymbolOf(model, creation) is not IMethodSymbol constructor) return null;
+
+            var argument = ArgumentFor(creation.ArgumentList, constructor, constructorParameterName);
+            if (argument == null) return null;
+
+            return Walk(model, recordSymbol, trees, argument.Expression)
+                .Where(symbol => KindOf(symbol, recordSymbol, trees) == SolidInputKind.PartParameter)
+                .Select(symbol => symbol.Name)
+                .OrderBy(name => name, StringComparer.Ordinal)
+                .ToList();
+        }
+
+        return null;
+    }
+
+    /// <summary>O argumento que preenche o parâmetro <paramref name="name"/>: nomeado (<c>radius: x</c>) ou pela posição.</summary>
+    private static ArgumentSyntax? ArgumentFor(ArgumentListSyntax arguments, IMethodSymbol constructor, string name)
+    {
+        var named = arguments.Arguments.FirstOrDefault(a => a.NameColon?.Name.Identifier.ValueText == name);
+        if (named != null) return named;
+
+        int index = -1;
+        for (int i = 0; i < constructor.Parameters.Length; i++)
+        {
+            if (constructor.Parameters[i].Name == name) { index = i; break; }
+        }
+        if (index < 0 || index >= arguments.Arguments.Count) return null;
+        var positional = arguments.Arguments[index];
+        return positional.NameColon == null ? positional : null;
+    }
+
     // ---------------------------------------------------------------- O passeio
 
     /// <summary>

@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Analisador de desenho técnico: projeta a árvore de features de uma peça numa vista padrão e
+    gera cotas. Puro de propósito — só depende do Domain (sem GL, Avalonia, OCCT nem Roslyn); a
+    UI o consome por um adaptador (UI/Drafting), e o core não depende dele.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AvaloniaCadEditor.Domain\AvaloniaCadEditor.Domain.csproj" />
+  </ItemGroup>
+
+</Project>

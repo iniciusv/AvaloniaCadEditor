@@ -273,4 +273,25 @@ public class PartSolidTracerTests
         var semParametro = () => PartSourceEditor.SetPartTypeParameterDefault(CantoneiraRecord, "Cantoneira", "NaoExiste", "1");
         semParametro.Should().Throw<System.InvalidOperationException>().WithMessage("*NaoExiste*");
     }
+
+    [Fact]
+    public void TraceArgument_Raio_AtravessaOLocalAteOParametroDoRecord()
+    {
+        new RoslynPartSolidTracer().TraceArgument(Documents(), "Cantoneira", "furo_placa_1", "radius")
+            .Should().Equal("DiametroFuroM3");
+    }
+
+    [Fact]
+    public void TraceArgument_SolidoSemVariavel_AchaPeloNome()
+    {
+        new RoslynPartSolidTracer().TraceArgument(Documents(), "Cantoneira", "furo_extrusao_1", "height")
+            .Should().Equal("EspessuraAbaExtrusao");
+    }
+
+    [Fact]
+    public void TraceArgument_ParametroInexistente_Null()
+    {
+        new RoslynPartSolidTracer().TraceArgument(Documents(), "Cantoneira", "furo_placa_1", "naoExiste")
+            .Should().BeNull();
+    }
 }

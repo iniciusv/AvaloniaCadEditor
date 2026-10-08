@@ -9,6 +9,7 @@ public partial class MainWindow : Window
         InitializeComponent();
 
         GuideLabelsOverlay.AttachTo(ViewportControl);
+        DraftingLabelsOverlay.AttachTo(ViewportControl);
         SelectionBoxOverlay.AttachTo(ViewportControl);
 
         this.DataContextChanged += (s, e) =>
@@ -28,6 +29,16 @@ public partial class MainWindow : Window
 
     private void Viewport_PointerPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
     {
+        // Modo "Cotar" do desenho: o clique escolhe pontos de cota em vez de selecionar.
+        if (DataContext is AvaloniaCadEditor.UI.ViewModels.CadViewModel { Drafting: { IsPicking: true } drafting } &&
+            e.GetCurrentPoint(ViewportControl).Properties.IsLeftButtonPressed &&
+            drafting.HandleClick(e.GetPosition(ViewportControl), ViewportControl.Camera, ViewportControl.Bounds.Size))
+        {
+            e.Handled = true;
+            ViewportControl.RequestNextFrameRendering();
+            return;
+        }
+
         ViewportControl.HandlePointerPressed(e);
     }
 
@@ -51,7 +62,10 @@ public partial class MainWindow : Window
         if (sender is Button { Tag: string tag } &&
             System.Enum.TryParse<AvaloniaCadEditor.Domain.Entities.StandardView>(tag, out var view))
         {
-            ViewportControl.SetStandardView(view);
+            // Com uma peça isolada (H), as vistas seguem os eixos dela.
+            var vm = DataContext as AvaloniaCadEditor.UI.ViewModels.CadViewModel;
+            vm?.Drafting?.SetView(view);
+            ViewportControl.SetStandardView(view, (float)(vm?.DisplayFrame?.AzimuthOffset ?? 0.0));
         }
     }
 
@@ -80,6 +94,13 @@ public partial class MainWindow : Window
         if (IsTextInputFocused()) return;
         if (DataContext is AvaloniaCadEditor.UI.ViewModels.CadViewModel vm)
         {
+            // ESC no modo "Cotar" desiste da cota em andamento antes da cascata normal do ESC.
+            if (e.Key == Avalonia.Input.Key.Escape && vm.Drafting is { IsPicking: true } drafting && drafting.CancelPending())
+            {
+                ViewportControl.RequestNextFrameRendering();
+                return;
+            }
+
             bool isCtrl = e.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Control);
             vm.OnKeyDown(e.Key.ToString(), isCtrl);
             if (e.Key == Avalonia.Input.Key.Tab) e.Handled = true;

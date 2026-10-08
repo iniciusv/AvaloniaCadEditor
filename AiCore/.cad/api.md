@@ -185,8 +185,11 @@ Propriedades comuns a TODAS as features (herdadas de FeatureBase):
   static Placement Placement.Rotation(Vector3D axis, double degrees)
   Vector3D Translation { get; }
   bool HasRotation { get; }
+  bool IsRotationAboutZOnly { get; }
+  double RotationZRadians { get; }
   bool IsIdentity { get; }
   Placement Then(Placement next)
+  Placement Inverse()
   Point3D Apply(Point3D p)
   Vector3D ApplyVector(Vector3D v)
   void ApplyToFloats(Single[] values, int offset, bool isPoint)

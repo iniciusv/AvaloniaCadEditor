@@ -54,6 +54,7 @@ public partial class App : Avalonia.Application
 
 			var referenceGuideService = new AvaloniaCadEditor.Application.ReferenceGuides.ReferenceGuideService();
 			viewModel.ReferenceGuides = new AvaloniaCadEditor.UI.ReferenceGuides.ReferenceGuidesViewModel(referenceGuideService, () => viewModel.Sketch.Features);
+			viewModel.Drafting = new AvaloniaCadEditor.UI.Drafting.DraftingViewModel(viewModel);
 
 			desktop.MainWindow.DataContext = viewModel;
 		}

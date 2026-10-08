@@ -5,5 +5,8 @@ public enum StandardView
     Top,
     Front,
     Right,
-    Isometric
+    Isometric,
+    Left,
+    Back,
+    Bottom
 }

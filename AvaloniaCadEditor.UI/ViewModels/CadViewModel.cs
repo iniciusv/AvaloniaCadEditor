@@ -396,14 +396,45 @@ public class CadViewModel : INotifyPropertyChanged
 	private System.Collections.Generic.List<AvaloniaCadEditor.Domain.Features.IFeature> PreSelectedSolids() =>
 		Sketch.Features.Where(f => f.IsSelected && f is not AvaloniaCadEditor.Domain.Features.WorkPlaneFeature).ToList();
 
-	/// <summary>Sólidos que o último H escondeu (só os que estavam visíveis); o H seguinte os reexibe.</summary>
+	/// <summary>Nomes das features de topo isoladas pelo H. Guardados por nome (e não pelo objeto)
+	/// porque cada execução do código recria todas as features com Ids novos; os nomes são estáveis.</summary>
+	private System.Collections.Generic.HashSet<string> _isolatedNames = new();
+
+	/// <summary>Sólidos que o isolamento escondeu nesta execução (só os que estavam visíveis); sair do
+	/// isolamento reexibe exatamente estes.</summary>
 	private System.Collections.Generic.List<AvaloniaCadEditor.Domain.Features.IFeature> _isolationHidden = new();
 
+	public bool IsIsolating => _isolatedNames.Count > 0;
+
+	/// <summary>A feature de topo isolada quando o isolamento é de uma peça só; senão <c>null</c>.
+	/// Atualizada junto com <see cref="DisplayFrame"/> (que notifica a mudança).</summary>
+	public IFeature? IsolatedFeature { get; private set; }
+
+	/// <summary>Analisador de cotas da peça isolada (ver <see cref="AvaloniaCadEditor.UI.Drafting.DraftingViewModel"/>).</summary>
+	public AvaloniaCadEditor.UI.Drafting.DraftingViewModel? Drafting { get; set; }
+
+	private PartFrame? _displayFrame;
+	/// <summary>Referencial da peça isolada (origem no canto mínimo, eixos da peça) ou <c>null</c>.
+	/// Só visual: a grade e os eixos são desenhados nele; o código continua em coordenadas do mundo.</summary>
+	public PartFrame? DisplayFrame
+	{
+		get => _displayFrame;
+		private set
+		{
+			if (!ReferenceEquals(_displayFrame, value))
+			{
+				_displayFrame = value;
+				OnPropertyChanged();
+			}
+		}
+	}
+
 	/// <summary>Tecla H: com sólido(s) selecionado(s), oculta todo o restante do modelo (isolar seleção);
-	/// apertando de novo, reexibe o que foi escondido.</summary>
+	/// apertando de novo, reexibe o que foi escondido. O isolamento sobrevive à reexecução do código
+	/// (ver <see cref="ReapplyIsolation"/>).</summary>
 	private void ToggleIsolateSelection()
 	{
-		if (_isolationHidden.Count > 0)
+		if (IsIsolating)
 		{
 			foreach (var feature in _isolationHidden)
 			{
@@ -411,6 +442,10 @@ public class CadViewModel : INotifyPropertyChanged
 			}
 
 			_isolationHidden = new();
+			_isolatedNames = new();
+			IsolatedFeature = null;
+			DisplayFrame = null;
+			OnPropertyChanged(nameof(IsIsolating));
 			RefreshProfiles();
 			return;
 		}
@@ -421,9 +456,47 @@ public class CadViewModel : INotifyPropertyChanged
 			return;
 		}
 
+		_isolatedNames = selected.Select(f => f.Name).ToHashSet();
+		ApplyIsolation();
+		OnPropertyChanged(nameof(IsIsolating));
+		RefreshProfiles();
+	}
+
+	/// <summary>Chamado depois que uma execução do código recolocou as features na cena (e antes de
+	/// refazer a malha): esconde de novo tudo que não é a peça isolada e recalcula o referencial. Se
+	/// a peça isolada não existe mais no código, encerra o isolamento.</summary>
+	public void ReapplyIsolation()
+	{
+		if (!IsIsolating)
+		{
+			return;
+		}
+
+		_isolationHidden = new();
+		if (!Sketch.Features.Any(f => _isolatedNames.Contains(f.Name)))
+		{
+			_isolatedNames = new();
+			IsolatedFeature = null;
+			DisplayFrame = null;
+			OnPropertyChanged(nameof(IsIsolating));
+			return;
+		}
+
+		ApplyIsolation();
+	}
+
+	private void ApplyIsolation()
+	{
+		var isolated = new System.Collections.Generic.List<IFeature>();
 		foreach (var feature in Sketch.Features)
 		{
-			if (feature is AvaloniaCadEditor.Domain.Features.WorkPlaneFeature || selected.Contains(feature))
+			if (_isolatedNames.Contains(feature.Name))
+			{
+				isolated.Add(feature);
+				continue;
+			}
+
+			if (feature is AvaloniaCadEditor.Domain.Features.WorkPlaneFeature)
 			{
 				continue;
 			}
@@ -435,7 +508,11 @@ public class CadViewModel : INotifyPropertyChanged
 			}
 		}
 
-		RefreshProfiles();
+		// Referencial só para uma peça única; seleção múltipla isola sem mover a grade.
+		IsolatedFeature = isolated.Count == 1 ? isolated[0] : null;
+		DisplayFrame = isolated.Count == 1
+			? AvaloniaCadEditor.Application.Isolation.PartFrameResolver.Resolve(isolated[0], GetFeatureMesh(isolated[0].Id)?.Positions)
+			: null;
 	}
 
 	private void BooleanTool_OperandAppendRequested(object? sender, (string BooleanVar, System.Collections.Generic.IReadOnlyList<string> ToolVars, string FallbackCode) args)

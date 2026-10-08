@@ -54,6 +54,7 @@ public class SilkViewportControl : OpenGlControlBase
             new ProfileFaceRenderPass(),
             new SketchEntityRenderPass(),
             new AvaloniaCadEditor.UI.ReferenceGuides.ReferenceGuideRenderPass(),
+            new AvaloniaCadEditor.UI.Drafting.DraftingRenderPass(),
             new ToolGuideRenderPass()
         };
 
@@ -180,9 +181,9 @@ public class SilkViewportControl : OpenGlControlBase
         FrameRendered?.Invoke();
     }
 
-    public void SetStandardView(StandardView view)
+    public void SetStandardView(StandardView view, float azimuthOffset = 0f)
     {
-        _camera.SetStandardView(view);
+        _camera.SetStandardView(view, azimuthOffset);
         RequestNextFrameRendering();
     }
 

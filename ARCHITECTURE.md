@@ -41,6 +41,8 @@ a criou. É o que transforma seleção na viewport em navegação no código.
 Domain  ←  Application  ←  Infrastructure  ←  UI
              ↑
           AiCore
+
+Domain  ←  Drafting  ←  UI
 ```
 
 | Projeto | TFM | Papel |
@@ -50,6 +52,7 @@ Domain  ←  Application  ←  Infrastructure  ←  UI
 | `AvaloniaCadEditor.Infrastructure` | `net10.0-windows` x64 | OCCT (`OcctNet.Wrapper`), Roslyn evaluator/navigator, reconstrução, STL, settings JSON. |
 | `AvaloniaCadEditor.UI` | `net10.0-windows` x64 | Avalonia 12 + Silk.NET OpenGL, ViewModels, render passes, CLI `check`. |
 | `AiCore` | `net10.0` | Cliente LLM e `IAiProtocol`, sem dependências externas (BCL só). **Também é uma pasta de cena** (ver §7). |
+| `AvaloniaCadEditor.Drafting` | `net10.0` | Analisador de desenho técnico: projeta a árvore de features da peça isolada numa vista padrão e gera cotas. **Só depende do Domain**; a UI o consome (`UI/Drafting/`) e o core não depende dele. |
 | `AvaloniaCadEditor.Tests` | `net10.0-windows` | xunit + FluentAssertions + Moq. ~445 testes. |
 
 **A regra:** a seta nunca inverte. `Application` não conhece `Infrastructure` — é por isso que o
@@ -148,6 +151,9 @@ de todo o resto. Falha segura: fingerprint `null` = sem cache, nunca cache errad
 | Adicionar exemplo few-shot para a IA | `Application/Ai/CadScriptProtocol.Examples` | há teste que compila e executa **cada** exemplo |
 | Mudar a renderização | `UI/Controls/Rendering/*RenderPass.cs` (implemente `IRenderPass`) | registre em `SilkViewportControl._renderPasses` |
 | Mudar o modo wireframe (linhas ocultas tracejadas) | `UI/Controls/Rendering/WireframeRenderPass.cs`, `WireframeEdgeShader.cs`, `WireframeGeometry.cs` | quem entra no frame e com que cor vem de `SolidRenderables`, compartilhado com o sombreado. As arestas e silhuetas são calculadas sob demanda pelo `EdgeDetector`, só para as malhas exibidas no modo: a mudança é só visual e não acrescenta nada à `TriangleMesh` |
+| Mudar o referencial da peça isolada (H) | `Application/Isolation/PartFrameResolver.cs`, `Domain/ValueObjects/PartFrame.cs`, `CadViewModel.ToggleIsolateSelection`/`ReapplyIsolation` | só visual: a grade e as vistas usam o referencial, o código continua em mundo. O isolamento é guardado **por nome** e reaplicado em `RunCodeAsync`, porque cada execução recria as features |
+| Mudar as cotas automáticas | `AvaloniaCadEditor.Drafting/` (`ViewProjector` projeta, `AutoDimensioner` cota) | as medidas vêm dos **parâmetros** das features, não da malha: o OCCT não expõe arestas analíticas e furos são prismas de 32 lados |
+| Mudar como as cotas aparecem / o modo "Cotar" | `UI/Drafting/` (`DraftingViewModel`, `DraftingRenderPass`, `DraftingLabelsOverlay`) | cotas manuais vivem só na sessão, por Id de âncora (`furo_x.centro`); só desenham com câmera ortho na vista escolhida |
 | Mudar seleção / hover / pick | `UI/ViewModels/CadViewModel.cs` (hover com timer, ciclo TAB), `UI/Controls/Input/` | |
 | Mudar a árvore ou o inspector | `UI/ViewModels/ModelTreeViewModel.cs`, `PropertyInspectorViewModel.cs` | o inspector escreve no **código**, não no objeto |
 | Mudar a validação headless | `UI/Cli/CheckCommand.cs`, `Application/Scenes/SceneCheckService.cs` | exit codes: 0 ok, 1 erro de cena, 2 uso/pasta inválida |

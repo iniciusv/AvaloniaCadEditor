@@ -86,8 +86,17 @@ public static class Strings
     public static string ViewFront => ResourceManager.GetString("ViewFront") ?? "Front";
     public static string ViewRight => ResourceManager.GetString("ViewRight") ?? "Right";
     public static string ViewIso => ResourceManager.GetString("ViewIso") ?? "Iso";
+    public static string ViewLeft => ResourceManager.GetString("ViewLeft") ?? "Left";
+    public static string ViewBack => ResourceManager.GetString("ViewBack") ?? "Back";
+    public static string ViewBottom => ResourceManager.GetString("ViewBottom") ?? "Bottom";
     public static string ProjectionOrtho => ResourceManager.GetString("ProjectionOrtho") ?? "Ortho";
     public static string ProjectionOrthoTip => ResourceManager.GetString("ProjectionOrthoTip") ?? "Toggle perspective / orthographic projection";
     public static string DisplayWireframe => ResourceManager.GetString("DisplayWireframe") ?? "Wire";
     public static string DisplayWireframeTip => ResourceManager.GetString("DisplayWireframeTip") ?? "Toggle wireframe with dashed hidden lines (V)";
+    public static string DraftingDims => ResourceManager.GetString("DraftingDims") ?? "Dims";
+    public static string DraftingDimsTip => ResourceManager.GetString("DraftingDimsTip") ?? "Automatic dimensions of the isolated part";
+    public static string DraftingPick => ResourceManager.GetString("DraftingPick") ?? "Pick";
+    public static string DraftingPickTip => ResourceManager.GetString("DraftingPickTip") ?? "Add dimensions";
+    public static string DraftingReset => ResourceManager.GetString("DraftingReset") ?? "Reset";
+    public static string DraftingResetTip => ResourceManager.GetString("DraftingResetTip") ?? "Reset dimensions of this view";
 }

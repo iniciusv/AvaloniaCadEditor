@@ -78,8 +78,17 @@
   <data name="ViewFront" xml:space="preserve"><value>Front</value></data>
   <data name="ViewRight" xml:space="preserve"><value>Right</value></data>
   <data name="ViewIso" xml:space="preserve"><value>Iso</value></data>
+  <data name="ViewLeft" xml:space="preserve"><value>Left</value></data>
+  <data name="ViewBack" xml:space="preserve"><value>Back</value></data>
+  <data name="ViewBottom" xml:space="preserve"><value>Bottom</value></data>
   <data name="ProjectionOrtho" xml:space="preserve"><value>Ortho</value></data>
   <data name="ProjectionOrthoTip" xml:space="preserve"><value>Toggle perspective / orthographic projection</value></data>
   <data name="DisplayWireframe" xml:space="preserve"><value>Wire</value></data>
   <data name="DisplayWireframeTip" xml:space="preserve"><value>Toggle wireframe with dashed hidden lines (V)</value></data>
+  <data name="DraftingDims" xml:space="preserve"><value>Dims</value></data>
+  <data name="DraftingDimsTip" xml:space="preserve"><value>Automatic dimensions of the isolated part (H) in the current standard view, orthographic camera</value></data>
+  <data name="DraftingPick" xml:space="preserve"><value>Pick</value></data>
+  <data name="DraftingPickTip" xml:space="preserve"><value>Add dimensions: click two points, then where the dimension line goes (same hole center twice = diameter). Click a dimension text to hide/remove it. Esc cancels.</value></data>
+  <data name="DraftingReset" xml:space="preserve"><value>Reset</value></data>
+  <data name="DraftingResetTip" xml:space="preserve"><value>Remove manual dimensions and show hidden ones again (this view)</value></data>
 </root>

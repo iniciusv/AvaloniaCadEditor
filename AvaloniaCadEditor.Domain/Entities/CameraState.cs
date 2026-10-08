@@ -58,7 +58,12 @@ public class CameraState
         return Matrix4x4.CreatePerspectiveFieldOfView(Fov, AspectRatio, near, far);
     }
 
-    public void SetStandardView(StandardView view)
+    /// <summary>
+    /// Aponta a câmera para uma vista padrão. <paramref name="azimuthOffset"/> é a rotação em Z
+    /// (radianos, regra da mão direita) do referencial cujas vistas se quer: com uma peça isolada
+    /// girada, "Front" passa a ser a frente da peça, e não a do mundo.
+    /// </summary>
+    public void SetStandardView(StandardView view, float azimuthOffset = 0f)
     {
         switch (view)
         {
@@ -66,19 +71,36 @@ public class CameraState
                 Azimuth = MathF.PI;
                 Elevation = 0f;
                 break;
+            case StandardView.Back:
+                Azimuth = 0f;
+                Elevation = 0f;
+                break;
             case StandardView.Right:
                 Azimuth = MathF.PI / 2f;
+                Elevation = 0f;
+                break;
+            case StandardView.Left:
+                Azimuth = -MathF.PI / 2f;
                 Elevation = 0f;
                 break;
             case StandardView.Top:
                 Azimuth = MathF.PI;
                 Elevation = MathF.PI / 2f;
                 break;
+            case StandardView.Bottom:
+                // Olhando de baixo com X para a direita: a frente (-Y) fica no alto da tela.
+                Azimuth = MathF.PI;
+                Elevation = -MathF.PI / 2f;
+                break;
             case StandardView.Isometric:
                 Azimuth = 3f * MathF.PI / 4f;
                 Elevation = MathF.Atan(1f / MathF.Sqrt(2f)); // true isometric (~35.26°)
                 break;
         }
+
+        // O azimute é medido a partir de +Y no sentido horário (x = sin, y = cos); girar o
+        // referencial de θ no sentido anti-horário subtrai θ.
+        Azimuth -= azimuthOffset;
     }
 
     public void Orbit(float deltaAzimuth, float deltaElevation)

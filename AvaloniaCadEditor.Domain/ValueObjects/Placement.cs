@@ -40,6 +40,14 @@ public sealed class Placement
           Close(_m01, 0, 1e-9) && Close(_m02, 0, 1e-9) && Close(_m10, 0, 1e-9) &&
           Close(_m12, 0, 1e-9) && Close(_m20, 0, 1e-9) && Close(_m21, 0, 1e-9));
 
+    /// <summary>True se a rotação (se houver) é só em torno de Z: o eixo Z local continua sendo o Z do mundo.</summary>
+    public bool IsRotationAboutZOnly =>
+        Close(_m02, 0, 1e-9) && Close(_m12, 0, 1e-9) &&
+        Close(_m20, 0, 1e-9) && Close(_m21, 0, 1e-9) && Close(_m22, 1, 1e-9);
+
+    /// <summary>Ângulo (radianos, regra da mão direita) da rotação em Z. Só faz sentido com <see cref="IsRotationAboutZOnly"/>.</summary>
+    public double RotationZRadians => Math.Atan2(_m10, _m00);
+
     public bool IsIdentity => ReferenceEquals(this, Identity) ||
         (Close(_m00, 1) && Close(_m11, 1) && Close(_m22, 1) &&
          Close(_m01, 0) && Close(_m02, 0) && Close(_m10, 0) && Close(_m12, 0) && Close(_m20, 0) && Close(_m21, 0) &&
@@ -97,6 +105,21 @@ public sealed class Placement
             next._m20 * _m01 + next._m21 * _m11 + next._m22 * _m21,
             next._m20 * _m02 + next._m21 * _m12 + next._m22 * _m22,
             next.ApplyVector(Translation) + next.Translation);
+    }
+
+    /// <summary>O posicionamento que desfaz este: <c>p.Then(p.Inverse())</c> é a identidade.</summary>
+    public Placement Inverse()
+    {
+        // Rotação ortonormal: a inversa é a transposta; a translação vira -Rᵀ·t.
+        var t = Translation;
+        return new Placement(
+            _m00, _m10, _m20,
+            _m01, _m11, _m21,
+            _m02, _m12, _m22,
+            new Vector3D(
+                -(_m00 * t.X + _m10 * t.Y + _m20 * t.Z),
+                -(_m01 * t.X + _m11 * t.Y + _m21 * t.Z),
+                -(_m02 * t.X + _m12 * t.Y + _m22 * t.Z)));
     }
 
     public Point3D Apply(Point3D p) =>

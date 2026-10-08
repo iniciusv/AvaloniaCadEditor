@@ -500,6 +500,23 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
     }
 
     /// <summary>
+    /// Parâmetros do record que alimentam um argumento do construtor de um sólido da peça (ex.: o
+    /// "radius" de um furo). Null quando não dá para rastrear — é só um extra para as cotas.
+    /// Pode rodar fora da UI thread: recebe os documentos já lidos (<see cref="GetSceneDocuments"/>).
+    /// </summary>
+    public IReadOnlyList<string>? TracePartArgument(IReadOnlyList<ScriptDocument> documents, string partTypeName, string solidName, string constructorParameterName)
+    {
+        try
+        {
+            return _partSolidTracer.TraceArgument(documents, partTypeName, solidName, constructorParameterName);
+        }
+        catch (Exception)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Pinta no editor a declaração do sólido e a de cada coisa que o alimenta (as que estiverem no
     /// arquivo aberto — o da peça, que <see cref="RevealPartTool"/> acabou de abrir).
     /// </summary>
@@ -686,6 +703,8 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
             {
                 _cadViewModel.Sketch.AddFeature(feature);
             }
+            // As features são todas novas: o isolamento do H (por nome) é reaplicado sobre elas.
+            _cadViewModel.ReapplyIsolation();
             // RefreshProfiles já refaz a malha composta e a árvore, uma vez cada.
             _cadViewModel.RefreshProfiles();
             Console.WriteLine($"[Run] avaliação {evaluateMs} ms, geometria/árvore {stopwatch.ElapsedMilliseconds - evaluateMs} ms, {result.Features.Count} feature(s)");

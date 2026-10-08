@@ -133,9 +133,10 @@ public sealed class GridRenderPass : IRenderPass
 
     public void Render(GL gl, RenderContext context)
     {
+        // Fora do sketch, com uma peça isolada (H), a grade e os eixos vão para o referencial dela.
         var wp = context.ViewModel?.CurrentMode == AvaloniaCadEditor.UI.ViewModels.EditorMode.SketchEdit
             ? context.ViewModel.ActiveWorkPlane
-            : AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.XY;
+            : context.ViewModel?.DisplayFrame?.XY ?? AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.XY;
 
         var planeMatrix = new Matrix4x4(
             (float)wp.XAxis.X, (float)wp.XAxis.Y, (float)wp.XAxis.Z, 0,

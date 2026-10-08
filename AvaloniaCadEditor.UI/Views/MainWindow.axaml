@@ -4,6 +4,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:controls="clr-namespace:AvaloniaCadEditor.UI.Controls"
         xmlns:refguides="clr-namespace:AvaloniaCadEditor.UI.ReferenceGuides"
+        xmlns:drafting="clr-namespace:AvaloniaCadEditor.UI.Drafting"
         xmlns:views="clr-namespace:AvaloniaCadEditor.UI.Views"
         xmlns:vm="clr-namespace:AvaloniaCadEditor.UI.ViewModels"
         xmlns:res="clr-namespace:AvaloniaCadEditor.UI.Resources"
@@ -33,12 +34,24 @@
             <Button Classes="viewBtn" Content="{x:Static res:Strings.ViewTop}" Tag="Top" Click="StandardView_Click"/>
             <Button Classes="viewBtn" Content="{x:Static res:Strings.ViewFront}" Tag="Front" Click="StandardView_Click"/>
             <Button Classes="viewBtn" Content="{x:Static res:Strings.ViewRight}" Tag="Right" Click="StandardView_Click"/>
+            <Button Classes="viewBtn" Content="{x:Static res:Strings.ViewLeft}" Tag="Left" Click="StandardView_Click"/>
+            <Button Classes="viewBtn" Content="{x:Static res:Strings.ViewBack}" Tag="Back" Click="StandardView_Click"/>
+            <Button Classes="viewBtn" Content="{x:Static res:Strings.ViewBottom}" Tag="Bottom" Click="StandardView_Click"/>
             <Button Classes="viewBtn" Content="{x:Static res:Strings.ViewIso}" Tag="Isometric" Click="StandardView_Click"/>
             <Border Width="1" Background="#555" Margin="6,4"/>
             <ToggleButton Classes="viewBtn" Content="{x:Static res:Strings.ProjectionOrtho}"
                           ToolTip.Tip="{x:Static res:Strings.ProjectionOrthoTip}" Click="Projection_Click"/>
             <ToggleButton Classes="viewBtn" Content="{x:Static res:Strings.DisplayWireframe}"
                           ToolTip.Tip="{x:Static res:Strings.DisplayWireframeTip}" IsChecked="{Binding IsWireframe}"/>
+            <Border Width="1" Background="#555" Margin="6,4"/>
+            <ToggleButton Classes="viewBtn" Content="{x:Static res:Strings.DraftingDims}"
+                          ToolTip.Tip="{x:Static res:Strings.DraftingDimsTip}" IsChecked="{Binding Drafting.IsVisible}"/>
+            <ToggleButton Classes="viewBtn" Content="{x:Static res:Strings.DraftingPick}"
+                          ToolTip.Tip="{x:Static res:Strings.DraftingPickTip}" IsChecked="{Binding Drafting.IsPicking}"
+                          IsVisible="{Binding Drafting.IsVisible}"/>
+            <Button Classes="viewBtn" Content="{x:Static res:Strings.DraftingReset}"
+                    ToolTip.Tip="{x:Static res:Strings.DraftingResetTip}" Command="{Binding Drafting.RestoreCommand}"
+                    IsVisible="{Binding Drafting.IsPicking}"/>
         </StackPanel>
 
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="15" HorizontalAlignment="Right" Margin="0,0,6,0">
@@ -195,6 +208,7 @@
                    PointerWheelChanged="Viewport_PointerWheelChanged">
                 <controls:SilkViewportControl x:Name="ViewportControl" DataContext="{Binding}" />
                 <refguides:GuideLabelsOverlay x:Name="GuideLabelsOverlay" />
+                <drafting:DraftingLabelsOverlay x:Name="DraftingLabelsOverlay" />
                 <controls:SelectionBoxOverlay x:Name="SelectionBoxOverlay" />
 
                 <!-- Erro na cena: o modelo exibido é o último que executou com sucesso -->
