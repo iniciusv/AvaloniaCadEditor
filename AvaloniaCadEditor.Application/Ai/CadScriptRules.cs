@@ -64,9 +64,12 @@ public static class CadScriptRules
         - 'protected override IFeature Build()' constrói a geometria em coordenadas LOCAIS (origem da peça
           em 0,0,0) e devolve UMA ÚNICA IFeature; não chama AddFeature/Add.
         - Para peças compostas (corpo + furos + eixo etc.), monte tudo DENTRO do próprio Build() com
-          BooleanFeature.CreateUnion/CreateDifference/CreateIntersection e devolva o resultado final —
-          instâncias de peça (PartInstance) ainda não podem ser operandos de BooleanFeature, só as
-          features criadas dentro do Build().
+          BooleanFeature.CreateUnion/CreateDifference/CreateIntersection e devolva o resultado final.
+        - Um conjunto de sólidos que se repete (ex.: furo + alojamento de porca) é uma peça própria em
+          Pecas/, usada como operando dentro do Build() de outra com .Instance("nome") — sem Add, e com
+          o nome literal igual ao da variável:
+          var fixacao_1 = new FuroPorca(new Point3D(17, 4, 1), new Vector3D(-1, 0, 0), 6).Instance("fixacao_1");
+          (opcional: .Instance("nome", at: Placement...) para posicionar/girar a sub-peça).
         - Dê a cada parâmetro um nome em português e um valor padrão sensato (para que 'new NomeDaPeca()'
           já funcione sozinho); pode usar [System.ComponentModel.DataAnnotations.Range(min, max)] (nome
           completo, sem using) — valores fora do intervalo viram erro.

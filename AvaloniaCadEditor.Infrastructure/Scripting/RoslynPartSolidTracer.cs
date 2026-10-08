@@ -246,21 +246,29 @@ public sealed class RoslynPartSolidTracer : IPartSolidTracer
     /// Sólidos-folha da peça: os declarados com <c>new AlgumaFeature(...)</c> direto. Uniões e
     /// recortes (<c>BooleanFeature.CreateUnion(...)</c>) e apelidos (<c>IFeature corpo = corpo_bruto</c>)
     /// ficam fora de propósito: dizer que um parâmetro é "compartilhado com corpo_bruto" não ajuda a
-    /// decidir o que mexer, já que o corpo é a montagem das folhas.
+    /// decidir o que mexer, já que o corpo é a montagem das folhas. Uma peça usada como ferramenta
+    /// (<c>new FuroPorca(...).Instance("fixacao_1")</c>) também é folha: para a hospedeira, é um sólido.
     /// </summary>
     private static IEnumerable<(string Name, SyntaxNode Node)> LeafSolids(
         RecordDeclarationSyntax record, SemanticModel model, INamedTypeSymbol? featureType)
     {
         foreach (var declarator in record.DescendantNodes().OfType<VariableDeclaratorSyntax>())
         {
-            if (declarator.Initializer?.Value is not BaseObjectCreationExpressionSyntax creation) continue;
-            if (!CreatesFeature(creation, model, featureType)) continue;
-            yield return (declarator.Identifier.ValueText, declarator);
+            bool leaf = declarator.Initializer?.Value switch
+            {
+                BaseObjectCreationExpressionSyntax creation => CreatesFeature(creation, model, featureType),
+                InvocationExpressionSyntax
+                {
+                    Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Instance", Expression: BaseObjectCreationExpressionSyntax }
+                } instance => CreatesFeature(instance, model, featureType),
+                _ => false
+            };
+            if (leaf) yield return (declarator.Identifier.ValueText, declarator);
         }
     }
 
     private static bool CreatesFeature(
-        BaseObjectCreationExpressionSyntax creation, SemanticModel model, INamedTypeSymbol? featureType)
+        ExpressionSyntax creation, SemanticModel model, INamedTypeSymbol? featureType)
     {
         var type = model.GetTypeInfo(creation).Type;
         if (type == null) return false;

@@ -225,6 +225,13 @@ mesmos parâmetros constroem geometria **uma vez** e cada `PartInstance` só acr
 
 `Build()` deve ser **puro**: coordenadas locais, sem `AddFeature`, sem I/O.
 
+Uma peça pode ser **operando** dentro do `Build()` de outra: `new FuroPorca(...).Instance("nome")`
+(`PartExtensions.Instance`, em `Part.cs`). A definição vem do mesmo `GetOrBuildDefinition`,
+portanto sub-peças iguais compartilham geometria. A instância não entra na cena. Para quem percorre a
+árvore, ela é uma `PartInstance` dentro da `Definition` da hospedeira: o `FactExtractor`
+qualifica os nomes como `instancia/solido`, a revelação de ferramentas a mostra como uma
+ferramenta só, e o `RoslynPartSolidTracer` a trata como sólido-folha da hospedeira.
+
 ### 5.5 Rotação e `FilletFeature`
 
 O wrapper OCCT só sabe transladar sólidos. Instância **só com translação** reaproveita o sólido

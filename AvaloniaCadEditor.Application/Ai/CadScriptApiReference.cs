@@ -80,6 +80,8 @@ public static class CadScriptApiReference
         sb.AppendLine("  void AddFeature(IFeature feature) — registra a feature na cena (só no arquivo de entrada).");
         sb.AppendLine("  PartInstance<T> Add<T>(T part, Placement? at = null, string? name = null, string? color = null) where T : Part");
         sb.AppendLine("    — coloca uma instância de peça na cena (só no arquivo de entrada). color é \"#RRGGBB\" e pinta o sólido inteiro.");
+        sb.AppendLine("  PartInstance<T> part.Instance<T>(string name, Placement? at = null) where T : Part");
+        sb.AppendLine("    — peça usada como operando de BooleanFeature dentro do Build() de outra peça (não entra na cena).");
 
         return sb.ToString();
     }

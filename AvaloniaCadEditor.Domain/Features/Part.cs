@@ -4,6 +4,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
+using AvaloniaCadEditor.Domain.ValueObjects;
 
 namespace AvaloniaCadEditor.Domain.Features;
 
@@ -86,6 +87,33 @@ public abstract record Part
 
     private static string Format(object? value) =>
         value is IFormattable f ? f.ToString(null, CultureInfo.InvariantCulture) : value?.ToString() ?? "null";
+}
+
+/// <summary>Peça usada dentro do <c>Build()</c> de outra peça (ex.: um furo com porca como ferramenta).</summary>
+public static class PartExtensions
+{
+    /// <summary>
+    /// Instância da peça para virar operando de uma <see cref="BooleanFeature"/> dentro do <c>Build()</c>
+    /// de outra peça. Não registra nada na cena; peças com os mesmos parâmetros compartilham a geometria.
+    /// <paramref name="name"/> segue a regra dos sólidos rastreáveis: literal igual ao nome da variável.
+    /// </summary>
+    /// <example>
+    /// <code>
+    /// var fixacao_1 = new FuroPorca(new Point3D(17, 4, 1), new Vector3D(-1, 0, 0), 6).Instance("fixacao_1");
+    /// return BooleanFeature.CreateDifference("placa", corpo, fixacao_1);
+    /// </code>
+    /// </example>
+    public static PartInstance<T> Instance<T>(this T part, string name, Placement? at = null) where T : Part
+    {
+        ArgumentNullException.ThrowIfNull(part);
+        ArgumentException.ThrowIfNullOrEmpty(name);
+        var definition = Scripting.SceneHost.CurrentBuilder.GetOrBuildDefinition(part);
+        return new PartInstance<T>(part, definition, at ?? Placement.Identity)
+        {
+            Name = name,
+            Color = definition.Color
+        };
+    }
 }
 
 /// <summary>Um parâmetro de peça: nome, tipo, valor atual e o intervalo permitido (se houver [Range]).</summary>

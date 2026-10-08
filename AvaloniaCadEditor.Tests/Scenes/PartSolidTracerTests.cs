@@ -294,4 +294,43 @@ public class PartSolidTracerTests
         new RoslynPartSolidTracer().TraceArgument(Documents(), "Cantoneira", "furo_placa_1", "naoExiste")
             .Should().BeNull();
     }
+
+    private const string PlacaComFixacoes = """
+        public sealed record Furo(Point3D Entrada = default, double Raio = 1.7) : Part
+        {
+            protected override IFeature Build() =>
+                new CylinderFeature(Entrada, Vector3D.UnitZ, Raio, 10) { Name = "furo" };
+        }
+
+        public sealed record PlacaComFixacoes(double Espessura = 5, double YFixacao1 = 4, double RaioFixacao = 1.7) : Part
+        {
+            protected override IFeature Build()
+            {
+                var corpo = new BoxFeature(Point3D.Origin, 40, 20, Espessura) { Name = "corpo" };
+                var fixacao_1 = new Furo(new Point3D(10, YFixacao1, -1), RaioFixacao).Instance("fixacao_1");
+                var fixacao_2 = new Furo(new Point3D(30, 10, -1), RaioFixacao).Instance("fixacao_2");
+                return BooleanFeature.CreateDifference("placa", corpo, fixacao_1, fixacao_2);
+            }
+        }
+        """;
+
+    /// <summary>Uma peça usada como ferramenta (<c>.Instance("nome")</c>) é um sólido da hospedeira como outro qualquer.</summary>
+    [Fact]
+    public void Trace_PecaUsadaComoFerramenta_RastreiaOsArgumentosEOQueECompartilhado()
+    {
+        var documents = new[]
+        {
+            new ScriptDocument(ScriptDocument.DefaultSceneFile, "var p = Add(new PlacaComFixacoes());"),
+            new ScriptDocument("Pecas/PlacaComFixacoes.cs", PlacaComFixacoes)
+        };
+
+        var traced = new RoslynPartSolidTracer().Trace(documents, "PlacaComFixacoes", "fixacao_1")!;
+
+        traced.Inputs.Select(i => i.Name).Should().BeEquivalentTo("YFixacao1", "RaioFixacao");
+        Input(traced, "YFixacao1").IsExclusive.Should().BeTrue();
+        Input(traced, "RaioFixacao").SharedWith.Should().BeEquivalentTo("fixacao_2");
+
+        new RoslynPartSolidTracer().TraceArgument(documents, "PlacaComFixacoes", "fixacao_1", "Entrada")
+            .Should().Equal("YFixacao1");
+    }
 }
