@@ -1,133 +1,126 @@
 using System;
+using System.Collections.Generic;
 using System.Numerics;
 using Silk.NET.OpenGL;
 
 namespace AvaloniaCadEditor.UI.Controls.Rendering;
 
+/// <summary>
+/// Grade do plano de trabalho e os três eixos.
+/// <para>
+/// A grade é adaptativa: a cada década de zoom o passo troca de 5·10^k para 5·10^(k+1). Para a
+/// troca não ser um salto, a malha guardada tem passo 1 e as linhas de múltiplo de 10 ficam
+/// separadas das outras no buffer: as de múltiplo de 10 são a grade principal e as outras nove de
+/// cada célula são a <b>subdivisão dela</b>, que some por transparência conforme a câmera se
+/// afasta. Nunca são duas grades independentes — a fraca cai exatamente dentro da forte — e no fim
+/// da década a subdivisão já sumiu e as linhas fortes estão onde ela estava, com o mesmo traço,
+/// então a passagem para a década seguinte não tem salto visível.
+/// </para>
+/// <para>
+/// A malha vai até ±<see cref="HalfSteps"/> passos, e não até a borda da vista: cada nível tem que
+/// cobrir a tela inteira durante toda a sua transparência. Com malha curta a subdivisão aparece
+/// como um retalho quadrado em volta do alvo da câmera, com borda visível, em vez de um fade — era
+/// o que acontecia quando os dois níveis eram a mesma malha em escalas diferentes, porque a fina
+/// cobria 1/10 da área da grossa.
+/// </para>
+/// </summary>
 public sealed class GridRenderPass : IRenderPass
 {
     private uint _vao;
     private uint _vbo;
-    private uint _ebo;
-    private int _vertexCount;
 
-    /// <summary>Vertex count of the grid lines only (excludes the RGB axes that follow them
-    /// in the buffer). Used so the grid and the axes can be drawn with different model
-    /// matrices: the grid scales and re-centers to track the camera, the axes only scale.</summary>
-    private int _gridVertexCount;
+    // Fatias do buffer, em vértices: grade principal, subdivisão e eixos, nessa ordem.
+    private int _majorVertexCount;
+    private int _minorVertexCount;
+    private int _axesVertexCount;
 
-    /// <summary>Half-width, in local (unscaled) grid units, of the base grid geometry: matches
-    /// the original fixed 200x200 grid so the on-screen size is unchanged at the default zoom.</summary>
-    private const float BaseHalfSize = 100.0f;
+    /// <summary>Meia-largura da malha, em passos da subdivisão. 500 passos = 50 células fortes, ou
+    /// 2,5x a maior distância de câmera da década — o bastante para a borda ficar fora da vista
+    /// durante toda a transição.</summary>
+    private const int HalfSteps = 500;
+
+    /// <summary>Quantas linhas da subdivisão cabem numa célula da grade principal.</summary>
+    private const int MajorEvery = 10;
+
+    /// <summary>Passo da subdivisão, em unidades do mundo, na década de referência
+    /// (<see cref="ReferenceDistance"/>): mantém o tamanho na tela que a grade sempre teve.</summary>
     private const float BaseStep = 5.0f;
+
+    /// <summary>Distância de câmera em que a década é zero.</summary>
+    private const float ReferenceDistance = 100.0f;
+
+    private const float LineGray = 0.3f;
+
+    // A subdivisão nasce opaca no começo da década e sai de cena antes de ficar densa demais para
+    // ler. Depois disso fica só a grade principal, que é justamente o passo que a década seguinte
+    // herda como subdivisão.
+    private const float MinorFadeStart = 0.1f;
+    private const float MinorFadeEnd = 0.75f;
+
+    /// <summary>No modo de desenho técnico a grade recua: traço fino cinza disputando com aresta
+    /// oculta tracejada (também fina e cinza) deixa as duas ilegíveis.</summary>
+    private const float WireframeDim = 0.5f;
 
     public void Init(GL gl)
     {
-        int lines = 40;
-        float size = 200.0f;
-        float step = size / lines;
+        var vertices = new List<float>();
 
-        float[] vertices = new float[(lines * 4 + 4 + 6) * 6 + 8 * 6]; // grid + axes + cube
-        int index = 0;
-        
-        // Grid lines (Gray)
-        for (int i = -lines / 2; i <= lines / 2; i++)
+        void Line(float x1, float y1, float z1, float x2, float y2, float z2, float r, float g, float b)
         {
-            float pos = i * step;
-            // X-parallel
-            vertices[index++] = -size / 2; vertices[index++] = pos; vertices[index++] = 0;
-            vertices[index++] = 0.3f; vertices[index++] = 0.3f; vertices[index++] = 0.3f;
-            vertices[index++] = size / 2; vertices[index++] = pos; vertices[index++] = 0;
-            vertices[index++] = 0.3f; vertices[index++] = 0.3f; vertices[index++] = 0.3f;
-            
-            // Y-parallel
-            vertices[index++] = pos; vertices[index++] = -size / 2; vertices[index++] = 0;
-            vertices[index++] = 0.3f; vertices[index++] = 0.3f; vertices[index++] = 0.3f;
-            vertices[index++] = pos; vertices[index++] = size / 2; vertices[index++] = 0;
-            vertices[index++] = 0.3f; vertices[index++] = 0.3f; vertices[index++] = 0.3f;
+            vertices.Add(x1); vertices.Add(y1); vertices.Add(z1);
+            vertices.Add(r); vertices.Add(g); vertices.Add(b);
+            vertices.Add(x2); vertices.Add(y2); vertices.Add(z2);
+            vertices.Add(r); vertices.Add(g); vertices.Add(b);
         }
 
-        _gridVertexCount = index / 6;
+        const float end = HalfSteps;
 
-        // Axes (Red, Green, Blue)
-        vertices[index++] = 0; vertices[index++] = 0; vertices[index++] = 0;
-        vertices[index++] = 1; vertices[index++] = 0; vertices[index++] = 0;
-        vertices[index++] = size/2; vertices[index++] = 0; vertices[index++] = 0;
-        vertices[index++] = 1; vertices[index++] = 0; vertices[index++] = 0;
+        // Grade principal: as linhas de múltiplo de MajorEvery passos. Primeiras no buffer para
+        // poderem ser desenhadas sozinhas, com traço cheio, enquanto a subdivisão desaparece.
+        for (int i = -HalfSteps; i <= HalfSteps; i += MajorEvery)
+        {
+            Line(-end, i, 0, end, i, 0, LineGray, LineGray, LineGray);
+            Line(i, -end, 0, i, end, 0, LineGray, LineGray, LineGray);
+        }
+        _majorVertexCount = vertices.Count / 6;
 
-        vertices[index++] = 0; vertices[index++] = 0; vertices[index++] = 0;
-        vertices[index++] = 0; vertices[index++] = 1; vertices[index++] = 0;
-        vertices[index++] = 0; vertices[index++] = size/2; vertices[index++] = 0;
-        vertices[index++] = 0; vertices[index++] = 1; vertices[index++] = 0;
+        // Subdivisão: as outras nove linhas de cada célula. Mesmo cinza da principal, porque a
+        // diferença entre as duas é só a transparência — é isso que faz a troca de década ser
+        // contínua, já que a linha que era forte continua com o mesmo traço quando vira fraca.
+        for (int i = -HalfSteps; i <= HalfSteps; i++)
+        {
+            if (i % MajorEvery == 0) continue;
+            Line(-end, i, 0, end, i, 0, LineGray, LineGray, LineGray);
+            Line(i, -end, 0, i, end, 0, LineGray, LineGray, LineGray);
+        }
+        _minorVertexCount = vertices.Count / 6 - _majorVertexCount;
 
-        vertices[index++] = 0; vertices[index++] = 0; vertices[index++] = 0;
-        vertices[index++] = 0; vertices[index++] = 0; vertices[index++] = 1;
-        vertices[index++] = 0; vertices[index++] = 0; vertices[index++] = size/2;
-        vertices[index++] = 0; vertices[index++] = 0; vertices[index++] = 1;
-
-        _vertexCount = index / 6;
-
-        // Cube vertices
-        float s = 10.0f;
-        int cubeStartIndex = index / 6;
-        float[] cubeVerts = {
-            -s, -s, -s,   1.0f, 0.0f, 0.0f,
-             s, -s, -s,   0.0f, 1.0f, 0.0f,
-             s,  s, -s,   0.0f, 0.0f, 1.0f,
-            -s,  s, -s,   1.0f, 1.0f, 0.0f,
-            -s, -s,  s,   1.0f, 0.0f, 1.0f,
-             s, -s,  s,   0.0f, 1.0f, 1.0f,
-             s,  s,  s,   1.0f, 1.0f, 1.0f,
-            -s,  s,  s,   0.5f, 0.5f, 0.5f
-        };
-        for (int i = 0; i < cubeVerts.Length; i++) vertices[index++] = cubeVerts[i];
-
-        // Cube lines
-        uint baseIdx = (uint)cubeStartIndex;
-        uint[] indices = {
-            baseIdx+0, baseIdx+1, baseIdx+1, baseIdx+2, baseIdx+2, baseIdx+3, baseIdx+3, baseIdx+0,
-            baseIdx+4, baseIdx+5, baseIdx+5, baseIdx+6, baseIdx+6, baseIdx+7, baseIdx+7, baseIdx+4,
-            baseIdx+0, baseIdx+4, baseIdx+1, baseIdx+5, baseIdx+2, baseIdx+6, baseIdx+3, baseIdx+7
-        };
+        // Eixos X/Y/Z do plano, do tamanho da malha.
+        Line(0, 0, 0, end, 0, 0, 1, 0, 0);
+        Line(0, 0, 0, 0, end, 0, 0, 1, 0);
+        Line(0, 0, 0, 0, 0, end, 0, 0, 1);
+        _axesVertexCount = vertices.Count / 6 - _majorVertexCount - _minorVertexCount;
 
         _vao = gl.GenVertexArray();
         _vbo = gl.GenBuffer();
-        _ebo = gl.GenBuffer();
 
         gl.BindVertexArray(_vao);
-
         gl.BindBuffer(BufferTargetARB.ArrayBuffer, _vbo);
-        unsafe
-        {
-            fixed (float* v = vertices)
-            {
-                gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(vertices.Length * sizeof(float)), v, BufferUsageARB.StaticDraw);
-            }
-        }
 
-        gl.BindBuffer(BufferTargetARB.ElementArrayBuffer, _ebo);
+        float[] data = vertices.ToArray();
         unsafe
         {
-            fixed (uint* idx = indices)
+            fixed (float* v = data)
             {
-                gl.BufferData(BufferTargetARB.ElementArrayBuffer, (nuint)(indices.Length * sizeof(uint)), idx, BufferUsageARB.StaticDraw);
+                gl.BufferData(BufferTargetARB.ArrayBuffer, (nuint)(data.Length * sizeof(float)), v, BufferUsageARB.StaticDraw);
             }
-        }
 
-        // Position attribute
-        unsafe
-        {
             gl.VertexAttribPointer(0, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)0);
             gl.EnableVertexAttribArray(0);
-        }
-
-        // Color attribute
-        unsafe
-        {
             gl.VertexAttribPointer(1, 3, VertexAttribPointerType.Float, false, 6 * sizeof(float), (void*)(3 * sizeof(float)));
             gl.EnableVertexAttribArray(1);
         }
-        
+
         gl.BindVertexArray(0);
     }
 
@@ -145,59 +138,70 @@ public sealed class GridRenderPass : IRenderPass
             (float)wp.Origin.X, (float)wp.Origin.Y, (float)wp.Origin.Z, 1
         );
 
-        // Grow/shrink the grid in powers of 10 so it always covers the visible area around the
-        // camera target, whether the model is tiny or huge, without changing the vertex buffer.
-        // Instead of snapping to the nearest power of 10, keep the two neighboring levels (fine
-        // and coarse) and cross-fade between them by how far "level" is into the current decade,
-        // so the grid spacing changes gradually with zoom instead of jumping.
+        // Década de zoom: sobe de 1 a cada 10x de distância, e frac diz onde dentro da década a
+        // câmera está. A malha tem passo 1, então a escala é o próprio passo da subdivisão.
         float distance = MathF.Max(context.Camera.Distance, 0.001f);
-        float level = MathF.Log10(distance / BaseHalfSize);
-        float levelFloor = MathF.Floor(level);
-        float frac = level - levelFloor;
-        float scaleFine = MathF.Pow(10f, levelFloor);
-        float scaleCoarse = scaleFine * 10f;
-        float alphaFine = 1f - frac;
-        float alphaCoarse = frac;
+        float level = MathF.Log10(distance / ReferenceDistance);
+        float decade = MathF.Floor(level);
+        float frac = level - decade;
 
+        float minorStep = BaseStep * MathF.Pow(10f, decade);
+        float majorStep = minorStep * MajorEvery;
+        float minorAlpha = 1f - Smoothstep(MinorFadeStart, MinorFadeEnd, frac);
+
+        float dim = context.ViewModel?.IsWireframe == true ? WireframeDim : 1f;
+
+        // A grade segue o alvo da câmera para não acabar antes da borda da tela, encaixada no passo
+        // da grade principal: assim toda linha cai num múltiplo exato do passo nas coordenadas do
+        // plano, e qual linha é forte não muda conforme a câmera anda.
         var targetLocal = wp.ToLocalSpace(new AvaloniaCadEditor.Domain.ValueObjects.Point3D(
             context.Camera.Target.X, context.Camera.Target.Y, context.Camera.Target.Z));
+        float tx = MathF.Round((float)targetLocal.X / majorStep) * majorStep;
+        float ty = MathF.Round((float)targetLocal.Y / majorStep) * majorStep;
+
+        var gridMatrix = Matrix4x4.CreateScale(minorStep) * Matrix4x4.CreateTranslation(tx, ty, 0f) * planeMatrix;
 
         gl.Uniform1(context.Uniforms.LightingLoc, 0);
         gl.BindVertexArray(_vao);
 
-        DrawGridLevel(gl, context, planeMatrix, targetLocal, scaleFine, alphaFine);
-        DrawGridLevel(gl, context, planeMatrix, targetLocal, scaleCoarse, alphaCoarse);
+        unsafe
+        {
+            gl.UniformMatrix4(context.Uniforms.ModelLoc, 1, false, (float*)&gridMatrix);
+        }
 
-        // Axes are drawn once (no cross-fade needed: they read as infinite lines crossing the
-        // screen regardless of scale) using the coarse level so they always reach past the edges.
-        var axesMatrix = Matrix4x4.CreateScale(scaleCoarse) * planeMatrix;
+        gl.Uniform1(context.Uniforms.AlphaLoc, dim);
+        gl.DrawArrays(PrimitiveType.Lines, 0, (uint)_majorVertexCount);
+
+        if (minorAlpha > 0f)
+        {
+            gl.Uniform1(context.Uniforms.AlphaLoc, minorAlpha * dim);
+            gl.DrawArrays(PrimitiveType.Lines, _majorVertexCount, (uint)_minorVertexCount);
+        }
+
+        // Eixos: passam pela origem do plano, então acompanham só a escala, não o alvo da câmera.
+        var axesMatrix = Matrix4x4.CreateScale(minorStep) * planeMatrix;
         gl.Uniform1(context.Uniforms.AlphaLoc, 1.0f);
         unsafe
         {
             gl.UniformMatrix4(context.Uniforms.ModelLoc, 1, false, (float*)&axesMatrix);
         }
-        gl.DrawArrays(PrimitiveType.Lines, _gridVertexCount, (uint)(_vertexCount - _gridVertexCount));
+        gl.DrawArrays(PrimitiveType.Lines, _majorVertexCount + _minorVertexCount, (uint)_axesVertexCount);
+
+        gl.BindVertexArray(0);
+
+        // O prepasse de faces do modo wireframe ficou de pé só até aqui, para a peça esconder a
+        // grade; dos perfis e do esboço para a frente o depth tem que estar limpo.
+        if (context.SolidDepthPending)
+        {
+            gl.Clear((uint)ClearBufferMask.DepthBufferBit);
+            context.SolidDepthPending = false;
+        }
     }
 
-    /// <summary>Draws just the grid lines (not the axes) at the given scale, re-centered on the
-    /// camera target and snapped to that scale's own grid step, with the given fade alpha.</summary>
-    private void DrawGridLevel(GL gl, RenderContext context, Matrix4x4 planeMatrix,
-        AvaloniaCadEditor.Domain.ValueObjects.Point3D targetLocal, float scale, float alpha)
+    private static float Smoothstep(float edge0, float edge1, float x)
     {
-        if (alpha <= 0f) return;
-
-        float worldStep = BaseStep * scale;
-        float tx = MathF.Round((float)targetLocal.X / worldStep) * worldStep;
-        float ty = MathF.Round((float)targetLocal.Y / worldStep) * worldStep;
-
-        var gridMatrix = Matrix4x4.CreateScale(scale) * Matrix4x4.CreateTranslation(tx, ty, 0f) * planeMatrix;
-
-        gl.Uniform1(context.Uniforms.AlphaLoc, alpha);
-        unsafe
-        {
-            gl.UniformMatrix4(context.Uniforms.ModelLoc, 1, false, (float*)&gridMatrix);
-        }
-        gl.DrawArrays(PrimitiveType.Lines, 0, (uint)_gridVertexCount);
+        float t = Math.Clamp((x - edge0) / (edge1 - edge0), 0f, 1f);
+        return t * t * (3f - 2f * t);
     }
 
     public void Dispose(GL gl)
@@ -211,11 +215,6 @@ public sealed class GridRenderPass : IRenderPass
         {
             gl.DeleteBuffer(_vbo);
             _vbo = 0;
-        }
-        if (_ebo != 0)
-        {
-            gl.DeleteBuffer(_ebo);
-            _ebo = 0;
         }
     }
 }

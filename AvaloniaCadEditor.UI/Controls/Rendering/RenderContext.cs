@@ -23,4 +23,13 @@ public sealed class RenderContext
     /// dentro do pass, para que um render pass não faça I/O no meio do desenho.
     /// </summary>
     public required TessellationSettings Tessellation { get; init; }
+
+    /// <summary>
+    /// Ligado pelo <see cref="WireframeRenderPass"/> quando as faces dos sólidos ficaram no depth
+    /// buffer (o prepasse das linhas ocultas) e ainda não foram limpas. Quem limpa é o
+    /// <see cref="GridRenderPass"/>, que vem logo depois: antes de limpar ele desenha a grade com
+    /// esse depth valendo, para a peça esconder a grade como já esconde no modo sombreado, em vez
+    /// de a grade cruzar o desenho por cima.
+    /// </summary>
+    public bool SolidDepthPending { get; set; }
 }

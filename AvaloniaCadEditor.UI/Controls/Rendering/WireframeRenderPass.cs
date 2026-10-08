@@ -140,9 +140,11 @@ public sealed class WireframeRenderPass : IRenderPass
         gl.BindVertexArray(0);
         gl.DepthMask(true);
 
-        // As faces do prepasse são invisíveis: não podem esconder a grade nem o esboço dos passes
-        // seguintes.
-        gl.Clear((uint)ClearBufferMask.DepthBufferBit);
+        // As faces do prepasse são invisíveis, mas a profundidade delas serve mais uma vez: é com
+        // ela que a grade fica escondida atrás da peça. Então a limpeza do depth fica para o
+        // GridRenderPass, que vem logo depois (ver RenderContext.SolidDepthPending); do esboço e
+        // das guias para a frente o depth já está limpo, como antes.
+        context.SolidDepthPending = true;
 
         // Os passes seguintes assumem o programa principal, com view/projeção já carregados.
         gl.UseProgram(context.ShaderProgram);
