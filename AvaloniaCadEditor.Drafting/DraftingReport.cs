@@ -40,7 +40,14 @@ public static class DraftingReport
             foreach (var chain in level) AppendChain(sb, chain, hints);
         }
 
-        var others = shown.Where(d => !IsLinear(d)).ToList();
+        var depths = shown.Where(IsFaceDepth).ToList();
+        if (depths.Count > 0)
+        {
+            sb.AppendLine("### Ao longo do eixo (face de entrada → componente)");
+            foreach (var d in depths) sb.AppendLine("- " + Describe(d, hints));
+        }
+
+        var others = shown.Where(d => !IsLinear(d) && !IsFaceDepth(d)).ToList();
         if (others.Count > 0)
         {
             sb.AppendLine("### Diâmetros e chamadas");
@@ -148,7 +155,10 @@ public static class DraftingReport
             .OrderBy(g => g.Key.Level).ThenBy(g => g.Key.Side).ThenBy(g => g.Key.Kind).ThenBy(g => Math.Abs(g.Key.Line))
             .Select(g => g.OrderBy(d => Start(d)).ToList());
 
-    private static bool IsLinear(DraftDimension d) => d.Kind is DimensionKind.Horizontal or DimensionKind.Vertical;
+    private static bool IsLinear(DraftDimension d) => d.Kind is DimensionKind.Horizontal or DimensionKind.Vertical && !IsFaceDepth(d);
+
+    /// <summary>Cota sobre o eixo de um componente, da face por onde ele entra (ver <c>DimensionPlanner.FaceDepths</c>).</summary>
+    private static bool IsFaceDepth(DraftDimension d) => d.Key.StartsWith("pf:", StringComparison.Ordinal);
 
     private static double Start(DraftDimension d) =>
         d.Kind == DimensionKind.Horizontal ? Math.Min(d.From.U, d.To.U) : Math.Min(d.From.V, d.To.V);

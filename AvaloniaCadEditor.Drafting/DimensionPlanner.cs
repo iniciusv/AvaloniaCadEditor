@@ -4,16 +4,17 @@ namespace AvaloniaCadEditor.Drafting;
 
 /// <summary>
 /// Decide QUAIS cotas uma vista leva, com hierarquia — o <see cref="DimensionLayout"/> decide depois
-/// ONDE cada linha fica. Para cada eixo da vista (U → cotas horizontais, abaixo; V → verticais, à
-/// esquerda):
+/// ONDE cada linha fica. Para cada eixo da vista (U → cotas horizontais, abaixo/acima; V → verticais,
+/// à esquerda/direita):
 /// <list type="number">
-/// <item><b>Nível 1, contorno:</b> os cantos do material (um recorte, um degrau) numa cadeia própria,
-/// que a política de densidade nunca esconde — sem ela a forma da peça fica indefinida.</item>
-/// <item><b>Nível 1, cadeias:</b> elementos da mesma família (mesmo Ø, mesmo componente e configuração)
-/// na mesma linha transversal formam uma cadeia a partir da borda: borda → 1º, 1º → 2º... Um padrão de
-/// passo constante vira uma cota só, "3× 20 (=60)". A cadeia termina no último elemento. Cada ponto
-/// diz quem mais está no mesmo eixo (<see cref="DraftDimension.AlignedWith"/>).</item>
-/// <item><b>Nível 2, localização:</b> o que sobrou (elementos sozinhos na sua linha) numa cadeia única.</item>
+/// <item><b>Nível 1, uma cadeia por lado, de ponta a ponta:</b> o lado de baixo/esquerda leva os
+/// elementos da própria peça e os componentes que entram pela face dele; o de cima/direita, os que
+/// entram pela face dele. Cada canto do contorno (um recorte) vai para o lado da borda a que encosta.
+/// A cadeia fecha na outra borda com um elo de referência, entre parênteses. Um padrão de passo
+/// constante vira uma cota só, "3× 20 (=60)", e cada ponto diz quem mais está no mesmo eixo
+/// (<see cref="DraftDimension.AlignedWith"/>). A densidade nunca esconde essas cadeias.</item>
+/// <item><b>Nível 2, face oposta:</b> componentes que entram por trás da vista (uma porca por baixo,
+/// vista do topo), numa cadeia por fora do lado mais vazio, sem repetir eixos já cotados.</item>
 /// <item><b>Nível 3, totais:</b> largura e altura, por fora.</item>
 /// </list>
 /// Com simetria global no eixo, os pares espelhados são cotados pela distância entre si, centrados
@@ -21,7 +22,8 @@ namespace AvaloniaCadEditor.Drafting;
 /// lado, chave de prisma) ficam do outro lado da peça; os diâmetros de frente, em chamadas, com os
 /// furos coaxiais empilhados ("Ø3,4 / Ø7,2").
 /// Peças aninhadas (componentes, ex.: FuroPorca) são caixas-pretas: localizadas pela referência
-/// (o eixo) e identificadas por uma chamada com o rótulo, sem as medidas internas.
+/// (o eixo), identificadas por uma chamada com o rótulo e, quando deitadas na vista, com a distância
+/// da face de entrada ao alojamento sobre o próprio eixo — sem as medidas internas.
 /// </summary>
 public static class DimensionPlanner
 {
@@ -29,36 +31,59 @@ public static class DimensionPlanner
 
     /// <param name="options">De onde vem a tolerância de "mesma coordenada" — a mesma que a análise
     /// usou para agrupar, para que um alinhamento que ela reconhece o desenho também reconheça.</param>
+    /// <param name="depthRange">Profundidades (ao longo de <see cref="ViewBasis.W"/>) da face de trás e da da frente
+    /// da peça: um componente que entra por trás vai para a cadeia da face oposta. Sem elas, nenhum vai.</param>
     public static Plan Build(IReadOnlyList<ViewEntity> entities, ModelRelations relations, ViewBasis basis, P2 partMin, P2 partMax, double gap,
-        AnalysisOptions? options = null)
+        AnalysisOptions? options = null, (double Back, double Front)? depthRange = null)
     {
-        var context = new Context(entities, relations, basis, partMin, partMax, gap, (options ?? new AnalysisOptions()).AlignTolerance);
+        var context = new Context(entities, relations, basis, partMin, partMax, gap, (options ?? new AnalysisOptions()).AlignTolerance, depthRange);
         var groups = new List<LayoutGroup>();
         groups.AddRange(context.PlanAxis(horizontal: true));
         groups.AddRange(context.PlanAxis(horizontal: false));
         groups.AddRange(context.SideSizes());
-        return new Plan(groups, context.FrontDiameters().Concat(context.ComponentCallouts()).ToList(), context.CenterLines());
+        return new Plan(groups, context.FrontDiameters().Concat(context.ComponentCallouts()).Concat(context.FaceDepths()).ToList(), context.CenterLines());
     }
 
-    /// <summary>Família das marcas do contorno do material.</summary>
-    private const string ContourFamily = "contorno";
+    /// <summary>A que cadeia uma marca pertence.</summary>
+    private enum MarkSide
+    {
+        /// <summary>Elemento da própria peça (furo, alojamento, componente de frente): a cadeia
+        /// principal, abaixo ou à esquerda.</summary>
+        Main,
+
+        /// <summary>Lado de baixo/esquerda por natureza: um componente que entra por essa face, ou um
+        /// canto do contorno junto a ela.</summary>
+        Low,
+
+        /// <summary>Lado de cima/direita, idem.</summary>
+        High,
+
+        /// <summary>Componente que entra pela face oposta à vista (uma porca por baixo, vista do topo):
+        /// cadeia separada, por fora.</summary>
+        Back
+    }
 
     /// <summary>Um ponto cotável ao longo de um eixo, com os sólidos que o definem.</summary>
-    /// <param name="family">Tipo do elemento: só marcas da mesma família formam uma cadeia de nível 1.</param>
+    /// <param name="extLo">Coordenada transversal de onde sai a linha de chamada para o lado de baixo/esquerda.</param>
+    /// <param name="extHi">Idem, para o lado de cima/direita.</param>
+    /// <param name="side">A cadeia a que a marca pertence.</param>
+    /// <param name="sideDistance">Para o contorno: a distância do canto à borda do lado escolhido —
+    /// num canto compartilhado, vale o que está mais junto de uma borda.</param>
     /// <param name="isAxis">A marca é um eixo (centro de furo, linha de centro, eixo de componente).</param>
-    private sealed class Mark(double at, double extCross, double rowCross, string source, PrimitiveFact? fact, string family, bool isAxis = false)
+    private sealed class Mark(double at, double extLo, double extHi, string source, PrimitiveFact? fact, MarkSide side,
+        double sideDistance = 0, bool isAxis = false)
     {
         public double At { get; } = at;
 
-        public string Family { get; } = family;
+        public MarkSide Side { get; set; } = side;
+
+        public double SideDistance { get; } = sideDistance;
 
         public bool IsAxis { get; } = isAxis;
 
-        /// <summary>Coordenada transversal do centro do sólido: marcas com a mesma formam uma "linha" da peça.</summary>
-        public double RowCross { get; } = rowCross;
+        public double ExtLo { get; private set; } = extLo;
 
-        /// <summary>Coordenada transversal de onde sai a linha de chamada (a mais perto da linha de cota).</summary>
-        public double ExtCross { get; set; } = extCross;
+        public double ExtHi { get; private set; } = extHi;
 
         public List<string> Sources { get; } = [source];
         public List<PrimitiveFact> Facts { get; } = fact == null ? [] : [fact];
@@ -67,11 +92,13 @@ public static class DimensionPlanner
         {
             foreach (var s in other.Sources) if (!Sources.Contains(s)) Sources.Add(s);
             foreach (var f in other.Facts) if (!Facts.Contains(f)) Facts.Add(f);
-            ExtCross = Math.Min(ExtCross, other.ExtCross);
+            ExtLo = Math.Min(ExtLo, other.ExtLo);
+            ExtHi = Math.Max(ExtHi, other.ExtHi);
         }
     }
 
-    private sealed class Context(IReadOnlyList<ViewEntity> entities, ModelRelations relations, ViewBasis basis, P2 partMin, P2 partMax, double gap, double tol)
+    private sealed class Context(IReadOnlyList<ViewEntity> entities, ModelRelations relations, ViewBasis basis, P2 partMin, P2 partMax, double gap, double tol,
+        (double Back, double Front)? depthRange)
     {
         /// <summary>Duas coordenadas a menos que isto são a mesma (<see cref="AnalysisOptions.AlignTolerance"/>).</summary>
         private double Tol => tol;
@@ -118,6 +145,15 @@ public static class DimensionPlanner
             bool Inside(double v) => v > lo + Tol && v < hi - Tol;
             double ClampCross(double c) => Math.Clamp(c, crossLo, crossHi);
 
+            // Um canto do contorno vai para o lado da borda mais próxima dele.
+            Mark Contour(double at, double cMin, double cMax, ViewEntity e)
+            {
+                double toLow = cMin - crossLo, toHigh = crossHi - cMax;
+                return toLow <= toHigh
+                    ? new Mark(at, cMin, cMax, e.SourceName, e.Fact, MarkSide.Low, toLow)
+                    : new Mark(at, cMin, cMax, e.SourceName, e.Fact, MarkSide.High, toHigh);
+            }
+
             var marks = new List<Mark>();
             foreach (var e in entities)
             {
@@ -128,21 +164,20 @@ public static class DimensionPlanner
                 double center = (eLo + eHi) / 2;
 
                 double row = (cLo + cHi) / 2;
-                string family = FamilyOf(e);
-                void AddCenter(double at, bool isAxis) => marks.Add(new Mark(at, cLo, row, e.SourceName, e.Fact, family, isAxis));
+                void AddCenter(double at, bool isAxis) => marks.Add(new Mark(at, cLo, cHi, e.SourceName, e.Fact, MarkSide.Main, isAxis: isAxis));
                 void AddEdge(double at, bool maxSide)
                 {
-                    if (Inside(at) && !IsSeam(e, at, maxSide, horizontal, row))
-                    {
-                        marks.Add(new Mark(at, cLo, row, e.SourceName, e.Fact, family));
-                    }
+                    if (!Inside(at) || IsSeam(e, at, maxSide, horizontal, row)) return;
+                    marks.Add(e.Role == PrimitiveRole.Body
+                        ? Contour(at, cLo, cHi, e)
+                        : new Mark(at, cLo, cHi, e.SourceName, e.Fact, MarkSide.Main));
                 }
 
                 switch (e)
                 {
                     case ViewCircle circle when e.Role == PrimitiveRole.Void:
                         double circleCross = ClampCross(Cross(circle.Center, horizontal));
-                        marks.Add(new Mark(Along(circle.Center, horizontal), circleCross, circleCross, e.SourceName, e.Fact, family, isAxis: true));
+                        marks.Add(new Mark(Along(circle.Center, horizontal), circleCross, circleCross, e.SourceName, e.Fact, MarkSide.Main, isAxis: true));
                         break;
 
                     case ViewRect { Axis: not CenterAxis.None } rect when e.Role == PrimitiveRole.Void:
@@ -158,9 +193,14 @@ public static class DimensionPlanner
                         break;
 
                     case ViewPolygon polygon when e.Role == PrimitiveRole.Body:
-                        foreach (var at in polygon.Points.Select(p => Along(p, horizontal)).Distinct())
+                        // Cada vértice com a própria coordenada transversal: o canto de um recorte fica
+                        // do lado da borda a que ele encosta.
+                        foreach (var p in polygon.Points)
                         {
-                            if (Inside(at)) marks.Add(new Mark(at, cLo, row, e.SourceName, e.Fact, family));
+                            double at = Along(p, horizontal);
+                            if (!Inside(at)) continue;
+                            double c = ClampCross(Cross(p, horizontal));
+                            marks.Add(Contour(at, c, c, e));
                         }
                         break;
 
@@ -174,40 +214,28 @@ public static class DimensionPlanner
                 }
             }
 
-            marks.AddRange(ComponentMarks(horizontal, lo, hi, ClampCross));
+            marks.AddRange(ComponentMarks(horizontal, lo, hi, crossLo, crossHi));
             return marks;
-        }
-
-        /// <summary>A família de uma entidade: material é contorno; furos pelo Ø; o resto pelo tamanho.</summary>
-        private string FamilyOf(ViewEntity e)
-        {
-            if (e.Role == PrimitiveRole.Body) return ContourFamily;
-            double Key(double v) => Math.Round(v / Tol);
-            double w = e.Max.U - e.Min.U, h = e.Max.V - e.Min.V;
-            return e switch
-            {
-                ViewCircle c => $"Ø{Key(c.Radius * 2)}",
-                ViewRect { Axis: CenterAxis.Horizontal } => $"Ø{Key(h)}",
-                ViewRect { Axis: CenterAxis.Vertical } => $"Ø{Key(w)}",
-                ViewPolygon p => $"polígono {p.Points.Count} {Key(w)}×{Key(h)}",
-                _ => $"caixa {Key(w)}×{Key(h)}"
-            };
         }
 
         /// <summary>
         /// Uma peça aninhada é cotada só pela referência: o eixo (visto de frente, o centro nos dois
         /// eixos; de lado, a linha de centro no eixo que ela cruza) ou, sem eixo, o centro da caixa.
-        /// A posição AO LONGO do eixo e as medidas internas são parâmetros da peça e ficam de fora.
+        /// A posição AO LONGO do eixo fica para <see cref="FaceDepths"/>, e as medidas internas, de fora.
+        /// O lado da cadeia sai de por onde ela entra: de lado, pela face que a caixa dela atravessa;
+        /// de frente, pela face oposta (vai para a cadeia de trás) ou não.
         /// </summary>
-        private IEnumerable<Mark> ComponentMarks(bool horizontal, double lo, double hi, Func<double, double> clampCross)
+        private IEnumerable<Mark> ComponentMarks(bool horizontal, double lo, double hi, double crossLo, double crossHi)
         {
             foreach (var c in relations.Components)
             {
                 var (bMin, bMax) = ProjectedBounds(c);
                 var fact = c.Principal ?? c.Members[0];
-                double cLo = clampCross(Cross(bMin, horizontal)), cHi = clampCross(Cross(bMax, horizontal));
+                double rawLo = Cross(bMin, horizontal), rawHi = Cross(bMax, horizontal);
+                double cLo = Math.Clamp(rawLo, crossLo, crossHi), cHi = Math.Clamp(rawHi, crossLo, crossHi);
                 double at;
-                double ext, row;
+                double extLo, extHi;
+                var side = MarkSide.Main;
 
                 if (c.Axis is { } axis)
                 {
@@ -216,14 +244,17 @@ public static class DimensionPlanner
                     if (alignment == 0)
                     {
                         at = Along(datum, horizontal);
-                        ext = row = clampCross(Cross(datum, horizontal));
+                        extLo = extHi = Math.Clamp(Cross(datum, horizontal), crossLo, crossHi);
+                        if (depthRange is { } range && basis.Depth(c.AxisPoint) < range.Back - Tol) side = MarkSide.Back;
                     }
                     else if (alignment > 0 && (alignment == 1) != horizontal)
                     {
-                        // Linha de centro perpendicular ao eixo medido: a posição dela.
+                        // Linha de centro perpendicular ao eixo medido: a posição dela, do lado da face
+                        // por onde o componente entra.
                         at = Along(datum, horizontal);
-                        ext = cLo;
-                        row = (cLo + cHi) / 2;
+                        extLo = cLo;
+                        extHi = cHi;
+                        side = rawLo - crossLo <= crossHi - rawHi ? MarkSide.Low : MarkSide.High;
                     }
                     else
                     {
@@ -233,12 +264,46 @@ public static class DimensionPlanner
                 else
                 {
                     at = (Along(bMin, horizontal) + Along(bMax, horizontal)) / 2;
-                    ext = cLo;
-                    row = (cLo + cHi) / 2;
+                    extLo = cLo;
+                    extHi = cHi;
                 }
 
                 if (at < lo - Tol || at > hi + Tol) continue;
-                yield return new Mark(at, ext, row, c.Ref.Name, fact, $"c:{c.Ref.Label}|{c.Signature}", isAxis: c.Axis != null);
+                yield return new Mark(at, extLo, extHi, c.Ref.Name, fact, side, isAxis: c.Axis != null);
+            }
+        }
+
+        /// <summary>
+        /// Onde fica, a partir da face de entrada, um componente cujo eixo corre ao longo de um eixo da
+        /// vista (uma FuroPorca deitada): da face até a borda mais próxima dos membros que não são o furo
+        /// (o alojamento da porca). A cota vai sobre o próprio eixo do componente, sem linha de chamada.
+        /// </summary>
+        public IEnumerable<DraftDimension> FaceDepths()
+        {
+            foreach (var c in relations.Components)
+            {
+                if (c.Axis is not { } axis || c.Principal == null) continue;
+                var alignment = AxisAlignment(axis);
+                if (alignment is not (1 or 2)) continue;
+                bool horizontal = alignment == 1;
+
+                var others = c.Members.Where(m => m != c.Principal).ToList();
+                if (others.Count == 0) continue;
+
+                var (bMin, bMax) = ProjectedBounds(c);
+                double lo = Along(partMin, horizontal), hi = Along(partMax, horizontal);
+                bool fromLow = Along(bMin, horizontal) - lo <= hi - Along(bMax, horizontal);
+                double face = fromLow ? lo : hi;
+
+                var along = others.SelectMany(m => new[] { basis.Project(m.BoundsMin), basis.Project(m.BoundsMax) })
+                    .Select(p => Along(p, horizontal)).ToList();
+                double nearest = fromLow ? along.Min() : along.Max();
+                double depth = Math.Abs(nearest - face);
+                if (depth < Tol) continue;
+
+                double cross = Cross(basis.Project(c.AxisPoint), horizontal);
+                yield return Linear($"pf:{c.Ref.Name}", horizontal, Point(face, cross, horizontal), Point(nearest, cross, horizontal),
+                    depth, DimensionFactory.Format(depth), [c.Ref.Name]) with { LinePosition = cross };
             }
         }
 
@@ -385,7 +450,7 @@ public static class DimensionPlanner
             }
             else
             {
-                groups.AddRange(ChainedAxis(marks, horizontal, side));
+                groups.AddRange(SideChains(marks, horizontal));
             }
 
             // Nível 3: total.
@@ -396,62 +461,80 @@ public static class DimensionPlanner
             return groups;
         }
 
-        private IEnumerable<LayoutGroup> ChainedAxis(List<Mark> marks, bool horizontal, DimensionSide side)
+        /// <summary>
+        /// Uma cadeia por lado, de ponta a ponta. Cada lado leva os componentes que entram pela face dele
+        /// e os cantos do contorno que encostam na borda dele; os elementos da própria peça vão para o
+        /// lado mais perto deles. Um eixo que só elementos da própria peça definem é cotado uma vez:
+        /// se eles estão dos dois lados (os furos de uma malha), vai para o lado principal — o que tem
+        /// mais elementos. Assim uma peça e a sua espelhada dão desenhos espelhados. O que entra pela face
+        /// oposta à vista vai numa cadeia à parte (nível 2), por fora do lado mais vazio, sem repetir
+        /// eixos que as outras já cotam.
+        /// </summary>
+        private IEnumerable<LayoutGroup> SideChains(List<Mark> marks, bool horizontal)
         {
-            double datum = Along(partMin, horizontal);
-            var covered = new List<double>();
-            bool IsCovered(double v) => covered.Any(c => Math.Abs(c - v) <= Tol);
+            double lo = Along(partMin, horizontal), hi = Along(partMax, horizontal);
+            var lowSide = horizontal ? DimensionSide.Below : DimensionSide.Left;
+            var highSide = horizontal ? DimensionSide.Above : DimensionSide.Right;
+            bool Same(double a, double b) => Math.Abs(a - b) <= Tol;
 
-            // O contorno (cantos do material, como um recorte) define a forma da peça: cadeia própria,
-            // que a política de densidade nunca esconde.
-            var contour = Merge(marks.Where(k => k.Family == ContourFamily)).Where(k => k.At > datum + Tol).ToList();
-            if (contour.Count > 0)
+            // Canto compartilhado (vários vértices na mesma coordenada): vale o mais junto de uma borda.
+            var contour = marks.Where(k => k.Side is MarkSide.Low or MarkSide.High && k.Facts.All(f => f.Component == null) && !k.IsAxis).ToList();
+            foreach (var k in contour)
             {
-                covered.AddRange(contour.Select(k => k.At));
-                yield return new LayoutGroup(Chain(contour, horizontal, marks), side, 1) { IsContour = true };
+                k.Side = contour.Where(o => Same(o.At, k.At)).MinBy(o => o.SideDistance)!.Side;
             }
 
-            // Linhas transversais por família: elementos do mesmo tipo com a mesma coordenada
-            // transversal. Um furo e uma porca na mesma linha não formam cadeia — senão a malha dos
-            // furos sai partida pela porca no meio ("3,5 + 7 + 18" em vez de "3,5 + 25").
-            var rows = new List<List<Mark>>();
-            foreach (var family in marks.Where(k => k.Family != ContourFamily).GroupBy(k => k.Family))
+            // Elementos da própria peça: o lado mais perto (null = no meio).
+            double crossLo = Cross(partMin, horizontal), crossHi = Cross(partMax, horizontal);
+            MarkSide? Nearest(Mark k)
             {
-                List<Mark>? current = null;
-                foreach (var mark in family.OrderBy(k => k.RowCross))
-                {
-                    if (current != null && Math.Abs(mark.RowCross - current[^1].RowCross) <= Tol) current.Add(mark);
-                    else rows.Add(current = [mark]);
-                }
+                double mid = (k.ExtLo + k.ExtHi) / 2, toLow = mid - crossLo, toHigh = crossHi - mid;
+                return toLow < toHigh - Tol ? MarkSide.Low : toHigh < toLow - Tol ? MarkSide.High : null;
             }
 
-            var merged = rows.Select(Merge).OrderByDescending(r => r.Count).ThenBy(r => r[0].RowCross).ToList();
-            var singles = new List<Mark>();
-            foreach (var row in merged)
+            var mains = marks.Where(k => k.Side == MarkSide.Main).ToList();
+            var fixedMarks = marks.Where(k => k.Side is MarkSide.Low or MarkSide.High).ToList();
+            // Quantos pontos distintos cada lado teria (um canto com dois vértices na mesma coordenada conta uma vez).
+            int Count(MarkSide side) => Merge(fixedMarks.Where(k => k.Side == side).Concat(mains.Where(k => Nearest(k) == side))
+                .Select(k => new Mark(k.At, 0, 0, "", null, side))).Count;
+            var primary = Count(MarkSide.High) > Count(MarkSide.Low) ? MarkSide.High : MarkSide.Low;
+
+            foreach (var k in mains)
             {
-                var points = row.Where(k => !IsCovered(k.At) && k.At > datum + Tol).ToList();
-                if (points.Count >= 2)
-                {
-                    covered.AddRange(points.Select(p => p.At));
-                    yield return new LayoutGroup(Chain(points, horizontal, marks), side, 1);
-                }
-                else if (points.Count == 1)
-                {
-                    singles.Add(points[0]);
-                }
+                var fixedHere = fixedMarks.Where(f => Same(f.At, k.At)).Select(f => f.Side).Distinct().ToList();
+                var mainsHere = mains.Where(o => Same(o.At, k.At)).Select(Nearest).Distinct().ToList();
+                k.Side = fixedHere.Count == 1 ? fixedHere[0]                          // junto de quem já cota esse eixo
+                    : fixedHere.Count == 2 ? Nearest(k) ?? primary                     // cotado dos dois lados: o mais perto
+                    : mainsHere.Count == 1 && mainsHere[0] is { } only ? only          // todos do mesmo lado
+                    : primary;                                                         // dos dois lados: o principal
             }
 
-            // Nível 2: o que ficou sozinho na sua linha vai numa cadeia de localização só.
-            var rest = Merge(singles).Where(k => !IsCovered(k.At)).ToList();
-            if (rest.Count > 0)
+            var low = marks.Where(k => k.Side == MarkSide.Low).ToList();
+            var high = marks.Where(k => k.Side == MarkSide.High).ToList();
+
+            bool Inner(Mark k) => k.At > lo + Tol && k.At < hi - Tol;
+            var lowPoints = Merge(low).Where(Inner).ToList();
+            var highPoints = Merge(high).Where(Inner).ToList();
+
+            if (lowPoints.Count > 0)
+                yield return new LayoutGroup(Chain(lowPoints, horizontal, marks, lowSide, close: true), lowSide, 1) { IsPrimary = true };
+            if (highPoints.Count > 0)
+                yield return new LayoutGroup(Chain(highPoints, horizontal, marks, highSide, close: true), highSide, 1) { IsPrimary = true };
+
+            var covered = lowPoints.Concat(highPoints).Select(k => k.At).ToList();
+            var backPoints = Merge(marks.Where(k => k.Side == MarkSide.Back)).Where(Inner).Where(k => !covered.Any(c => Same(c, k.At))).ToList();
+            if (backPoints.Count > 0)
             {
-                yield return new LayoutGroup(Chain(rest, horizontal, marks), side, 2);
+                var side = highPoints.Count < lowPoints.Count ? highSide : lowSide;
+                yield return new LayoutGroup(Chain(backPoints, horizontal, marks, side, close: false), side, 2);
             }
         }
 
-        /// <summary>Cadeia a partir da borda: borda → 1º → 2º ...; padrões de passo constante compactados.
-        /// <paramref name="all"/> são todas as marcas do eixo, para dizer quem mais está em cada ponto.</summary>
-        private List<DraftDimension> Chain(List<Mark> points, bool horizontal, IReadOnlyList<Mark> all)
+        /// <summary>Cadeia a partir da borda: borda → 1º → 2º ...; padrões de passo constante
+        /// compactados. Com <paramref name="close"/>, fecha até a outra borda com um elo de referência,
+        /// entre parênteses (a soma já é o total). <paramref name="all"/> são todas as marcas do eixo,
+        /// para dizer quem mais está em cada ponto.</summary>
+        private List<DraftDimension> Chain(List<Mark> points, bool horizontal, IReadOnlyList<Mark> all, DimensionSide side, bool close)
         {
             // Os eixos de outros elementos na mesma coordenada: "mesmo eixo" que o ponto cotado.
             IReadOnlyList<string> AlignedWith(Mark p) => all
@@ -461,10 +544,14 @@ public static class DimensionPlanner
                 .Distinct()
                 .ToList();
 
+            bool highSide = side is DimensionSide.Above or DimensionSide.Right;
+            double Ext(Mark k) => highSide ? k.ExtHi : k.ExtLo;
+            double edgeCross = highSide ? Cross(partMax, horizontal) : Cross(partMin, horizontal);
+
             var dims = new List<DraftDimension>();
             double datumAt = Along(partMin, horizontal);
-            var datumPoint = Point(datumAt, Cross(partMin, horizontal), horizontal);
-            string axis = AxisKey(horizontal);
+            var datumPoint = Point(datumAt, edgeCross, horizontal);
+            string axis = AxisKey(horizontal) + (highSide ? "+" : "");
 
             var previous = datumPoint;
             double previousAt = datumAt;
@@ -472,7 +559,7 @@ public static class DimensionPlanner
             while (i < points.Count)
             {
                 var p = points[i];
-                var pPoint = Point(p.At, p.ExtCross, horizontal);
+                var pPoint = Point(p.At, Ext(p), horizontal);
                 dims.Add(Linear($"{axis}:{previousAt:F3}>{p.At:F3}", horizontal, previous, pPoint, p.At - previousAt,
                     DimensionFactory.Format(p.At - previousAt), p.Sources) with { AlignedWith = AlignedWith(p) });
 
@@ -480,7 +567,7 @@ public static class DimensionPlanner
                 if (run is { } r)
                 {
                     var last = points[r.End];
-                    var lastPoint = Point(last.At, last.ExtCross, horizontal);
+                    var lastPoint = Point(last.At, Ext(last), horizontal);
                     int steps = r.End - i;
                     dims.Add(Linear($"{axis}p:{p.At:F3}>{last.At:F3}", horizontal, pPoint, lastPoint, last.At - p.At,
                         DimensionFactory.PatternText(steps, r.Pitch),
@@ -494,6 +581,14 @@ public static class DimensionPlanner
                 previous = pPoint;
                 previousAt = p.At;
                 i++;
+            }
+
+            double endAt = Along(partMax, horizontal);
+            if (close && endAt - previousAt > Tol)
+            {
+                double rest = endAt - previousAt;
+                dims.Add(Linear($"{axis}:{previousAt:F3}>fim", horizontal, previous, Point(endAt, edgeCross, horizontal), rest,
+                    $"({DimensionFactory.Format(rest)})", []));
             }
             return dims;
         }
@@ -539,7 +634,7 @@ public static class DimensionPlanner
 
                 covered.AddRange(members.Select(k => k.At));
                 yield return new LayoutGroup([Linear($"{axis}p:{first.At:F3}>{last.At:F3}", horizontal,
-                    Point(first.At, first.ExtCross, horizontal), Point(last.At, last.ExtCross, horizontal), last.At - first.At,
+                    Point(first.At, first.ExtLo, horizontal), Point(last.At, last.ExtLo, horizontal), last.At - first.At,
                     DimensionFactory.PatternText(members.Count - 1, Math.Abs(pattern.Pitch!.Value)),
                     members.SelectMany(k => k.Sources).Distinct().ToList())], side, 1);
             }
@@ -553,7 +648,7 @@ public static class DimensionPlanner
                 covered.Add(mirrorAt);
                 var sources = left.Sources.Concat(right?.Sources ?? Enumerable.Empty<string>()).Distinct().ToList();
                 yield return new LayoutGroup([Linear($"{axis}s:{left.At:F3}", horizontal,
-                    Point(left.At, left.ExtCross, horizontal), Point(mirrorAt, right?.ExtCross ?? left.ExtCross, horizontal),
+                    Point(left.At, left.ExtLo, horizontal), Point(mirrorAt, right?.ExtLo ?? left.ExtLo, horizontal),
                     mirrorAt - left.At, DimensionFactory.Format(mirrorAt - left.At), sources)], side, 1);
             }
         }

@@ -40,7 +40,7 @@ public static class DraftingAnalyzer
         double frontDepth = corners.Max(basis.Depth);
 
         double gap = DimensionFactory.GapFor(partMin, partMax);
-        var plan = DimensionPlanner.Build(entities, relations, basis, partMin, partMax, gap, options);
+        var plan = DimensionPlanner.Build(entities, relations, basis, partMin, partMax, gap, options, (corners.Min(basis.Depth), frontDepth));
         double tolerance = (options ?? new AnalysisOptions()).AlignTolerance;
         var (placed, suppressed) = DensityPolicy.Apply(plan.Groups, partMin, partMax, gap, tolerance, drafting);
         var dimensions = placed.Concat(plan.Leaders).ToList();

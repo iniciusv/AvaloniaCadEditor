@@ -72,9 +72,13 @@ public class ComponentDrawingTests
     {
         var sheet = await Desenho(StandardView.Front);
 
-        // As 6 fixações laterais têm o eixo na mesma altura: uma cota só, de todas elas.
-        sheet.Dimensions.Should().Contain(d => d.Kind == DimensionKind.Vertical &&
-                                               d.SourceNames.Count(s => s.StartsWith("fixacao_")) == 6);
+        // As 6 fixações laterais têm o eixo na mesma altura. Cada lado cota as que entram pela face
+        // dele (3 por um lado, 2 pelo outro); a fixacao_y_2, que entra por trás nesta vista, já está
+        // nesse eixo e aparece como "mesmo eixo", sem cota repetida.
+        var alturas = sheet.Dimensions.Where(d => d.Kind == DimensionKind.Vertical && d.SourceNames.Any(s => s.StartsWith("fixacao_x"))).ToList();
+        alturas.Select(d => d.SourceNames.Count(s => s.StartsWith("fixacao_x"))).Should().BeEquivalentTo([3, 2]);
+        alturas.Select(d => d.Side).Should().BeEquivalentTo([DimensionSide.Left, DimensionSide.Right]);
+        alturas.Should().OnlyContain(d => d.AlignedWith.Contains("fixacao_y_2"));
         DimensionCrossings.Find(sheet.Dimensions.ToList(), sheet.Gap, 3e-3).Should().BeEmpty();
     }
 }

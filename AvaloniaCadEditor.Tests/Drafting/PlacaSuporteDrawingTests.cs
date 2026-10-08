@@ -25,6 +25,7 @@ namespace AvaloniaCadEditor.Tests.Drafting;
 public class PlacaSuporteDrawingTests(ITestOutputHelper output)
 {
     private static readonly Lazy<Task<(DraftingSheet Sheet, PartInstance Placa)>> Top = new(() => Draw("placa_suporte_carrinho_y_b", StandardView.Top));
+    private static readonly Lazy<Task<(DraftingSheet Sheet, PartInstance Placa)>> TopA = new(() => Draw("placa_suporte_carrinho_y_a", StandardView.Top));
 
     private static string AiCoreFolder([CallerFilePath] string? thisFile = null)
     {
@@ -56,15 +57,38 @@ public class PlacaSuporteDrawingTests(ITestOutputHelper output)
     private static DraftDimension[] All(DraftingSheet sheet) =>
         sheet.Dimensions.Concat(sheet.Suppressed.Select(s => s.Dimension)).ToArray();
 
+    /// <summary>Os textos de uma cadeia, da borda para a outra ponta.</summary>
+    private static string[] Chain(DraftingSheet sheet, DimensionKind kind, DimensionSide side, int level) =>
+        sheet.Dimensions.Where(d => d.Kind == kind && d.Side == side && d.Level == level)
+            .OrderBy(d => kind == DimensionKind.Horizontal ? Math.Min(d.From.U, d.To.U) : Math.Min(d.From.V, d.To.V))
+            .Select(d => d.Text).ToArray();
+
     [Fact]
-    public async Task MalhaDosFurosDoCarrinho_NaoEPartidaPelaPorca()
+    public async Task Vertical_ACadeiaDeCadaLadoDeEntrada_DePontaAPonta()
     {
         var sheet = await Sheet();
 
-        // Horizontal: furo_2 (3,5) → furo_3 (28,5) é a malha 25; a porca_inferior_3 em 10,5 não entra no meio.
-        var malha = All(sheet).Where(d => d.Kind == DimensionKind.Horizontal && d.SourceNames.Contains("furo_fixacao_carrinho_3")).ToList();
-        malha.Should().ContainSingle().Which.Value.Should().BeApproximately(25, 1e-6);
-        All(sheet).Should().NotContain(d => d.Kind == DimensionKind.Horizontal && Math.Abs(d.Value - 18) < 1e-6 && d.SourceNames.Contains("furo_fixacao_carrinho_3"));
+        // Lado por onde entram x_5/6/7 (à esquerda nesta placa espelhada): x_5, furo_1, x_6, o eixo comum
+        // de furo_2/furo_3 (e porca_inferior_3) e x_7, fechando na outra ponta com a referência.
+        Chain(sheet, DimensionKind.Vertical, DimensionSide.Left, 1).Should().Equal("6", "5,5", "14,5", "10,5", "6,5", "(5)");
+        // Lado por onde entram x_1/x_2: o canto do recorte, x_2, x_1.
+        Chain(sheet, DimensionKind.Vertical, DimensionSide.Right, 1).Should().Equal("23,59", "4,41", "15", "(5)");
+        // As porcas que entram por baixo, numa cadeia à parte, por fora: porca_inferior_1 e 2.
+        Chain(sheet, DimensionKind.Vertical, DimensionSide.Right, 2).Should().Equal("16", "18");
+        sheet.Suppressed.Should().BeEmpty();
+    }
+
+    /// <summary>A placa A é a B espelhada: as mesmas cadeias, com os lados trocados.</summary>
+    [Fact]
+    public async Task PlacaA_DesenhoEspelhadoDaB()
+    {
+        var (sheet, placa) = await TopA.Value;
+        output.WriteLine(DraftingReport.Format(sheet, sheet.Dimensions, placa.Name, placa.PartTypeName));
+
+        Chain(sheet, DimensionKind.Vertical, DimensionSide.Right, 1).Should().Equal("6", "5,5", "14,5", "10,5", "6,5", "(5)");
+        Chain(sheet, DimensionKind.Vertical, DimensionSide.Left, 1).Should().Equal("23,59", "4,41", "15", "(5)");
+        Chain(sheet, DimensionKind.Vertical, DimensionSide.Left, 2).Should().Equal("16", "18");
+        sheet.Suppressed.Should().BeEmpty();
     }
 
     [Fact]
@@ -72,9 +96,21 @@ public class PlacaSuporteDrawingTests(ITestOutputHelper output)
     {
         var sheet = await Sheet();
 
-        // Vertical: o 25 de furo_1 → furo_2 termina em V = 36,5, o eixo de furo_3 e porca_inferior_3 também.
-        var ate365 = All(sheet).Single(d => d.Kind == DimensionKind.Vertical && d.SourceNames.Contains("furo_fixacao_carrinho_2") && Math.Abs(d.Value - 25) < 1e-6);
-        ate365.AlignedWith.Should().Contain(["furo_fixacao_carrinho_3", "porca_inferior_3"]);
+        // O ponto V = 36,5 da cadeia é o eixo comum de furo_2 e furo_3; a porca_inferior_3 também está nele.
+        var ate365 = sheet.Dimensions.Single(d => d.Kind == DimensionKind.Vertical && Math.Abs(d.To.V - 36.5) < 1e-6);
+        ate365.SourceNames.Should().Contain(["furo_fixacao_carrinho_2", "furo_fixacao_carrinho_3"]);
+        ate365.AlignedWith.Should().Contain("porca_inferior_3");
+    }
+
+    [Fact]
+    public async Task FuroPorcaDeitada_DistanciaDaFaceAteAPorca()
+    {
+        var sheet = await Sheet();
+        double Depth(string name) => sheet.Dimensions.Single(d => d.Key == $"pf:{name}").Value;
+
+        foreach (var x in new[] { "fixacao_x_5", "fixacao_x_6", "fixacao_x_7" }) Depth(x).Should().BeApproximately(5, 1e-6);
+        foreach (var x in new[] { "fixacao_x_1", "fixacao_x_2" }) Depth(x).Should().BeApproximately(3, 1e-6);
+        Depth("fixacao_y_2").Should().BeApproximately(4.084, 1e-6);
     }
 
     [Fact]

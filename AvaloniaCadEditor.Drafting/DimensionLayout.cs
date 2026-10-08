@@ -3,8 +3,9 @@ namespace AvaloniaCadEditor.Drafting;
 /// <summary>Cotas que ficam na mesma linha (uma cadeia, por exemplo) e se movem juntas no layout.</summary>
 public sealed record LayoutGroup(IReadOnlyList<DraftDimension> Dimensions, DimensionSide Side, int Level)
 {
-    /// <summary>Cadeia do contorno do material: define a forma da peça, a densidade nunca a esconde.</summary>
-    public bool IsContour { get; init; }
+    /// <summary>A cadeia principal de um lado (com os cantos do contorno daquele lado): define a peça,
+    /// a densidade nunca a esconde.</summary>
+    public bool IsPrimary { get; init; }
 }
 
 /// <summary>Um grupo já posicionado: as cotas com a linha definida e a fileira (0 = junto à peça).</summary>

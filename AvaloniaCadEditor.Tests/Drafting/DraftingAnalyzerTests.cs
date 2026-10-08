@@ -53,9 +53,10 @@ public class DraftingAnalyzerTests
             .Should().BeEquivalentTo(new[] { 20.0, 40.0 });
         sheet.Dimensions.Single(d => d.Kind == DimensionKind.Horizontal && d.Value == 20).Level.Should().Be(1);
         sheet.Dimensions.Single(d => d.Kind == DimensionKind.Horizontal && d.Value == 40).Level.Should().Be(3);
-        // Em V não há simetria: a altura dos furos (5) é localização (nível 2) e a altura total (17), nível 3.
-        sheet.Dimensions.Where(d => d.Kind == DimensionKind.Vertical).Select(d => (d.Value, d.Level))
-            .Should().BeEquivalentTo(new[] { (5.0, 2), (17.0, 3) });
+        // Em V não há simetria: a cadeia da esquerda vai da borda à altura dos furos (5) e fecha na outra
+        // borda com o elo de referência (12); por fora, a altura total (17), nível 3.
+        sheet.Dimensions.Where(d => d.Kind == DimensionKind.Vertical).Select(d => (d.Text, d.Level))
+            .Should().BeEquivalentTo(new[] { ("5", 1), ("(12)", 1), ("17", 3) });
         sheet.CenterLines.Should().Contain(l => l.A.U == 20 && l.B.U == 20, "a linha de simetria passa no meio");
     }
 
@@ -88,7 +89,8 @@ public class DraftingAnalyzerTests
         var sheet = Sheet(BooleanFeature.CreateDifference("bloco", corpo, furo), StandardView.Front, new Point3D(40, 16, 17));
 
         sheet.CenterLines.Should().NotContain(l => l.A.U == 20 && l.B.U == 20);
-        sheet.Dimensions.Where(d => d.Kind == DimensionKind.Horizontal).Select(d => d.Value).Should().BeEquivalentTo(new[] { 12.0, 40.0 });
+        // Borda → furo (12), fechando na outra borda com a referência (28); por fora, o total.
+        sheet.Dimensions.Where(d => d.Kind == DimensionKind.Horizontal).Select(d => d.Text).Should().BeEquivalentTo("12", "(28)", "40");
         sheet.Dimensions.Single(d => d.Kind == DimensionKind.Diameter).Text.Should().Be("Ø3");
     }
 
@@ -166,8 +168,9 @@ public class DraftingAnalyzerTests
         passo.LinePosition.Should().Be(borda.LinePosition, "a cadeia borda → 1º furo → passo fica numa linha só");
         total.Level.Should().Be(3);
         total.LinePosition.Should().BeLessThan(borda.LinePosition, "o total fica por fora");
-        // Nenhuma cota da borda até o 2º, 3º ou 4º furo.
-        horizontais.Should().NotContain(d => d.Value == 30 || d.Value == 50 || d.Value == 70);
+        // Nenhuma cota da borda até o 2º, 3º ou 4º furo (o "(30)" é o elo de referência do 4º à outra borda).
+        horizontais.Should().NotContain(d => (d.Value == 30 || d.Value == 50 || d.Value == 70) && !d.Text.StartsWith("("));
+        horizontais.Should().ContainSingle(d => d.Text == "(30)").Which.LinePosition.Should().Be(borda.LinePosition);
     }
 
     [Fact]
