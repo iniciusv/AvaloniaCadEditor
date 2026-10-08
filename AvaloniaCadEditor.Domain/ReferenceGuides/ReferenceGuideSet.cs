@@ -30,13 +30,17 @@ public enum GuideKind
 /// <summary>
 /// A single dashed reference line drawn in world space, spanning from <see cref="Start"/>
 /// to <see cref="End"/> at a fixed coordinate along one axis of the analysis plane.
+/// <see cref="SourceFeatureIds"/> are the primitives involved; <see cref="OwnerIds"/> the top-level
+/// scene features that contain them (a part instance, for a hole inside it), used to highlight the
+/// guides of the selected feature.
 /// </summary>
 public sealed record GuideLine(
     GuideKind Kind,
     Point3D Start,
     Point3D End,
     double Coordinate,
-    IReadOnlyList<Guid> SourceFeatureIds);
+    IReadOnlyList<Guid> SourceFeatureIds,
+    IReadOnlyList<Guid>? OwnerIds = null);
 
 /// <summary>
 /// A distance/label to render between two world points, e.g. the step between two
@@ -48,7 +52,8 @@ public sealed record GuideDimension(
     Point3D To,
     double Value,
     string Label,
-    IReadOnlyList<Guid> SourceFeatureIds);
+    IReadOnlyList<Guid> SourceFeatureIds,
+    IReadOnlyList<Guid>? OwnerIds = null);
 
 /// <summary>
 /// The full result of one reference-guide analysis pass over a scene.

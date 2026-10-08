@@ -192,12 +192,12 @@ public sealed class DraftingViewModel : INotifyPropertyChanged
         if (spec.Kind == DimensionKind.Diameter)
         {
             var circle = Sheet!.Entities.OfType<ViewCircle>().FirstOrDefault(c => c.SourceName == spec.A);
-            return circle == null ? null : AutoDimensioner.Diameter(circle);
+            return circle == null ? null : DimensionFactory.Diameter(circle);
         }
 
         var a = Sheet!.FindAnchor(spec.A);
         var b = Sheet.FindAnchor(spec.B);
-        return a == null || b == null ? null : AutoDimensioner.Linear(a, b, spec.Kind, spec.LinePosition);
+        return a == null || b == null ? null : DimensionFactory.Linear(a, b, spec.Kind, spec.LinePosition);
     }
 
     /// <summary>
@@ -217,7 +217,8 @@ public sealed class DraftingViewModel : INotifyPropertyChanged
         var partType = instance.PartTypeName;
         var targets = Sheet.Dimensions
             .Where(d => (d.Kind == DimensionKind.Diameter || d.Key.StartsWith("ds:", StringComparison.Ordinal)) && d.SourceNames.Count > 0)
-            .Select(d => (d.Key, Solid: d.SourceNames[0]))
+            .Where(d => !d.SourceNames[0].Contains('/'))
+            .Select(d => (d.Key, Solid: SolidName(d.SourceNames[0])))
             .ToList();
         if (targets.Count == 0) return;
 
@@ -315,8 +316,20 @@ public sealed class DraftingViewModel : INotifyPropertyChanged
 
         if (_cad.IsolatedFeature is PartInstance instance && dimension.SourceNames.Count > 0)
         {
-            _cad.ScriptEditor?.RevealPartTool(instance.PartTypeName, dimension.SourceNames[0].Split('#')[0]);
+            _cad.ScriptEditor?.RevealPartTool(instance.PartTypeName, SolidName(dimension.SourceNames[0]));
         }
+    }
+
+    /// <summary>
+    /// Nome do sólido no código a partir do nome do fato: sem o sufixo "#2" de repetidos e, para
+    /// sólidos de peças aninhadas ("suporte/furo"), só o último trecho — a revelação procura no
+    /// record da peça isolada, então um sólido aninhado pode não ser achado (a barra de status avisa).
+    /// </summary>
+    private static string SolidName(string factName)
+    {
+        var name = factName[(factName.LastIndexOf('/') + 1)..];
+        int hash = name.IndexOf('#');
+        return hash < 0 ? name : name[..hash];
     }
 
     private void Restore()

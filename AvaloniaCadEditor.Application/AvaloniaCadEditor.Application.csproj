@@ -1,6 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <ProjectReference Include="..\AvaloniaCadEditor.Analysis\AvaloniaCadEditor.Analysis.csproj" />
     <ProjectReference Include="..\AvaloniaCadEditor.Domain\AvaloniaCadEditor.Domain.csproj" />
     <ProjectReference Include="..\AiCore\AiCore.csproj" />
   </ItemGroup>

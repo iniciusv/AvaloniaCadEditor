@@ -12,6 +12,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\AvaloniaCadEditor.Analysis\AvaloniaCadEditor.Analysis.csproj" />
     <ProjectReference Include="..\AvaloniaCadEditor.Domain\AvaloniaCadEditor.Domain.csproj" />
   </ItemGroup>
 

@@ -1,15 +1,9 @@
+using AvaloniaCadEditor.Analysis;
 using AvaloniaCadEditor.Domain.Entities;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.ValueObjects;
 
 namespace AvaloniaCadEditor.Drafting;
-
-/// <summary>Papel de uma primitiva na peça: material ou vazio (furo, rebaixo, alojamento).</summary>
-public enum EntityRole
-{
-    Body,
-    Void
-}
 
 /// <summary>Direção do eixo de um cilindro visto de lado, no plano da vista.</summary>
 public enum CenterAxis
@@ -24,8 +18,11 @@ public enum CenterAxis
 public sealed record DraftAnchor(string Id, P2 Point);
 
 /// <summary>Uma primitiva da peça projetada na vista.</summary>
-public abstract record ViewEntity(string SourceName, EntityRole Role)
+public abstract record ViewEntity(string SourceName, PrimitiveRole Role)
 {
+    /// <summary>O fato da análise que esta entidade projeta.</summary>
+    public PrimitiveFact? Fact { get; init; }
+
     public abstract P2 Min { get; }
     public abstract P2 Max { get; }
 
@@ -33,7 +30,7 @@ public abstract record ViewEntity(string SourceName, EntityRole Role)
 }
 
 /// <summary>Cilindro visto pelo eixo (furo de frente).</summary>
-public sealed record ViewCircle(string SourceName, EntityRole Role, P2 Center, double Radius)
+public sealed record ViewCircle(string SourceName, PrimitiveRole Role, P2 Center, double Radius)
     : ViewEntity(SourceName, Role)
 {
     public override P2 Min => new(Center.U - Radius, Center.V - Radius);
@@ -51,7 +48,7 @@ public sealed record ViewCircle(string SourceName, EntityRole Role, P2 Center, d
 
 /// <summary>Caixa, prisma ou cilindro visto de lado. Para o cilindro, <see cref="Axis"/> diz por
 /// onde passa a linha de centro.</summary>
-public sealed record ViewRect(string SourceName, EntityRole Role, P2 MinCorner, P2 MaxCorner, CenterAxis Axis = CenterAxis.None)
+public sealed record ViewRect(string SourceName, PrimitiveRole Role, P2 MinCorner, P2 MaxCorner, CenterAxis Axis = CenterAxis.None)
     : ViewEntity(SourceName, Role)
 {
     public override P2 Min => MinCorner;
@@ -70,7 +67,7 @@ public sealed record ViewRect(string SourceName, EntityRole Role, P2 MinCorner, 
 }
 
 /// <summary>Prisma visto pelo eixo (ex.: alojamento hexagonal de porca).</summary>
-public sealed record ViewPolygon(string SourceName, EntityRole Role, IReadOnlyList<P2> Points)
+public sealed record ViewPolygon(string SourceName, PrimitiveRole Role, IReadOnlyList<P2> Points)
     : ViewEntity(SourceName, Role)
 {
     public override P2 Min => new(Points.Min(p => p.U), Points.Min(p => p.V));
@@ -87,6 +84,16 @@ public enum DimensionKind
     Diameter
 }
 
+/// <summary>De que lado da peça a linha de cota fica (Diameter não tem lado: usa chamada).</summary>
+public enum DimensionSide
+{
+    None,
+    Below,
+    Left,
+    Above,
+    Right
+}
+
 /// <summary>
 /// Uma cota no plano da vista. Para <see cref="DimensionKind.Horizontal"/> a linha de cota fica em
 /// V = <see cref="LinePosition"/> e mede de From.U a To.U; para <see cref="DimensionKind.Vertical"/>
@@ -94,6 +101,8 @@ public enum DimensionKind
 /// <see cref="DimensionKind.Diameter"/>, From e To são as pontas do diâmetro.
 /// </summary>
 /// <param name="Key">Identidade estável (para esconder uma cota automática entre execuções).</param>
+/// <param name="Level">Hierarquia: 1 = cadeias e tamanhos (junto à peça), 2 = localização, 3 = totais
+/// (por fora). O layout nunca põe uma fileira de nível maior por dentro de uma de nível menor.</param>
 public sealed record DraftDimension(
     string Key,
     DimensionKind Kind,
@@ -103,24 +112,29 @@ public sealed record DraftDimension(
     double Value,
     string Text,
     IReadOnlyList<string> SourceNames,
-    bool IsManual = false);
+    bool IsManual = false,
+    int Level = 1,
+    DimensionSide Side = DimensionSide.None);
 
 /// <summary>Linha de centro ou de simetria (traço-ponto).</summary>
 public sealed record CenterLine(P2 A, P2 B);
 
 /// <summary>O que o analisador precisa da peça.</summary>
-/// <param name="Root">Árvore de features da peça (a <c>Definition</c> de uma instância).</param>
-/// <param name="RootToFrame">Leva coordenadas de <paramref name="Root"/> para o referencial da peça.</param>
+/// <param name="Subjects">O que desenhar, já levado para o referencial da peça (hoje, a peça isolada;
+/// no futuro, várias).</param>
 /// <param name="View">A vista a desenhar.</param>
-/// <param name="FrameBoundsMin">Canto mínimo da malha da peça no referencial (o contorno real, já com as booleanas).</param>
-/// <param name="FrameBoundsMax">Canto máximo da malha da peça no referencial.</param>
+/// <param name="FrameBoundsMin">Canto mínimo da malha no referencial (o contorno real, já com as booleanas).</param>
+/// <param name="FrameBoundsMax">Canto máximo da malha no referencial.</param>
 public sealed record DraftingInput(
-    IFeature Root,
-    Placement RootToFrame,
+    IReadOnlyList<AnalysisSubject> Subjects,
     StandardView View,
     Point3D FrameBoundsMin,
     Point3D FrameBoundsMax)
 {
+    /// <summary>Uma árvore de features só, já no referencial.</summary>
+    public static DraftingInput ForRoot(IFeature root, Placement rootToFrame, StandardView view, Point3D frameBoundsMin, Point3D frameBoundsMax) =>
+        new([new AnalysisSubject(root, rootToFrame, root.Name)], view, frameBoundsMin, frameBoundsMax);
+
     /// <summary>
     /// Monta a entrada para a peça isolada com H: a árvore de features dela, levada para o
     /// <paramref name="frame"/>, e o contorno medido na malha (<paramref name="worldPositions"/>, xyz
@@ -148,8 +162,8 @@ public sealed record DraftingInput(
             maxX = Math.Max(maxX, p.X); maxY = Math.Max(maxY, p.Y); maxZ = Math.Max(maxZ, p.Z);
         }
 
-        return new DraftingInput(root, rootToWorld.Then(frame.WorldToFrame), view,
-            new Point3D(minX, minY, minZ), new Point3D(maxX, maxY, maxZ));
+        var subject = new AnalysisSubject(root, rootToWorld.Then(frame.WorldToFrame), feature.Name, feature.Id);
+        return new DraftingInput([subject], view, new Point3D(minX, minY, minZ), new Point3D(maxX, maxY, maxZ));
     }
 }
 

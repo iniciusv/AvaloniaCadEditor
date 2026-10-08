@@ -1,5 +1,6 @@
 <Solution>
   <Project Path="AiCore/AiCore.csproj" />
+  <Project Path="AvaloniaCadEditor.Analysis/AvaloniaCadEditor.Analysis.csproj" />
   <Project Path="AvaloniaCadEditor.Application/AvaloniaCadEditor.Application.csproj" />
   <Project Path="AvaloniaCadEditor.Domain/AvaloniaCadEditor.Domain.csproj" />
   <Project Path="AvaloniaCadEditor.Drafting/AvaloniaCadEditor.Drafting.csproj" />

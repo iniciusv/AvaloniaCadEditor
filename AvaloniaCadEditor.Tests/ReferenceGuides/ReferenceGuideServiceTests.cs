@@ -190,4 +190,29 @@ public class ReferenceGuideServiceTests
 
         result.Should().BeSameAs(ReferenceGuideSet.Empty);
     }
+
+    private sealed record PecaComFuros : Part
+    {
+        protected override IFeature Build() => throw new NotSupportedException();
+    }
+
+    [Fact]
+    public void Analyze_FurosDentroDeUmaPeca_GeraFileirasNasCoordenadasDoMundo()
+    {
+        // Antes as guias não enxergavam o interior de uma PartInstance (a cena AiCore inteira é feita
+        // de peças), e um TransformedFeature tinha o Placement ignorado.
+        var corpo = new BoxFeature(Point3D.Origin, 40, 20, 5) { Name = "corpo" };
+        var furo_a = new CylinderFeature(new Point3D(10, 5, -1), new Vector3D(0, 0, 1), 1.7, 7) { Name = "furo_a", IsTransientTool = true };
+        var furo_b = new CylinderFeature(new Point3D(30, 5, -1), new Vector3D(0, 0, 1), 1.7, 7) { Name = "furo_b", IsTransientTool = true };
+        var definicao = BooleanFeature.CreateDifference("placa", corpo, furo_a, furo_b);
+        var peca = new PartInstance<PecaComFuros>(new PecaComFuros(), definicao, Placement.At(100, 200, 0)) { Name = "placa_1" };
+
+        var result = new ReferenceGuideService().Analyze(new List<IFeature> { peca });
+
+        var fileira = result.Lines.Should().ContainSingle(l => l.Kind == GuideKind.HoleRow && Math.Abs(l.Coordinate - 205) < 1e-6).Subject;
+        fileira.SourceFeatureIds.Should().BeEquivalentTo(new[] { furo_a.Id, furo_b.Id });
+        fileira.OwnerIds.Should().Equal(peca.Id);
+        result.Dimensions.Should().Contain(d => d.Kind == GuideKind.HoleRow && d.Label == "20" &&
+                                                Math.Abs(d.From.X - 110) < 1e-6 && Math.Abs(d.To.X - 130) < 1e-6);
+    }
 }

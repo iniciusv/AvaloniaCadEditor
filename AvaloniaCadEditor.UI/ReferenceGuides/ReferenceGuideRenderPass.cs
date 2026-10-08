@@ -59,7 +59,7 @@ public sealed class ReferenceGuideRenderPass : IRenderPass
 
         foreach (var line in result.Lines)
         {
-            var target = TargetFor(line.SourceFeatureIds, selectedId, highlighted, dimmed);
+            var target = TargetFor(line.SourceFeatureIds, line.OwnerIds, selectedId, highlighted, dimmed);
             var color = ColorFor(line.Kind);
             var pattern = line.Kind == GuideKind.Symmetry ? DashDotPattern : DashPattern;
             AddDashedSegment(target, line.Start, line.End, color, pattern);
@@ -67,7 +67,7 @@ public sealed class ReferenceGuideRenderPass : IRenderPass
 
         foreach (var dimension in result.Dimensions)
         {
-            var target = TargetFor(dimension.SourceFeatureIds, selectedId, highlighted, dimmed);
+            var target = TargetFor(dimension.SourceFeatureIds, dimension.OwnerIds, selectedId, highlighted, dimmed);
             AddSegment(target, dimension.From, dimension.To, ColorFor(dimension.Kind));
         }
 
@@ -94,9 +94,11 @@ public sealed class ReferenceGuideRenderPass : IRenderPass
         if (_vbo != 0) { gl.DeleteBuffer(_vbo); _vbo = 0; }
     }
 
-    private static List<float> TargetFor(IReadOnlyList<Guid> sourceIds, Guid? selectedId, List<float> highlighted, List<float> dimmed)
+    /// <summary>Destaca o que pertence à feature selecionada: uma primitiva solta pelo próprio Id, um
+    /// furo dentro de uma peça pelo Id da instância (o dono de topo).</summary>
+    private static List<float> TargetFor(IReadOnlyList<Guid> sourceIds, IReadOnlyList<Guid>? ownerIds, Guid? selectedId, List<float> highlighted, List<float> dimmed)
     {
-        if (selectedId == null || sourceIds.Contains(selectedId.Value)) return highlighted;
+        if (selectedId == null || sourceIds.Contains(selectedId.Value) || ownerIds?.Contains(selectedId.Value) == true) return highlighted;
         return dimmed;
     }
 

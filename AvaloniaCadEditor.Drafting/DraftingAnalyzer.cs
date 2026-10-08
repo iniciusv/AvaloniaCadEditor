@@ -1,19 +1,27 @@
+using AvaloniaCadEditor.Analysis;
 using AvaloniaCadEditor.Domain.ValueObjects;
 
 namespace AvaloniaCadEditor.Drafting;
 
-/// <summary>Ponto de entrada do módulo: monta o desenho de uma vista de uma peça.</summary>
+/// <summary>
+/// Ponto de entrada do módulo: monta o desenho de uma vista. Encadeia as camadas — fatos e
+/// relações (<see cref="FactExtractor"/>, <see cref="RelationAnalyzer"/>), projeção na vista
+/// (<see cref="ViewProjector"/>), escolha hierárquica das cotas (<see cref="DimensionPlanner"/>) e
+/// encaixe das linhas (<see cref="DimensionLayout"/>).
+/// </summary>
 public static class DraftingAnalyzer
 {
     /// <summary>O desenho da vista, ou <c>null</c> se a vista não é ortogonal (Iso).</summary>
-    public static DraftingSheet? Analyze(DraftingInput input)
+    public static DraftingSheet? Analyze(DraftingInput input, AnalysisOptions? options = null)
     {
         ArgumentNullException.ThrowIfNull(input);
 
         var basis = ViewBasis.For(input.View);
         if (basis == null) return null;
 
-        var (entities, warnings) = ViewProjector.Project(input.Root, input.RootToFrame, basis);
+        var facts = FactExtractor.Extract(input.Subjects);
+        var relations = RelationAnalyzer.Analyze(facts, options);
+        var (entities, warnings) = ViewProjector.Project(facts, basis);
 
         // Contorno real da peça (da malha, já com as booleanas) projetado na vista.
         var min = input.FrameBoundsMin;
@@ -30,10 +38,11 @@ public static class DraftingAnalyzer
         var partMax = new P2(projected.Max(p => p.U), projected.Max(p => p.V));
         double frontDepth = corners.Max(basis.Depth);
 
-        double gap = AutoDimensioner.GapFor(partMin, partMax);
-        var (dimensions, centerLines) = AutoDimensioner.Build(entities, partMin, partMax, gap);
+        double gap = DimensionFactory.GapFor(partMin, partMax);
+        var plan = DimensionPlanner.Build(entities, relations, basis, partMin, partMax, gap, options);
+        var dimensions = DimensionLayout.Place(plan.Groups, partMin, partMax, gap).Concat(plan.Leaders).ToList();
 
-        return new DraftingSheet(basis, partMin, partMax, frontDepth, gap, entities, dimensions, centerLines, warnings);
+        return new DraftingSheet(basis, partMin, partMax, frontDepth, gap, entities, dimensions, plan.CenterLines, warnings);
     }
 }
 

@@ -42,7 +42,9 @@ Domain  ←  Application  ←  Infrastructure  ←  UI
              ↑
           AiCore
 
-Domain  ←  Drafting  ←  UI
+Domain  ←  Analysis  ←  Drafting  ←  UI
+              ↑
+         Application
 ```
 
 | Projeto | TFM | Papel |
@@ -52,7 +54,8 @@ Domain  ←  Drafting  ←  UI
 | `AvaloniaCadEditor.Infrastructure` | `net10.0-windows` x64 | OCCT (`OcctNet.Wrapper`), Roslyn evaluator/navigator, reconstrução, STL, settings JSON. |
 | `AvaloniaCadEditor.UI` | `net10.0-windows` x64 | Avalonia 12 + Silk.NET OpenGL, ViewModels, render passes, CLI `check`. |
 | `AiCore` | `net10.0` | Cliente LLM e `IAiProtocol`, sem dependências externas (BCL só). **Também é uma pasta de cena** (ver §7). |
-| `AvaloniaCadEditor.Drafting` | `net10.0` | Analisador de desenho técnico: projeta a árvore de features da peça isolada numa vista padrão e gera cotas. **Só depende do Domain**; a UI o consome (`UI/Drafting/`) e o core não depende dele. |
+| `AvaloniaCadEditor.Analysis` | `net10.0` | Análise de modelo, pura: `FactExtractor` (o **único** percurso da árvore que acumula `Placement`s → `PrimitiveFact`s com papel e nome estável) e `RelationAnalyzer` (alinhamentos, quase-alinhamentos, coaxiais, padrões com passo, planos de simetria). **Só depende do Domain.** Consumida pelo desenho e pelas guias de referência. |
+| `AvaloniaCadEditor.Drafting` | `net10.0` | Desenho técnico da peça isolada: projeta os fatos numa vista padrão, escolhe as cotas com hierarquia e as encaixa em fileiras. Depende de Domain e Analysis; a UI o consome (`UI/Drafting/`) e o core não depende dele. |
 | `AvaloniaCadEditor.Tests` | `net10.0-windows` | xunit + FluentAssertions + Moq. ~445 testes. |
 
 **A regra:** a seta nunca inverte. `Application` não conhece `Infrastructure` — é por isso que o
@@ -139,7 +142,7 @@ de todo o resto. Falha segura: fingerprint `null` = sem cache, nunca cache errad
 
 | Quero… | Mexa em | Lembre de |
 |---|---|---|
-| **Adicionar um tipo de feature** (ex.: `LoftFeature`) | `Domain/Features/XFeature.cs` | ver §5.1 — são **6** pontos obrigatórios |
+| **Adicionar um tipo de feature** (ex.: `LoftFeature`) | `Domain/Features/XFeature.cs` | ver §5.1 — são **7** pontos obrigatórios |
 | Adicionar uma ferramenta interativa | `Application/Commands/XCommand.cs` + comando no `CadViewModel` + botão no `MainWindow.axaml` + `Resources/Strings.cs` | a ferramenta **emite código**, não constrói geometria |
 | Mudar como uma feature vira sólido | `Infrastructure/OpenCascade/OpenCascadeGeometryKernel.cs` → `BuildShape` | registre falha com `ReportProblem`, não lance para fora |
 | Mudar a tesselação / arestas | `Infrastructure/OpenCascade/OcctTessellator.cs`, `Domain/Settings/TessellationSettings.cs` | settings novos entram em `GeometryKey()` |
@@ -152,8 +155,11 @@ de todo o resto. Falha segura: fingerprint `null` = sem cache, nunca cache errad
 | Mudar a renderização | `UI/Controls/Rendering/*RenderPass.cs` (implemente `IRenderPass`) | registre em `SilkViewportControl._renderPasses` |
 | Mudar o modo wireframe (linhas ocultas tracejadas) | `UI/Controls/Rendering/WireframeRenderPass.cs`, `WireframeEdgeShader.cs`, `WireframeGeometry.cs` | quem entra no frame e com que cor vem de `SolidRenderables`, compartilhado com o sombreado. As arestas e silhuetas são calculadas sob demanda pelo `EdgeDetector`, só para as malhas exibidas no modo: a mudança é só visual e não acrescenta nada à `TriangleMesh` |
 | Mudar o referencial da peça isolada (H) | `Application/Isolation/PartFrameResolver.cs`, `Domain/ValueObjects/PartFrame.cs`, `CadViewModel.ToggleIsolateSelection`/`ReapplyIsolation` | só visual: a grade e as vistas usam o referencial, o código continua em mundo. O isolamento é guardado **por nome** e reaplicado em `RunCodeAsync`, porque cada execução recria as features |
-| Mudar as cotas automáticas | `AvaloniaCadEditor.Drafting/` (`ViewProjector` projeta, `AutoDimensioner` cota) | as medidas vêm dos **parâmetros** das features, não da malha: o OCCT não expõe arestas analíticas e furos são prismas de 32 lados |
+| Mudar o que a análise enxerga (primitivas, papéis, nomes) | `AvaloniaCadEditor.Analysis/FactExtractor.cs` | é o único percurso da árvore com `Placement`: não crie outro. Feature nova → um `case` aqui |
+| Mudar as relações inferidas (simetria, padrões, coaxiais, alinhamentos) | `AvaloniaCadEditor.Analysis/RelationAnalyzer.cs` | 3D e sem vista; serve ao desenho **e** às guias. Simetria exige pares de mesmo tipo e tamanho |
+| Mudar quais cotas o desenho escolhe | `AvaloniaCadEditor.Drafting/DimensionPlanner.cs` (hierarquia: 1 cadeias e tamanhos, 2 localização, 3 totais) e `DimensionLayout.cs` (fileiras por intervalos) | as medidas vêm dos **parâmetros** das features, não da malha: o OCCT não expõe arestas analíticas e furos são prismas de 32 lados |
 | Mudar como as cotas aparecem / o modo "Cotar" | `UI/Drafting/` (`DraftingViewModel`, `DraftingRenderPass`, `DraftingLabelsOverlay`) | cotas manuais vivem só na sessão, por Id de âncora (`furo_x.centro`); só desenham com câmera ortho na vista escolhida |
+| Mudar as guias de referência | `Application/ReferenceGuides/ReferenceGuideService.cs` | é só apresentação sobre `Analysis`: a análise em si muda no `RelationAnalyzer` |
 | Mudar seleção / hover / pick | `UI/ViewModels/CadViewModel.cs` (hover com timer, ciclo TAB), `UI/Controls/Input/` | |
 | Mudar a árvore ou o inspector | `UI/ViewModels/ModelTreeViewModel.cs`, `PropertyInspectorViewModel.cs` | o inspector escreve no **código**, não no objeto |
 | Mudar a validação headless | `UI/Cli/CheckCommand.cs`, `Application/Scenes/SceneCheckService.cs` | exit codes: 0 ok, 1 erro de cena, 2 uso/pasta inválida |
@@ -175,7 +181,7 @@ de todo o resto. Falha segura: fingerprint `null` = sem cache, nunca cache errad
 
 ## 5. Invariantes
 
-### 5.1 Adicionar um tipo de feature toca 6 lugares
+### 5.1 Adicionar um tipo de feature toca 7 lugares
 
 Esquecer qualquer um deles produz falha **silenciosa** (sólido não aparece, ou aparece com
 geometria velha do cache):
@@ -188,6 +194,9 @@ geometria velha do cache):
 4. `Application/Services/FeatureCodeGenerator` — se alguma ferramenta gera a feature.
 5. `Application/Ai/CadScriptRules` + `CadScriptProtocol.Examples` — para a IA saber que existe.
 6. `UI/ViewModels/ModelTreeViewModel` / `PropertyInspectorViewModel` — se precisa aparecer ou ser editável.
+7. `Analysis/FactExtractor` — um `case` no `Walk` e o tipo em `HandledFeatureTypes`, **ou** o motivo em
+   `IgnoredFeatureTypes`. Sem isso a feature some das cotas e das guias de referência sem erro;
+   `FactExtractorCoverageTests` falha até a decisão ser tomada.
 
 ### 5.2 Sólidos são rastreáveis por nome
 

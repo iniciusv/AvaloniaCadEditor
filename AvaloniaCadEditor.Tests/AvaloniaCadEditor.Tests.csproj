@@ -21,6 +21,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\AvaloniaCadEditor.Analysis\AvaloniaCadEditor.Analysis.csproj" />
     <ProjectReference Include="..\AvaloniaCadEditor.Application\AvaloniaCadEditor.Application.csproj" />
     <ProjectReference Include="..\AvaloniaCadEditor.Domain\AvaloniaCadEditor.Domain.csproj" />
     <ProjectReference Include="..\AvaloniaCadEditor.Drafting\AvaloniaCadEditor.Drafting.csproj" />

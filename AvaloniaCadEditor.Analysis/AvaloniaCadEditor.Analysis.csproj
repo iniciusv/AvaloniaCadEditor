@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Análise de modelo, em camadas e pura (só depende do Domain):
+    1. FactExtractor: percorre a árvore de features, acumula os Placements e devolve fatos
+       (primitivas com papel, eixo, medidas e nome estável) num referencial escolhido;
+    2. RelationAnalyzer: infere relações de projeto sobre os fatos (eixos comuns, quase-
+       alinhamentos, furos coaxiais, padrões lineares, planos de simetria).
+    Quem consome (o desenho de cotas, as guias de referência) decide como apresentar.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AvaloniaCadEditor.Domain\AvaloniaCadEditor.Domain.csproj" />
+  </ItemGroup>
+
+</Project>
