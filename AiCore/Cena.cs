@@ -37,7 +37,7 @@ var alturaTopoCarrinhosY = carrinhoYPeca.Altura;
 // A placa B é espelhada no eixo Y (EspelhadoNoEixoY), tornando-se a imagem especular da placa A.
 var placaSuporteYA = Add(placaSuporteCarrinhoYPeca,
     at: Placement.At(centroXTrilhoA - 12.5, -12.5, alturaTopoCarrinhosY + 5.5, rotationZDegrees: 180),
-    name: "placa_suporte_carrinho_y_a", color: "#00CC6A");
+    name: "placa_suporte_carrinho_y_a", color: "#0078D7");
 var placaSuporteYB = Add(placaSuporteCarrinhoYPeca with { EspelhadoNoEixoY = true },
     at: Placement.At(centroXTrilhoB + 12.5, -12.5, alturaTopoCarrinhosY + 5.5, rotationZDegrees: 180),
     name: "placa_suporte_carrinho_y_b", color: "#00CC6A");
@@ -108,6 +108,23 @@ var suporteMotorNema17 = Add(suporteMotorNema17Peca with { LarguraPorcaLateral =
 // eixo sobe através do furo de alívio central, se projetando por cima do suporte.
 var alturaMontagemMotor = zSuporteMotor - motorNema17Peca.Comprimento;
 var motorNema17 = Add(motorNema17Peca, at: Placement.At(xMotorNema17, yMotorSuporte, alturaMontagemMotor, rotationZDegrees: rotacaoMotorZ), name: "motor_nema17");
+// --- Espaçador cilíndrico de 15 mm, apoiado no topo do suporte e alinhado ao furo_motor_1 ---
+// O furo passante do espaçador tem o MESMO diâmetro dos furos de fixação do motor (mesmo vazio)
+// e fica exatamente sobre o furo_motor_1 do suporte; o corpo do cilindro é deslocado em relação
+// ao furo (furo fora de centro), crescendo na diagonal para o centro da placa, para o cilindro
+// inteiro caber sobre ela. O furo do furo_motor_1, em coordenadas locais do suporte, é o canto
+// -X/-Y do padrão de furos do motor.
+var cilindroEspacadorMotorPeca = new CilindroEspacadorMotor(Altura: 15, DiametroFuro: suporteMotorNema17Peca.DiametroFuroMotor);
+var furoMotor1Local = new Point3D(-suporteMotorNema17Peca.PassoFurosMotor / 2, -suporteMotorNema17Peca.PassoFurosMotor / 2, 0);
+var furoMotor1Mundo = suporteMotorNema17.ToWorld(furoMotor1Local);
+// O deslocamento do furo é no +X local da peça; girando 225° ele aponta para -X/-Y do mundo,
+// ou seja, do furo para o centro da placa (o suporte é girado 180°, então o canto fica em +X/+Y).
+var rotacaoEspacadorMotorZ = 225.0;
+var deslocamentoEspacadorMotor = Placement.RotationZ(rotacaoEspacadorMotorZ).ApplyVector(new Vector3D(cilindroEspacadorMotorPeca.DeslocamentoFuro, 0, 0));
+var zTopoSuporteMotor = zSuporteMotor + suporteMotorNema17Peca.Espessura;
+var cilindroEspacadorMotor = Add(cilindroEspacadorMotorPeca with { DiametroExterno = 5.9 },
+    at: Placement.At(furoMotor1Mundo.X - deslocamentoEspacadorMotor.X, furoMotor1Mundo.Y - deslocamentoEspacadorMotor.Y, zTopoSuporteMotor, rotationZDegrees: rotacaoEspacadorMotorZ),
+    name: "cilindro_espacador_motor", color: "#00CC6A");
 // --- Bloco de pressao da correia (belt), fixado na lateral do bloco_fixacao_mgn9 ---
 // Acompanha o lado do motor: a correia vem da polia e o rebaixo inferior do bloco existe
 // justamente para passar livre do bloco_conexao_motor_2020.
