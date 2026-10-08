@@ -55,6 +55,8 @@ public sealed record CoaxialSet(DirectionGroup Group, double U, double V, IReadO
 /// <param name="Positions">Posições distintas ao longo da fileira, em ordem.</param>
 /// <param name="Members">Um furo por posição (o primeiro, se houver coincidentes).</param>
 /// <param name="Pitch">O passo, quando todos os passos são iguais; senão null.</param>
+/// <param name="ComponentLabel">Fileira de componentes (peças aninhadas) com este rótulo; null = furos simples.
+/// Nesse caso <see cref="Members"/> são os <see cref="ComponentDatum.Principal"/> de cada componente.</param>
 public sealed record LinearPattern(
     DirectionGroup Group,
     bool AlongU,
@@ -64,13 +66,28 @@ public sealed record LinearPattern(
     IReadOnlyList<PrimitiveFact> Members,
     IReadOnlyList<PrimitiveFact> AllMembers,
     IReadOnlyList<double> Steps,
-    double? Pitch)
+    double? Pitch,
+    string? ComponentLabel = null)
 {
     public int Count => Positions.Count;
 
     public FrameAxis? AlongAxis => AlongU ? Group.AxisU : Group.AxisV;
     public FrameAxis? CrossAxis => AlongU ? Group.AxisV : Group.AxisU;
 }
+
+/// <summary>
+/// Referência de uma peça aninhada no desenho da hospedeira. Quando todos os membros redondos são
+/// coaxiais, é o eixo deles (o do mais longo, <see cref="Principal"/>) — numa FuroPorca, o eixo do
+/// furo; senão não há eixo e a referência é o centro da caixa.
+/// </summary>
+public sealed record ComponentDatum(
+    ComponentRef Ref,
+    IReadOnlyList<PrimitiveFact> Members,
+    PrimitiveFact? Principal,
+    Point3D AxisPoint,
+    Vector3D? Axis,
+    Point3D BoundsMin,
+    Point3D BoundsMax);
 
 /// <summary>Dois fatos de mesmo tipo, papel e tamanho, espelhados um no outro.</summary>
 public sealed record SymmetryPair(PrimitiveFact A, PrimitiveFact B);
@@ -102,6 +119,13 @@ public sealed record ModelRelations(
     public static readonly ModelRelations Empty = new(
         Array.Empty<PrimitiveFact>(), Array.Empty<DirectionGroup>(), new Dictionary<FrameAxis, AxisClusters>(),
         Array.Empty<CoaxialSet>(), Array.Empty<LinearPattern>(), Array.Empty<SymmetryPlane>(), null, null);
+
+    /// <summary>Peças aninhadas (componentes) e suas referências.</summary>
+    public IReadOnlyList<ComponentDatum> Components { get; init; } = Array.Empty<ComponentDatum>();
+
+    /// <summary>A referência do componente a que <paramref name="fact"/> pertence, se houver.</summary>
+    public ComponentDatum? ComponentOf(PrimitiveFact fact) =>
+        fact.Component is { } c ? Components.FirstOrDefault(d => d.Ref.Name == c.Name) : null;
 
     /// <summary>O plano de simetria global perpendicular a <paramref name="axis"/>, se houver.</summary>
     public SymmetryPlane? GlobalSymmetry(FrameAxis axis) =>

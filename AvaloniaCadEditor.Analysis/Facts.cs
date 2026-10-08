@@ -13,6 +13,31 @@ namespace AvaloniaCadEditor.Analysis;
 /// padrão, a própria <paramref name="Feature"/>.</param>
 public sealed record AnalysisSubject(IFeature Feature, Placement ToFrame, string Name = "", Guid? OwnerId = null);
 
+/// <summary>
+/// Peça aninhada (uma <see cref="PartInstance"/> dentro do <c>Build()</c> do sujeito, como
+/// <c>new FuroPorca(...).Instance("fixacao_1")</c>) a que um fato pertence. No desenho da hospedeira
+/// ela é uma caixa-preta: cotada pela referência, sem as medidas internas, que são parâmetros dela.
+/// </summary>
+/// <param name="Name">Nome da instância na hospedeira ("fixacao_1").</param>
+/// <param name="TypeName">Tipo da peça ("FuroPorca").</param>
+/// <param name="Label">Texto da chamada: <see cref="Part.DrawingLabel"/> ou o tipo mais os parâmetros enum.</param>
+public sealed record ComponentRef(string Name, string TypeName, string Label)
+{
+    public static ComponentRef For(PartInstance instance)
+    {
+        var part = instance.Part;
+        var label = part.DrawingLabel;
+        if (string.IsNullOrWhiteSpace(label))
+        {
+            var enums = part.GetParameters()
+                .Where(p => p.Type.IsEnum && p.Value != null)
+                .Select(p => p.Value!.ToString());
+            label = string.Join(" ", new[] { instance.PartTypeName }.Concat(enums));
+        }
+        return new ComponentRef(instance.Name, instance.PartTypeName, label);
+    }
+}
+
 public enum PrimitiveKind
 {
     /// <summary>Cilindro (inclui extrusão de perfil circular).</summary>
@@ -44,6 +69,10 @@ public sealed class PrimitiveFact
 
     /// <summary>Feature de topo dona da primitiva (para destacar a seleção).</summary>
     public required Guid OwnerId { get; init; }
+
+    /// <summary>Peça aninhada a que o fato pertence (a mais externa, dentro do sujeito); null para
+    /// sólidos do próprio sujeito.</summary>
+    public ComponentRef? Component { get; init; }
 
     /// <summary>Nome do sujeito de onde veio.</summary>
     public required string Subject { get; init; }

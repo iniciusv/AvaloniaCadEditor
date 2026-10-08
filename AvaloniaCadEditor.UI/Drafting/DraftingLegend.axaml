@@ -1,0 +1,32 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:drafting="clr-namespace:AvaloniaCadEditor.UI.Drafting"
+             x:Class="AvaloniaCadEditor.UI.Drafting.DraftingLegend"
+             x:DataType="drafting:DraftingViewModel"
+             IsVisible="{Binding ShowLegend}">
+
+    <!-- Legenda das cotas, flutuando no canto da viewport como a legenda de um mapa. Tem fundo,
+         então os cliques nela não passam para a cena. -->
+    <Border Background="#D91E1E1E" BorderBrush="#555" BorderThickness="1" CornerRadius="6" Padding="10,8">
+        <StackPanel Spacing="6" MinWidth="190">
+            <TextBlock Text="Cotas" FontWeight="SemiBold" Foreground="#DDD" FontSize="12"/>
+            <TextBlock Text="{Binding SuppressedText}" Foreground="Orange" FontSize="11" FontStyle="Italic"
+                       IsVisible="{Binding HasSuppressed}"/>
+            <ItemsControl ItemsSource="{Binding Levels}">
+                <ItemsControl.ItemTemplate>
+                    <DataTemplate x:DataType="drafting:LevelSummary">
+                        <StackPanel Margin="0,2">
+                            <TextBlock Text="{Binding Title}" Foreground="#8CD7FF" FontSize="11"/>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBlock Text="{Binding Counts}" Foreground="#AAA" FontSize="10" VerticalAlignment="Center"/>
+                                <CheckBox Content="mostrar ocultas" FontSize="10" Foreground="#CCC" MinHeight="0" Padding="2,0"
+                                          IsChecked="{Binding ForceShow}" IsEnabled="{Binding CanForce}"
+                                          IsVisible="{Binding CanForce}"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </DataTemplate>
+                </ItemsControl.ItemTemplate>
+            </ItemsControl>
+        </StackPanel>
+    </Border>
+</UserControl>

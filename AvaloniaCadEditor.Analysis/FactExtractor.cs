@@ -51,6 +51,9 @@ public static class FactExtractor
         private readonly Guid _owner = subject.OwnerId ?? subject.Feature.Id;
         private readonly Dictionary<string, int> _names = new();
 
+        /// <summary>Peça aninhada em curso: a mais externa vale para tudo que está dentro dela.</summary>
+        private ComponentRef? _component;
+
         public void Walk(IFeature? feature, Placement toFrame, PrimitiveRole role, string prefix, string? nameOverride)
         {
             if (feature == null) return;
@@ -64,7 +67,10 @@ public static class FactExtractor
                     return;
 
                 case PartInstance instance:
+                    var outer = _component;
+                    _component ??= ComponentRef.For(instance);
                     Walk(instance.Definition, instance.Placement.Then(toFrame), role, $"{prefix}{instance.Name}/", null);
+                    _component = outer;
                     return;
 
                 case TransformedFeature transformed:
@@ -180,6 +186,7 @@ public static class FactExtractor
                 Id = feature.Id,
                 OwnerId = _owner,
                 Subject = subject.Name,
+                Component = _component,
                 Name = UniqueName(prefix + (nameOverride ?? feature.Name)),
                 Kind = kind,
                 Role = role,

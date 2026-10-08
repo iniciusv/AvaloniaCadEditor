@@ -81,7 +81,26 @@ public enum DimensionKind
 {
     Horizontal,
     Vertical,
-    Diameter
+    Diameter,
+
+    /// <summary>Chamada de um componente (peça aninhada, ex.: "3× FuroPorca M3"): sem medida, só o rótulo.</summary>
+    Callout
+}
+
+/// <summary>Os níveis da hierarquia de cotas e seus nomes (na legenda).</summary>
+public static class DimensionLevels
+{
+    public const int Chains = 1;
+    public const int Location = 2;
+    public const int Totals = 3;
+
+    public static string Title(int level) => level switch
+    {
+        Chains => "Cadeias e tamanhos",
+        Location => "Localização",
+        Totals => "Totais",
+        _ => $"Nível {level}"
+    };
 }
 
 /// <summary>De que lado da peça a linha de cota fica (Diameter não tem lado: usa chamada).</summary>
@@ -182,6 +201,9 @@ public sealed record DraftingSheet(
     IReadOnlyList<CenterLine> CenterLines,
     IReadOnlyList<string> Warnings)
 {
+    /// <summary>Cotas que a política de densidade escondeu (ver <see cref="DensityPolicy"/>).</summary>
+    public IReadOnlyList<SuppressedDimension> Suppressed { get; init; } = Array.Empty<SuppressedDimension>();
+
     /// <summary>Todos os pontos cotáveis: os das primitivas e os quatro cantos da peça ("peca.*").</summary>
     public IReadOnlyList<DraftAnchor> Anchors =>
         Entities.SelectMany(e => e.Anchors)

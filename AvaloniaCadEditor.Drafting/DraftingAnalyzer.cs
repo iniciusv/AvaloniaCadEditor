@@ -12,7 +12,8 @@ namespace AvaloniaCadEditor.Drafting;
 public static class DraftingAnalyzer
 {
     /// <summary>O desenho da vista, ou <c>null</c> se a vista não é ortogonal (Iso).</summary>
-    public static DraftingSheet? Analyze(DraftingInput input, AnalysisOptions? options = null)
+    /// <param name="drafting">Limites de densidade e níveis forçados (ver <see cref="DensityPolicy"/>).</param>
+    public static DraftingSheet? Analyze(DraftingInput input, AnalysisOptions? options = null, DraftingOptions? drafting = null)
     {
         ArgumentNullException.ThrowIfNull(input);
 
@@ -40,9 +41,14 @@ public static class DraftingAnalyzer
 
         double gap = DimensionFactory.GapFor(partMin, partMax);
         var plan = DimensionPlanner.Build(entities, relations, basis, partMin, partMax, gap, options);
-        var dimensions = DimensionLayout.Place(plan.Groups, partMin, partMax, gap).Concat(plan.Leaders).ToList();
+        double tolerance = (options ?? new AnalysisOptions()).AlignTolerance;
+        var (placed, suppressed) = DensityPolicy.Apply(plan.Groups, partMin, partMax, gap, tolerance, drafting);
+        var dimensions = placed.Concat(plan.Leaders).ToList();
 
-        return new DraftingSheet(basis, partMin, partMax, frontDepth, gap, entities, dimensions, plan.CenterLines, warnings);
+        return new DraftingSheet(basis, partMin, partMax, frontDepth, gap, entities, dimensions, plan.CenterLines, warnings)
+        {
+            Suppressed = suppressed
+        };
     }
 }
 

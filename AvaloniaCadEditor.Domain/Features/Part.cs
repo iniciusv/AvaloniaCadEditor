@@ -34,6 +34,13 @@ public abstract record Part
     /// </summary>
     protected abstract IFeature Build();
 
+    /// <summary>
+    /// Texto da chamada desta peça quando ela aparece aninhada no desenho de outra (ex.: uma
+    /// FuroPorca usada como ferramenta). Null = o padrão do desenho: o tipo mais os valores dos
+    /// parâmetros enum ("FuroPorca M3 Lateral").
+    /// </summary>
+    public virtual string? DrawingLabel => null;
+
     /// <summary>Parâmetros do construtor primário, na ordem declarada, com os valores desta peça.</summary>
     public IReadOnlyList<PartParameter> GetParameters()
     {

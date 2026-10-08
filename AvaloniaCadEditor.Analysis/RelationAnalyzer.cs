@@ -27,8 +27,9 @@ public static class RelationAnalyzer
             frameClusters[axis] = Clustering.Cluster(candidates, opts);
         }
 
+        var components = Components(facts, opts);
         var coaxial = groups.SelectMany(g => CoaxialSets(g, opts)).ToList();
-        var patterns = groups.SelectMany(g => LinearPatterns(g, opts)).ToList();
+        var patterns = groups.SelectMany(g => LinearPatterns(g, components, opts)).ToList();
         cancellationToken.ThrowIfCancellationRequested();
 
         var bodies = facts.Where(f => f.Role == PrimitiveRole.Body).ToList();
@@ -39,7 +40,10 @@ public static class RelationAnalyzer
             ? FrameAxes.All.SelectMany(a => SymmetryPlanes(facts, a, bodyMin, bodyMax, opts)).ToList()
             : new List<SymmetryPlane>();
 
-        return new ModelRelations(facts, groups, frameClusters, coaxial, patterns, symmetry, bodyMin, bodyMax);
+        return new ModelRelations(facts, groups, frameClusters, coaxial, patterns, symmetry, bodyMin, bodyMax)
+        {
+            Components = components
+        };
     }
 
     // ------------------------------------------------------------------ Grupos por direção
@@ -208,17 +212,75 @@ public static class RelationAnalyzer
         }
     }
 
-    private static IEnumerable<LinearPattern> LinearPatterns(DirectionGroup group, AnalysisOptions opts)
+    // ------------------------------------------------------------------ Componentes
+
+    /// <summary>Uma referência por peça aninhada: o eixo comum dos membros redondos, ou o centro da caixa.</summary>
+    private static List<ComponentDatum> Components(IReadOnlyList<PrimitiveFact> facts, AnalysisOptions opts)
     {
-        var holes = group.Holes.Select(h => (Fact: h, Local: group.Local(h.BaseCenter))).ToList();
+        var result = new List<ComponentDatum>();
+        foreach (var members in facts.Where(f => f.Component != null).GroupBy(f => f.Component!.Name))
+        {
+            var list = members.ToList();
+            var min = new Point3D(list.Min(f => f.BoundsMin.X), list.Min(f => f.BoundsMin.Y), list.Min(f => f.BoundsMin.Z));
+            var max = new Point3D(list.Max(f => f.BoundsMax.X), list.Max(f => f.BoundsMax.Y), list.Max(f => f.BoundsMax.Z));
+            var rounds = list.Where(f => f.IsRound).OrderByDescending(f => f.Height).ToList();
+            var principal = rounds.FirstOrDefault();
+
+            bool coaxial = principal != null && rounds.All(r => Coaxial(r, principal, opts.AlignTolerance));
+            var center = new Point3D((min.X + max.X) / 2, (min.Y + max.Y) / 2, (min.Z + max.Z) / 2);
+            result.Add(new ComponentDatum(list[0].Component!, list, principal,
+                coaxial ? principal!.BaseCenter : center,
+                coaxial ? principal!.Axis : null,
+                min, max));
+        }
+        return result;
+    }
+
+    /// <summary>Os dois redondos estão no mesmo eixo (paralelos e com a base de um sobre a reta do outro).</summary>
+    private static bool Coaxial(PrimitiveFact a, PrimitiveFact b, double tolerance)
+    {
+        if (Math.Abs(Math.Abs(a.Axis.DotProduct(b.Axis)) - 1) > 1e-6) return false;
+        var d = a.BaseCenter - b.BaseCenter;
+        var along = b.Axis * d.DotProduct(b.Axis);
+        return (d - along).Length <= tolerance;
+    }
+
+    // ------------------------------------------------------------------ Padrões
+
+    /// <summary>
+    /// Fileiras do grupo: furos simples de mesmo diâmetro e, à parte, componentes de mesmo rótulo
+    /// (pelo eixo deles). Um componente não forma fileira com um furo avulso de mesmo diâmetro.
+    /// </summary>
+    private static IEnumerable<LinearPattern> LinearPatterns(DirectionGroup group, IReadOnlyList<ComponentDatum> components, AnalysisOptions opts)
+    {
+        var items = group.Holes
+            .Where(h => h.Component == null)
+            .Select(h => new PatternItem(h, h.BaseCenter, $"Ø{Math.Round(h.MaxRadius * 2 / opts.AlignTolerance)}", h.MaxRadius * 2, null))
+            .ToList();
+
+        foreach (var c in components)
+        {
+            if (c.Axis is not { } axis || c.Principal == null) continue;
+            if (Math.Abs(Math.Abs(axis.DotProduct(group.Direction)) - 1) > 1e-6) continue;
+            items.Add(new PatternItem(c.Principal, c.AxisPoint, $"C:{c.Ref.Label}", c.Principal.MaxRadius * 2, c.Ref.Label));
+        }
+
+        return LinearPatterns(group, items, opts);
+    }
+
+    private sealed record PatternItem(PrimitiveFact Fact, Point3D Point, string Key, double Diameter, string? ComponentLabel);
+
+    private static IEnumerable<LinearPattern> LinearPatterns(DirectionGroup group, List<PatternItem> items, AnalysisOptions opts)
+    {
+        var located = items.Select(i => (Item: i, Local: group.Local(i.Point))).ToList();
         foreach (bool alongU in new[] { true, false })
         {
-            double Along((PrimitiveFact Fact, (double U, double V, double Depth) Local) h) => alongU ? h.Local.U : h.Local.V;
-            double Cross((PrimitiveFact Fact, (double U, double V, double Depth) Local) h) => alongU ? h.Local.V : h.Local.U;
+            double Along((PatternItem Item, (double U, double V, double Depth) Local) h) => alongU ? h.Local.U : h.Local.V;
+            double Cross((PatternItem Item, (double U, double V, double Depth) Local) h) => alongU ? h.Local.V : h.Local.U;
 
-            // Mesma transversal (corrida de valores a menos da tolerância) e mesmo diâmetro.
-            var byCross = holes.OrderBy(Cross).ToList();
-            var runs = new List<List<(PrimitiveFact Fact, (double U, double V, double Depth) Local)>>();
+            // Mesma transversal (corrida de valores a menos da tolerância) e mesma chave (diâmetro ou rótulo).
+            var byCross = located.OrderBy(Cross).ToList();
+            var runs = new List<List<(PatternItem Item, (double U, double V, double Depth) Local)>>();
             foreach (var h in byCross)
             {
                 if (runs.Count > 0 && Cross(h) - Cross(runs[^1][^1]) <= opts.AlignTolerance) runs[^1].Add(h);
@@ -227,23 +289,23 @@ public static class RelationAnalyzer
 
             foreach (var run in runs)
             {
-                foreach (var byDiameter in run.GroupBy(h => Math.Round(h.Fact.MaxRadius * 2 / opts.AlignTolerance)))
+                foreach (var byKey in run.GroupBy(h => h.Item.Key))
                 {
-                    var sorted = byDiameter.OrderBy(Along).ToList();
+                    var sorted = byKey.OrderBy(Along).ToList();
                     var positions = new List<double>();
                     var members = new List<PrimitiveFact>();
                     foreach (var h in sorted)
                     {
                         if (positions.Count > 0 && Along(h) - positions[^1] <= opts.AlignTolerance) continue;
                         positions.Add(Along(h));
-                        members.Add(h.Fact);
+                        members.Add(h.Item.Fact);
                     }
                     if (positions.Count < 2) continue;
 
                     var steps = positions.Zip(positions.Skip(1), (a, b) => b - a).ToList();
                     double? pitch = steps.All(s => Math.Abs(s - steps[0]) <= opts.AlignTolerance * 10) ? steps.Average() : null;
-                    yield return new LinearPattern(group, alongU, sorted.Average(Cross), sorted[0].Fact.MaxRadius * 2,
-                        positions, members, sorted.Select(h => h.Fact).ToList(), steps, pitch);
+                    yield return new LinearPattern(group, alongU, sorted.Average(Cross), sorted[0].Item.Diameter,
+                        positions, members, sorted.Select(h => h.Item.Fact).ToList(), steps, pitch, sorted[0].Item.ComponentLabel);
                 }
             }
         }

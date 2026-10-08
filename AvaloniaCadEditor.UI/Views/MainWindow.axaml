@@ -209,6 +209,8 @@
                 <controls:SilkViewportControl x:Name="ViewportControl" DataContext="{Binding}" />
                 <refguides:GuideLabelsOverlay x:Name="GuideLabelsOverlay" />
                 <drafting:DraftingLabelsOverlay x:Name="DraftingLabelsOverlay" />
+                <drafting:DraftingLegend DataContext="{Binding Drafting}"
+                                         HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" />
                 <controls:SelectionBoxOverlay x:Name="SelectionBoxOverlay" />
 
                 <!-- Erro na cena: o modelo exibido é o último que executou com sucesso -->

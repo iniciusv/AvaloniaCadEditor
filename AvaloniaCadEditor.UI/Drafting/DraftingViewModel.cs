@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Numerics;
@@ -36,6 +37,10 @@ public sealed class DraftingViewModel : INotifyPropertyChanged
     /// <summary>Cotas automáticas escondidas pelo usuário, por peça e vista (chave da cota).</summary>
     private readonly Dictionary<(string Owner, StandardView View), HashSet<string>> _hidden = new();
 
+    /// <summary>Níveis que o usuário mandou mostrar mesmo acima do limite de densidade (toggles da
+    /// legenda), por peça e vista.</summary>
+    private readonly Dictionary<(string Owner, StandardView View), HashSet<int>> _forced = new();
+
     private int _hintGeneration;
 
     public DraftingViewModel(CadViewModel cad)
@@ -49,6 +54,7 @@ public sealed class DraftingViewModel : INotifyPropertyChanged
                 {
                     _manual.Clear();
                     _hidden.Clear();
+                    _forced.Clear();
                 }
                 Recompute();
             }
@@ -71,6 +77,7 @@ public sealed class DraftingViewModel : INotifyPropertyChanged
             OnPropertyChanged();
             if (!value) IsPicking = false;
             Recompute();
+            OnPropertyChanged(nameof(ShowLegend));
         }
     }
 
@@ -108,6 +115,21 @@ public sealed class DraftingViewModel : INotifyPropertyChanged
     public DraftAnchor? PendingSecond { get; private set; }
 
     public ICommand RestoreCommand { get; }
+
+    /// <summary>Uma linha por nível de cota na legenda: visíveis, ocultas pela densidade e o toggle.</summary>
+    public ObservableCollection<LevelSummary> Levels { get; } = new();
+
+    /// <summary>Quantas cotas a política de densidade escondeu nesta vista (fora os níveis forçados).</summary>
+    public int SuppressedCount { get; private set; }
+
+    public bool HasSuppressed => SuppressedCount > 0;
+
+    public string SuppressedText => SuppressedCount == 1
+        ? "1 cota oculta pela densidade"
+        : $"{SuppressedCount} cotas ocultas pela densidade";
+
+    /// <summary>A legenda aparece quando há desenho.</summary>
+    public bool ShowLegend => IsVisible && Sheet != null;
 
     /// <summary>Tamanho da seta, em mm do desenho.</summary>
     public double ArrowSize => (Sheet?.Gap ?? 2) * 0.3;
@@ -150,7 +172,8 @@ public sealed class DraftingViewModel : INotifyPropertyChanged
         if (IsVisible && Frame != null && feature != null && View is { } view)
         {
             var input = DraftingInput.ForIsolated(feature, Frame, _cad.GetFeatureMesh(feature.Id)?.Positions, view);
-            Sheet = input == null ? null : DraftingAnalyzer.Analyze(input);
+            var forced = _forced.TryGetValue((Frame.OwnerName, view), out var f) ? f : new HashSet<int>();
+            Sheet = input == null ? null : DraftingAnalyzer.Analyze(input, drafting: new DraftingOptions { ForcedLevels = forced });
         }
 
         RebuildDimensions();
@@ -165,6 +188,7 @@ public sealed class DraftingViewModel : INotifyPropertyChanged
         if (Sheet == null || CurrentKey is not { } key)
         {
             Dimensions = Array.Empty<DraftDimension>();
+            RefreshLegend();
             RaiseChanged();
             return;
         }
@@ -182,7 +206,42 @@ public sealed class DraftingViewModel : INotifyPropertyChanged
         }
 
         Dimensions = list;
+        RefreshLegend();
         RaiseChanged();
+    }
+
+    /// <summary>Refaz as linhas da legenda: por nível, as cotas visíveis e as que a densidade escondeu.</summary>
+    private void RefreshLegend()
+    {
+        Levels.Clear();
+        SuppressedCount = Sheet?.Suppressed.Count ?? 0;
+
+        if (Sheet != null && CurrentKey is { } key)
+        {
+            var forced = _forced.TryGetValue(key, out var f) ? f : new HashSet<int>();
+            var automatic = Dimensions.Where(d => !d.IsManual && d.Kind is DimensionKind.Horizontal or DimensionKind.Vertical).ToList();
+            foreach (int level in new[] { DimensionLevels.Chains, DimensionLevels.Location, DimensionLevels.Totals })
+            {
+                int visible = automatic.Count(d => d.Level == level);
+                int hidden = Sheet.Suppressed.Count(s => s.Dimension.Level == level);
+                if (visible == 0 && hidden == 0 && !forced.Contains(level)) continue;
+                Levels.Add(new LevelSummary(level, DimensionLevels.Title(level), visible, hidden, forced.Contains(level), SetForced));
+            }
+        }
+
+        OnPropertyChanged(nameof(SuppressedCount));
+        OnPropertyChanged(nameof(HasSuppressed));
+        OnPropertyChanged(nameof(SuppressedText));
+        OnPropertyChanged(nameof(ShowLegend));
+    }
+
+    /// <summary>Toggle "mostrar ocultas" de um nível na legenda.</summary>
+    private void SetForced(int level, bool force)
+    {
+        if (CurrentKey is not { } key) return;
+        if (!_forced.TryGetValue(key, out var set)) _forced[key] = set = new HashSet<int>();
+        if (force ? !set.Add(level) : !set.Remove(level)) return;
+        Recompute();
     }
 
     /// <summary>Uma cota manual é guardada por Ids de âncora e recalculada a cada folha nova: se o
@@ -412,4 +471,33 @@ public sealed class DraftingViewModel : INotifyPropertyChanged
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
 
     private sealed record ManualSpec(string A, string B, DimensionKind Kind, double LinePosition);
+}
+
+/// <summary>Uma linha da legenda de cotas.</summary>
+public sealed class LevelSummary(int level, string title, int visible, int hidden, bool forceShow, Action<int, bool> setForced) : INotifyPropertyChanged
+{
+    public int Level { get; } = level;
+    public string Title { get; } = title;
+    public int Visible { get; } = visible;
+    public int Hidden { get; } = hidden;
+
+    public string Counts => Hidden > 0 ? $"{Visible} visíveis · {Hidden} ocultas" : $"{Visible} visíveis";
+
+    /// <summary>O toggle só faz sentido se há algo oculto, ou se o nível já está forçado.</summary>
+    public bool CanForce => Hidden > 0 || _forceShow;
+
+    private bool _forceShow = forceShow;
+    public bool ForceShow
+    {
+        get => _forceShow;
+        set
+        {
+            if (_forceShow == value) return;
+            _forceShow = value;
+            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(ForceShow)));
+            setForced(Level, value);
+        }
+    }
+
+    public event PropertyChangedEventHandler? PropertyChanged;
 }

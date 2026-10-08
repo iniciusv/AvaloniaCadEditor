@@ -17,6 +17,8 @@ namespace AvaloniaCadEditor.Drafting;
 /// na linha de simetria, e o que está sobre ela não leva cota naquele eixo. Os tamanhos (furo visto de
 /// lado, chave de prisma) ficam do outro lado da peça; os diâmetros de frente, em chamadas, com os
 /// furos coaxiais empilhados ("Ø3,4 / Ø7,2").
+/// Peças aninhadas (componentes, ex.: FuroPorca) são caixas-pretas: localizadas pela referência
+/// (o eixo) e identificadas por uma chamada com o rótulo, sem as medidas internas.
 /// </summary>
 public static class DimensionPlanner
 {
@@ -32,7 +34,7 @@ public static class DimensionPlanner
         groups.AddRange(context.PlanAxis(horizontal: true));
         groups.AddRange(context.PlanAxis(horizontal: false));
         groups.AddRange(context.SideSizes());
-        return new Plan(groups, context.FrontDiameters(), context.CenterLines());
+        return new Plan(groups, context.FrontDiameters().Concat(context.ComponentCallouts()).ToList(), context.CenterLines());
     }
 
     /// <summary>Um ponto cotável ao longo de um eixo, com os sólidos que o definem.</summary>
@@ -69,6 +71,12 @@ public static class DimensionPlanner
 
         private IEnumerable<ViewEntity> Voids => entities.Where(e => e.Role == PrimitiveRole.Void);
 
+        /// <summary>Vazios do próprio sólido — sem os membros de peças aninhadas, que não são cotados por dentro.</summary>
+        private IEnumerable<ViewEntity> OwnVoids => Voids.Where(e => !IsComponentMember(e));
+
+        /// <summary>A entidade é parte de uma peça aninhada (componente): caixa-preta no desenho.</summary>
+        private static bool IsComponentMember(ViewEntity e) => e.Fact?.Component != null;
+
         // ------------------------------------------------------------------ Simetria
 
         /// <summary>Coordenada (na vista) da simetria global perpendicular ao eixo medido, se houver e
@@ -101,6 +109,8 @@ public static class DimensionPlanner
             var marks = new List<Mark>();
             foreach (var e in entities)
             {
+                if (IsComponentMember(e)) continue;
+
                 double eLo = Along(e.Min, horizontal), eHi = Along(e.Max, horizontal);
                 double cLo = ClampCross(Cross(e.Min, horizontal)), cHi = ClampCross(Cross(e.Max, horizontal));
                 double center = (eLo + eHi) / 2;
@@ -150,7 +160,120 @@ public static class DimensionPlanner
                         break;
                 }
             }
+
+            marks.AddRange(ComponentMarks(horizontal, lo, hi, ClampCross));
             return marks;
+        }
+
+        /// <summary>
+        /// Uma peça aninhada é cotada só pela referência: o eixo (visto de frente, o centro nos dois
+        /// eixos; de lado, a linha de centro no eixo que ela cruza) ou, sem eixo, o centro da caixa.
+        /// A posição AO LONGO do eixo e as medidas internas são parâmetros da peça e ficam de fora.
+        /// </summary>
+        private IEnumerable<Mark> ComponentMarks(bool horizontal, double lo, double hi, Func<double, double> clampCross)
+        {
+            foreach (var c in relations.Components)
+            {
+                var (bMin, bMax) = ProjectedBounds(c);
+                var fact = c.Principal ?? c.Members[0];
+                double cLo = clampCross(Cross(bMin, horizontal)), cHi = clampCross(Cross(bMax, horizontal));
+                double at;
+                double ext, row;
+
+                if (c.Axis is { } axis)
+                {
+                    var datum = basis.Project(c.AxisPoint);
+                    var alignment = AxisAlignment(axis);
+                    if (alignment == 0)
+                    {
+                        at = Along(datum, horizontal);
+                        ext = row = clampCross(Cross(datum, horizontal));
+                    }
+                    else if (alignment > 0 && (alignment == 1) != horizontal)
+                    {
+                        // Linha de centro perpendicular ao eixo medido: a posição dela.
+                        at = Along(datum, horizontal);
+                        ext = cLo;
+                        row = (cLo + cHi) / 2;
+                    }
+                    else
+                    {
+                        continue; // eixo ao longo do eixo medido (ou oblíquo): nada a localizar aqui
+                    }
+                }
+                else
+                {
+                    at = (Along(bMin, horizontal) + Along(bMax, horizontal)) / 2;
+                    ext = cLo;
+                    row = (cLo + cHi) / 2;
+                }
+
+                if (at < lo - Tol || at > hi + Tol) continue;
+                yield return new Mark(at, ext, row, c.Ref.Name, fact);
+            }
+        }
+
+        /// <summary>0 = eixo perpendicular à vista (visto de frente), 1 = ao longo de U, 2 = ao longo de V, -1 = oblíquo.</summary>
+        private int AxisAlignment(AvaloniaCadEditor.Domain.ValueObjects.Vector3D axis)
+        {
+            var d = axis.Normalize();
+            if (Math.Abs(Math.Abs(d.DotProduct(basis.W)) - 1) < 1e-6) return 0;
+            if (Math.Abs(Math.Abs(d.DotProduct(basis.U)) - 1) < 1e-6) return 1;
+            if (Math.Abs(Math.Abs(d.DotProduct(basis.V)) - 1) < 1e-6) return 2;
+            return -1;
+        }
+
+        private (P2 Min, P2 Max) ProjectedBounds(ComponentDatum c)
+        {
+            var a = basis.Project(c.BoundsMin);
+            var b = basis.Project(c.BoundsMax);
+            return (new P2(Math.Min(a.U, b.U), Math.Min(a.V, b.V)), new P2(Math.Max(a.U, b.U), Math.Max(a.V, b.V)));
+        }
+
+        /// <summary>
+        /// Uma chamada por rótulo de componente ("3× FuroPorca M3 Axial"), saindo do círculo do eixo
+        /// quando ele é visto de frente, ou da referência.
+        /// </summary>
+        public IReadOnlyList<DraftDimension> ComponentCallouts()
+        {
+            var callouts = new List<DraftDimension>();
+            foreach (var group in relations.Components.GroupBy(c => c.Ref.Label))
+            {
+                var located = group
+                    .Select(c => (Component: c, Datum: CalloutAnchor(c)))
+                    .ToList();
+                var rep = located
+                    .Where(x => KeepCenter(x.Datum))
+                    .OrderBy(x => x.Datum.U).ThenBy(x => x.Datum.V)
+                    .FirstOrDefault();
+                if (rep.Component == null) rep = located[0];
+
+                int count = located.Select(x => (Math.Round(x.Datum.U / Tol), Math.Round(x.Datum.V / Tol))).Distinct().Count();
+                string text = (count > 1 ? $"{count}× " : "") + group.Key;
+
+                var circle = entities.OfType<ViewCircle>().FirstOrDefault(e => rep.Component.Principal != null && e.Fact == rep.Component.Principal)
+                             ?? new ViewCircle(rep.Component.Ref.Name, PrimitiveRole.Void, rep.Datum, gap * 0.2);
+                var leader = DimensionFactory.Diameter(circle, $"c:{group.Key}", text,
+                    group.Select(c => c.Ref.Name).ToList(), isManual: false);
+                callouts.Add(leader with { Kind = DimensionKind.Callout, Value = 0 });
+            }
+            return callouts;
+        }
+
+        /// <summary>
+        /// De onde sai a chamada de um componente: o ponto do eixo mais perto do centro dele (a base
+        /// do furo de uma FuroPorca fica 1 mm fora da peça, de propósito), dentro do contorno da peça.
+        /// Sem eixo, o centro da caixa.
+        /// </summary>
+        private P2 CalloutAnchor(ComponentDatum c)
+        {
+            var center = new AvaloniaCadEditor.Domain.ValueObjects.Point3D(
+                (c.BoundsMin.X + c.BoundsMax.X) / 2, (c.BoundsMin.Y + c.BoundsMax.Y) / 2, (c.BoundsMin.Z + c.BoundsMax.Z) / 2);
+            var point = c.Axis is { } axis
+                ? c.AxisPoint + axis * (center - c.AxisPoint).DotProduct(axis)
+                : center;
+            var p = basis.Project(point);
+            return new P2(Math.Clamp(p.U, partMin.U, partMax.U), Math.Clamp(p.V, partMin.V, partMax.V));
         }
 
         /// <summary>
@@ -360,7 +483,7 @@ public static class DimensionPlanner
         /// pelo eixo, do outro lado da peça.</summary>
         public IEnumerable<LayoutGroup> SideSizes()
         {
-            var rects = Voids.OfType<ViewRect>().Where(r => r.Axis != CenterAxis.None).ToList();
+            var rects = OwnVoids.OfType<ViewRect>().Where(r => r.Axis != CenterAxis.None).ToList();
 
             foreach (var group in rects.Where(r => r.Axis == CenterAxis.Vertical).GroupBy(r => Math.Round((r.Max.U - r.Min.U) / Tol)))
             {
@@ -384,7 +507,7 @@ public static class DimensionPlanner
                     members.Select(r => r.SourceName).ToList())], DimensionSide.Right, 1);
             }
 
-            foreach (var group in Voids.OfType<ViewPolygon>().GroupBy(p => Math.Round((p.Max.U - p.Min.U) / Tol)))
+            foreach (var group in OwnVoids.OfType<ViewPolygon>().GroupBy(p => Math.Round((p.Max.U - p.Min.U) / Tol)))
             {
                 var members = group.ToList();
                 var rep = members.Where(p => KeepCenter(new P2((p.Min.U + p.Max.U) / 2, (p.Min.V + p.Max.V) / 2)))
@@ -403,7 +526,7 @@ public static class DimensionPlanner
         /// </summary>
         public IReadOnlyList<DraftDimension> FrontDiameters()
         {
-            var circles = Voids.OfType<ViewCircle>().ToList();
+            var circles = OwnVoids.OfType<ViewCircle>().ToList();
             var stacks = new List<List<ViewCircle>>();
             foreach (var circle in circles)
             {
