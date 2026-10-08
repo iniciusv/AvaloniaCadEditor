@@ -587,6 +587,25 @@ public class CadViewModel : INotifyPropertyChanged
 		}
 	}
 
+	private bool _isWireframe;
+
+	/// <summary>
+	/// Modo de exibição "desenho técnico": só arestas e silhuetas, com as escondidas atrás de
+	/// faces em tracejado (<see cref="AvaloniaCadEditor.UI.Controls.Rendering.WireframeRenderPass"/>).
+	/// Estado de sessão, de propósito fora de <c>TessellationSettings</c>: não muda a malha, então
+	/// não pode entrar na chave do cache de malhas.
+	/// </summary>
+	public bool IsWireframe
+	{
+		get => _isWireframe;
+		set
+		{
+			if (_isWireframe == value) return;
+			_isWireframe = value;
+			OnPropertyChanged();
+		}
+	}
+
 	public bool ShowInternalEdges
 	{
 		get => _settingsProvider.GetSettings().ShowInternalEdges;
@@ -1551,6 +1570,10 @@ public class CadViewModel : INotifyPropertyChanged
 				break;
 			case "H":
 				ToggleIsolateSelection();
+				break;
+			case "V":
+				// Ctrl+V não é atalho de nada, mas cairia aqui: só V puro alterna o modo.
+				if (!isCtrlPressed && !IsCtrlPressed) IsWireframe = !IsWireframe;
 				break;
 			case "F":
 				CurrentSelectionMode = CurrentSelectionMode switch

@@ -4,6 +4,32 @@ using System.Numerics;
 
 namespace AvaloniaCadEditor.Domain.Mesh;
 
+/// <summary>
+/// Resultado de <see cref="EdgeDetector.ClassifyEdges"/>. As normais vêm alinhadas por índice de
+/// aresta (o par <c>2i, 2i+1</c> de <see cref="FeatureEdges"/> tem <c>FeatureNormals1[i]</c>):
+/// as das quinas e as das arestas suaves, estas últimas usadas para achar a silhueta de uma
+/// superfície curva (uma face olha para a câmera e a vizinha não).
+/// </summary>
+public sealed record EdgeClassification(
+    uint[] FeatureEdges,
+    uint[] InternalEdges,
+    Vector3[] FeatureNormals1,
+    Vector3[] FeatureNormals2,
+    bool[] FeatureConvex,
+    Vector3[] InternalNormals1,
+    Vector3[] InternalNormals2)
+{
+    /// <summary>A forma de cinco campos que os chamadores antigos desconstroem.</summary>
+    public void Deconstruct(out uint[] featureEdges, out uint[] internalEdges, out Vector3[] featureNormals1, out Vector3[] featureNormals2, out bool[] featureConvex)
+    {
+        featureEdges = FeatureEdges;
+        internalEdges = InternalEdges;
+        featureNormals1 = FeatureNormals1;
+        featureNormals2 = FeatureNormals2;
+        featureConvex = FeatureConvex;
+    }
+}
+
 public static class EdgeDetector
 {
     private struct EdgeKey : IEquatable<EdgeKey>
@@ -30,11 +56,14 @@ public static class EdgeDetector
         public override int GetHashCode() => HashCode.Combine(V1, V2);
     }
 
-    public static (uint[] featureEdges, uint[] internalEdges, Vector3[] featureNormals1, Vector3[] featureNormals2, bool[] featureConvex) ClassifyEdges(
+    /// <summary>
+    /// Separa as arestas da malha em quinas e arestas suaves, pelo ângulo entre as faces vizinhas.
+    /// </summary>
+    public static EdgeClassification ClassifyEdges(
         float[] positions, uint[] indices, float creaseAngleDegrees = 30.0f)
     {
         if (indices.Length == 0)
-            return (Array.Empty<uint>(), Array.Empty<uint>(), Array.Empty<Vector3>(), Array.Empty<Vector3>(), Array.Empty<bool>());
+            return new EdgeClassification(Array.Empty<uint>(), Array.Empty<uint>(), Array.Empty<Vector3>(), Array.Empty<Vector3>(), Array.Empty<bool>(), Array.Empty<Vector3>(), Array.Empty<Vector3>());
 
         // 1. Weld coincident vertices to find true topological edges
         uint[] remappedIndices = new uint[indices.Length];
@@ -99,6 +128,8 @@ public static class EdgeDetector
         var featureNormals1 = new List<Vector3>();
         var featureNormals2 = new List<Vector3>();
         var featureConvex = new List<bool>();
+        var internalNormals1 = new List<Vector3>();
+        var internalNormals2 = new List<Vector3>();
 
         float thresholdCos = (float)Math.Cos(creaseAngleDegrees * Math.PI / 180.0);
 
@@ -139,6 +170,8 @@ public static class EdgeDetector
                     // Angle is smaller, smooth edge
                     internalEdges.Add(edge.V1);
                     internalEdges.Add(edge.V2);
+                    internalNormals1.Add(n1);
+                    internalNormals2.Add(n2);
                 }
             }
             else
@@ -152,7 +185,7 @@ public static class EdgeDetector
             }
         }
 
-        return (featureEdges.ToArray(), internalEdges.ToArray(), featureNormals1.ToArray(), featureNormals2.ToArray(), featureConvex.ToArray());
+        return new EdgeClassification(featureEdges.ToArray(), internalEdges.ToArray(), featureNormals1.ToArray(), featureNormals2.ToArray(), featureConvex.ToArray(), internalNormals1.ToArray(), internalNormals2.ToArray());
     }
 
     /// <summary>

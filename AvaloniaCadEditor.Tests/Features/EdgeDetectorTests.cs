@@ -80,4 +80,26 @@ public class EdgeDetectorTests
         convexa.Should().NotBeNull($"a aresta Y={y},Z={z} deveria existir como feature edge");
         convexa!.Value.Should().BeTrue();
     }
+
+    [Fact]
+    public void ClassifyEdges_DevolveAsNormaisDasDuasFacesDeCadaArestaInterna()
+    {
+        var mesh = new OpenCascadeGeometryKernel().BuildFeatureMesh(
+            new CylinderFeature(Point3D.Origin, Vector3D.UnitZ, 10, 20));
+
+        var edges = EdgeDetector.ClassifyEdges(mesh.Positions, mesh.Indices);
+        var n1 = edges.InternalNormals1;
+        var n2 = edges.InternalNormals2;
+
+        n1.Should().HaveCount(edges.InternalEdges.Length / 2);
+        n2.Should().HaveCount(edges.InternalEdges.Length / 2);
+
+        // Arestas verticais da lateral separam facetas com normais diferentes: é delas que sai a
+        // silhueta. As diagonais de triangulação das tampas ligam faces coplanares.
+        var anguloEntreFacetas = Enumerable.Range(0, n1.Length)
+            .Select(i => MathF.Acos(Math.Clamp(System.Numerics.Vector3.Dot(n1[i], n2[i]), -1f, 1f)) * 180f / MathF.PI)
+            .ToList();
+        anguloEntreFacetas.Should().Contain(a => a > 1f, "as facetas da lateral não são coplanares");
+        anguloEntreFacetas.Should().Contain(a => a < 0.01f, "as diagonais das tampas ligam faces coplanares");
+    }
 }

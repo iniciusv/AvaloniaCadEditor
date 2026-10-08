@@ -42,13 +42,14 @@ public class SilkViewportControl : OpenGlControlBase
         _inputHandler.SelectionBoxChanged += (rect, window) => SelectionBoxChanged?.Invoke(rect, window);
 
         // Exact rendering order preserved:
-        // 1. Solid features (3D)
+        // 1. Solid features (3D) — sombreado ou wireframe, um dos dois desenha (CadViewModel.IsWireframe)
         // 2. WorkPlane grid & axes
         // 3. 2D profile faces
         // 4. Sketch wireframe & preview entities
         _renderPasses = new List<IRenderPass>
         {
             new SolidFeatureRenderPass(),
+            new WireframeRenderPass(),
             new GridRenderPass(),
             new ProfileFaceRenderPass(),
             new SketchEntityRenderPass(),
@@ -94,7 +95,8 @@ public class SilkViewportControl : OpenGlControlBase
         if (e.PropertyName == nameof(CadViewModel.SolidMesh) || 
             e.PropertyName == nameof(CadViewModel.Profiles) || 
             e.PropertyName == nameof(CadViewModel.HoveredProfile) ||
-            e.PropertyName == nameof(CadViewModel.HoveredFeatureId))
+            e.PropertyName == nameof(CadViewModel.HoveredFeatureId) ||
+            e.PropertyName == nameof(CadViewModel.IsWireframe))
         {
             RequestNextFrameRendering();
         }

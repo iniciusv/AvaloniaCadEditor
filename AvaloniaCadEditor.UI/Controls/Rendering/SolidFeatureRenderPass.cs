@@ -1,6 +1,3 @@
-using System.Collections.Generic;
-using System.Linq;
-using AvaloniaCadEditor.Domain.Features;
 using Silk.NET.OpenGL;
 
 namespace AvaloniaCadEditor.UI.Controls.Rendering;
@@ -78,52 +75,21 @@ public sealed class SolidFeatureRenderPass : IRenderPass
     public void Render(GL gl, RenderContext context)
     {
         var vm = context.ViewModel;
-        if (vm == null) return;
+        if (vm == null || vm.IsWireframe) return; // no wireframe quem desenha os sólidos é o WireframeRenderPass
 
         gl.Enable(EnableCap.PolygonOffsetFill);
         gl.Enable(EnableCap.PolygonOffsetLine);
         gl.PolygonOffset(1.0f, 1.0f);
 
         // Render 3D Solid Features with Individual Lighting & Crisp Edges
-        var featuresToRender = new List<(IFeature Feature, bool IsPreview, bool IsToolFeature)>();
-        foreach (var f in vm.Sketch.Features)
-        {
-            if (f.IsVisible) featuresToRender.Add((f, false, false));
-        }
-
-        foreach (var tf in vm.ActiveToolFeatures)
-        {
-            featuresToRender.Add((tf, false, true));
-        }
-
-        if (vm.CurrentTool is Application.Commands.ExtrudeCommand extCmd)
-        {
-            var preview = extCmd.GetPreviewFeature();
-            if (preview != null)
-            {
-                featuresToRender.Add((preview, true, false));
-            }
-        }
-
-        // Modo cópia (Ctrl no Mover/Rotacionar): o original continua desenhado no lugar e uma cópia
-        // fantasma (cor de preview) é que acompanha o mouse.
-        var previewTool = vm.CurrentTool as Application.Commands.ITransformPreviewTool;
-        if (previewTool is { IsCopyPreview: true })
-        {
-            foreach (var dragged in previewTool.DraggedFeatures)
-            {
-                featuresToRender.Add((dragged, true, false));
-            }
-        }
-
         var identity = context.IdentityMatrix;
 
         var settings = context.Tessellation;
 
-        foreach (var (feature, isPreview, isToolFeature) in featuresToRender)
+        foreach (var item in SolidRenderables.Collect(vm))
         {
-            // Ferramentas de peça não estão no sketch: a malha vem do próprio objeto.
-            var mesh = isToolFeature ? vm.MeshManager.GetMeshFor(feature) : vm.GetFeatureMesh(feature.Id, forceRebuild: false);
+            var (feature, isPreview, isToolFeature) = item;
+            var mesh = SolidRenderables.GetMesh(vm, item);
             if (mesh == null || mesh.TriangleCount == 0) continue;
 
             int vertexCount = mesh.VertexCount;
@@ -133,59 +99,7 @@ public sealed class SolidFeatureRenderPass : IRenderPass
                 _vertexDataBuffer = new float[requiredLength * 2]; // double the size to minimize future allocations
             }
 
-            // Base Face Color: Emerald when previewing, Warm Amber if selected, Cool Steel Blue default
-            float faceR, faceG, faceB;
-            float edgeR, edgeG, edgeB;
-
-            if (isToolFeature && (vm.HighlightedToolId == feature.Id || vm.HoveredFeatureId == feature.Id))
-            {
-                faceR = 1.0f; faceG = 0.55f; faceB = 0.1f; // Ferramenta clicada/sob o mouse: laranja
-                edgeR = 1.0f; edgeG = 0.8f; edgeB = 0.2f;
-            }
-            else if (isToolFeature)
-            {
-                faceR = 0.9f; faceG = 0.1f; faceB = 0.1f; // Transparent Red
-                edgeR = 1.0f; edgeG = 0.0f; edgeB = 0.0f;
-            }
-            else if (isPreview)
-            {
-                faceR = 0.20f; faceG = 0.85f; faceB = 0.60f; // Vibrant Emerald Creation Feedback
-                edgeR = 0.05f; edgeG = 0.95f; edgeB = 0.65f;
-            }
-            else if (feature.IsSelected)
-            {
-                faceR = 0.10f; faceG = 0.40f; faceB = 1.00f; // Strong Vivid Blue Selection Highlight
-                edgeR = 0.00f; edgeG = 0.20f; edgeB = 0.80f;
-
-                // Com cor própria, mistura com o azul: a seleção continua visível e a cor escolhida também.
-                if (feature.Color != null)
-                {
-                    var (r, g, b, _) = ViewportShaderManager.ParseHexColor(feature.Color, (faceR, faceG, faceB, 1f));
-                    faceR = (faceR + r) / 2; faceG = (faceG + g) / 2; faceB = (faceB + b) / 2;
-                }
-            }
-            else if (vm.HoveredFeatureId == feature.Id)
-            {
-                faceR = 1.00f; faceG = 0.65f; faceB = 0.15f; // Strong Amber/Gold for Hover 3D face
-                edgeR = 1.00f; edgeG = 0.80f; edgeB = 0.20f;
-            }
-            else
-            {
-                faceR = 0.92f; faceG = 0.92f; faceB = 0.95f; // Near white / light grey Base Color
-                edgeR = 0.60f; edgeG = 0.60f; edgeB = 0.65f;
-
-                if (feature.Color != null)
-                {
-                    (faceR, faceG, faceB, _) = ViewportShaderManager.ParseHexColor(feature.Color, (faceR, faceG, faceB, 1f));
-                }
-                
-                // Dim background objects if we are in a custom workplane
-                if (!vm.ActiveWorkPlane.Equals(AvaloniaCadEditor.Domain.ValueObjects.WorkPlane.XY))
-                {
-                    faceR *= 0.6f; faceG *= 0.6f; faceB *= 0.6f;
-                    edgeR *= 0.6f; edgeG *= 0.6f; edgeB *= 0.6f;
-                }
-            }
+            var ((faceR, faceG, faceB), (edgeR, edgeG, edgeB)) = SolidRenderables.ResolveColors(vm, item);
 
             // Interleave position + color + Normal
             for (int i = 0; i < vertexCount; i++)
@@ -229,12 +143,8 @@ public sealed class SolidFeatureRenderPass : IRenderPass
 
             unsafe
             {
-                var transform = identity;
-                if (previewTool != null && previewTool.DraggedFeatures.Contains(feature) && (!previewTool.IsCopyPreview || isPreview))
-                {
-                    transform = transform * previewTool.PreviewTransform;
-                }
-                
+                var transform = SolidRenderables.GetModelTransform(vm, item, identity);
+
                 gl.UniformMatrix4(context.Uniforms.ModelLoc, 1, false, (float*)&transform);
                 gl.Uniform1(context.Uniforms.LightingLoc, 1); // Enable directional lighting for 3D faces!
                 gl.Uniform1(context.Uniforms.ColorFacesByNormalLoc, vm.OsnapSettings.ColorFacesByNormal ? 1 : 0);

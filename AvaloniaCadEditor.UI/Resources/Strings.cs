@@ -88,4 +88,6 @@ public static class Strings
     public static string ViewIso => ResourceManager.GetString("ViewIso") ?? "Iso";
     public static string ProjectionOrtho => ResourceManager.GetString("ProjectionOrtho") ?? "Ortho";
     public static string ProjectionOrthoTip => ResourceManager.GetString("ProjectionOrthoTip") ?? "Toggle perspective / orthographic projection";
+    public static string DisplayWireframe => ResourceManager.GetString("DisplayWireframe") ?? "Wire";
+    public static string DisplayWireframeTip => ResourceManager.GetString("DisplayWireframeTip") ?? "Toggle wireframe with dashed hidden lines (V)";
 }

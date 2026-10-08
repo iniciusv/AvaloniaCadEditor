@@ -37,6 +37,8 @@
             <Border Width="1" Background="#555" Margin="6,4"/>
             <ToggleButton Classes="viewBtn" Content="{x:Static res:Strings.ProjectionOrtho}"
                           ToolTip.Tip="{x:Static res:Strings.ProjectionOrthoTip}" Click="Projection_Click"/>
+            <ToggleButton Classes="viewBtn" Content="{x:Static res:Strings.DisplayWireframe}"
+                          ToolTip.Tip="{x:Static res:Strings.DisplayWireframeTip}" IsChecked="{Binding IsWireframe}"/>
         </StackPanel>
 
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="15" HorizontalAlignment="Right" Margin="0,0,6,0">

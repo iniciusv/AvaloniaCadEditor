@@ -80,4 +80,6 @@
   <data name="ViewIso" xml:space="preserve"><value>Iso</value></data>
   <data name="ProjectionOrtho" xml:space="preserve"><value>Ortho</value></data>
   <data name="ProjectionOrthoTip" xml:space="preserve"><value>Toggle perspective / orthographic projection</value></data>
+  <data name="DisplayWireframe" xml:space="preserve"><value>Wire</value></data>
+  <data name="DisplayWireframeTip" xml:space="preserve"><value>Toggle wireframe with dashed hidden lines (V)</value></data>
 </root>

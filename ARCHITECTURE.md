@@ -147,6 +147,7 @@ de todo o resto. Falha segura: fingerprint `null` = sem cache, nunca cache errad
 | Mudar as regras do dialeto | `Application/Ai/CadScriptRules.cs` | fonte **única**: prompt + `.cad/api.md` + `AGENTS.md`. Há teste que falha se divergirem |
 | Adicionar exemplo few-shot para a IA | `Application/Ai/CadScriptProtocol.Examples` | há teste que compila e executa **cada** exemplo |
 | Mudar a renderização | `UI/Controls/Rendering/*RenderPass.cs` (implemente `IRenderPass`) | registre em `SilkViewportControl._renderPasses` |
+| Mudar o modo wireframe (linhas ocultas tracejadas) | `UI/Controls/Rendering/WireframeRenderPass.cs`, `WireframeEdgeShader.cs`, `WireframeGeometry.cs` | quem entra no frame e com que cor vem de `SolidRenderables`, compartilhado com o sombreado. As arestas e silhuetas são calculadas sob demanda pelo `EdgeDetector`, só para as malhas exibidas no modo: a mudança é só visual e não acrescenta nada à `TriangleMesh` |
 | Mudar seleção / hover / pick | `UI/ViewModels/CadViewModel.cs` (hover com timer, ciclo TAB), `UI/Controls/Input/` | |
 | Mudar a árvore ou o inspector | `UI/ViewModels/ModelTreeViewModel.cs`, `PropertyInspectorViewModel.cs` | o inspector escreve no **código**, não no objeto |
 | Mudar a validação headless | `UI/Cli/CheckCommand.cs`, `Application/Scenes/SceneCheckService.cs` | exit codes: 0 ok, 1 erro de cena, 2 uso/pasta inválida |
