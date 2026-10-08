@@ -67,8 +67,10 @@ public static class FactExtractor
                     return;
 
                 case PartInstance instance:
+                    // A peça que é o próprio sujeito (uma instância de topo da cena) não é componente
+                    // de si mesma: só as aninhadas dentro dela são.
                     var outer = _component;
-                    _component ??= ComponentRef.For(instance);
+                    if (!ReferenceEquals(instance, subject.Feature)) _component ??= ComponentRef.For(instance);
                     Walk(instance.Definition, instance.Placement.Then(toFrame), role, $"{prefix}{instance.Name}/", null);
                     _component = outer;
                     return;

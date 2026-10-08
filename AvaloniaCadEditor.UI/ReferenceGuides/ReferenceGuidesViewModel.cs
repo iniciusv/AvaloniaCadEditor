@@ -5,9 +5,12 @@ using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using Avalonia;
 using AvaloniaCadEditor.Application.ReferenceGuides;
+using AvaloniaCadEditor.Domain.Entities;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.ReferenceGuides;
+using AvaloniaCadEditor.Domain.ValueObjects;
 
 namespace AvaloniaCadEditor.UI.ReferenceGuides;
 
@@ -60,7 +63,73 @@ public sealed class ReferenceGuidesViewModel : INotifyPropertyChanged
     public ReferenceGuideSet? Result
     {
         get => _result;
-        private set { _result = value; OnPropertyChanged(); }
+        private set { _result = value; SelectedLine = null; OnPropertyChanged(); }
+    }
+
+    private GuideLine? _selectedLine;
+    /// <summary>Guia escolhida com Alt+clique: a tela a destaca e apaga as outras. Só estado de
+    /// apresentação desta feature — não passa pelo SelectionService.</summary>
+    public GuideLine? SelectedLine
+    {
+        get => _selectedLine;
+        set
+        {
+            if (ReferenceEquals(_selectedLine, value)) return;
+            _selectedLine = value;
+            OnPropertyChanged();
+        }
+    }
+
+    /// <summary>
+    /// Alt+clique na viewport: escolhe a guia sob o cursor (no vazio, desfaz a escolha) e devolve em
+    /// <paramref name="report"/> o texto dela para copiar. False com as guias escondidas — aí o clique
+    /// segue para a seleção normal.
+    /// </summary>
+    public bool HandlePick(Point screen, CameraState camera, Size viewportSize, out string? report)
+    {
+        report = null;
+        if (!IsVisible) return false;
+
+        SelectedLine = PickLine(screen, camera, viewportSize);
+        if (SelectedLine != null) report = ReferenceGuideReport.FormatLine(SelectedLine);
+        return true;
+    }
+
+    /// <summary>A guia cujo segmento, projetado na tela, passa a menos de <paramref name="pickRadius"/>
+    /// pixels do clique (a mais próxima); null se nenhuma.</summary>
+    private GuideLine? PickLine(Point screen, CameraState camera, Size viewportSize, double pickRadius = 6)
+    {
+        if (Result == null) return null;
+
+        GuideLine? best = null;
+        double bestDistance = pickRadius;
+        foreach (var line in Result.Lines)
+        {
+            var a = ScreenProjection.WorldToScreen(camera, line.Start, viewportSize);
+            var b = ScreenProjection.WorldToScreen(camera, line.End, viewportSize);
+            if (a == null || b == null) continue;
+
+            double d = DistanceToSegment(screen, a.Value, b.Value);
+            if (d < bestDistance)
+            {
+                bestDistance = d;
+                best = line;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>Relatório de tudo que a análise gerou (ver <see cref="ReferenceGuideReport"/>); null sem resultado.</summary>
+    public string? BuildReport(IFeature? selected) =>
+        Result == null ? null : ReferenceGuideReport.Format(Result, IsStale, selected?.Id, selected?.Name);
+
+    private static double DistanceToSegment(Point p, Point a, Point b)
+    {
+        double dx = b.X - a.X, dy = b.Y - a.Y;
+        double len2 = dx * dx + dy * dy;
+        double t = len2 < 1e-12 ? 0 : Math.Clamp(((p.X - a.X) * dx + (p.Y - a.Y) * dy) / len2, 0, 1);
+        double cx = a.X + t * dx - p.X, cy = a.Y + t * dy - p.Y;
+        return Math.Sqrt(cx * cx + cy * cy);
     }
 
     private bool _isStale;

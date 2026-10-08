@@ -104,6 +104,33 @@ public class RelationAnalyzerTests
     }
 
     [Fact]
+    public void FileiraDePassoConstanteForaDoMeio_SoOMeioDaFileiraESimetria()
+    {
+        // 5 furos de passo 20 (10..90) num corpo de 150: todo furo e todo meio de vão é centro de
+        // algum par (30 = 10~50, 40 = 10~70 e 30~50...), mas só 50 espelha a fileira inteira.
+        var r = Analisar(BooleanFeature.CreateDifference("bloco", Corpo(150),
+            FuroZ("f1", 10, 8), FuroZ("f2", 30, 8), FuroZ("f3", 50, 8), FuroZ("f4", 70, 8), FuroZ("f5", 90, 8)));
+
+        r.SymmetryPlanes.Where(p => p.Normal == FrameAxis.X).Select(p => p.Coordinate)
+            .Should().Equal(50.0);
+    }
+
+    [Fact]
+    public void FuroComRebaixo_SaoUmaUnidade_ENaoFormamParDeSimetriaComOutro()
+    {
+        // Dois furos com rebaixo espelhados em x = 30: dois pares de sólidos (furos e rebaixos), mas um
+        // par só de posições — não basta para uma simetria local.
+        var rebaixoA = new CylinderFeature(new Point3D(20, 8, 15), Vector3D.UnitZ, 3, 6) { Name = "rebaixo_a", IsTransientTool = true };
+        var rebaixoB = new CylinderFeature(new Point3D(40, 8, 15), Vector3D.UnitZ, 3, 6) { Name = "rebaixo_b", IsTransientTool = true };
+        var r = Analisar(BooleanFeature.CreateDifference("bloco", Corpo(), FuroZ("furo_a", 20, 8), rebaixoA, FuroZ("furo_b", 40, 8), rebaixoB));
+
+        var furoA = r.Facts.Single(f => f.Name == "furo_a");
+        r.Units.Of(furoA).Should().Be(r.Units.Of(r.Facts.Single(f => f.Name == "rebaixo_a")));
+        r.Units.NameOf(furoA).Should().Be("furo_a+rebaixo_a");
+        r.SymmetryPlanes.Should().NotContain(p => p.Normal == FrameAxis.X && System.Math.Abs(p.Coordinate - 30) < 1e-9);
+    }
+
+    [Fact]
     public void FuroVerticalEHorizontalNoMesmoX_CaemNoMesmoAlinhamentoX()
     {
         var r = Analisar(BooleanFeature.CreateDifference("bloco", Corpo(), FuroY("horizontal", 25, 5), FuroZ("vertical", 25, 8)));

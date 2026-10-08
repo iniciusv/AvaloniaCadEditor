@@ -87,7 +87,15 @@ public sealed record ComponentDatum(
     Point3D AxisPoint,
     Vector3D? Axis,
     Point3D BoundsMin,
-    Point3D BoundsMax);
+    Point3D BoundsMax)
+{
+    /// <summary>
+    /// A forma do componente sem a posição: tipo, papel e medidas de cada membro e onde ele fica em
+    /// relação ao eixo (ao longo e radialmente) ou ao centro da caixa. Mesma assinatura = mesma
+    /// configuração, mesmo com outra posição ou orientação; uma porca mais funda muda a assinatura.
+    /// </summary>
+    public string Signature { get; init; } = "";
+}
 
 /// <summary>Dois fatos de mesmo tipo, papel e tamanho, espelhados um no outro.</summary>
 public sealed record SymmetryPair(PrimitiveFact A, PrimitiveFact B);
@@ -103,7 +111,12 @@ public sealed record SymmetryPlane(
     double Coordinate,
     IReadOnlyList<SymmetryPair> Pairs,
     IReadOnlyList<PrimitiveFact> OnPlane,
-    bool IsGlobal);
+    bool IsGlobal)
+{
+    /// <summary>Pares de <see cref="PositionUnits">unidades</see> distintas: um par de componentes
+    /// (furo e alojamento espelhados) conta uma vez, não duas. Uma simetria local precisa de 2 ou mais.</summary>
+    public int UnitPairs { get; init; } = Pairs.Count;
+}
 
 /// <summary>Camada 2: tudo que a análise inferiu, em 3D, sem saber nada de vista ou tela.</summary>
 public sealed record ModelRelations(
@@ -119,6 +132,9 @@ public sealed record ModelRelations(
     public static readonly ModelRelations Empty = new(
         Array.Empty<PrimitiveFact>(), Array.Empty<DirectionGroup>(), new Dictionary<FrameAxis, AxisClusters>(),
         Array.Empty<CoaxialSet>(), Array.Empty<LinearPattern>(), Array.Empty<SymmetryPlane>(), null, null);
+
+    /// <summary>O que conta como um elemento ao comparar posições (componente, furos coaxiais).</summary>
+    public PositionUnits Units { get; init; } = PositionUnits.Empty;
 
     /// <summary>Peças aninhadas (componentes) e suas referências.</summary>
     public IReadOnlyList<ComponentDatum> Components { get; init; } = Array.Empty<ComponentDatum>();

@@ -24,6 +24,17 @@ public class ComponentTests
         }
     }
 
+    /// <summary>Fixação com um parâmetro de forma: a altura do alojamento.</summary>
+    public sealed record FixacaoFunda(double X, double Profundidade) : Part
+    {
+        protected override IFeature Build()
+        {
+            var furo = new CylinderFeature(new Point3D(X, 10, -1), Vector3D.UnitZ, 1.7, 12) { Name = "furo" };
+            var alojamento = new BoxFeature(new Point3D(X - 3, 7, -1), 6, 6, Profundidade) { Name = "alojamento" };
+            return BooleanFeature.CreateUnion("fixacao", furo, alojamento);
+        }
+    }
+
     public sealed record FixacaoRotulada(double X) : Part
     {
         public override string? DrawingLabel => "Fixação especial";
@@ -47,6 +58,22 @@ public class ComponentTests
         membros.Select(f => f.Name).Should().BeEquivalentTo("fix_1/furo", "fix_1/alojamento");
         membros.Should().OnlyContain(f => f.Component!.Name == "fix_1" && f.Component.Label == "Fixacao M3");
         fatos.Single(f => f.Name == "corpo").Component.Should().BeNull();
+    }
+
+    [Fact]
+    public void Assinatura_NaoDependeDaPosicao_MasMudaComAForma()
+    {
+        // Fixacao(X, Y) recebe a posição em números: em outro X é a mesma configuração. Uma
+        // FixacaoFunda com outro alojamento não é.
+        var relacoes = RelationAnalyzer.Analyze(Fatos(Placa(
+            new Fixacao(10, 10).Instance("fix_1"),
+            new Fixacao(30, 10).Instance("fix_2"),
+            new FixacaoFunda(50, 4).Instance("funda_4"),
+            new FixacaoFunda(70, 6).Instance("funda_6"))));
+
+        string Assinatura(string nome) => relacoes.Components.Single(c => c.Ref.Name == nome).Signature;
+        Assinatura("fix_1").Should().Be(Assinatura("fix_2"));
+        Assinatura("funda_4").Should().NotBe(Assinatura("funda_6"));
     }
 
     [Fact]

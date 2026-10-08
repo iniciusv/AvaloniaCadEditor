@@ -53,21 +53,25 @@ public sealed class ReferenceGuideRenderPass : IRenderPass
         if (result.Lines.Count == 0 && result.Dimensions.Count == 0) return;
 
         var selectedId = (context.ViewModel?.SelectionService?.SelectedObject as IFeature)?.Id;
+        var pickedLine = guidesVm.SelectedLine;
 
         var highlighted = new List<float>();
         var dimmed = new List<float>();
 
         foreach (var line in result.Lines)
         {
-            var target = TargetFor(line.SourceFeatureIds, line.OwnerIds, selectedId, highlighted, dimmed);
-            var color = ColorFor(line.Kind);
+            // Uma guia escolhida com Alt+clique vence a seleção: só ela fica forte, e em branco.
+            var target = pickedLine != null
+                ? (ReferenceEquals(line, pickedLine) ? highlighted : dimmed)
+                : TargetFor(line.SourceFeatureIds, line.OwnerIds, selectedId, highlighted, dimmed);
+            var color = ReferenceEquals(line, pickedLine) ? (1.0f, 1.0f, 1.0f) : ColorFor(line.Kind);
             var pattern = line.Kind == GuideKind.Symmetry ? DashDotPattern : DashPattern;
             AddDashedSegment(target, line.Start, line.End, color, pattern);
         }
 
         foreach (var dimension in result.Dimensions)
         {
-            var target = TargetFor(dimension.SourceFeatureIds, dimension.OwnerIds, selectedId, highlighted, dimmed);
+            var target = pickedLine != null ? dimmed : TargetFor(dimension.SourceFeatureIds, dimension.OwnerIds, selectedId, highlighted, dimmed);
             AddSegment(target, dimension.From, dimension.To, ColorFor(dimension.Kind));
         }
 

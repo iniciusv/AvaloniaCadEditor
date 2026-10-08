@@ -82,6 +82,8 @@ public static class Strings
     public static string AnalyzeGuides => ResourceManager.GetString("AnalyzeGuides") ?? "Analyze";
     public static string GuidesAnalyzing => ResourceManager.GetString("GuidesAnalyzing") ?? "Analyzing...";
     public static string GuidesStale => ResourceManager.GetString("GuidesStale") ?? "Outdated";
+    public static string CopyGuides => ResourceManager.GetString("CopyGuides") ?? "Copy";
+    public static string CopyGuidesTip => ResourceManager.GetString("CopyGuidesTip") ?? "Copy all guides as text";
     public static string ViewTop => ResourceManager.GetString("ViewTop") ?? "Top";
     public static string ViewFront => ResourceManager.GetString("ViewFront") ?? "Front";
     public static string ViewRight => ResourceManager.GetString("ViewRight") ?? "Right";

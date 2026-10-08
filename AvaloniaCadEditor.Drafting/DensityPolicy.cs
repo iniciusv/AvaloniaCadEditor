@@ -33,7 +33,7 @@ public sealed record SuppressedDimension(DraftDimension Dimension, SuppressionRe
 /// posiciona, mede fileiras e cruzamentos e, se passou do limite, esconde o próximo candidato —
 /// primeiro toda a localização (nível 2) daquele lado, depois as cadeias de nível 1, uma a uma,
 /// começando pela que mais cruza (ou, se o problema é só de fileiras, pela mais externa). Os totais
-/// (nível 3), as chamadas (sem perna) e os níveis forçados nunca saem.
+/// (nível 3), o contorno, as chamadas (sem perna) e os níveis forçados nunca saem.
 /// </summary>
 public static class DensityPolicy
 {
@@ -53,8 +53,9 @@ public static class DensityPolicy
             var crossings = DimensionCrossings.Find(flat, gap, tolerance);
 
             // Um nível forçado pelo usuário aparece com o que ele causar: os cruzamentos e as fileiras
-            // dele não contam, senão mostrá-lo esconderia outro nível no lugar.
-            bool Forced(PlacedGroup g) => opts.ForcedLevels.Contains(g.Group.Level);
+            // dele não contam, senão mostrá-lo esconderia outro nível no lugar. O contorno vale como
+            // forçado: ele nunca sai, e contar os cruzamentos dele esconderia toda cadeia do mesmo lado.
+            bool Forced(PlacedGroup g) => g.Group.IsContour || opts.ForcedLevels.Contains(g.Group.Level);
             var violation = placedGroups
                 .GroupBy(p => p.Group.Side)
                 .Where(s => !exhausted.Contains(s.Key))
@@ -68,7 +69,7 @@ public static class DensityPolicy
             if (violation == default) return (flat, suppressed);
 
             var droppable = placedGroups
-                .Where(p => p.Group.Side == violation.Side && p.Group.Level != 3 && !opts.ForcedLevels.Contains(p.Group.Level))
+                .Where(p => p.Group.Side == violation.Side && p.Group.Level != 3 && !p.Group.IsContour && !opts.ForcedLevels.Contains(p.Group.Level))
                 .ToList();
             if (droppable.Count == 0)
             {

@@ -40,7 +40,23 @@ public sealed record GuideLine(
     Point3D End,
     double Coordinate,
     IReadOnlyList<Guid> SourceFeatureIds,
-    IReadOnlyList<Guid>? OwnerIds = null);
+    IReadOnlyList<Guid>? OwnerIds = null)
+{
+    /// <summary>Names of the primitives in <see cref="SourceFeatureIds"/> ("part/hole_1"), same order -
+    /// for the copyable text report.</summary>
+    public IReadOnlyList<string> SourceNames { get; init; } = Array.Empty<string>();
+
+    /// <summary>The distinct elements behind the guide: a nested part ("plate/nut_1") or coaxial holes
+    /// ("hole_3+counterbore_3") count once. What the report lists as members.</summary>
+    public IReadOnlyList<string> MemberNames { get; init; } = Array.Empty<string>();
+
+    /// <summary>Frame axis that <see cref="Coordinate"/> is measured along ("X", "Y", "Z"); null when the
+    /// guide has no single axis (arc centers, oblique groups).</summary>
+    public string? Axis { get; init; }
+
+    /// <summary>Short qualifier for the report, e.g. "global" / "local" for a symmetry plane.</summary>
+    public string? Note { get; init; }
+}
 
 /// <summary>
 /// A distance/label to render between two world points, e.g. the step between two
@@ -53,7 +69,14 @@ public sealed record GuideDimension(
     double Value,
     string Label,
     IReadOnlyList<Guid> SourceFeatureIds,
-    IReadOnlyList<Guid>? OwnerIds = null);
+    IReadOnlyList<Guid>? OwnerIds = null)
+{
+    /// <summary>Names of the primitives in <see cref="SourceFeatureIds"/>, same order.</summary>
+    public IReadOnlyList<string> SourceNames { get; init; } = Array.Empty<string>();
+
+    /// <summary>The distinct elements behind the dimension (see <see cref="GuideLine.MemberNames"/>).</summary>
+    public IReadOnlyList<string> MemberNames { get; init; } = Array.Empty<string>();
+}
 
 /// <summary>
 /// The full result of one reference-guide analysis pass over a scene.

@@ -107,6 +107,8 @@
                 <CheckBox IsChecked="{Binding ReferenceGuides.IsVisible}" Content="{x:Static res:Strings.ReferenceGuides}" Foreground="White" VerticalAlignment="Center"/>
                 <Button Content="{x:Static res:Strings.AnalyzeGuides}" Command="{Binding ReferenceGuides.AnalyzeCommand}"
                         IsVisible="{Binding ReferenceGuides.IsVisible}" Padding="6,2" VerticalAlignment="Center"/>
+                <Button Content="{x:Static res:Strings.CopyGuides}" ToolTip.Tip="{x:Static res:Strings.CopyGuidesTip}" Click="CopyGuides_Click"
+                        IsVisible="{Binding ReferenceGuides.IsVisible}" Padding="6,2" VerticalAlignment="Center"/>
                 <TextBlock Text="{x:Static res:Strings.GuidesAnalyzing}" Foreground="LightGray" VerticalAlignment="Center" FontStyle="Italic"
                            IsVisible="{Binding ReferenceGuides.IsAnalyzing}"/>
                 <TextBlock Text="{x:Static res:Strings.GuidesStale}" Foreground="Orange" VerticalAlignment="Center" FontStyle="Italic"

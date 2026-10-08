@@ -74,6 +74,8 @@
   <data name="AnalyzeGuides" xml:space="preserve"><value>Analyze</value></data>
   <data name="GuidesAnalyzing" xml:space="preserve"><value>Analyzing...</value></data>
   <data name="GuidesStale" xml:space="preserve"><value>Outdated</value></data>
+  <data name="CopyGuides" xml:space="preserve"><value>Copy</value></data>
+  <data name="CopyGuidesTip" xml:space="preserve"><value>Copy every generated guide as text (axis, coordinate, source solids). Alt+click a guide line to highlight and copy just that one; Alt+click empty space clears it.</value></data>
   <data name="ViewTop" xml:space="preserve"><value>Top</value></data>
   <data name="ViewFront" xml:space="preserve"><value>Front</value></data>
   <data name="ViewRight" xml:space="preserve"><value>Right</value></data>

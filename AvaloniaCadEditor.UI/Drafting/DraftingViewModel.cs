@@ -302,6 +302,35 @@ public sealed class DraftingViewModel : INotifyPropertyChanged
         });
     }
 
+    // ------------------------------------------------------------------ Relatório
+
+    /// <summary>Texto de tudo que está desenhado nesta vista (ver <see cref="DraftingReport"/>); null sem folha.</summary>
+    public string? BuildReport() =>
+        Sheet == null || Frame == null ? null
+            : DraftingReport.Format(Sheet, Dimensions, Frame.OwnerName, PartType, ParameterHints, CodeOrigin);
+
+    /// <summary>Texto da cadeia (fileira) a que <paramref name="dimension"/> pertence.</summary>
+    public string? BuildChainReport(DraftDimension dimension) =>
+        Sheet == null || Frame == null ? null
+            : DraftingReport.FormatChain(Sheet, Dimensions, dimension, Frame.OwnerName, PartType, ParameterHints, CodeOrigin);
+
+    private string? PartType => (_cad.IsolatedFeature as PartInstance)?.PartTypeName;
+
+    /// <summary>O (0, 0, 0) do código da peça isolada no referencial da folha (que começa no canto da caixa).</summary>
+    private Point3D? CodeOrigin
+    {
+        get
+        {
+            var rootToWorld = _cad.IsolatedFeature switch
+            {
+                PartInstance instance => instance.Placement,
+                TransformedFeature transformed => transformed.Placement,
+                _ => null
+            };
+            return rootToWorld == null || Frame == null ? null : Frame.ToFrame(rootToWorld.Apply(Point3D.Origin));
+        }
+    }
+
     // ------------------------------------------------------------------ Cotas manuais
 
     /// <summary>

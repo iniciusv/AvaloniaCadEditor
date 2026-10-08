@@ -9,7 +9,12 @@
          então os cliques nela não passam para a cena. -->
     <Border Background="#D91E1E1E" BorderBrush="#555" BorderThickness="1" CornerRadius="6" Padding="10,8">
         <StackPanel Spacing="6" MinWidth="190">
-            <TextBlock Text="Cotas" FontWeight="SemiBold" Foreground="#DDD" FontSize="12"/>
+            <DockPanel>
+                <Button DockPanel.Dock="Right" Content="Copiar tudo" FontSize="10" Padding="6,1" MinHeight="0"
+                        ToolTip.Tip="Copia como texto tudo que está desenhado nesta vista: sólidos, cadeias de cota por nível, ocultas, linhas de centro. Alt+clique num texto de cota copia só a cadeia dela."
+                        Click="CopyAll_Click"/>
+                <TextBlock Text="Cotas" FontWeight="SemiBold" Foreground="#DDD" FontSize="12" VerticalAlignment="Center"/>
+            </DockPanel>
             <TextBlock Text="{Binding SuppressedText}" Foreground="Orange" FontSize="11" FontStyle="Italic"
                        IsVisible="{Binding HasSuppressed}"/>
             <ItemsControl ItemsSource="{Binding Levels}">

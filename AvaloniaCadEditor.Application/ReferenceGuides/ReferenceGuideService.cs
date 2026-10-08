@@ -51,7 +51,7 @@ public sealed class ReferenceGuideService : IReferenceGuideService
 
             double top = SharedTop(group);
             tops[group] = top;
-            var view = new GroupView(group, top, opts.LineMargin);
+            var view = new GroupView(group, top, opts.LineMargin, relations.Units);
 
             var uAmbiguous = group.ClustersU.NearMisses.SelectMany(n => n).ToHashSet();
             var vAmbiguous = group.ClustersV.NearMisses.SelectMany(n => n).ToHashSet();
@@ -81,55 +81,112 @@ public sealed class ReferenceGuideService : IReferenceGuideService
 
     /// <summary>
     /// Planos de simetria (da análise, que exige pares de mesmo tipo e tamanho) desenhados no grupo de
-    /// direção que contém seus pares, no plano de cima desse grupo.
+    /// direção que contém seus pares, no plano de cima desse grupo. Um plano global vai, se der, no
+    /// grupo dos furos verticais e atravessa o corpo inteiro: no grupo dos próprios pares ele pode cair
+    /// num plano lateral e virar um toco de pé na ponta da peça.
     /// </summary>
     private static void Symmetry(ModelRelations relations, Dictionary<DirectionGroup, double> tops, ReferenceGuideOptions opts, List<GuideLine> lines)
     {
-        foreach (var plane in relations.SymmetryPlanes.Where(p => p.Pairs.Count >= 2 || p.IsGlobal))
+        foreach (var plane in relations.SymmetryPlanes.Where(p => p.UnitPairs >= 2 || p.IsGlobal))
         {
             var facts = plane.Pairs.SelectMany(p => new[] { p.A, p.B }).ToHashSet();
-            var group = relations.Groups
-                .Where(g => tops.ContainsKey(g) && (g.AxisU == plane.Normal || g.AxisV == plane.Normal))
+            bool Contains(DirectionGroup g) => tops.ContainsKey(g) && (g.AxisU == plane.Normal || g.AxisV == plane.Normal);
+
+            var overBody = plane.IsGlobal && relations.BodyMin != null && relations.BodyMax != null
+                ? relations.Groups.FirstOrDefault(g => g.Normal == FrameAxis.Z && Contains(g))
+                : null;
+            var group = overBody ?? relations.Groups
+                .Where(Contains)
                 .OrderByDescending(g => g.Holes.Count(facts.Contains) + g.Walls.Count(facts.Contains))
                 .FirstOrDefault();
             if (group == null) continue;
 
             bool alongU = group.AxisU == plane.Normal;
-            var crossCandidates = (alongU ? group.CandidatesU : group.CandidatesV).Where(c => facts.Contains(c.Fact)).ToList();
-            if (crossCandidates.Count == 0) crossCandidates = (alongU ? group.CandidatesU : group.CandidatesV).ToList();
-            double crossMin = crossCandidates.Min(c => c.Cross) - opts.LineMargin;
-            double crossMax = crossCandidates.Max(c => c.Cross) + opts.LineMargin;
+            double crossMin, crossMax;
+            if (overBody != null)
+            {
+                var crossAxis = (alongU ? group.AxisV : group.AxisU)!.Value;
+                crossMin = FrameAxes.Component(relations.BodyMin!.Value, crossAxis) - opts.LineMargin;
+                crossMax = FrameAxes.Component(relations.BodyMax!.Value, crossAxis) + opts.LineMargin;
+            }
+            else
+            {
+                var crossCandidates = (alongU ? group.CandidatesU : group.CandidatesV).Where(c => facts.Contains(c.Fact)).ToList();
+                if (crossCandidates.Count == 0) crossCandidates = (alongU ? group.CandidatesU : group.CandidatesV).ToList();
+                crossMin = crossCandidates.Min(c => c.Cross) - opts.LineMargin;
+                crossMax = crossCandidates.Max(c => c.Cross) + opts.LineMargin;
+            }
 
-            var view = new GroupView(group, tops[group], opts.LineMargin);
-            lines.Add(new GuideLine(GuideKind.Symmetry,
+            var view = new GroupView(group, tops[group], opts.LineMargin, relations.Units);
+            lines.Add(Line(GuideKind.Symmetry,
                 view.Point(plane.Coordinate, crossMin, alongU), view.Point(plane.Coordinate, crossMax, alongU),
-                plane.Coordinate, facts.Select(f => f.Id).Distinct().ToList(), Owners(facts)));
+                plane.Coordinate, facts, relations.Units, plane.Normal.ToString(),
+                plane.IsGlobal ? "global" : $"local, {plane.UnitPairs} pares"));
         }
     }
 
-    private static IReadOnlyList<Guid> Ids(IEnumerable<PrimitiveFact> facts) => facts.Select(f => f.Id).Distinct().ToList();
+    /// <summary>Única forma de criar uma guia aqui: Ids e nomes saem da mesma lista de fatos, então
+    /// ficam sempre na mesma ordem.</summary>
+    private static GuideLine Line(GuideKind kind, Point3D start, Point3D end, double coordinate, IEnumerable<PrimitiveFact> facts,
+        PositionUnits units, string? axis = null, string? note = null)
+    {
+        var distinct = facts.DistinctBy(f => f.Id).ToList();
+        return new GuideLine(kind, start, end, coordinate, distinct.Select(f => f.Id).ToList(), Owners(distinct))
+        {
+            SourceNames = distinct.Select(f => f.Name).ToList(),
+            MemberNames = units.Names(distinct),
+            Axis = axis,
+            Note = note
+        };
+    }
+
+    private static GuideDimension Dimension(GuideKind kind, Point3D from, Point3D to, double value, string label, IEnumerable<PrimitiveFact> facts,
+        PositionUnits units)
+    {
+        var distinct = facts.DistinctBy(f => f.Id).ToList();
+        return new GuideDimension(kind, from, to, value, label, distinct.Select(f => f.Id).ToList(), Owners(distinct))
+        {
+            SourceNames = distinct.Select(f => f.Name).ToList(),
+            MemberNames = units.Names(distinct)
+        };
+    }
 
     private static IReadOnlyList<Guid> Owners(IEnumerable<PrimitiveFact> facts) => facts.Select(f => f.OwnerId).Distinct().ToList();
 
+    private static string Number(double value) => value.ToString("0.###", CultureInfo.InvariantCulture);
+
     /// <summary>Apresentação de um grupo de direção: pontos no plano de cima e as linhas/cotas.</summary>
-    private sealed class GroupView(DirectionGroup group, double top, double margin)
+    private sealed class GroupView(DirectionGroup group, double top, double margin, PositionUnits units)
     {
         public Point3D Point(double coordinate, double cross, bool alongU) =>
             alongU ? group.ToPoint(coordinate, cross, top) : group.ToPoint(cross, coordinate, top);
+
+        /// <summary>Linha de um alinhamento inteiro, com a margem além dos membros mais externos.</summary>
+        private GuideLine ClusterLine(GuideKind kind, Cluster cluster, bool alongU, string? note = null) =>
+            Line(kind,
+                Point(cluster.Coordinate, cluster.CrossMin - margin, alongU),
+                Point(cluster.Coordinate, cluster.CrossMax + margin, alongU),
+                cluster.Coordinate, cluster.Facts, units, (alongU ? group.AxisU : group.AxisV)?.ToString(), note);
+
+        /// <summary>Cota entre dois alinhamentos, na transversal comum aos dois.</summary>
+        private GuideDimension Between(GuideKind kind, Cluster a, Cluster b, bool alongU, double value, string label)
+        {
+            double cross = OverlapMidpoint(a, b);
+            return Dimension(kind, Point(a.Coordinate, cross, alongU), Point(b.Coordinate, cross, alongU), value, label, a.Facts.Concat(b.Facts), units);
+        }
 
         public void AxisLines(IEnumerable<Cluster> clusters, bool alongU, List<GuideLine> lines)
         {
             foreach (var cluster in clusters)
             {
+                // Fileira = 2 ou mais furos DISTINTOS: um furo com rebaixo (dois sólidos coaxiais) ou o
+                // furo de um componente não formam fileira consigo mesmos.
                 GuideKind kind;
-                if (cluster.Holes.Count >= 2) kind = GuideKind.HoleRow;
+                if (units.Count(cluster.Holes) >= 2) kind = GuideKind.HoleRow;
                 else if (cluster.Walls.Count >= 1) kind = GuideKind.Wall;
                 else continue;
 
-                lines.Add(new GuideLine(kind,
-                    Point(cluster.Coordinate, cluster.CrossMin - margin, alongU),
-                    Point(cluster.Coordinate, cluster.CrossMax + margin, alongU),
-                    cluster.Coordinate, Ids(cluster.Facts), Owners(cluster.Facts)));
+                lines.Add(ClusterLine(kind, cluster, alongU));
             }
         }
 
@@ -143,10 +200,7 @@ public sealed class ReferenceGuideService : IReferenceGuideService
                 // toco tem o comprimento do próprio erro (muitas vezes menos de 1 mm) e some na tela.
                 foreach (var cluster in sorted)
                 {
-                    lines.Add(new GuideLine(GuideKind.NearMiss,
-                        Point(cluster.Coordinate, cluster.CrossMin - margin, alongU),
-                        Point(cluster.Coordinate, cluster.CrossMax + margin, alongU),
-                        cluster.Coordinate, Ids(cluster.Facts), Owners(cluster.Facts)));
+                    lines.Add(ClusterLine(GuideKind.NearMiss, cluster, alongU, FormattableString.Invariant($"×{cluster.MemberCount}")));
                 }
 
                 for (int i = 1; i < sorted.Count; i++)
@@ -154,16 +208,13 @@ public sealed class ReferenceGuideService : IReferenceGuideService
                     var a = sorted[i - 1];
                     var b = sorted[i];
                     double diff = b.Coordinate - a.Coordinate;
-                    double cross = OverlapMidpoint(a, b);
-                    var facts = a.Facts.Concat(b.Facts).ToList();
 
                     // Mostra quantos candidatos sustentam cada lado, nunca qual está "certo" — isso
                     // depende de intenção de projeto que a análise não vê.
                     string axisLabel = alongU ? "X" : "Y";
                     string label = FormattableString.Invariant(
                         $"{axisLabel}: {a.Coordinate:0.###} (×{a.MemberCount}) vs {b.Coordinate:0.###} (×{b.MemberCount})  Δ{diff:0.###}");
-                    dimensions.Add(new GuideDimension(GuideKind.NearMiss, Point(a.Coordinate, cross, alongU), Point(b.Coordinate, cross, alongU),
-                        diff, label, Ids(facts), Owners(facts)));
+                    dimensions.Add(Between(GuideKind.NearMiss, a, b, alongU, diff, label));
                 }
             }
         }
@@ -178,14 +229,9 @@ public sealed class ReferenceGuideService : IReferenceGuideService
             var steps = new List<double>();
             for (int i = 1; i < rows.Count; i++)
             {
-                var a = rows[i - 1];
-                var b = rows[i];
-                double step = b.Coordinate - a.Coordinate;
+                double step = rows[i].Coordinate - rows[i - 1].Coordinate;
                 steps.Add(step);
-                double cross = OverlapMidpoint(a, b);
-                var facts = a.Facts.Concat(b.Facts).ToList();
-                dimensions.Add(new GuideDimension(GuideKind.HoleRow, Point(a.Coordinate, cross, alongU), Point(b.Coordinate, cross, alongU),
-                    step, step.ToString("0.###", CultureInfo.InvariantCulture), Ids(facts), Owners(facts)));
+                dimensions.Add(Between(GuideKind.HoleRow, rows[i - 1], rows[i], alongU, step, Number(step)));
             }
 
             if (steps.Count >= 2 && steps.All(s => Math.Abs(s - steps[0]) <= analysis.AlignTolerance * 10))
@@ -193,9 +239,8 @@ public sealed class ReferenceGuideService : IReferenceGuideService
                 var first = rows[0];
                 var last = rows[^1];
                 double cross = OverlapMidpoint(first, last);
-                var facts = rows.SelectMany(r => r.Facts).ToList();
-                dimensions.Add(new GuideDimension(GuideKind.HoleRow, Point(first.Coordinate, cross, alongU), Point(last.Coordinate, cross, alongU),
-                    steps[0], FormattableString.Invariant($"{steps.Count}× {steps[0]:0.###}"), Ids(facts), Owners(facts)));
+                dimensions.Add(Dimension(GuideKind.HoleRow, Point(first.Coordinate, cross, alongU), Point(last.Coordinate, cross, alongU),
+                    steps[0], FormattableString.Invariant($"{steps.Count}× {steps[0]:0.###}"), rows.SelectMany(r => r.Facts), units));
             }
 
             if (walls.Count == 0) return;
@@ -205,10 +250,7 @@ public sealed class ReferenceGuideService : IReferenceGuideService
                 double dist = Math.Abs(nearestWall.Coordinate - row.Coordinate);
                 if (dist < 1e-9) continue; // a própria fileira coincide com uma parede (ex.: centro de arco)
 
-                double cross = OverlapMidpoint(row, nearestWall);
-                var facts = row.Facts.Concat(nearestWall.Facts).ToList();
-                dimensions.Add(new GuideDimension(GuideKind.Wall, Point(row.Coordinate, cross, alongU), Point(nearestWall.Coordinate, cross, alongU),
-                    dist, dist.ToString("0.###", CultureInfo.InvariantCulture), Ids(facts), Owners(facts)));
+                dimensions.Add(Between(GuideKind.Wall, row, nearestWall, alongU, dist, Number(dist)));
             }
         }
 
@@ -217,12 +259,12 @@ public sealed class ReferenceGuideService : IReferenceGuideService
             foreach (var (fact, arc, arcTop) in group.Arcs)
             {
                 double s = Math.Max(arc.Radius * 0.08, margin * 0.25);
-                var ids = new[] { fact.Id };
-                var owners = new[] { fact.OwnerId };
-                lines.Add(new GuideLine(GuideKind.ArcCenter, group.ToPoint(arc.CenterU - s, arc.CenterV, arcTop),
-                    group.ToPoint(arc.CenterU + s, arc.CenterV, arcTop), arc.CenterU, ids, owners));
-                lines.Add(new GuideLine(GuideKind.ArcCenter, group.ToPoint(arc.CenterU, arc.CenterV - s, arcTop),
-                    group.ToPoint(arc.CenterU, arc.CenterV + s, arcTop), arc.CenterV, ids, owners));
+                var facts = new[] { fact };
+                var note = FormattableString.Invariant($"R{arc.Radius:0.###}");
+                lines.Add(Line(GuideKind.ArcCenter, group.ToPoint(arc.CenterU - s, arc.CenterV, arcTop),
+                    group.ToPoint(arc.CenterU + s, arc.CenterV, arcTop), arc.CenterV, facts, units, group.AxisV?.ToString(), note));
+                lines.Add(Line(GuideKind.ArcCenter, group.ToPoint(arc.CenterU, arc.CenterV - s, arcTop),
+                    group.ToPoint(arc.CenterU, arc.CenterV + s, arcTop), arc.CenterU, facts, units, group.AxisU?.ToString(), note));
             }
         }
 

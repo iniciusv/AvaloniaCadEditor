@@ -8,6 +8,7 @@ using Avalonia.Threading;
 using AvaloniaCadEditor.Drafting;
 using AvaloniaCadEditor.UI.Controls;
 using AvaloniaCadEditor.UI.ReferenceGuides;
+using AvaloniaCadEditor.UI.Reports;
 using AvaloniaCadEditor.UI.ViewModels;
 
 namespace AvaloniaCadEditor.UI.Drafting;
@@ -16,6 +17,7 @@ namespace AvaloniaCadEditor.UI.Drafting;
 /// Textos das cotas sobre a viewport (como o <see cref="GuideLabelsOverlay"/>). Os textos são
 /// clicáveis — o canvas não tem fundo, então só eles recebem o clique e o resto passa para a
 /// viewport: no modo "Cotar" o clique esconde/remove a cota; fora dele, mostra o sólido no código.
+/// Alt+clique, em qualquer modo, copia como texto a cadeia (fileira) da cota.
 /// </summary>
 public sealed class DraftingLabelsOverlay : Canvas
 {
@@ -80,13 +82,18 @@ public sealed class DraftingLabelsOverlay : Canvas
                 block.RenderTransformOrigin = RelativePoint.Center;
             }
             var sources = dimension.SourceNames.Count > 0 ? string.Join(", ", dimension.SourceNames) : "peça";
-            ToolTip.SetTip(block, sources);
+            ToolTip.SetTip(block, $"{sources}\nAlt+clique: copiar a cadeia");
 
             var captured = dimension;
             block.PointerPressed += (_, e) =>
             {
                 if (!e.GetCurrentPoint(block).Properties.IsLeftButtonPressed) return;
                 e.Handled = true;
+                if (e.KeyModifiers.HasFlag(KeyModifiers.Alt))
+                {
+                    _ = ReportClipboard.CopyAsync(this, _drafting?.BuildChainReport(captured), DataContext as CadViewModel, "cadeia de cotas");
+                    return;
+                }
                 _drafting?.OnLabelClicked(captured);
             };
 

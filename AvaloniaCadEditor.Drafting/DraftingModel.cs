@@ -133,7 +133,12 @@ public sealed record DraftDimension(
     IReadOnlyList<string> SourceNames,
     bool IsManual = false,
     int Level = 1,
-    DimensionSide Side = DimensionSide.None);
+    DimensionSide Side = DimensionSide.None)
+{
+    /// <summary>Outros elementos com o eixo na coordenada onde a cota termina (ex.: a porca no mesmo eixo
+    /// dos furos que a cadeia mede) — o "eixo comum" daquele ponto.</summary>
+    public IReadOnlyList<string> AlignedWith { get; init; } = Array.Empty<string>();
+}
 
 /// <summary>Linha de centro ou de simetria (traço-ponto).</summary>
 public sealed record CenterLine(P2 A, P2 B);

@@ -1,4 +1,6 @@
-using Avalonia.Controls;
+﻿using Avalonia.Controls;
+using AvaloniaCadEditor.UI.Reports;
+using AvaloniaCadEditor.UI.ViewModels;
 
 namespace AvaloniaCadEditor.Views;
 
@@ -39,7 +41,26 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Alt+clique numa guia de referência: destaca e copia o registro dela; no vazio, tira o destaque.
+        if (DataContext is CadViewModel { ReferenceGuides: { } guides } guidesVm &&
+            e.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Alt) &&
+            e.GetCurrentPoint(ViewportControl).Properties.IsLeftButtonPressed &&
+            guides.HandlePick(e.GetPosition(ViewportControl), ViewportControl.Camera, ViewportControl.Bounds.Size, out var report))
+        {
+            if (report != null) _ = ReportClipboard.CopyAsync(this, report, guidesVm, "guia");
+            e.Handled = true;
+            ViewportControl.RequestNextFrameRendering();
+            return;
+        }
+
         ViewportControl.HandlePointerPressed(e);
+    }
+
+    private void CopyGuides_Click(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (DataContext is not CadViewModel { ReferenceGuides: { } guides } vm) return;
+        var selected = vm.SelectionService.SelectedObject as AvaloniaCadEditor.Domain.Features.IFeature;
+        _ = ReportClipboard.CopyAsync(this, guides.BuildReport(selected), vm, "guias de referência");
     }
 
     private void Viewport_PointerMoved(object? sender, Avalonia.Input.PointerEventArgs e)

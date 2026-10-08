@@ -29,6 +29,7 @@ public static class RelationAnalyzer
 
         var components = Components(facts, opts);
         var coaxial = groups.SelectMany(g => CoaxialSets(g, opts)).ToList();
+        var units = PositionUnits.Build(facts, coaxial);
         var patterns = groups.SelectMany(g => LinearPatterns(g, components, opts)).ToList();
         cancellationToken.ThrowIfCancellationRequested();
 
@@ -37,12 +38,13 @@ public static class RelationAnalyzer
         Point3D? bodyMax = bodies.Count == 0 ? null : new Point3D(bodies.Max(f => f.BoundsMax.X), bodies.Max(f => f.BoundsMax.Y), bodies.Max(f => f.BoundsMax.Z));
 
         var symmetry = facts.Count <= opts.MaxSymmetryFacts
-            ? FrameAxes.All.SelectMany(a => SymmetryPlanes(facts, a, bodyMin, bodyMax, opts)).ToList()
+            ? FrameAxes.All.SelectMany(a => SymmetryPlanes(facts, a, bodyMin, bodyMax, units, patterns, opts)).ToList()
             : new List<SymmetryPlane>();
 
         return new ModelRelations(facts, groups, frameClusters, coaxial, patterns, symmetry, bodyMin, bodyMax)
         {
-            Components = components
+            Components = components,
+            Units = units
         };
     }
 
@@ -228,12 +230,39 @@ public static class RelationAnalyzer
 
             bool coaxial = principal != null && rounds.All(r => Coaxial(r, principal, opts.AlignTolerance));
             var center = new Point3D((min.X + max.X) / 2, (min.Y + max.Y) / 2, (min.Z + max.Z) / 2);
-            result.Add(new ComponentDatum(list[0].Component!, list, principal,
-                coaxial ? principal!.BaseCenter : center,
-                coaxial ? principal!.Axis : null,
-                min, max));
+            var axisPoint = coaxial ? principal!.BaseCenter : center;
+            var axis = coaxial ? principal!.Axis : (Vector3D?)null;
+            result.Add(new ComponentDatum(list[0].Component!, list, principal, axisPoint, axis, min, max)
+            {
+                Signature = Signature(list, axisPoint, axis)
+            });
         }
         return result;
+    }
+
+    /// <summary>Ver <see cref="ComponentDatum.Signature"/>. Medidas arredondadas ao centésimo; as
+    /// extensões da caixa de cada membro em ordem, para não depender de para onde o componente aponta.</summary>
+    private static string Signature(IReadOnlyList<PrimitiveFact> members, Point3D reference, Vector3D? axis)
+    {
+        static long R(double v) => (long)Math.Round(v * 100);
+        return string.Join(";", members.Select(m =>
+        {
+            var size = m.BoundsMax - m.BoundsMin;
+            var extents = new[] { size.X, size.Y, size.Z }.Select(R).OrderBy(v => v);
+            var c = new Point3D((m.BoundsMin.X + m.BoundsMax.X) / 2, (m.BoundsMin.Y + m.BoundsMax.Y) / 2, (m.BoundsMin.Z + m.BoundsMax.Z) / 2);
+            var d = c - reference;
+            string where;
+            if (axis is { } a)
+            {
+                double along = d.DotProduct(a);
+                where = $"{R(along)}/{R((d - a * along).Length)}";
+            }
+            else
+            {
+                where = string.Join("/", new[] { d.X, d.Y, d.Z }.Select(v => R(Math.Abs(v))).OrderBy(v => v));
+            }
+            return $"{m.Kind}|{m.Role}|{R(m.Radius)}|{R(m.TopRadius)}|{R(m.Height)}|{string.Join("x", extents)}|{where}";
+        }).OrderBy(s => s, StringComparer.Ordinal));
     }
 
     /// <summary>Os dois redondos estão no mesmo eixo (paralelos e com a base de um sobre a reta do outro).</summary>
@@ -248,8 +277,9 @@ public static class RelationAnalyzer
     // ------------------------------------------------------------------ Padrões
 
     /// <summary>
-    /// Fileiras do grupo: furos simples de mesmo diâmetro e, à parte, componentes de mesmo rótulo
-    /// (pelo eixo deles). Um componente não forma fileira com um furo avulso de mesmo diâmetro.
+    /// Fileiras do grupo: furos simples de mesmo diâmetro e, à parte, componentes de mesmo rótulo e
+    /// mesma configuração (pelo eixo deles). Um componente não forma fileira com um furo avulso de
+    /// mesmo diâmetro.
     /// </summary>
     private static IEnumerable<LinearPattern> LinearPatterns(DirectionGroup group, IReadOnlyList<ComponentDatum> components, AnalysisOptions opts)
     {
@@ -262,7 +292,7 @@ public static class RelationAnalyzer
         {
             if (c.Axis is not { } axis || c.Principal == null) continue;
             if (Math.Abs(Math.Abs(axis.DotProduct(group.Direction)) - 1) > 1e-6) continue;
-            items.Add(new PatternItem(c.Principal, c.AxisPoint, $"C:{c.Ref.Label}", c.Principal.MaxRadius * 2, c.Ref.Label));
+            items.Add(new PatternItem(c.Principal, c.AxisPoint, $"C:{c.Ref.Label}|{c.Signature}", c.Principal.MaxRadius * 2, c.Ref.Label));
         }
 
         return LinearPatterns(group, items, opts);
@@ -313,8 +343,19 @@ public static class RelationAnalyzer
 
     // ------------------------------------------------------------------ Simetria
 
+    /// <summary>
+    /// Planos de simetria perpendiculares a <paramref name="axis"/>. Todo par de sólidos iguais é
+    /// espelho um do outro em torno do ponto médio, então um plano só vale se:
+    /// <list type="bullet">
+    /// <item>tem 2 ou mais pares de <see cref="PositionUnits">unidades</see> independentes (ou passa
+    /// pelo meio do corpo) — furo e alojamento de um mesmo par de componentes contam uma vez;</item>
+    /// <item>cada fileira de elementos iguais ao longo do eixo que ele toca se espelha INTEIRA nele: numa
+    /// fileira de passo constante, cada furo e cada meio de vão é centro de algum par, e só o meio da
+    /// fileira é simetria de verdade.</item>
+    /// </list>
+    /// </summary>
     private static IEnumerable<SymmetryPlane> SymmetryPlanes(IReadOnlyList<PrimitiveFact> facts, FrameAxis axis,
-        Point3D? bodyMin, Point3D? bodyMax, AnalysisOptions opts)
+        Point3D? bodyMin, Point3D? bodyMax, PositionUnits units, IReadOnlyList<LinearPattern> patterns, AnalysisOptions opts)
     {
         double Mid(PrimitiveFact f) => (FrameAxes.Component(f.BoundsMin, axis) + FrameAxes.Component(f.BoundsMax, axis)) / 2.0;
 
@@ -343,19 +384,44 @@ public static class RelationAnalyzer
             else runs.Add(new() { c });
         }
 
+        var rows = patterns.Where(p => p.AlongAxis == axis).ToList();
         foreach (var run in runs)
         {
             double center = run.Average(c => c.Center);
-            var pairs = run.Select(c => c.Pair).ToList();
+            var pairs = run.Select(c => c.Pair).Where(p => units.Of(p.A) != units.Of(p.B)).ToList();
+            RemoveBrokenRows(pairs, rows, center, Mid, units, opts.AlignTolerance);
+            if (pairs.Count == 0) continue;
+
+            int unitPairs = pairs.Select(p => (Math.Min(units.Of(p.A), units.Of(p.B)), Math.Max(units.Of(p.A), units.Of(p.B)))).Distinct().Count();
             bool bodyCentered = bodyMid is { } m && Math.Abs(m - center) <= opts.AlignTolerance;
-            if (pairs.Count < 2 && !bodyCentered) continue;
+            if (unitPairs < 2 && !bodyCentered) continue;
 
             var paired = pairs.SelectMany(p => new[] { p.A, p.B }).ToHashSet();
             var onPlane = facts.Where(f => !paired.Contains(f) && Math.Abs(Mid(f) - center) <= opts.AlignTolerance).ToList();
             bool isGlobal = bodyCentered && facts.All(f => paired.Contains(f) || onPlane.Contains(f));
 
-            yield return new SymmetryPlane(axis, center, pairs, onPlane, isGlobal);
+            yield return new SymmetryPlane(axis, center, pairs, onPlane, isGlobal) { UnitPairs = unitPairs };
         }
+    }
+
+    /// <summary>
+    /// Tira os pares de uma fileira (padrão linear ao longo do eixo) que o plano não espelha inteira:
+    /// algum membro dela não tem par nem está sobre o plano. Saem os pares de todas as unidades da
+    /// fileira — o rebaixo de um furo vai junto com o furo.
+    /// </summary>
+    private static void RemoveBrokenRows(List<SymmetryPair> pairs, IReadOnlyList<LinearPattern> rows, double center,
+        Func<PrimitiveFact, double> mid, PositionUnits units, double tolerance)
+    {
+        var paired = pairs.SelectMany(p => new[] { p.A, p.B }).ToHashSet();
+        var broken = new HashSet<int>();
+        foreach (var row in rows)
+        {
+            if (!row.AllMembers.Any(paired.Contains)) continue;
+            bool whole = row.AllMembers.All(f => paired.Contains(f) || Math.Abs(mid(f) - center) <= tolerance);
+            if (!whole) broken.UnionWith(row.AllMembers.Select(units.Of));
+        }
+
+        if (broken.Count > 0) pairs.RemoveAll(p => broken.Contains(units.Of(p.A)) || broken.Contains(units.Of(p.B)));
     }
 
     /// <summary>

@@ -23,19 +23,47 @@ public sealed record AnalysisSubject(IFeature Feature, Placement ToFrame, string
 /// <param name="Label">Texto da chamada: <see cref="Part.DrawingLabel"/> ou o tipo mais os parâmetros enum.</param>
 public sealed record ComponentRef(string Name, string TypeName, string Label)
 {
+    /// <summary>
+    /// Os parâmetros da peça, menos pontos e vetores (onde ela está e para onde aponta), com o valor
+    /// formatado. Só para texto: o que distingue duas configurações é a geometria
+    /// (<see cref="ComponentDatum.Signature"/>) — uma peça pode receber a posição num <c>double</c> —, e
+    /// estes nomes dizem, na chamada, qual parâmetro faz a diferença ("Profundidade 6").
+    /// </summary>
+    public IReadOnlyList<(string Name, string Value)> Configuration { get; init; } = Array.Empty<(string, string)>();
+
     public static ComponentRef For(PartInstance instance)
     {
         var part = instance.Part;
+        var parameters = part.GetParameters();
         var label = part.DrawingLabel;
         if (string.IsNullOrWhiteSpace(label))
         {
-            var enums = part.GetParameters()
+            var enums = parameters
                 .Where(p => p.Type.IsEnum && p.Value != null)
                 .Select(p => p.Value!.ToString());
             label = string.Join(" ", new[] { instance.PartTypeName }.Concat(enums));
         }
-        return new ComponentRef(instance.Name, instance.PartTypeName, label);
+
+        var configuration = parameters
+            .Where(p => !IsPlacementType(p.Type))
+            .Select(p => (p.Name, Format(p.Value)))
+            .ToList();
+        return new ComponentRef(instance.Name, instance.PartTypeName, label) { Configuration = configuration };
     }
+
+    private static bool IsPlacementType(Type type)
+    {
+        var t = Nullable.GetUnderlyingType(type) ?? type;
+        return t == typeof(Point3D) || t == typeof(Vector3D) || t == typeof(Placement) || t == typeof(WorkPlane);
+    }
+
+    private static string Format(object? value) => value switch
+    {
+        null => "null",
+        double d => d.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture),
+        IFormattable f => f.ToString(null, System.Globalization.CultureInfo.InvariantCulture),
+        _ => value.ToString() ?? ""
+    };
 }
 
 public enum PrimitiveKind

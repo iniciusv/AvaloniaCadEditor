@@ -7,9 +7,12 @@ namespace AvaloniaCadEditor.Drafting;
 /// ONDE cada linha fica. Para cada eixo da vista (U → cotas horizontais, abaixo; V → verticais, à
 /// esquerda):
 /// <list type="number">
-/// <item><b>Nível 1, cadeias:</b> elementos na mesma linha transversal (ex.: furos na mesma altura)
-/// formam uma cadeia a partir da borda: borda → 1º, 1º → 2º... Um padrão de passo constante vira uma
-/// cota só, "3× 20 (=60)". A cadeia termina no último elemento (sem fechar até a outra borda).</item>
+/// <item><b>Nível 1, contorno:</b> os cantos do material (um recorte, um degrau) numa cadeia própria,
+/// que a política de densidade nunca esconde — sem ela a forma da peça fica indefinida.</item>
+/// <item><b>Nível 1, cadeias:</b> elementos da mesma família (mesmo Ø, mesmo componente e configuração)
+/// na mesma linha transversal formam uma cadeia a partir da borda: borda → 1º, 1º → 2º... Um padrão de
+/// passo constante vira uma cota só, "3× 20 (=60)". A cadeia termina no último elemento. Cada ponto
+/// diz quem mais está no mesmo eixo (<see cref="DraftDimension.AlignedWith"/>).</item>
 /// <item><b>Nível 2, localização:</b> o que sobrou (elementos sozinhos na sua linha) numa cadeia única.</item>
 /// <item><b>Nível 3, totais:</b> largura e altura, por fora.</item>
 /// </list>
@@ -37,10 +40,19 @@ public static class DimensionPlanner
         return new Plan(groups, context.FrontDiameters().Concat(context.ComponentCallouts()).ToList(), context.CenterLines());
     }
 
+    /// <summary>Família das marcas do contorno do material.</summary>
+    private const string ContourFamily = "contorno";
+
     /// <summary>Um ponto cotável ao longo de um eixo, com os sólidos que o definem.</summary>
-    private sealed class Mark(double at, double extCross, double rowCross, string source, PrimitiveFact? fact)
+    /// <param name="family">Tipo do elemento: só marcas da mesma família formam uma cadeia de nível 1.</param>
+    /// <param name="isAxis">A marca é um eixo (centro de furo, linha de centro, eixo de componente).</param>
+    private sealed class Mark(double at, double extCross, double rowCross, string source, PrimitiveFact? fact, string family, bool isAxis = false)
     {
         public double At { get; } = at;
+
+        public string Family { get; } = family;
+
+        public bool IsAxis { get; } = isAxis;
 
         /// <summary>Coordenada transversal do centro do sólido: marcas com a mesma formam uma "linha" da peça.</summary>
         public double RowCross { get; } = rowCross;
@@ -116,12 +128,13 @@ public static class DimensionPlanner
                 double center = (eLo + eHi) / 2;
 
                 double row = (cLo + cHi) / 2;
-                void AddCenter(double at) => marks.Add(new Mark(at, cLo, row, e.SourceName, e.Fact));
+                string family = FamilyOf(e);
+                void AddCenter(double at, bool isAxis) => marks.Add(new Mark(at, cLo, row, e.SourceName, e.Fact, family, isAxis));
                 void AddEdge(double at, bool maxSide)
                 {
                     if (Inside(at) && !IsSeam(e, at, maxSide, horizontal, row))
                     {
-                        marks.Add(new Mark(at, cLo, row, e.SourceName, e.Fact));
+                        marks.Add(new Mark(at, cLo, row, e.SourceName, e.Fact, family));
                     }
                 }
 
@@ -129,25 +142,25 @@ public static class DimensionPlanner
                 {
                     case ViewCircle circle when e.Role == PrimitiveRole.Void:
                         double circleCross = ClampCross(Cross(circle.Center, horizontal));
-                        marks.Add(new Mark(Along(circle.Center, horizontal), circleCross, circleCross, e.SourceName, e.Fact));
+                        marks.Add(new Mark(Along(circle.Center, horizontal), circleCross, circleCross, e.SourceName, e.Fact, family, isAxis: true));
                         break;
 
                     case ViewRect { Axis: not CenterAxis.None } rect when e.Role == PrimitiveRole.Void:
                         // Furo visto de lado: posição pela linha de centro se ela cruza o eixo medido;
                         // se corre ao longo dele, pelas pontas (profundidade de furo cego).
                         bool centerLineCrosses = horizontal ? rect.Axis == CenterAxis.Vertical : rect.Axis == CenterAxis.Horizontal;
-                        if (centerLineCrosses) AddCenter(center);
+                        if (centerLineCrosses) AddCenter(center, isAxis: true);
                         else { AddEdge(eLo, false); AddEdge(eHi, true); }
                         break;
 
                     case ViewPolygon when e.Role == PrimitiveRole.Void && horizontal:
-                        AddCenter(center);
+                        AddCenter(center, isAxis: false);
                         break;
 
                     case ViewPolygon polygon when e.Role == PrimitiveRole.Body:
                         foreach (var at in polygon.Points.Select(p => Along(p, horizontal)).Distinct())
                         {
-                            if (Inside(at)) marks.Add(new Mark(at, cLo, row, e.SourceName, e.Fact));
+                            if (Inside(at)) marks.Add(new Mark(at, cLo, row, e.SourceName, e.Fact, family));
                         }
                         break;
 
@@ -163,6 +176,22 @@ public static class DimensionPlanner
 
             marks.AddRange(ComponentMarks(horizontal, lo, hi, ClampCross));
             return marks;
+        }
+
+        /// <summary>A família de uma entidade: material é contorno; furos pelo Ø; o resto pelo tamanho.</summary>
+        private string FamilyOf(ViewEntity e)
+        {
+            if (e.Role == PrimitiveRole.Body) return ContourFamily;
+            double Key(double v) => Math.Round(v / Tol);
+            double w = e.Max.U - e.Min.U, h = e.Max.V - e.Min.V;
+            return e switch
+            {
+                ViewCircle c => $"Ø{Key(c.Radius * 2)}",
+                ViewRect { Axis: CenterAxis.Horizontal } => $"Ø{Key(h)}",
+                ViewRect { Axis: CenterAxis.Vertical } => $"Ø{Key(w)}",
+                ViewPolygon p => $"polígono {p.Points.Count} {Key(w)}×{Key(h)}",
+                _ => $"caixa {Key(w)}×{Key(h)}"
+            };
         }
 
         /// <summary>
@@ -209,7 +238,7 @@ public static class DimensionPlanner
                 }
 
                 if (at < lo - Tol || at > hi + Tol) continue;
-                yield return new Mark(at, ext, row, c.Ref.Name, fact);
+                yield return new Mark(at, ext, row, c.Ref.Name, fact, $"c:{c.Ref.Label}|{c.Signature}", isAxis: c.Axis != null);
             }
         }
 
@@ -231,33 +260,61 @@ public static class DimensionPlanner
         }
 
         /// <summary>
-        /// Uma chamada por rótulo de componente ("3× FuroPorca M3 Axial"), saindo do círculo do eixo
-        /// quando ele é visto de frente, ou da referência.
+        /// Uma chamada por rótulo e configuração de componente ("3× FuroPorca M3 Axial"), saindo do
+        /// círculo do eixo quando ele é visto de frente, ou da referência. Quando o mesmo rótulo aparece
+        /// com configurações diferentes, cada chamada leva os parâmetros que as distinguem
+        /// ("3× FuroPorca M3 Lateral · Profundidade 6").
         /// </summary>
         public IReadOnlyList<DraftDimension> ComponentCallouts()
         {
             var callouts = new List<DraftDimension>();
-            foreach (var group in relations.Components.GroupBy(c => c.Ref.Label))
+            foreach (var labelGroup in relations.Components.GroupBy(c => c.Ref.Label))
             {
-                var located = group
-                    .Select(c => (Component: c, Datum: CalloutAnchor(c)))
-                    .ToList();
-                var rep = located
-                    .Where(x => KeepCenter(x.Datum))
-                    .OrderBy(x => x.Datum.U).ThenBy(x => x.Datum.V)
-                    .FirstOrDefault();
-                if (rep.Component == null) rep = located[0];
-
-                int count = located.Select(x => (Math.Round(x.Datum.U / Tol), Math.Round(x.Datum.V / Tol))).Distinct().Count();
-                string text = (count > 1 ? $"{count}× " : "") + group.Key;
-
-                var circle = entities.OfType<ViewCircle>().FirstOrDefault(e => rep.Component.Principal != null && e.Fact == rep.Component.Principal)
-                             ?? new ViewCircle(rep.Component.Ref.Name, PrimitiveRole.Void, rep.Datum, gap * 0.2);
-                var leader = DimensionFactory.Diameter(circle, $"c:{group.Key}", text,
-                    group.Select(c => c.Ref.Name).ToList(), isManual: false);
-                callouts.Add(leader with { Kind = DimensionKind.Callout, Value = 0 });
+                var configurations = labelGroup.GroupBy(c => c.Signature).Select(g => g.ToList()).ToList();
+                var differing = configurations.Count > 1 ? DifferingParameters(configurations) : [];
+                foreach (var group in configurations)
+                {
+                    callouts.Add(Callout(labelGroup.Key, group, differing));
+                }
             }
             return callouts;
+        }
+
+        /// <summary>Os parâmetros que explicam a diferença entre as configurações: iguais dentro de
+        /// cada uma e diferentes entre elas (na ordem da peça). Uma posição passada num número muda
+        /// dentro da configuração e fica de fora.</summary>
+        private static List<string> DifferingParameters(List<List<ComponentDatum>> configurations)
+        {
+            string? Value(ComponentDatum c, string name) => c.Ref.Configuration.FirstOrDefault(p => p.Name == name).Value;
+            return configurations[0][0].Ref.Configuration
+                .Select(p => p.Name)
+                .Where(name => configurations.All(g => g.Select(c => Value(c, name)).Distinct().Count() == 1) &&
+                               configurations.Select(g => Value(g[0], name)).Distinct().Count() > 1)
+                .ToList();
+        }
+
+        private DraftDimension Callout(string label, List<ComponentDatum> group, List<string> differing)
+        {
+            var located = group
+                .Select(c => (Component: c, Datum: CalloutAnchor(c)))
+                .ToList();
+            var rep = located
+                .Where(x => KeepCenter(x.Datum))
+                .OrderBy(x => x.Datum.U).ThenBy(x => x.Datum.V)
+                .FirstOrDefault();
+            if (rep.Component == null) rep = located[0];
+
+            int count = located.Select(x => (Math.Round(x.Datum.U / Tol), Math.Round(x.Datum.V / Tol))).Distinct().Count();
+            var configuration = group[0].Ref.Configuration;
+            string details = differing.Count == 0 ? ""
+                : " · " + string.Join(", ", differing.Select(name => $"{name} {configuration.First(c => c.Name == name).Value}"));
+            string text = (count > 1 ? $"{count}× " : "") + label + details;
+
+            var circle = entities.OfType<ViewCircle>().FirstOrDefault(e => rep.Component.Principal != null && e.Fact == rep.Component.Principal)
+                         ?? new ViewCircle(rep.Component.Ref.Name, PrimitiveRole.Void, rep.Datum, gap * 0.2);
+            var leader = DimensionFactory.Diameter(circle, $"c:{label}|{group[0].Signature}", text,
+                group.Select(c => c.Ref.Name).ToList(), isManual: false);
+            return leader with { Kind = DimensionKind.Callout, Value = 0 };
         }
 
         /// <summary>
@@ -345,12 +402,27 @@ public static class DimensionPlanner
             var covered = new List<double>();
             bool IsCovered(double v) => covered.Any(c => Math.Abs(c - v) <= Tol);
 
-            // Linhas transversais: marcas com a mesma coordenada transversal (o mesmo "nível" da peça).
-            var rows = new List<List<Mark>>();
-            foreach (var mark in marks.OrderBy(k => k.RowCross))
+            // O contorno (cantos do material, como um recorte) define a forma da peça: cadeia própria,
+            // que a política de densidade nunca esconde.
+            var contour = Merge(marks.Where(k => k.Family == ContourFamily)).Where(k => k.At > datum + Tol).ToList();
+            if (contour.Count > 0)
             {
-                if (rows.Count > 0 && Math.Abs(mark.RowCross - rows[^1][^1].RowCross) <= Tol) rows[^1].Add(mark);
-                else rows.Add([mark]);
+                covered.AddRange(contour.Select(k => k.At));
+                yield return new LayoutGroup(Chain(contour, horizontal, marks), side, 1) { IsContour = true };
+            }
+
+            // Linhas transversais por família: elementos do mesmo tipo com a mesma coordenada
+            // transversal. Um furo e uma porca na mesma linha não formam cadeia — senão a malha dos
+            // furos sai partida pela porca no meio ("3,5 + 7 + 18" em vez de "3,5 + 25").
+            var rows = new List<List<Mark>>();
+            foreach (var family in marks.Where(k => k.Family != ContourFamily).GroupBy(k => k.Family))
+            {
+                List<Mark>? current = null;
+                foreach (var mark in family.OrderBy(k => k.RowCross))
+                {
+                    if (current != null && Math.Abs(mark.RowCross - current[^1].RowCross) <= Tol) current.Add(mark);
+                    else rows.Add(current = [mark]);
+                }
             }
 
             var merged = rows.Select(Merge).OrderByDescending(r => r.Count).ThenBy(r => r[0].RowCross).ToList();
@@ -361,7 +433,7 @@ public static class DimensionPlanner
                 if (points.Count >= 2)
                 {
                     covered.AddRange(points.Select(p => p.At));
-                    yield return new LayoutGroup(Chain(points, horizontal), side, 1);
+                    yield return new LayoutGroup(Chain(points, horizontal, marks), side, 1);
                 }
                 else if (points.Count == 1)
                 {
@@ -373,13 +445,22 @@ public static class DimensionPlanner
             var rest = Merge(singles).Where(k => !IsCovered(k.At)).ToList();
             if (rest.Count > 0)
             {
-                yield return new LayoutGroup(Chain(rest, horizontal), side, 2);
+                yield return new LayoutGroup(Chain(rest, horizontal, marks), side, 2);
             }
         }
 
-        /// <summary>Cadeia a partir da borda: borda → 1º → 2º ...; padrões de passo constante compactados.</summary>
-        private List<DraftDimension> Chain(List<Mark> points, bool horizontal)
+        /// <summary>Cadeia a partir da borda: borda → 1º → 2º ...; padrões de passo constante compactados.
+        /// <paramref name="all"/> são todas as marcas do eixo, para dizer quem mais está em cada ponto.</summary>
+        private List<DraftDimension> Chain(List<Mark> points, bool horizontal, IReadOnlyList<Mark> all)
         {
+            // Os eixos de outros elementos na mesma coordenada: "mesmo eixo" que o ponto cotado.
+            IReadOnlyList<string> AlignedWith(Mark p) => all
+                .Where(k => k.IsAxis && Math.Abs(k.At - p.At) <= Tol)
+                .SelectMany(k => k.Sources)
+                .Where(s => !p.Sources.Contains(s))
+                .Distinct()
+                .ToList();
+
             var dims = new List<DraftDimension>();
             double datumAt = Along(partMin, horizontal);
             var datumPoint = Point(datumAt, Cross(partMin, horizontal), horizontal);
@@ -393,7 +474,7 @@ public static class DimensionPlanner
                 var p = points[i];
                 var pPoint = Point(p.At, p.ExtCross, horizontal);
                 dims.Add(Linear($"{axis}:{previousAt:F3}>{p.At:F3}", horizontal, previous, pPoint, p.At - previousAt,
-                    DimensionFactory.Format(p.At - previousAt), p.Sources));
+                    DimensionFactory.Format(p.At - previousAt), p.Sources) with { AlignedWith = AlignedWith(p) });
 
                 var run = PatternRun(points, i, horizontal);
                 if (run is { } r)
@@ -572,7 +653,7 @@ public static class DimensionPlanner
                 lines.Add(new CenterLine(new P2(partMin.U - gap * 0.5, mv), new P2(partMax.U + gap * 0.5, mv)));
 
             // Simetrias locais (um grupo espelhado fora do meio da peça).
-            foreach (var plane in relations.SymmetryPlanes.Where(p => !p.IsGlobal && p.Pairs.Count >= 2))
+            foreach (var plane in relations.SymmetryPlanes.Where(p => !p.IsGlobal && p.UnitPairs >= 2))
             {
                 bool vertical = plane.Normal == _axisU;
                 if (!vertical && plane.Normal != _axisV) continue;

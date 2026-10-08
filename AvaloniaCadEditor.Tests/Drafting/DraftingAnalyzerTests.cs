@@ -127,6 +127,20 @@ public class DraftingAnalyzerTests
     }
 
     /// <summary>O exemplo da conversa: bloco retangular com uma fileira de furos igualmente espaçados.</summary>
+    [Fact]
+    public void ChamadasDeComponente_ConfiguracoesDiferentesSaoSeparadas_ComOParametroQueMuda()
+    {
+        var placa = BooleanFeature.CreateDifference("placa", new BoxFeature(Point3D.Origin, 100, 20, 10) { Name = "corpo" },
+            new AvaloniaCadEditor.Tests.Analysis.ComponentTests.FixacaoFunda(20, 4).Instance("a"),
+            new AvaloniaCadEditor.Tests.Analysis.ComponentTests.FixacaoFunda(40, 4).Instance("b"),
+            new AvaloniaCadEditor.Tests.Analysis.ComponentTests.FixacaoFunda(60, 6).Instance("c"));
+        var sheet = Sheet(placa, StandardView.Top, new Point3D(100, 20, 10));
+
+        // O X muda dentro de cada configuração (é posição); a Profundidade é o que as distingue.
+        sheet.Dimensions.Where(d => d.Kind == DimensionKind.Callout).Select(d => d.Text)
+            .Should().BeEquivalentTo("2× FixacaoFunda · Profundidade 4", "FixacaoFunda · Profundidade 6");
+    }
+
     private static IFeature BlocoComFileira(params double[] xs)
     {
         var corpo = new BoxFeature(Point3D.Origin, 100, 16, 17) { Name = "corpo" };
