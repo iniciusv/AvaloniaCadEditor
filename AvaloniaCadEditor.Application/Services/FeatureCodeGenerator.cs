@@ -23,13 +23,102 @@ public static class FeatureCodeGenerator
 
     private static string F(double v) => Clean(v).ToString(CultureInfo.InvariantCulture);
 
+
+    /// <summary>Acima disto o contorno viraria um literal ilegível no script.</summary>
+    private const int MaxSectionVertices = 64;
+
     /// <summary>
-    /// Tubo de seção circular varrido por uma polilinha, a partir dos pontos JÁ EM COORDENADAS DO
-    /// MUNDO. O caminho vira uma variável à parte porque ele não é um sólido: só o
-    /// <see cref="SweepFeature"/> precisa de nome literal igual ao da variável, pela regra de
-    /// sólidos rastreáveis.
+    /// A seção de uma varredura já resolvida em texto de CadScript, mais o contorno (u, v)
+    /// recentrado — de que quem chama precisa para derivar o raio de canto padrão.
+    /// <see cref="Error"/> não-nulo é recusa, e a mensagem vai para a barra de status.
     /// </summary>
-    public static string GenerateSweepCode(IReadOnlyList<Point3D> worldPoints, double sectionRadius, double cornerRadius)
+    public sealed record SweepSectionCode(
+        string? Expression,
+        IReadOnlyList<(double U, double V)> Points,
+        string? Error)
+    {
+        public static SweepSectionCode Failed(string error) =>
+            new(null, Array.Empty<(double, double)>(), error);
+    }
+
+    /// <summary>
+    /// Seção circular de raio digitado — o fluxo antigo. Os pontos são só os quatro extremos: eles
+    /// não vão para o script (quem vai é <c>Circle(r)</c>), servem para a meia-largura em u.
+    /// </summary>
+    public static SweepSectionCode SweepSectionFromRadius(double radius) =>
+        new($"SweepSection.Circle({F(radius)})",
+            new[] { (radius, 0.0), (0.0, radius), (-radius, 0.0), (0.0, -radius) },
+            null);
+
+    /// <summary>
+    /// Seção vinda de uma região do esboço. A POSIÇÃO da região é descartada: o contorno é
+    /// recentrado no <see cref="IProfile.Center"/> dela, senão o tubo sairia deslocado do caminho
+    /// (o <c>SweepSection.GetPoints</c> devolve o (u, v) cru do perfil, e uma região desenhada em
+    /// (100, 50) daria uma seção a 100, 50 do eixo).
+    /// </summary>
+    public static SweepSectionCode SweepSectionFromProfile(IProfile profile)
+    {
+        if (profile is CompoundProfile compound)
+            return SweepSectionCode.Failed(
+                $"selecione uma região só como seção (há {compound.SubProfiles.Count} regiões marcadas).");
+
+        if (profile is FaceProfile or ParametricBoxFace or ParametricCylinderFace)
+            return SweepSectionCode.Failed("a seção tem que ser uma região do esboço, não uma face de sólido.");
+
+        // Um círculo vira Circle(r): mantém a discretização exata por ProfileSegments e um script legível.
+        if (profile is CircleProfile circle)
+            return SweepSectionFromRadius(circle.Radius);
+
+        var uv = RecenteredOutline(profile);
+
+        if (uv.Count < 3)
+            return SweepSectionCode.Failed("a seção não tem contorno fechado.");
+        if (uv.Count > MaxSectionVertices)
+            return SweepSectionCode.Failed($"a seção tem {uv.Count} vértices; simplifique o perfil.");
+
+        // Retângulo sem rotação sai como Rectangle(w, h), que é o que se lê melhor. GIRADO não pode:
+        // SweepSection.Rectangle descarta o ângulo em silêncio.
+        if (profile is RectangleProfile rect && Math.Abs(rect.RotationAngle) < 1e-9)
+            return new SweepSectionCode($"SweepSection.Rectangle({F(rect.Width)}, {F(rect.Height)})", uv, null);
+
+        // O tipo do array é explícito de propósito: `new[] { (-10, -5), ... }` inferiria
+        // (int, int)[], que NÃO converte para IEnumerable<(double u, double v)> — o script geraria
+        // e só falharia na execução da cena.
+        string pontos = string.Join(", ", uv.Select(p => $"({F(p.U)}, {F(p.V)})"));
+        return new SweepSectionCode($"SweepSection.Polygon(new (double, double)[] {{ {pontos} }})", uv, null);
+    }
+
+    /// <summary>O contorno do perfil em (u, v) do plano dele, com o centro na origem.</summary>
+    private static List<(double U, double V)> RecenteredOutline(IProfile profile)
+    {
+        var c = profile.Center;
+        var result = new List<(double, double)>();
+
+        // Via GetVertices + ToLocalSpace, e não pela lista local: CircleProfile e RectangleProfile
+        // não expõem vértices locais, e este caminho vale para qualquer perfil.
+        foreach (var world in profile.GetVertices())
+        {
+            var local = profile.Plane.ToLocalSpace(world);
+            result.Add((local.X - c.X, local.Y - c.Y));
+        }
+        return result;
+    }
+
+    /// <summary>
+    /// Varredura de uma seção qualquer por uma polilinha em coordenadas do MUNDO.
+    /// <para>
+    /// <paramref name="upReference"/> fixa a rotação da seção em torno do caminho e só é emitido
+    /// quando a seção veio de uma região: com a normal do plano do esboço, o v da seção aponta para
+    /// fora do plano e o perfil desenhado fica "de pé" sobre o caminho. Para o fluxo antigo (seção
+    /// circular digitada) ele é nulo e o código sai idêntico ao de antes.
+    /// </para>
+    /// </summary>
+    public static string GenerateSweepCode(
+        SweepSectionCode section,
+        IReadOnlyList<Point3D> worldPoints,
+        double cornerRadius,
+        bool closed = false,
+        Vector3D? upReference = null)
     {
         var sb = new StringBuilder();
         string id = Guid.NewGuid().ToString("N").Substring(0, 4);
@@ -42,10 +131,44 @@ public static class FeatureCodeGenerator
             return $"new Point3D({F(c.X)}, {F(c.Y)}, {F(c.Z)})";
         }));
 
-        sb.AppendLine($"var {pathVar} = SweepPath.FromPolyline(new[] {{ {pontos} }}, cornerRadius: {F(cornerRadius)});");
-        sb.AppendLine($"var {sweepVar} = new SweepFeature(SweepSection.Circle({F(sectionRadius)}), {pathVar}) {{ Name = \"{sweepVar}\" }};");
+        string fechado = closed ? ", closed: true" : "";
+
+        sb.AppendLine($"var {pathVar} = SweepPath.FromPolyline(new[] {{ {pontos} }}, cornerRadius: {F(cornerRadius)}{fechado});");
+        sb.AppendLine($"var {sweepVar} = new SweepFeature({section.Expression}, {pathVar}{UpArg(upReference)}) {{ Name = \"{sweepVar}\" }};");
         sb.AppendLine($"AddFeature({sweepVar});");
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Varredura por uma volta inteira — o que um círculo do esboço quer dizer como caminho.
+    /// O centro vem em coordenadas do MUNDO e o eixo é a normal do plano do círculo.
+    /// </summary>
+    public static string GenerateSweepCode(
+        SweepSectionCode section,
+        Point3D worldCenter,
+        Vector3D axis,
+        double radius,
+        Vector3D? upReference = null)
+    {
+        var sb = new StringBuilder();
+        string id = Guid.NewGuid().ToString("N").Substring(0, 4);
+        string pathVar = $"caminho_{id}";
+        string sweepVar = $"tubo_{id}";
+
+        var c = CleanP(worldCenter);
+        var a = CleanV(axis.Normalize());
+
+        sb.AppendLine($"var {pathVar} = SweepPath.FullCircle(center: new Point3D({F(c.X)}, {F(c.Y)}, {F(c.Z)}), axis: new Vector3D({F(a.X)}, {F(a.Y)}, {F(a.Z)}), radius: {F(radius)});");
+        sb.AppendLine($"var {sweepVar} = new SweepFeature({section.Expression}, {pathVar}{UpArg(upReference)}) {{ Name = \"{sweepVar}\" }};");
+        sb.AppendLine($"AddFeature({sweepVar});");
+        return sb.ToString();
+    }
+
+    private static string UpArg(Vector3D? upReference)
+    {
+        if (upReference is not { } up) return "";
+        var u = CleanV(up.Normalize());
+        return $", upReference: new Vector3D({F(u.X)}, {F(u.Y)}, {F(u.Z)})";
     }
 
     public static string GenerateExtrusionCode(IProfile profile, double height, Sketch? sketch)

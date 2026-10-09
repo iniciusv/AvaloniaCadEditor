@@ -170,7 +170,7 @@
                     <Separator Height="1" Background="#555" Margin="0,4" />
 
                     <Button Content="{x:Static res:Strings.ExtrudeTool}" Command="{Binding SelectExtrudeToolCommand}" Background="#007ACC" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
-                    <Button Content="{x:Static res:Strings.SweepTool}" Command="{Binding SelectSweepToolCommand}" Background="#007ACC" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                    <Button Content="{x:Static res:Strings.SweepTool}" Command="{Binding SelectSweepToolCommand}" ToolTip.Tip="{x:Static res:Strings.SweepToolTooltip}" Background="#007ACC" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     <Button Content="{x:Static res:Strings.CutTool}" Command="{Binding SelectBooleanCutCommand}" Background="#E67E22" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     <Button Content="{x:Static res:Strings.FuseTool}" Command="{Binding SelectBooleanFuseCommand}" Background="#27AE60" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     <Button Content="Fillet/Bevel" Background="#16A085" Foreground="White" FontWeight="Bold" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center">

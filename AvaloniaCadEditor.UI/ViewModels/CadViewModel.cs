@@ -235,7 +235,10 @@ public class CadViewModel : INotifyPropertyChanged
 			// BooleanTool preserva a seleção que já estava marcada: quem chama (SelectBooleanCutCommand/
 			// SelectBooleanFuseCommand) já passou os sólidos pré-selecionados como bases; limpar aqui
 			// desmarcaria justamente o que a ferramenta acabou de receber.
-			if (value != null && !(value is SelectTool) && !(value is MoveTool) && !(value is RotateTool) && !(value is FilletTool) && !(value is BooleanTool))
+			// SweepCommand está na lista pelo mesmo motivo: ele recebe a região e as arestas
+			// pré-selecionadas no construtor, e limpar aqui apagaria o destaque do que ele acabou
+			// de receber (e, numa recusa, o usuário não veria mais o que estava marcado).
+			if (value != null && !(value is SelectTool) && !(value is MoveTool) && !(value is RotateTool) && !(value is FilletTool) && !(value is BooleanTool) && !(value is SweepCommand))
 			{
 				ClearSelection();
 			}
@@ -615,6 +618,7 @@ public class CadViewModel : INotifyPropertyChanged
 			case SelectTool t: t.HitTolerance = HitTolerance; break;
 			case TrimCommand t: t.HitTolerance = HitTolerance; break;
 			case ExtendCommand t: t.HitTolerance = HitTolerance; break;
+			case SweepCommand t: t.HitTolerance = HitTolerance; break;
 		}
 	}
 
@@ -834,8 +838,18 @@ public class CadViewModel : INotifyPropertyChanged
 		});
 		SelectSweepToolCommand = new RelayCommand(() =>
 		{
+			// A região marcada é a seção; as arestas marcadas são o caminho. Irmão do
+			// PreSelectedSolids() que alimenta o BooleanTool.
+			var secao = _selectionService.SelectedObject as IProfile;
+			var arestas = Sketch.Entities.Where(e => e.IsSelected).ToList();
+
 			CurrentMode = EditorMode.SketchEdit;
-			CurrentTool = new SweepCommand();
+			var sweepCmd = new SweepCommand(secao, arestas, _geometryEngine);
+			CurrentTool = sweepCmd;
+
+			// Depois do setter, que é quem assina CodeGenerated.
+			sweepCmd.TryStartFromSelection(Sketch);
+			UpdateStatusText(CurrentSnappedPoint);
 		});
 		SelectBooleanCutCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Subtract, _selectionService, PreSelectedSolids()));
 		SelectBooleanFuseCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Union, _selectionService, PreSelectedSolids()));
@@ -1316,6 +1330,10 @@ public class CadViewModel : INotifyPropertyChanged
 	public void EnterSketchMode(AvaloniaCadEditor.Domain.Features.WorkPlaneFeature wpf)
 	{
 		CurrentMode = EditorMode.SketchEdit;
+		// No esboço o que existe para marcar são linhas e círculos, e o retângulo de seleção
+		// despacha pelo modo (ver BoxSelector): sem isso o arrasto só pegaria sólidos, e seria
+		// preciso apertar F duas vezes antes de poder juntar as arestas de um caminho.
+		CurrentSelectionMode = TargetSelectionMode.Edge;
 		SetActiveWorkPlane(wpf);
 		// By default, when entering sketch mode, grab the Select tool or Line tool
 		if (!(CurrentTool is DrawLineCommand) && !(CurrentTool is DrawCircleCommand) && !(CurrentTool is DrawPolygonCommand) && !(CurrentTool is TrimCommand) && !(CurrentTool is ExtendCommand) && !(CurrentTool is OffsetCommand))
@@ -1382,7 +1400,13 @@ public class CadViewModel : INotifyPropertyChanged
 			var hitEntity = _geometryEngine.HitTest(Sketch.Entities.Where(e => e.IsVisible), localRaw, HitTolerance);
 			if (hitEntity != null)
 			{
-				_selectionService.SelectById(Sketch, hitEntity.Id);
+				// Ctrl acumula arestas - e preserva uma região já marcada - em vez de trocar a
+				// seleção: é assim que se junta a seção e o caminho de uma varredura.
+				if (isCtrlPressed || IsCtrlPressed)
+					_selectionService.ToggleEntity(Sketch, hitEntity);
+				else
+					_selectionService.SelectById(Sketch, hitEntity.Id);
+
 				ModelTree.RebuildTree();
 				return true;
 			}
@@ -1394,6 +1418,11 @@ public class CadViewModel : INotifyPropertyChanged
 				if (isCtrlPressed || IsCtrlPressed)
 				{
 					System.Diagnostics.Debug.WriteLine($"[DEBUG] Ctrl Pressed. Current Selected: {_selectionService.SelectedObject?.GetType().Name}");
+
+					// Este bloco chama ClearSelection no meio do caminho, o que apagaria arestas já
+					// marcadas - e são elas o caminho de uma varredura cuja seção é esta região.
+					var manterArestas = Sketch.Entities.Where(e => e.IsSelected).ToList();
+
 					var currentProfile = _selectionService.SelectedObject as IProfile;
 					var subs = new List<IProfile>();
 
@@ -1440,6 +1469,8 @@ public class CadViewModel : INotifyPropertyChanged
 						foreach (var sub in newCompound.SubProfiles) sub.IsSelected = true;
 						_selectionService.SelectProfile(newCompound);
 					}
+
+					foreach (var e in manterArestas) e.IsSelected = true;
 				}
 				else
 				{
@@ -1456,6 +1487,14 @@ public class CadViewModel : INotifyPropertyChanged
 			{
 				System.Diagnostics.Debug.WriteLine($"[DEBUG] No profile hit at {localRaw}");
 			}
+		}
+
+		// O Sweep escolhe geometria com o ponto CRU (uma região ou uma aresta); só se o clique não
+		// for uma escolha ele segue adiante e vira ponto de caminho, aí com snap.
+		if (CurrentTool is SweepCommand sweepTool && sweepTool.TryPickAt(Sketch, localRaw))
+		{
+			UpdateStatusText(localSnapped);
+			return true;
 		}
 
 		if (CurrentTool is SelectTool)

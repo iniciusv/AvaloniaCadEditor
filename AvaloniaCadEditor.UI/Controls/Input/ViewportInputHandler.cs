@@ -109,7 +109,10 @@ public sealed class ViewportInputHandler
 
                 // Candidato a seleção por retângulo. O snapshot é tirado antes do clique abaixo,
                 // que pode limpar a seleção - com Ctrl o retângulo soma ao que já estava marcado.
-                if (viewModel.CurrentTool is Application.Commands.SelectTool)
+                // O Sweep também arrasta: é assim que se pega de uma vez as arestas de um caminho
+                // (ele colhe o que ficou marcado quando o Enter chega).
+                if (viewModel.CurrentTool is Application.Commands.SelectTool
+                    or Application.Commands.SweepCommand)
                 {
                     _boxStart = point.Position;
                     _boxActive = false;

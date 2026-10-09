@@ -85,6 +85,15 @@ public class CadScriptProtocol : IAiProtocol<CadScriptContext, CadScriptChanges>
         AddFeature(tubo_d2);
         """,
 
+        // Anel / argola: uma VOLTA INTEIRA como caminho (SweepPath.FullCircle). Não tem canto, logo
+        // não tem raio de canto, e a volta fecha sozinha — o sólido sai sem tampas. A seção pode ser
+        // qualquer contorno; aqui um retângulo, para um anel de seção quadrada.
+        """
+        var caminho_e1 = SweepPath.FullCircle(center: new Point3D(0, 0, 0), axis: new Vector3D(0, 0, 1), radius: 40);
+        var anel_e2 = new SweepFeature(SweepSection.Rectangle(6, 6), caminho_e1) { Name = "anel_e2" };
+        AddFeature(anel_e2);
+        """,
+
         // Prisma extrudado a partir de um polígono (perfil em L) no plano padrão
         """
         var prism_L_verts = new[] { new Point3D(0, 0, 0), new Point3D(20, 0, 0), new Point3D(20, 10, 0), new Point3D(10, 10, 0), new Point3D(10, 20, 0), new Point3D(0, 20, 0) };

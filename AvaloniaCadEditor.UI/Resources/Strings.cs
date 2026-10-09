@@ -36,6 +36,7 @@ public static class Strings
     public static string DeduceSolidTooltip => ResourceManager.GetString("DeduceSolidTooltip") ?? "Deduces CSG geometry from the selected STL mesh";
     public static string ExtrudeTool => ResourceManager.GetString("ExtrudeTool") ?? "Extrude (P)";
     public static string SweepTool => ResourceManager.GetString("SweepTool") ?? "Sweep (S)";
+    public static string SweepToolTooltip => ResourceManager.GetString("SweepToolTooltip") ?? "Sweeps a section along a path, both from geometry already drawn: click inside a region to use it as the section, then click or drag over the continuous edges that form the path, and press Enter. A circle picked by its outline counts as a full-turn path (ring). Without a region, the section is a circle of the typed radius.";
     public static string CutTool => ResourceManager.GetString("CutTool") ?? "Cut (-)";
     public static string FuseTool => ResourceManager.GetString("FuseTool") ?? "Fuse (+)";
     public static string WorkPlaneTool => ResourceManager.GetString("WorkPlaneTool") ?? "WorkPlane (W)";

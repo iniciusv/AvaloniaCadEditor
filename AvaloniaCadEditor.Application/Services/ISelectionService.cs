@@ -41,4 +41,21 @@ public interface ISelectionService
     /// entidade, senão fica vazia. Dispara SelectionChanged uma única vez.
     /// </summary>
     void SelectMany(Sketch sketch, IEnumerable<IFeature> features, IEnumerable<Entity> entities);
+
+    /// <summary>
+    /// Alterna a marcação de uma ENTIDADE sem desmarcar o resto — o Ctrl+clique numa linha, para
+    /// acumular as arestas de um caminho. Não mexe num PERFIL marcado: seção e caminho de uma
+    /// varredura são escolhas independentes (ver <c>SweepCommand</c>), e um apaga o outro se este
+    /// método limpar. A seleção "primária" continua sendo o perfil, se houver; senão passa a ser
+    /// (ou deixa de ser) a entidade.
+    /// </summary>
+    void ToggleEntity(Sketch sketch, Entity entity);
+
+    /// <summary>
+    /// Como o <see cref="SelectMany(Sketch, IEnumerable{IFeature}, IEnumerable{Entity})"/>, mais um
+    /// PERFIL que fica marcado junto. É o que permite "esta região E estas arestas" ao mesmo tempo:
+    /// a região é a seção de uma varredura e as arestas são o caminho. Quando vem um perfil, ele é
+    /// a seleção primária, porque é isso que o resto do app lê (<c>SelectedObject as IProfile</c>).
+    /// </summary>
+    void SelectMany(Sketch sketch, IEnumerable<IFeature> features, IEnumerable<Entity> entities, IProfile? profile);
 }

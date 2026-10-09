@@ -45,9 +45,12 @@ public static class BoxSelector
         switch (vm.CurrentSelectionMode)
         {
             case CadViewModel.TargetSelectionMode.Edge:
+                // A região marcada antes sobrevive ao retângulo: ela é a seção de uma varredura e
+                // as arestas são o caminho (ver SweepCommand), então uma não apaga a outra.
                 vm.SelectionService.SelectMany(vm.Sketch,
                     Array.Empty<IFeature>(),
-                    Union(additiveBase?.Entities, PickEntities(vm, projector, rect, window)));
+                    Union(additiveBase?.Entities, PickEntities(vm, projector, rect, window)),
+                    additiveBase?.Profile);
                 break;
 
             case CadViewModel.TargetSelectionMode.Face:

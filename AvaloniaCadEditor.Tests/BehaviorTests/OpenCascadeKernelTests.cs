@@ -726,6 +726,78 @@ public class OpenCascadeKernelTests
     }
 
     [Fact]
+    public void CaminhoDeVoltaInteira_FullCircle_FechaUmAnelSemTampa()
+    {
+        // Uma volta inteira é UM arco de 360°: não há canto, logo não há raio de canto, e o revolve
+        // de 2π fecha o sólido sozinho. A área é a asserção que discrimina: um anel de verdade é só
+        // lateral, e se a volta não tivesse fechado apareceriam duas tampas.
+        const double raio = 40, lado = 6;
+        var caminho = SweepPath.FullCircle(Point3D.Origin, Vector3D.UnitZ, raio);
+
+        caminho.Error.Should().BeNull();
+        caminho.IsClosed.Should().BeTrue();
+        caminho.Segments.Should().ContainSingle(because: "uma volta inteira é um arco só");
+
+        var anel = new SweepFeature(SweepSection.Rectangle(lado, lado), caminho);
+        var mesh = new OpenCascadeGeometryKernel().BuildFeatureMesh(anel);
+
+        // Pappus: o centroide da seção percorre a circunferência do próprio raio do caminho.
+        double comprimento = 2 * Math.PI * raio;
+        double volume = lado * lado * comprimento;
+        double area = 4 * lado * comprimento;
+
+        MeshVolumeCalculator.ComputeVolume(mesh).Should().BeApproximately(volume, volume * 0.01);
+        MeshAreaCalculator.ComputeArea(mesh)
+            .Should().BeApproximately(area, area * 0.01, "um anel é só lateral: nenhuma tampa");
+    }
+
+    [Fact]
+    public void FullCircle_ComecaNaCircunferencia_ComATangentePerpendicularAoEixo()
+    {
+        var caminho = SweepPath.FullCircle(new Point3D(10, 20, 30), Vector3D.UnitZ, 40);
+
+        caminho.Error.Should().BeNull();
+        caminho.Start.DistanceTo(new Point3D(10, 20, 30)).Should().BeApproximately(40, 1e-9,
+            "o ponto de partida fica na circunferência");
+        caminho.StartTangent.DotProduct(Vector3D.UnitZ).Should().BeApproximately(0, 1e-9,
+            "o caminho corre perpendicular ao eixo");
+        caminho.StartTangent.Length.Should().BeApproximately(1, 1e-9);
+        caminho.Segments[0].IsArc.Should().BeTrue();
+        caminho.Segments[0].ArcAngle.Should().BeApproximately(2 * Math.PI, 1e-9);
+    }
+
+    [Theory]
+    [InlineData(0.0, 0.0, 0.0, 1.0)]        // raio zero
+    [InlineData(-5.0, 0.0, 0.0, 1.0)]       // raio negativo
+    [InlineData(40.0, 0.0, 0.0, 0.0)]       // eixo nulo
+    public void FullCircle_Degenerado_ExplicaEDevolveMalhaVazia(double raio, double ax, double ay, double az)
+    {
+        // Geometria que falha devolve malha vazia e registra o motivo - nunca exceção.
+        var caminho = SweepPath.FullCircle(Point3D.Origin, new Vector3D(ax, ay, az), raio);
+
+        caminho.Error.Should().NotBeNull();
+        caminho.Segments.Should().BeEmpty();
+        new OpenCascadeGeometryKernel()
+            .BuildFeatureMesh(new SweepFeature(SweepSection.Circle(4), caminho))
+            .VertexCount.Should().Be(0);
+    }
+
+    [Fact]
+    public void FullCircle_SecaoMaiorQueOAnel_ReportaProblema()
+    {
+        // A seção cruzaria o eixo: um ponto do lado de dentro acabaria em raio negativo e o sólido
+        // dobraria para dentro de si mesmo. É o raio mínimo de curvatura de uma dobra real.
+        var caminho = SweepPath.FullCircle(Point3D.Origin, Vector3D.UnitZ, radius: 20);
+        caminho.Error.Should().BeNull("o caminho em si é válido; quem não cabe é a seção");
+
+        var anel = new SweepFeature(SweepSection.Rectangle(100, 6), caminho);
+        var kernel = new OpenCascadeGeometryKernel();
+
+        kernel.BuildFeatureMesh(anel).VertexCount.Should().Be(0);
+        kernel.BuildProblems.Should().ContainKey(anel.Id);
+    }
+
+    [Fact]
     public void CaminhoFechado_PontoRepetidoNoFim_EhAMesmaCoisa()
     {
         // Repetir o primeiro ponto no fim é a grafia natural de um contorno fechado; a aresta de

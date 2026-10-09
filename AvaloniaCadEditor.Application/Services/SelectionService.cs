@@ -14,8 +14,16 @@ public class SelectionService : ISelectionService
 
     public event Action? SelectionChanged;
 
+    /// <summary>
+    /// O perfil marcado, quando há um. Existe à parte de <see cref="SelectedObject"/> porque um
+    /// <c>CompoundProfile</c> não está em <c>Sketch.Profiles</c> e não dá para reencontrar por
+    /// busca — e é ele que o <see cref="ToggleEntity"/> precisa preservar ao marcar arestas.
+    /// </summary>
+    private IProfile? _profile;
+
     public void SelectEntity(Entity? entity)
     {
+        _profile = null;
         CurrentSelectionType = entity != null ? SelectionType.Entity : SelectionType.None;
         SelectedId = entity?.Id;
         SelectedObject = entity;
@@ -25,6 +33,7 @@ public class SelectionService : ISelectionService
 
     public void SelectProfile(IProfile? profile)
     {
+        _profile = profile;
         CurrentSelectionType = profile != null ? SelectionType.Profile : SelectionType.None;
         SelectedId = profile?.Id;
         SelectedObject = profile;
@@ -34,6 +43,7 @@ public class SelectionService : ISelectionService
 
     public void SelectFeature(IFeature? feature)
     {
+        _profile = null;
         CurrentSelectionType = feature != null ? SelectionType.Feature : SelectionType.None;
         SelectedId = feature?.Id;
         SelectedObject = feature;
@@ -126,7 +136,45 @@ public class SelectionService : ISelectionService
         SelectionChanged?.Invoke();
     }
 
-    public void SelectMany(Sketch sketch, IEnumerable<IFeature> features, IEnumerable<Entity> entities)
+    /// <summary>
+    /// Alterna a marcação de uma entidade preservando TUDO o mais, inclusive um perfil marcado.
+    /// É o Ctrl+clique numa linha: acumular arestas sem perder a região já escolhida.
+    /// </summary>
+    public void ToggleEntity(Sketch sketch, Entity entity)
+    {
+        if (entity == null) return;
+
+        entity.IsSelected = !entity.IsSelected;
+
+        if (_profile != null)
+        {
+            // A região continua mandando: ela é a seção, as arestas são só o caminho.
+            CurrentSelectionType = SelectionType.Profile;
+            SelectedId = _profile.Id;
+            SelectedObject = _profile;
+        }
+        else if (entity.IsSelected)
+        {
+            CurrentSelectionType = SelectionType.Entity;
+            SelectedId = entity.Id;
+            SelectedObject = entity;
+        }
+        else
+        {
+            // Desmarcou a primária: outra entidade ainda marcada assume, senão fica vazio.
+            var stillSelected = sketch.Entities.FirstOrDefault(e => e.IsSelected);
+            CurrentSelectionType = stillSelected != null ? SelectionType.Entity : SelectionType.None;
+            SelectedId = stillSelected?.Id;
+            SelectedObject = stillSelected;
+        }
+
+        SelectionChanged?.Invoke();
+    }
+
+    public void SelectMany(Sketch sketch, IEnumerable<IFeature> features, IEnumerable<Entity> entities) =>
+        SelectMany(sketch, features, entities, profile: null);
+
+    public void SelectMany(Sketch sketch, IEnumerable<IFeature> features, IEnumerable<Entity> entities, IProfile? profile)
     {
         UnselectAllInSketch(sketch);
 
@@ -134,6 +182,22 @@ public class SelectionService : ISelectionService
         var entityList = entities.ToList();
         foreach (var f in featureList) f.IsSelected = true;
         foreach (var e in entityList) e.IsSelected = true;
+
+        _profile = profile;
+        if (profile != null)
+        {
+            profile.IsSelected = true;
+            // Um composto não está em Sketch.Profiles: marcar os sub-perfis é o que faz o
+            // ProfileFaceRenderPass desenhá-los.
+            if (profile is CompoundProfile compound)
+                foreach (var sub in compound.SubProfiles) sub.IsSelected = true;
+
+            CurrentSelectionType = SelectionType.Profile;
+            SelectedId = profile.Id;
+            SelectedObject = profile;
+            SelectionChanged?.Invoke();
+            return;
+        }
 
         if (featureList.Count > 0)
         {
@@ -164,6 +228,7 @@ public class SelectionService : ISelectionService
             UnselectAllInSketch(sketch);
         }
 
+        _profile = null;
         CurrentSelectionType = SelectionType.None;
         SelectedId = null;
         SelectedObject = null;

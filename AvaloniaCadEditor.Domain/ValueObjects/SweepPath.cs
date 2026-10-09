@@ -171,6 +171,97 @@ public sealed class SweepPath
     }
 
     /// <summary>
+    /// Uma volta inteira: um arco só de 360° em torno de <paramref name="axis"/>. É o que um CÍRCULO
+    /// do esboço quer dizer como caminho (anel, toro).
+    /// <para>
+    /// Não é um laço de polilinha: não há canto nenhum, logo não há raio de canto, e o
+    /// <c>Revolve</c> de 2π fecha o sólido sozinho — sem tampas e sem emenda. O ponto de partida é
+    /// um lugar qualquer da circunferência, como num caminho fechado de
+    /// <see cref="FromPolyline"/>.
+    /// </para>
+    /// </summary>
+    public static SweepPath FullCircle(Point3D center, Vector3D axis, double radius)
+    {
+        var fallback = new[] { center };
+
+        if (radius <= Tolerance)
+            return Invalid(fallback, 0, $"O raio do caminho circular precisa ser positivo (recebido {Fmt(radius)}).");
+
+        // Normalize() devolve o vetor nulo abaixo de 1e-6: confere DEPOIS, como em Arc.
+        var a = axis.Normalize();
+        if (a.Length < Tolerance) return Invalid(fallback, 0, "O eixo do caminho circular não pode ser nulo.");
+
+        // Uma perpendicular qualquer ao eixo. O XAxis do WorkPlane do eixo é a escolha que o resto
+        // do app já usa para isso, e é determinística.
+        var start = center + new WorkPlane(a, center).XAxis * radius;
+
+        var path = new SweepPath(
+            new[] { start }, 0, start, isClosed: true,
+            new[] { SweepSegment.Arc(center, a, 2.0 * Math.PI) }, null);
+
+        // Defesa: uma volta inteira fecha por construção (a torção sai na ordem de 1e-14°), mas a
+        // conferência é a mesma que a geometria vai usar e não custa nada.
+        return path.ClosureError() is { } erro ? Invalid(fallback, 0, erro) : path;
+    }
+
+    /// <summary>
+    /// O maior raio de canto que ainda CABE nesta polilinha, ou infinito quando não há canto nenhum
+    /// para limitar.
+    /// <para>
+    /// Todo recuo é proporcional ao raio (<c>R·tan(θ/2)</c>), e a restrição é que dois cantos
+    /// vizinhos não comam a mesma reta duas vezes. Então o limite de cada trecho é
+    /// <c>comprimento / (tan(θᵃ/2) + tan(θᵇ/2))</c> e o do caminho é o menor deles. Serve para
+    /// ajustar um raio pedido grande demais em vez de só recusar o caminho.
+    /// </para>
+    /// </summary>
+    public static double MaxCornerRadius(IEnumerable<Point3D> points, bool closed = false)
+    {
+        var pts = Deduplicate(points, closed);
+        int count = pts.Count;
+        if (count < (closed ? 3 : 2)) return 0;
+
+        int edges = closed ? count : count - 1;
+
+        var dirs = new Vector3D[edges];
+        var lens = new double[edges];
+        for (int i = 0; i < edges; i++)
+        {
+            var d = pts[(i + 1) % count] - pts[i];
+            lens[i] = d.Length;
+            dirs[i] = d.Normalize();
+        }
+
+        // tan(θ/2) de cada vértice; zero nas pontas de um caminho aberto e nos pontos alinhados.
+        var tanHalf = new double[count];
+        int primeiroCanto = closed ? 0 : 1;
+        int ultimoCanto = closed ? count - 1 : count - 2;
+
+        for (int v = primeiroCanto; v <= ultimoCanto; v++)
+        {
+            var entrada = dirs[(v - 1 + edges) % edges];
+            var saida = dirs[v % edges];
+
+            double cos = Math.Clamp(entrada.DotProduct(saida), -1.0, 1.0);
+            double theta = Math.Acos(cos);
+
+            if (theta < 1e-6) continue;                      // alinhado: não vira canto
+            if (theta > Math.PI - 1e-6) return 0;            // reversão: não se arredonda
+
+            tanHalf[v] = Math.Tan(theta / 2.0);
+        }
+
+        double limite = double.PositiveInfinity;
+        for (int i = 0; i < edges; i++)
+        {
+            double soma = tanHalf[i] + tanHalf[(i + 1) % count];
+            if (soma <= 0) continue;                         // trecho entre dois pontos sem canto
+            limite = Math.Min(limite, lens[i] / soma);
+        }
+
+        return limite;
+    }
+
+    /// <summary>
     /// Polilinha com os cantos arredondados por <paramref name="cornerRadius"/>. Funciona em 3D:
     /// cada arco vive no plano dos dois segmentos que ele liga. Cantos alinhados não viram arco (as
     /// retas seguem como uma só).
