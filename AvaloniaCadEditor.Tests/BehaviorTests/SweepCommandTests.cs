@@ -486,6 +486,27 @@ public class SweepCommandTests
     }
 
     [Fact]
+    public void RaioDigitadoComArestasEscolhidas_EhORaioDoCantoEConclui()
+    {
+        // Antes isto era um no-op silencioso: com região escolhida (então o número não é raio de
+        // seção) e arestas escolhidas mas nada ainda preparado, o valor digitado caía no vazio.
+        var a = Linha(0, 0, 100, 0);
+        var b = Linha(100, 0, 100, 80);
+        var (cmd, codigo, sketch) = Acionada(a, b);
+        var regiao = new RectangleProfile(new Point3D(200, 200, 0), width: 20, height: 10);
+        sketch.SetProfiles(new IProfile[] { regiao });
+
+        cmd.TryPickAt(sketch, new Point3D(200, 200, 0));
+        cmd.TryPickAt(sketch, new Point3D(50, 0, 0));
+        cmd.TryPickAt(sketch, new Point3D(100, 40, 0));
+
+        cmd.OnValueEntered(sketch, 15);
+
+        codigo().Should().NotBeNull("o número digitado com caminho em mãos é o raio do canto, e conclui");
+        codigo().Should().Contain("cornerRadius: 15");
+    }
+
+    [Fact]
     public void CliqueDeNovoNaMesmaAresta_TiraDoCaminho()
     {
         var a = Linha(0, 0, 100, 0);

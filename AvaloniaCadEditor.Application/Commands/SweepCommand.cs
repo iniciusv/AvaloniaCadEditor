@@ -441,6 +441,22 @@ public class SweepCommand : ICommandTool
         if (key == CadKey.Escape) { Cancel(); return; }
         if (key != CadKey.Enter) return;
 
+        // Sem caminho e sem recusa anterior, o que falta é escolher. Uma recusa que já existe é
+        // mais específica do que esta e não pode ser apagada por cima.
+        if (!TryConclude(sketch) && Error == null)
+            Fail("escolha as arestas do caminho (clique ou arraste sobre linhas já desenhadas).");
+    }
+
+    /// <summary>
+    /// Conclui com o caminho que houver: as arestas escolhidas agora, ou o que a pré-seleção já
+    /// preparou. Devolve false quando não há caminho nenhum (ou quando ele foi recusado).
+    /// <para>
+    /// Ponto único de conclusão — o Enter e o raio digitado passam os dois por aqui, senão um dos
+    /// dois acabaria enxergando menos caminho que o outro.
+    /// </para>
+    /// </summary>
+    private bool TryConclude(Sketch sketch)
+    {
         // As arestas podem ter vindo do clique (_edges) ou do retângulo de seleção, que marca
         // IsSelected sem passar pela ferramenta. Colher as duas é o que faz o arraste funcionar.
         var arestas = ColherArestas(sketch);
@@ -450,18 +466,15 @@ public class SweepCommand : ICommandTool
                 ? FeatureCodeGenerator.SweepSectionFromProfile(Section)
                 : FeatureCodeGenerator.SweepSectionFromRadius(SectionRadius);
 
-            ResolveFromEntities(sketch, arestas);
-            return;
+            return ResolveFromEntities(sketch, arestas);
         }
 
-        // Caminho já preparado pela pré-seleção: o Enter é o que conclui.
-        if (_chain != null || _circlePath != null) Resolve(sketch);
-
-        // Sem caminho e sem recusa anterior, o que falta é escolher. Uma recusa que já existe é
-        // mais específica do que esta e não pode ser apagada por cima.
-        else if (Error == null)
-            Fail("escolha as arestas do caminho (clique ou arraste sobre linhas já desenhadas).");
+        return (_chain != null || _circlePath != null) && Resolve(sketch);
     }
+
+    /// <summary>Há caminho (ou candidato a caminho) em mãos? É o que decide o que um número digitado quer dizer.</summary>
+    private bool HasPathCandidate(Sketch sketch) =>
+        _state == State.Blocked || _chain != null || _circlePath != null || ColherArestas(sketch).Count > 0;
 
     private List<Entity> ColherArestas(Sketch sketch)
     {
@@ -483,10 +496,12 @@ public class SweepCommand : ICommandTool
     {
         if (value <= 0) return;
 
-        if (_state == State.Blocked || _chain != null || _circlePath != null)
+        // Com caminho em mãos o número é o raio dos CANTOS e refaz a conta na hora. Antes disso é o
+        // raio da SEÇÃO circular - e com uma região escolhida não quer dizer nada.
+        if (HasPathCandidate(sketch))
         {
             _cornerRadius = value;
-            Resolve(sketch);
+            TryConclude(sketch);
             return;
         }
 
