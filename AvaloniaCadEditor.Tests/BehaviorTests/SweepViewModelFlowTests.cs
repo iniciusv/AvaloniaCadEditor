@@ -144,6 +144,47 @@ public class SweepViewModelFlowTests
     }
 
     [Fact]
+    public void ConcluirRemoveOCaminhoEOContornoDaSecao()
+    {
+        // Mesmo comportamento da extrusão: o desenho 2D era o meio de chegar ao sólido, e deixá-lo
+        // riscado por cima dele atrapalha a vista e o próximo clique.
+        var vm = NovoVm();
+        DesenharCena(vm);
+        vm.Sketch.Entities.Should().HaveCount(6, "quatro linhas da seção e duas do caminho");
+
+        vm.SelectSweepToolCommand.Execute(null);
+        vm.OnPointerPressed(new Point3D(210, 210, 0), false);   // região = seção
+        vm.OnPointerPressed(new Point3D(50, 0, 0), false);      // caminho
+        vm.OnPointerPressed(new Point3D(100, 40, 0), false);
+        vm.OnKeyDown("ENTER", false);
+
+        vm.Sketch.Entities.Should().BeEmpty("as linhas do caminho e do contorno da seção foram consumidas");
+    }
+
+    [Fact]
+    public void RecusaNaoRemoveNada()
+    {
+        // O desenho só é consumido quando o sólido sai de verdade.
+        var vm = NovoVm();
+        DesenharCena(vm);
+
+        // Um "T" no caminho: ramifica, logo é recusado.
+        vm.Sketch.AddEntity(new LineEntity(new Point3D(50, 0, 0), new Point3D(50, 50, 0)) { Plane = WorkPlane.XY });
+        vm.RefreshProfiles();
+        int antes = vm.Sketch.Entities.Count;
+
+        vm.SelectSweepToolCommand.Execute(null);
+        vm.OnPointerPressed(new Point3D(210, 210, 0), false);
+        vm.OnPointerPressed(new Point3D(25, 0, 0), false);
+        vm.OnPointerPressed(new Point3D(75, 0, 0), false);
+        vm.OnPointerPressed(new Point3D(50, 25, 0), false);
+        vm.OnKeyDown("ENTER", false);
+
+        ((SweepCommand)vm.CurrentTool!).Error.Should().NotBeNull();
+        vm.Sketch.Entities.Should().HaveCount(antes, "nada foi consumido porque nada foi criado");
+    }
+
+    [Fact]
     public void CliqueNaRegiao_NaoPegaUmaLinhaDaBordaPorEngano()
     {
         // O hit-test de entidades roda ANTES do de regiões: clicar perto da borda poderia pegar a

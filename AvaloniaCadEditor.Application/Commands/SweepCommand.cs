@@ -101,6 +101,9 @@ public class SweepCommand : ICommandTool
     private (Point3D Center, Vector3D Axis, double Radius)? _circlePath;
     private WorkPlane? _pathPlane;
 
+    /// <summary>As entidades que viraram o caminho — é o que se remove do esboço ao concluir.</summary>
+    private List<Entity> _stagedPath = new();
+
     public SweepCommand(
         IProfile? preSelectedSection = null,
         IEnumerable<Entity>? preSelectedPath = null,
@@ -216,8 +219,8 @@ public class SweepCommand : ICommandTool
     /// ferramenta ou do retângulo de seleção — e emite. É o ponto único onde "arestas" vira
     /// "caminho", para os três jeitos de escolher darem exatamente o mesmo resultado.
     /// </summary>
-    private bool ResolveFromEntities(IReadOnlyList<Entity> entities) =>
-        StageFromEntities(entities) && Resolve();
+    private bool ResolveFromEntities(Sketch sketch, IReadOnlyList<Entity> entities) =>
+        StageFromEntities(entities) && Resolve(sketch);
 
     /// <summary>
     /// Interpreta as entidades como caminho e guarda o resultado, sem emitir. Devolve false (e
@@ -230,6 +233,7 @@ public class SweepCommand : ICommandTool
         _chain = null;
         _circlePath = null;
         _pathPlane = null;
+        _stagedPath = new();
 
         var circles = entities.OfType<CircleEntity>().ToList();
         var lines = entities.OfType<LineEntity>().ToList();
@@ -264,6 +268,7 @@ public class SweepCommand : ICommandTool
         _chain = chain;
         _circlePath = circlePath;
         _pathPlane = pathPlane;
+        _stagedPath = entities.ToList();
 
         // Sem região escolhida, a seção é a circular digitada - o raio padrão vale.
         _sectionCode ??= FeatureCodeGenerator.SweepSectionFromRadius(SectionRadius);
@@ -274,7 +279,7 @@ public class SweepCommand : ICommandTool
     }
 
     /// <summary>Monta o caminho, confere, e emite. Em caso de recusa vai para <see cref="State.Blocked"/>.</summary>
-    private bool Resolve()
+    private bool Resolve(Sketch sketch)
     {
         var plane = _pathPlane ?? WorkPlane.XY;
         // upReference só quando a seção veio de uma região: no fluxo antigo a seção é circular e a
@@ -308,9 +313,38 @@ public class SweepCommand : ICommandTool
 
         Error = null;
         _state = State.Picking;
+
+        // Antes de emitir: o reexecutar da cena refaz as regiões a partir do que sobrou no esboço,
+        // e o que foi consumido não pode reaparecer.
+        ConsumeSketchGeometry(sketch);
+
         CodeGenerated?.Invoke(this, code);
         Cancel();
         return true;
+    }
+
+    /// <summary>
+    /// Remove do esboço o desenho que a varredura consumiu: as arestas do caminho e o contorno da
+    /// região usada como seção. Mesmo comportamento da extrusão (ver
+    /// <c>FeatureCodeGenerator.GenerateExtrusionCode</c>) — o desenho 2D era o meio de chegar ao
+    /// sólido, e deixá-lo riscado por cima dele só atrapalha a vista e o próximo clique.
+    /// <para>
+    /// Mexe só na sessão: linhas e círculos de esboço não são código de cena, então isto não
+    /// reescreve o script. O preço é que varrer uma segunda seção pelo mesmo caminho exige
+    /// redesenhá-lo — o mesmo preço que a extrusão já cobra.
+    /// </para>
+    /// </summary>
+    private void ConsumeSketchGeometry(Sketch sketch)
+    {
+        var ids = new List<Guid>();
+        foreach (var e in _stagedPath) ids.Add(e.Id);
+        if (Section != null) ids.AddRange(Section.SourceEntityIds);
+
+        foreach (var id in ids.Distinct())
+        {
+            var entity = sketch.Entities.FirstOrDefault(e => e.Id == id);
+            if (entity != null) sketch.RemoveEntity(entity);
+        }
     }
 
     /// <summary>
@@ -384,6 +418,7 @@ public class SweepCommand : ICommandTool
         _chain = null;
         _circlePath = null;
         _pathPlane = null;
+        _stagedPath = new();
 
         // Desfaz o destaque das arestas que a ferramenta marcou como feedback.
         foreach (var e in _edges) e.IsSelected = false;
@@ -398,6 +433,7 @@ public class SweepCommand : ICommandTool
         _chain = null;
         _circlePath = null;
         _pathPlane = null;
+        _stagedPath = new();
     }
 
     public void OnKeyDown(Sketch sketch, CadKey key)
@@ -414,12 +450,12 @@ public class SweepCommand : ICommandTool
                 ? FeatureCodeGenerator.SweepSectionFromProfile(Section)
                 : FeatureCodeGenerator.SweepSectionFromRadius(SectionRadius);
 
-            ResolveFromEntities(arestas);
+            ResolveFromEntities(sketch, arestas);
             return;
         }
 
         // Caminho já preparado pela pré-seleção: o Enter é o que conclui.
-        if (_chain != null || _circlePath != null) Resolve();
+        if (_chain != null || _circlePath != null) Resolve(sketch);
 
         // Sem caminho e sem recusa anterior, o que falta é escolher. Uma recusa que já existe é
         // mais específica do que esta e não pode ser apagada por cima.
@@ -450,7 +486,7 @@ public class SweepCommand : ICommandTool
         if (_state == State.Blocked || _chain != null || _circlePath != null)
         {
             _cornerRadius = value;
-            Resolve();
+            Resolve(sketch);
             return;
         }
 
