@@ -117,7 +117,8 @@ var zTopoSuporteMotor = zSuporteMotor + suporteMotorNema17Peca.Espessura;
 var cilindroEspacadorMotor = Add(cilindroEspacadorMotorPeca with { DiametroExterno = 5.9 }, at: Placement.At(furoMotor1Mundo.X - deslocamentoEspacadorMotor.X, furoMotor1Mundo.Y - deslocamentoEspacadorMotor.Y, zTopoSuporteMotor, rotationZDegrees: rotacaoEspacadorMotorZ), name: "cilindro_espacador_motor", color: "#00CC6A");
 // --- Bloco de pressao da correia (belt), fixado na lateral do bloco_fixacao_mgn9 ---
 // Acompanha o lado do motor: a correia vem da polia e o rebaixo inferior do bloco existe
-// justamente para passar livre do bloco_conexao_motor_2020.
+// justamente para passar livre do bloco_conexao_motor_2020. A peça já traz o rebaixo cilíndrico
+// do topo (furo_vertical) para alojar a cabeça dos parafusos M3 dos dois furos verticais.
 var blocoFixacaoBeltPeca = new BlocoFixacaoBelt();
 var blocoFixacaoBelt = Add(blocoFixacaoBeltPeca, at: Placement.At(0, 0, alturaTopoCarrinhosY + carrinhoXPeca.Altura, rotationZDegrees: rotacaoMotorZ), name: "bloco_fixacao_belt", color: "#00CC6A");
 // --- Chapa de 20 x 10 mm (arestas chanfradas) assentada no topo do bloco_fixacao_belt ---

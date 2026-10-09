@@ -3,8 +3,14 @@
 /// Corpo: 20,5 (X) x 16,5 (Y) x 17 (Z) por metade; base alinhada à base do bloco_fixacao_mgn9.
 /// - Vão superior por onde a correia passa (altura 35 a 43 no mundo).
 /// - 2 furos coaxiais em Y (X = -10, Z = 5) alinhados à fixação lateral esquerda do bloco.
-/// - Furo de pressão da correia (X = -16,11533, Z = 13) + alojamento hexagonal M3 na traseira
-///   com saída vertical (+Z), igual aos alojamentos laterais do bloco_fixacao_mgn9.
+/// - Furo de pressão da correia (X = -16,11533, Z = 13) + alojamento hexagonal M3
+///   (deslocado 9 mm no -Y em relação à face traseira), igual aos alojamentos laterais
+///   do bloco_fixacao_mgn9.
+/// - Dois furos verticais passantes de 3,2 mm, cada um com:
+///   * rebaixo CILÍNDRICO no TOPO (furo_vertical, Ø6 x 8 mm a partir de Z = 9); e
+///   * rebaixo CÔNICO (escareado de 90°) na PORÇÃO INFERIOR do furo, voltado para cima:
+///     o lado largo do cone fica na face inferior e estreita subindo até o diâmetro do furo
+///     passante, para alojar a cabeça do parafuso M3 inserido por baixo.
 /// - Rebaixo na parte inferior traseira (sobreposição de 3 mm + margem de 2 mm) para evitar conflito com o bloco_conexao_motor_2020.
 /// - Rebaixo na parte inferior frontal (vazio aberto na face Y = BaseCorpoY), na PONTA do corpo:
 ///   começa na face de extremidade X = BaseCorpoX e avança LarguraRebaixoFrontal para dentro,
@@ -18,7 +24,7 @@
 /// </summary>
 public sealed record BlocoFixacaoBelt(
     double LarguraCorpoX = 20.5,
-    double ComprimentoCorpoY = 16.5,
+    double ComprimentoCorpoY = 14.5,
     double AlturaCorpo = 17.0,
     double AlturaRebaixoInferior = 3.0,
     double ComprimentoRebaixoInferior = 10.0,
@@ -40,6 +46,7 @@ public sealed record BlocoFixacaoBelt(
     double FuroVerticalZ = 9.0,
     double AlturaFuroVertical = 8.0,
     double RaioFuroVertical3_2 = 1.6,
+    double RaioEscareadoFuroVertical = 3.0,
     double FuroLateralX = -10.0,
     double FuroLateralZ = 5.0,
     double RaioFuroRebaixo = 3.6,
@@ -49,7 +56,7 @@ public sealed record BlocoFixacaoBelt(
     double FuroPressaoX = -16.11533,
     double FuroPressaoZ = 13.0,
     double RaioFuroPressao = 1.7,
-    double PosicaoPorcaTraseiraY = 24.375,
+    double PosicaoPorcaTraseiraY = 15.375,
     double LarguraPorca = 5.83,
     double EspessuraPorca = 3.0) : Part
 {
@@ -60,6 +67,15 @@ public sealed record BlocoFixacaoBelt(
         // Plano de espelhamento: face interna/direita do corpo (local X = BaseCorpoX + LarguraCorpoX).
         // A reflexão de qualquer ponto é X' = 2 * xm - X.
         var xm = BaseCorpoX + LarguraCorpoX;
+
+        // Escareado de 90° (o raio decresce 1 mm por mm de altura) na PORÇÃO INFERIOR do furo,
+        // com o vértice do cone apontando para cima: a base do cone fica na face inferior do corpo
+        // (lado largo) e estreita subindo até o diâmetro do furo passante. Estende-se um pouco
+        // abaixo da face para garantir um corte limpo.
+        var profundidadeEscareado = RaioEscareadoFuroVertical - RaioFuroVertical3_2;
+        const double margemEscareadoAbaixo = 1.0;
+        var zBaseEscareado = 5;
+        var alturaEscareado = profundidadeEscareado + margemEscareadoAbaixo;
 
         // ==================== METADE ORIGINAL (como modelada) ====================
 
@@ -81,9 +97,18 @@ public sealed record BlocoFixacaoBelt(
         var rebaixo_frontal = new BoxFeature(new Point3D(BaseCorpoX, BaseCorpoY, 0.0), LarguraRebaixoFrontal, ProfundidadeRebaixoFrontal, AlturaRebaixoFrontal) { Name = "rebaixo_frontal", IsTransientTool = true };
 
         var vao_correia = new BoxFeature(new Point3D(BaseVaoX, BaseVaoY, BaseVaoZ), LarguraVaoX, ComprimentoVaoY, AlturaVao) { Name = "vao_correia", IsTransientTool = true };
+        // Rebaixo CILÍNDRICO no topo (alojamento da cabeça do parafuso M3 inserido por cima).
         var furo_vertical = new CylinderFeature(new Point3D(FuroVerticalX, FuroVerticalY, FuroVerticalZ), Vector3D.UnitZ, RaioFuroVertical, AlturaFuroVertical) { Name = "furo_vertical", IsTransientTool = true };
-        // Furo vertical passante de 3,2 mm na mesma posição XY do furo_vertical, atravessando toda a peça.
+        // Furo vertical passante de 3,2 mm, atravessando toda a peça.
         var furo_vertical_3_2 = new CylinderFeature(new Point3D(FuroVerticalX, FuroVerticalY, -1.0), Vector3D.UnitZ, RaioFuroVertical3_2, AlturaCorpo + 2.0) { Name = "furo_vertical_3_2", IsTransientTool = true };
+        // Rebaixo cônico (escareado) na PORÇÃO INFERIOR do furo, com o vértice para cima, para
+        // alojar a cabeça do parafuso M3 inserido por baixo.
+        var rebaixo_conico = new ConeFeature(
+            globalBaseCenter: new Point3D(FuroVerticalX, FuroVerticalY, zBaseEscareado),
+            globalDirection: Vector3D.UnitZ,
+            bottomRadius: RaioEscareadoFuroVertical + margemEscareadoAbaixo,
+            topRadius: RaioFuroVertical3_2,
+            height: alturaEscareado) { Name = "rebaixo_conico", IsTransientTool = true };
         var rebaixo_fixacao = new CylinderFeature(new Point3D(FuroLateralX, yFundo, FuroLateralZ), new Vector3D(0, -1, 0), RaioFuroRebaixo, ComprimentoFuroRebaixo) { Name = "rebaixo_fixacao", IsTransientTool = true };
         var furo_fixacao = new CylinderFeature(new Point3D(FuroLateralX, yFundo, FuroLateralZ), new Vector3D(0, -1, 0), RaioFuroPassante, ComprimentoFuroPassante) { Name = "furo_fixacao", IsTransientTool = true };
         var furo_pressao_correia = new CylinderFeature(new Point3D(FuroPressaoX, yFundo, FuroPressaoZ), new Vector3D(0, -1, 0), RaioFuroPressao, ComprimentoFuroPassante) { Name = "furo_pressao_correia", IsTransientTool = true };
@@ -124,11 +149,18 @@ public sealed record BlocoFixacaoBelt(
         var vao_correia_espelhado = new BoxFeature(new Point3D(2.0 * xm - BaseVaoX - LarguraVaoX, BaseVaoY, BaseVaoZ), LarguraVaoX, ComprimentoVaoY, AlturaVao) { Name = "vao_correia_espelhado", IsTransientTool = true };
         var furo_vertical_espelhado = new CylinderFeature(new Point3D(2.0 * xm - FuroVerticalX, FuroVerticalY, FuroVerticalZ), Vector3D.UnitZ, RaioFuroVertical, AlturaFuroVertical) { Name = "furo_vertical_espelhado", IsTransientTool = true };
         var furo_vertical_3_2_espelhado = new CylinderFeature(new Point3D(2.0 * xm - FuroVerticalX, FuroVerticalY, -1.0), Vector3D.UnitZ, RaioFuroVertical3_2, AlturaCorpo + 2.0) { Name = "furo_vertical_3_2_espelhado", IsTransientTool = true };
+        var rebaixo_conico_espelhado = new ConeFeature(
+            globalBaseCenter: new Point3D(2.0 * xm - FuroVerticalX, FuroVerticalY, zBaseEscareado),
+            globalDirection: Vector3D.UnitZ,
+            bottomRadius: RaioEscareadoFuroVertical + margemEscareadoAbaixo,
+            topRadius: RaioFuroVertical3_2,
+            height: alturaEscareado) { Name = "rebaixo_conico_espelhado", IsTransientTool = true };
         var rebaixo_fixacao_espelhado = new CylinderFeature(new Point3D(2.0 * xm - FuroLateralX, yFundo, FuroLateralZ), new Vector3D(0, -1, 0), RaioFuroRebaixo, ComprimentoFuroRebaixo) { Name = "rebaixo_fixacao_espelhado", IsTransientTool = true };
         var furo_fixacao_espelhado = new CylinderFeature(new Point3D(2.0 * xm - FuroLateralX, yFundo, FuroLateralZ), new Vector3D(0, -1, 0), RaioFuroPassante, ComprimentoFuroPassante) { Name = "furo_fixacao_espelhado", IsTransientTool = true };
         var furo_pressao_correia_espelhado = new CylinderFeature(new Point3D(2.0 * xm - FuroPressaoX, yFundo, FuroPressaoZ), new Vector3D(0, -1, 0), RaioFuroPressao, ComprimentoFuroPassante) { Name = "furo_pressao_correia_espelhado", IsTransientTool = true };
 
-        // Alojamento da porca espelhado: mesmo eixo (+Y), origem em X refletido e xAxis invertido
+        // Alojamento da porca espelhado: mesmo eixo (+Y), mesma coordenada Y da original
+        // (deslocada 9 mm no -Y), origem em X refletido e xAxis invertido
         // (o eixo local v é negado para manter a mesma faixa de Z após a reflexão).
         var verticesPorcaEspelhado = new[]
         {
@@ -156,6 +188,7 @@ public sealed record BlocoFixacaoBelt(
             vao_correia, vao_correia_espelhado,
             furo_vertical, furo_vertical_espelhado,
             furo_vertical_3_2, furo_vertical_3_2_espelhado,
+            rebaixo_conico, rebaixo_conico_espelhado,
             rebaixo_fixacao, rebaixo_fixacao_espelhado,
             furo_fixacao, furo_fixacao_espelhado,
             furo_pressao_correia, furo_pressao_correia_espelhado,

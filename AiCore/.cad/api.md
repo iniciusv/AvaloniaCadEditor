@@ -214,6 +214,8 @@ Propriedades comuns a TODAS as features (herdadas de FeatureBase):
 
 ### SweepPath
   static SweepPath SweepPath.Arc(Point3D start, Vector3D startTangent, Vector3D bendDirection, double bendRadius, double angleDegrees)
+  static SweepPath SweepPath.FullCircle(Point3D center, Vector3D axis, double radius)
+  static double SweepPath.MaxCornerRadius(IEnumerable<Point3D> points, bool closed = false)
   static SweepPath SweepPath.FromPolyline(IEnumerable<Point3D> points, double cornerRadius, bool closed = false)
   IReadOnlyList<Point3D> Points { get; }
   double CornerRadius { get; }
