@@ -133,3 +133,17 @@ var xChapaFurosBelt = (furoVerticalBeltA.X + furoVerticalBeltB.X) / 2.0 - chapaF
 var yChapaFurosBelt = (furoVerticalBeltA.Y + furoVerticalBeltB.Y) / 2.0 - chapaFurosBeltPeca.ComprimentoY / 2.0;
 var zChapaFurosBelt = alturaTopoCarrinhosY + carrinhoXPeca.Altura + blocoFixacaoBeltPeca.AlturaCorpo;
 var chapaFurosBelt = Add(chapaFurosBeltPeca, at: Placement.At(xChapaFurosBelt, yChapaFurosBelt, zChapaFurosBelt), name: "chapa_furos_belt", color: "#00CC6A");
+// --- Bloco 15 × 48 × 25 mm conectado à placa do carrinho Y pelos furos de fixação ---
+// Assenta no topo da placa e seus dois furos passantes coincidem com os furo_fixacao_carrinho_1
+// e furo_fixacao_carrinho_2 (25 mm de passo em Y, 3,5 mm da face externa da placa): o mesmo
+// parafuso atravessa o bloco, a placa e vai à porca do carrinho MGN15H.
+// A posição sai das PRÓPRIAS coordenadas locais dos furos da placa convertidas para o mundo
+// (a placa B é espelhada em X, por isso o fator sx), então o bloco acompanha a placa se ela
+// for movida/girada. O bloco é simétrico, logo não precisa de rotação para alinhar os furos.
+var blocoConexaoPlacaCarrinhoYPeca = new BlocoConexaoPlacaCarrinhoY();
+const double passoFurosPlacaCarrinhoY = 25.0;
+var sxPlacaSuporteYB = placaSuporteYB.Part.EspelhadoNoEixoY ? -1.0 : 1.0;
+var furoFixacaoPlacaB1Mundo = placaSuporteYB.ToWorld(new Point3D(passoFurosPlacaCarrinhoY / 2 * sxPlacaSuporteYB, -passoFurosPlacaCarrinhoY / 2, 0));
+var furoFixacaoPlacaB2Mundo = placaSuporteYB.ToWorld(new Point3D(passoFurosPlacaCarrinhoY / 2 * sxPlacaSuporteYB, passoFurosPlacaCarrinhoY / 2, 0));
+var topoPlacaSuporteYB = placaSuporteYB.ToWorld(new Point3D(0, 0, 5.5));
+var blocoConexaoPlacaCarrinhoYB = Add(blocoConexaoPlacaCarrinhoYPeca, at: Placement.At((furoFixacaoPlacaB1Mundo.X + furoFixacaoPlacaB2Mundo.X) / 2.0, (furoFixacaoPlacaB1Mundo.Y + furoFixacaoPlacaB2Mundo.Y) / 2.0, topoPlacaSuporteYB.Z), name: "bloco_conexao_placa_carrinho_y_b", color: "#00CC6A");
