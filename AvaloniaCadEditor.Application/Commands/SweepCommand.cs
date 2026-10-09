@@ -325,6 +325,11 @@ public class SweepCommand : ICommandTool, IGeometryPickingTool
     /// reescreve o script. O preço é que varrer uma segunda seção pelo mesmo caminho exige
     /// redesenhá-lo — o mesmo preço que a extrusão já cobra.
     /// </para>
+    /// <para>
+    /// Uma região sem <c>SourceEntityIds</c> não deixa nada para trás, e isso está certo: ela não
+    /// veio de linhas de esboço (é uma face de sólido, ou foi montada à mão), então não há desenho
+    /// a consumir. Não é esquecimento.
+    /// </para>
     /// </summary>
     private void ConsumeSketchGeometry(Sketch sketch)
     {
