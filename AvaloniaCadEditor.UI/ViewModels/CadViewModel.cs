@@ -613,13 +613,9 @@ public class CadViewModel : INotifyPropertyChanged
 
 	private void ApplyHitTolerance()
 	{
-		switch (CurrentTool)
-		{
-			case SelectTool t: t.HitTolerance = HitTolerance; break;
-			case TrimCommand t: t.HitTolerance = HitTolerance; break;
-			case ExtendCommand t: t.HitTolerance = HitTolerance; break;
-			case SweepCommand t: t.HitTolerance = HitTolerance; break;
-		}
+		// Por capacidade, não por tipo: era um case por ferramenta, e cada ferramenta nova com
+		// clique tolerante virava mais uma linha aqui.
+		if (CurrentTool is IHitTolerantTool tool) tool.HitTolerance = HitTolerance;
 	}
 
 	private IProfile? FindRegionAtPoint(Point3D localPoint)
@@ -1489,9 +1485,10 @@ public class CadViewModel : INotifyPropertyChanged
 			}
 		}
 
-		// O Sweep escolhe geometria com o ponto CRU (uma região ou uma aresta); só se o clique não
-		// for uma escolha ele segue adiante e vira ponto de caminho, aí com snap.
-		if (CurrentTool is SweepCommand sweepTool && sweepTool.TryPickAt(Sketch, localRaw))
+		// Ferramenta que escolhe geometria desenhada (o Sweep) usa o ponto CRU: com snap, clicar
+		// dentro de uma região pularia para a ponta de uma linha vizinha. Só se o clique não for
+		// uma escolha ele segue adiante, aí com snap.
+		if (CurrentTool is IGeometryPickingTool picker && picker.TryPickAt(Sketch, localRaw))
 		{
 			UpdateStatusText(localSnapped);
 			return true;

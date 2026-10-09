@@ -6,7 +6,7 @@ using AvaloniaCadEditor.Domain.Interfaces;
 
 namespace AvaloniaCadEditor.Application.Commands;
 
-public class SelectTool : ICommandTool
+public class SelectTool : ICommandTool, IHitTolerantTool
 {
     public event EventHandler<string>? CodeGenerated;
     private readonly IGeometryEngine _geometryEngine;

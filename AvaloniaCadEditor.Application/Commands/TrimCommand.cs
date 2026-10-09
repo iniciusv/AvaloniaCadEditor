@@ -4,7 +4,7 @@ using AvaloniaCadEditor.Domain.ValueObjects;
 
 namespace AvaloniaCadEditor.Application.Commands;
 
-public class TrimCommand : ICommandTool
+public class TrimCommand : ICommandTool, IHitTolerantTool
 {
     public event EventHandler<string>? CodeGenerated;
     private readonly IGeometryEngine _geometryEngine;

@@ -109,10 +109,11 @@ public sealed class ViewportInputHandler
 
                 // Candidato a seleção por retângulo. O snapshot é tirado antes do clique abaixo,
                 // que pode limpar a seleção - com Ctrl o retângulo soma ao que já estava marcado.
-                // O Sweep também arrasta: é assim que se pega de uma vez as arestas de um caminho
-                // (ele colhe o que ficou marcado quando o Enter chega).
+                // Além do SelectTool, qualquer ferramenta que escolha geometria pelo retângulo (o
+                // Sweep, para pegar de uma vez as arestas de um caminho). Por capacidade, não por
+                // tipo, para não crescer um `is XCommand` por ferramenta.
                 if (viewModel.CurrentTool is Application.Commands.SelectTool
-                    or Application.Commands.SweepCommand)
+                    || viewModel.CurrentTool is Application.Commands.IGeometryPickingTool { UsesSelectionBox: true })
                 {
                     _boxStart = point.Position;
                     _boxActive = false;

@@ -9,7 +9,7 @@ namespace AvaloniaCadEditor.Application.Commands;
 /// naquela direção. Se nenhuma fronteira for encontrada, a linha fica "pendente" e um segundo
 /// clique em outra linha forma um canto no ponto onde as retas suportadas por ambas se cruzam.
 /// </summary>
-public class ExtendCommand : ICommandTool
+public class ExtendCommand : ICommandTool, IHitTolerantTool
 {
     public event EventHandler<string>? CodeGenerated;
     private readonly IGeometryEngine _geometryEngine;

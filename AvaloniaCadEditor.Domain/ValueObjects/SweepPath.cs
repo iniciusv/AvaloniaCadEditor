@@ -220,6 +220,42 @@ public sealed class SweepPath
         int count = pts.Count;
         if (count < (closed ? 3 : 2)) return 0;
 
+        var g = MeasurePolyline(pts, closed);
+        if (g.Reversal >= 0) return 0;                       // reversão: não se arredonda
+
+        double limite = double.PositiveInfinity;
+        for (int i = 0; i < g.Lens.Length; i++)
+        {
+            double soma = g.TanHalf[i] + g.TanHalf[(i + 1) % count];
+            if (soma <= 0) continue;                         // trecho entre dois pontos sem canto
+            limite = Math.Min(limite, g.Lens[i] / soma);
+        }
+
+        return limite;
+    }
+
+    /// <summary>
+    /// A geometria de recuo de uma polilinha: direção e comprimento de cada trecho, e o ângulo de
+    /// cada vértice com o seu <c>tan(θ/2)</c> — as duas contas de que o recuo <c>R·tan(θ/2)</c>
+    /// precisa. Vértice alinhado e ponta de caminho aberto saem com ângulo zero, que é o que
+    /// significa "não vira canto".
+    /// </summary>
+    private sealed record PolylineGeometry(
+        Vector3D[] Dirs,
+        double[] Lens,
+        double[] Angles,
+        double[] TanHalf,
+        /// <summary>Vértice que reverte 180°, ou -1. Uma reversão não se arredonda.</summary>
+        int Reversal);
+
+    /// <summary>
+    /// Mede a polilinha uma vez. Existe para <see cref="FromPolyline"/> e
+    /// <see cref="MaxCornerRadius"/> usarem a MESMA conta: eram duas cópias, e duas cópias de uma
+    /// conta de tolerância derivam na primeira vez que alguém mexe só numa delas.
+    /// </summary>
+    private static PolylineGeometry MeasurePolyline(List<Point3D> pts, bool closed)
+    {
+        int count = pts.Count;
         int edges = closed ? count : count - 1;
 
         var dirs = new Vector3D[edges];
@@ -231,8 +267,11 @@ public sealed class SweepPath
             dirs[i] = d.Normalize();
         }
 
-        // tan(θ/2) de cada vértice; zero nas pontas de um caminho aberto e nos pontos alinhados.
+        var angles = new double[count];
         var tanHalf = new double[count];
+        int reversal = -1;
+
+        // Num caminho aberto as duas pontas não são canto; num fechado todo vértice é.
         int primeiroCanto = closed ? 0 : 1;
         int ultimoCanto = closed ? count - 1 : count - 2;
 
@@ -245,20 +284,17 @@ public sealed class SweepPath
             double theta = Math.Acos(cos);
 
             if (theta < 1e-6) continue;                      // alinhado: não vira canto
-            if (theta > Math.PI - 1e-6) return 0;            // reversão: não se arredonda
+            if (theta > Math.PI - 1e-6)
+            {
+                if (reversal < 0) reversal = v;              // o primeiro basta para a mensagem
+                continue;
+            }
 
+            angles[v] = theta;
             tanHalf[v] = Math.Tan(theta / 2.0);
         }
 
-        double limite = double.PositiveInfinity;
-        for (int i = 0; i < edges; i++)
-        {
-            double soma = tanHalf[i] + tanHalf[(i + 1) % count];
-            if (soma <= 0) continue;                         // trecho entre dois pontos sem canto
-            limite = Math.Min(limite, lens[i] / soma);
-        }
-
-        return limite;
+        return new PolylineGeometry(dirs, lens, angles, tanHalf, reversal);
     }
 
     /// <summary>
@@ -290,36 +326,19 @@ public sealed class SweepPath
         if ((closed || count > 2) && cornerRadius <= Tolerance)
             return Invalid(pts, cornerRadius, "Uma polilinha com cantos precisa de um raio de canto positivo: canto vivo não se constrói com varredura.");
 
-        var dirs = new Vector3D[edges];
-        var lens = new double[edges];
-        for (int i = 0; i < edges; i++)
-        {
-            var d = pts[(i + 1) % count] - pts[i];
-            lens[i] = d.Length;
-            dirs[i] = d.Normalize();
-        }
+        var g = MeasurePolyline(pts, closed);
+        var dirs = g.Dirs;
+        var lens = g.Lens;
+        var angles = g.Angles;
+
+        if (g.Reversal is var rev && rev >= 0)
+            return Invalid(pts, cornerRadius, $"O caminho dobra 180° no ponto {rev} {Fmt(pts[rev])}: não dá para arredondar uma reversão.");
 
         // Recuo de cada vértice que vira canto. Num caminho aberto as duas pontas não recuam.
         var trims = new double[count];
-        var angles = new double[count];
-        int primeiroCanto = closed ? 0 : 1;
+        for (int v = 0; v < count; v++) trims[v] = cornerRadius * g.TanHalf[v];
+
         int ultimoCanto = closed ? count - 1 : count - 2;
-
-        for (int v = primeiroCanto; v <= ultimoCanto; v++)
-        {
-            var entrada = dirs[(v - 1 + edges) % edges];
-            var saida = dirs[v % edges];
-
-            double cos = Math.Clamp(entrada.DotProduct(saida), -1.0, 1.0);
-            double theta = Math.Acos(cos);
-
-            if (theta < 1e-6) { trims[v] = 0; angles[v] = 0; continue; }   // alinhado: sem canto
-            if (theta > Math.PI - 1e-6)
-                return Invalid(pts, cornerRadius, $"O caminho dobra 180° no ponto {v} {Fmt(pts[v])}: não dá para arredondar uma reversão.");
-
-            trims[v] = cornerRadius * Math.Tan(theta / 2.0);
-            angles[v] = theta;
-        }
 
         // Dois cantos vizinhos não podem comer a mesma reta duas vezes.
         for (int i = 0; i < edges; i++)

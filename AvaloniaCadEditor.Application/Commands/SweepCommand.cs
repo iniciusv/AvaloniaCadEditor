@@ -43,7 +43,7 @@ namespace AvaloniaCadEditor.Application.Commands;
 /// escolha é o destaque das arestas e da região.
 /// </para>
 /// </summary>
-public class SweepCommand : ICommandTool
+public class SweepCommand : ICommandTool, IGeometryPickingTool
 {
     public event EventHandler<string>? CodeGenerated;
     public string Name => "Sweep";
@@ -87,6 +87,12 @@ public class SweepCommand : ICommandTool
     /// <summary>Tolerância de acerto do clique, em unidades de mundo. Quem ajusta é o CadViewModel.</summary>
     public double HitTolerance { get; set; } = 5.0;
 
+    /// <summary>
+    /// Sim: pegar de uma vez as arestas de um caminho é o caso comum, e uma a uma é tedioso. Quem
+    /// arrasta é a UI; aqui as arestas são colhidas no momento de concluir.
+    /// </summary>
+    public bool UsesSelectionBox => true;
+
     /// <summary>Arestas escolhidas com a ferramenta já acionada (clique ou retângulo).</summary>
     private readonly List<Entity> _edges = new();
 
@@ -96,13 +102,12 @@ public class SweepCommand : ICommandTool
     /// <summary>A seção já resolvida em texto de script. Null enquanto ninguém escolheu região.</summary>
     private FeatureCodeGenerator.SweepSectionCode? _sectionCode;
 
-    // O caminho da pré-seleção, guardado para o Blocked poder refazer a conta com outro raio.
-    private EdgeChain? _chain;
-    private (Point3D Center, Vector3D Axis, double Radius)? _circlePath;
-    private WorkPlane? _pathPlane;
-
-    /// <summary>As entidades que viraram o caminho — é o que se remove do esboço ao concluir.</summary>
-    private List<Entity> _stagedPath = new();
+    /// <summary>
+    /// O caminho escolhido, já interpretado. Uma referência só: meio-caminho não é representável, e
+    /// é isso que impede um estágio recusado de deixar resto para o passo seguinte emitir.
+    /// Guardado também para um raio digitado poder refazer a conta.
+    /// </summary>
+    private SweepPathPlan? _path;
 
     public SweepCommand(
         IProfile? preSelectedSection = null,
@@ -193,7 +198,7 @@ public class SweepCommand : ICommandTool
         if (_preSection != null)
         {
             var code = FeatureCodeGenerator.SweepSectionFromProfile(_preSection);
-            if (code.Error != null) return Fail(code.Error);
+            if (code.Error != null) { Fail(code.Error); return false; }
 
             Section = _preSection;
             _sectionCode = code;
@@ -230,45 +235,15 @@ public class SweepCommand : ICommandTool
     {
         // Um estágio novo descarta o anterior: senão uma escolha recusada deixaria valendo o
         // caminho de antes, e o Enter emitiria aquele, não o que está na tela.
-        _chain = null;
-        _circlePath = null;
-        _pathPlane = null;
-        _stagedPath = new();
+        _path = null;
 
-        var circles = entities.OfType<CircleEntity>().ToList();
-        var lines = entities.OfType<LineEntity>().ToList();
-
-        // Resolve em variáveis locais e só publica no fim: um estágio que falha pela metade deixaria
-        // um caminho parcial, e o Enter seguinte emitiria pulando as checagens que faltaram.
-        EdgeChain? chain = null;
-        (Point3D Center, Vector3D Axis, double Radius)? circlePath = null;
-        WorkPlane pathPlane;
-
-        if (circles.Count > 0)
-        {
-            if (circles.Count > 1) return Fail("selecione um círculo só como caminho.");
-            if (lines.Count > 0) return Fail("não misture um círculo com linhas no caminho.");
-
-            var circle = circles[0];
-            pathPlane = circle.Plane;
-            circlePath = (pathPlane.ToWorldSpace(circle.Center), pathPlane.Normal, circle.Radius);
-        }
-        else
-        {
-            chain = EdgeChainService.Chain(lines);
-            if (chain.Error != null) return Fail(chain.Error);
-
-            pathPlane = chain.Plane;
-        }
+        var plan = Interpret(entities);
+        if (plan == null) return false;                      // o porquê já está em Error
 
         // Nenhuma checagem de "mesmo plano" aqui, de propósito: o perfil num plano e o caminho em
         // outro (seção em XY, caminho em XZ) é o jeito normal de modelar. Da seção só se usa a
         // forma, e quem manda na posição e na orientação é o caminho.
-
-        _chain = chain;
-        _circlePath = circlePath;
-        _pathPlane = pathPlane;
-        _stagedPath = entities.ToList();
+        _path = plan;
 
         // Sem região escolhida, a seção é a circular digitada - o raio padrão vale.
         _sectionCode ??= FeatureCodeGenerator.SweepSectionFromRadius(SectionRadius);
@@ -278,38 +253,55 @@ public class SweepCommand : ICommandTool
         return true;
     }
 
+    /// <summary>
+    /// Que caminho estas entidades descrevem, ou null com o porquê em <see cref="Error"/>. Devolve
+    /// o plano PRONTO — não há como sair daqui com um caminho pela metade.
+    /// </summary>
+    private SweepPathPlan? Interpret(IReadOnlyList<Entity> entities)
+    {
+        var circles = entities.OfType<CircleEntity>().ToList();
+        var lines = entities.OfType<LineEntity>().ToList();
+
+        if (circles.Count > 0)
+        {
+            if (circles.Count > 1) { Fail("selecione um círculo só como caminho."); return null; }
+            if (lines.Count > 0) { Fail("não misture um círculo com linhas no caminho."); return null; }
+
+            var circle = circles[0];
+            var plane = circle.Plane;
+            return new FullCirclePlan(
+                plane.ToWorldSpace(circle.Center), plane.Normal, circle.Radius, plane, entities.ToList());
+        }
+
+        var chain = EdgeChainService.Chain(lines);
+        if (chain.Error != null) { Fail(chain.Error); return null; }
+
+        return new PolylinePlan(chain.Points, chain.IsClosed, chain.Plane, entities.ToList());
+    }
+
     /// <summary>Monta o caminho, confere, e emite. Em caso de recusa vai para <see cref="State.Blocked"/>.</summary>
     private bool Resolve(Sketch sketch)
     {
-        var plane = _pathPlane ?? WorkPlane.XY;
-        // upReference só quando a seção veio de uma região: no fluxo antigo a seção é circular e a
+        if (_path is not { } plan) return false;
+
+        // O raio de canto é escolhido uma vez e serve para conferir e para emitir: conferir com um
+        // número e emitir outro daria um sólido diferente do que foi validado.
+        double? raio = FitCornerRadius(plan);
+        if (raio == null) return false;                      // o porquê já está em Error
+
+        var path = plan.Build(raio.Value);
+        if (path.Error != null) { Fail(path.Error); return false; }
+
+        // upReference só quando a seção veio de uma região: uma seção circular é simétrica e a
         // rotação em torno do caminho não quer dizer nada.
-        Vector3D? up = Section != null ? plane.Normal : null;
-        string code;
+        Vector3D? up = Section != null ? plan.ReferencePlane.Normal : null;
 
-        if (_circlePath is { } circle)
+        string code = plan switch
         {
-            var path = SweepPath.FullCircle(circle.Center, circle.Axis, circle.Radius);
-            if (path.Error != null) return Fail(path.Error);
-
-            code = FeatureCodeGenerator.GenerateSweepCode(_sectionCode!, circle.Center, circle.Axis, circle.Radius, up);
-        }
-        else if (_chain is { } chain)
-        {
-            // Os pontos da cadeia já vêm em mundo (é o que permite arestas de planos diferentes).
-            var world = chain.Points;
-            double raio = FitCornerRadius(world, chain.IsClosed, out string? porque);
-            if (porque != null) return Fail(porque);
-
-            var path = SweepPath.FromPolyline(world, raio, chain.IsClosed);
-            if (path.Error != null) return Fail(path.Error);
-
-            code = FeatureCodeGenerator.GenerateSweepCode(_sectionCode!, world, raio, chain.IsClosed, up);
-        }
-        else
-        {
-            return false;
-        }
+            FullCirclePlan c => FeatureCodeGenerator.GenerateSweepCode(_sectionCode!, c.Center, c.Axis, c.Radius, up),
+            PolylinePlan p => FeatureCodeGenerator.GenerateSweepCode(_sectionCode!, p.World, raio.Value, p.IsClosed, up),
+            _ => throw new NotSupportedException($"caminho de varredura não previsto: {plan.GetType().Name}"),
+        };
 
         Error = null;
         _state = State.Picking;
@@ -337,7 +329,7 @@ public class SweepCommand : ICommandTool
     private void ConsumeSketchGeometry(Sketch sketch)
     {
         var ids = new List<Guid>();
-        foreach (var e in _stagedPath) ids.Add(e.Id);
+        if (_path is { } plan) foreach (var e in plan.Source) ids.Add(e.Id);
         if (Section != null) ids.AddRange(Section.SourceEntityIds);
 
         foreach (var id in ids.Distinct())
@@ -361,16 +353,18 @@ public class SweepCommand : ICommandTool
     /// Um raio DIGITADO é respeitado como pedido: se o usuário deu um número que não cabe, a recusa
     /// do <see cref="SweepPath.FromPolyline"/> é a resposta certa, com as medidas reais na mensagem.
     /// </para>
+    /// <para>
+    /// Null é recusa, com o porquê em <see cref="Error"/> — o mesmo canal do resto da classe, para
+    /// não haver dois jeitos de uma coisa dar errado aqui.
+    /// </para>
     /// </summary>
-    private double FitCornerRadius(IReadOnlyList<Point3D> world, bool closed, out string? porque)
+    private double? FitCornerRadius(SweepPathPlan plan)
     {
-        porque = null;
         if (_cornerRadius > 0) return _cornerRadius;          // digitado: não mexe
 
         double pedido = DefaultCornerRadius;
-        double cabe = SweepPath.MaxCornerRadius(world, closed);
+        double cabe = plan.MaxCornerRadius();
         if (double.IsPositiveInfinity(cabe)) return pedido;   // caminho sem canto: nada limita
-
         if (cabe >= pedido) return pedido;
 
         // Uma folga pequena para não encostar na igualdade exata da checagem de recuo.
@@ -379,9 +373,9 @@ public class SweepCommand : ICommandTool
 
         if (ajustado <= piso)
         {
-            porque = $"a seção tem {2 * piso:0.###} de largura e o caminho só aceita raio de canto " +
-                     $"{ajustado:0.###}: alongue as arestas, use uma seção mais estreita, ou digite um raio.";
-            return pedido;
+            Fail($"a seção tem {2 * piso:0.###} de largura e o caminho só aceita raio de canto " +
+                 $"{ajustado:0.###}: alongue as arestas, use uma seção mais estreita, ou digite um raio.");
+            return null;
         }
 
         return ajustado;
@@ -391,11 +385,14 @@ public class SweepCommand : ICommandTool
     private double MeiaLarguraEmU =>
         _sectionCode is { Points.Count: > 0 } sec ? sec.Points.Max(p => Math.Abs(p.U)) : SectionRadius;
 
-    private bool Fail(string error)
+    /// <summary>
+    /// Registra a recusa e para. Devolve void de propósito: já devolveu bool, e aí o mesmo helper
+    /// carregava dois significados opostos ("deu certo" num lugar, "consumiu o clique" no outro).
+    /// </summary>
+    private void Fail(string error)
     {
         Error = error;
         _state = State.Blocked;
-        return false;
     }
 
     /// <summary>
@@ -415,10 +412,7 @@ public class SweepCommand : ICommandTool
         _cornerRadius = 0;
         _state = State.Picking;
         Error = null;
-        _chain = null;
-        _circlePath = null;
-        _pathPlane = null;
-        _stagedPath = new();
+        _path = null;
 
         // Desfaz o destaque das arestas que a ferramenta marcou como feedback.
         foreach (var e in _edges) e.IsSelected = false;
@@ -430,10 +424,7 @@ public class SweepCommand : ICommandTool
     {
         _state = State.Picking;
         Error = null;
-        _chain = null;
-        _circlePath = null;
-        _pathPlane = null;
-        _stagedPath = new();
+        _path = null;
     }
 
     public void OnKeyDown(Sketch sketch, CadKey key)
@@ -469,12 +460,12 @@ public class SweepCommand : ICommandTool
             return ResolveFromEntities(sketch, arestas);
         }
 
-        return (_chain != null || _circlePath != null) && Resolve(sketch);
+        return _path != null && Resolve(sketch);
     }
 
     /// <summary>Há caminho (ou candidato a caminho) em mãos? É o que decide o que um número digitado quer dizer.</summary>
     private bool HasPathCandidate(Sketch sketch) =>
-        _state == State.Blocked || _chain != null || _circlePath != null || ColherArestas(sketch).Count > 0;
+        _state == State.Blocked || _path != null || ColherArestas(sketch).Count > 0;
 
     private List<Entity> ColherArestas(Sketch sketch)
     {
