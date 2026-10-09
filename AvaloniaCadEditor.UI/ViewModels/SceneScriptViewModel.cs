@@ -480,7 +480,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
             _cadViewModel.StatusText = $"{toolName}: declaração não encontrada em {partTypeName} (nome gerado em laço?).";
             return null;
         }
-        NavigateTo(location);
+        NavigateTo(location, takeFocus: false);
 
         PartSolidInputs? traced;
         try
@@ -1152,7 +1152,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         {
             _selectedReference = value;
             OnPropertyChanged();
-            if (value != null) NavigateTo(value);
+            if (value != null) NavigateTo(value, takeFocus: true);
         }
     }
 
@@ -1198,7 +1198,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         }
 
         var target = found.Definitions[0];
-        NavigateTo(target);
+        NavigateTo(target, takeFocus: true);
         _cadViewModel.StatusText = $"{found.Kind} {found.SymbolName}: {target.FilePath}, linha {target.Line}";
         return true;
     }
@@ -1295,8 +1295,12 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         OnPropertyChanged(nameof(HasReferences));
     }
 
-    /// <summary>Abre o arquivo da ocorrência (numa cena com vários) e seleciona o nome.</summary>
-    private void NavigateTo(CodeLocation location)
+    /// <summary>
+    /// Abre o arquivo da ocorrência (numa cena com vários) e seleciona o nome. <paramref
+    /// name="takeFocus"/> só para navegação pedida de dentro do editor (F12, lista de referências):
+    /// quem chegou aqui por um clique na cena continua com o foco na cena.
+    /// </summary>
+    private void NavigateTo(CodeLocation location, bool takeFocus)
     {
         if (_project != null && !string.Equals(location.FilePath, _activeFile, StringComparison.OrdinalIgnoreCase))
         {
@@ -1304,7 +1308,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
             SwitchActiveFile(location.FilePath);
         }
         _cadViewModel.SidebarTabIndex = CadViewModel.CodeTabIndex;
-        RevealLine = new EditorLineRequest(location.Line, location.Column, location.Length);
+        RevealLine = new EditorLineRequest(location.Line, location.Column, location.Length, takeFocus);
     }
 
     public async Task<string?> MovePartInstanceAsync(PartInstance instance, AvaloniaCadEditor.Domain.ValueObjects.Vector3D offset)

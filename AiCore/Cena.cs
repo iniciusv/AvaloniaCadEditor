@@ -35,20 +35,16 @@ var alturaTopoCarrinhosY = carrinhoYPeca.Altura;
 // e seus centros ficam deslocados meia-malha (12,5 mm) em X e Y, de modo que os 3 furos
 // coincidam com 3 dos 4 furos M3 do carrinho (o 4º canto é o recorte da placa).
 // A placa B é espelhada no eixo Y (EspelhadoNoEixoY), tornando-se a imagem especular da placa A.
-var placaSuporteYA = Add(placaSuporteCarrinhoYPeca,
-    at: Placement.At(centroXTrilhoA - 12.5, -12.5, alturaTopoCarrinhosY + 5.5, rotationZDegrees: 180),
-    name: "placa_suporte_carrinho_y_a", color: "#0078D7");
-var placaSuporteYB = Add(placaSuporteCarrinhoYPeca with { EspelhadoNoEixoY = true },
-    at: Placement.At(centroXTrilhoB + 12.5, -12.5, alturaTopoCarrinhosY + 5.5, rotationZDegrees: 180),
-    name: "placa_suporte_carrinho_y_b", color: "#00CC6A");
+var placaSuporteYA = Add(placaSuporteCarrinhoYPeca, at: Placement.At(centroXTrilhoA - 12.5, -12.5, alturaTopoCarrinhosY + 5.5, rotationZDegrees: 180), name: "placa_suporte_carrinho_y_a", color: "#0078D7");
+var placaSuporteYB = Add(placaSuporteCarrinhoYPeca with { EspelhadoNoEixoY = true }, at: Placement.At(centroXTrilhoB + 12.5, -12.5, alturaTopoCarrinhosY + 5.5, rotationZDegrees: 180), name: "placa_suporte_carrinho_y_b", color: "#00CC6A");
 var trilhoX = Add(trilhoXPeca, at: Placement.At(-trilhoXPeca.Comprimento / 2, trilhoXPeca.Largura / 2, alturaTopoCarrinhosY, rotationZDegrees: -90), name: "trilho_mgn9_x");
 var carrinhoX = Add(carrinhoXPeca, at: Placement.At(-carrinhoXPeca.Comprimento / 2, carrinhoXPeca.Largura / 2, alturaTopoCarrinhosY, rotationZDegrees: -90), name: "carrinho_mgn9c_x");
 // --- Lados da extrusora e do motor em relação ao trilho X (plano Y = 0) ---
 // Os dois subconjuntos ficam em lados opostos do trilho. Trocar os dois sinais abaixo inverte
 // um pelo outro; a rotação de 180° em Z acompanha o sinal, porque as peças são simétricas em X
 // e precisam continuar voltadas para o trilho depois de mudar de lado.
-const double ladoExtrusoraY = 1;    // extrusora em +Y
-const double ladoMotorY = -1;       // motor (e bloco da correia) em -Y
+const double ladoExtrusoraY = 1; // extrusora em +Y
+const double ladoMotorY = -1; // motor (e bloco da correia) em -Y
 var rotacaoExtrusoraZ = ladoExtrusoraY > 0 ? 180.0 : 0.0;
 var rotacaoMotorZ = ladoMotorY > 0 ? 0.0 : 180.0;
 // --- Hotend V6, pendurado sob o carrinho X ---
@@ -82,12 +78,8 @@ var xFaceInternaPlacaA = centroXTrilhoA - 12.5 + 16;
 var xFaceInternaPlacaB = centroXTrilhoB + 12.5 - 16;
 var yFaceFrontalExtrusaoX = -extrusaoSobTrilhoXPeca.Largura / 2;
 var zMeioExtrusaoX = alturaTopoCarrinhosY - extrusaoSobTrilhoXPeca.Altura / 2;
-var cantoneiraPlacaExtrusaoA = Add(cantoneiraPlacaExtrusaoPeca,
-    at: Placement.At(xFaceInternaPlacaA, yFaceFrontalExtrusaoX, zMeioExtrusaoX),
-    name: "cantoneira_placa_extrusao_a", color: "#00CC6A");
-var cantoneiraPlacaExtrusaoB = Add(cantoneiraPlacaExtrusaoPeca with { EspelhadoNoEixoX = true },
-    at: Placement.At(xFaceInternaPlacaB, yFaceFrontalExtrusaoX, zMeioExtrusaoX),
-    name: "cantoneira_placa_extrusao_b", color: "#00CC6A");
+var cantoneiraPlacaExtrusaoA = Add(cantoneiraPlacaExtrusaoPeca, at: Placement.At(xFaceInternaPlacaA, yFaceFrontalExtrusaoX, zMeioExtrusaoX), name: "cantoneira_placa_extrusao_a", color: "#00CC6A");
+var cantoneiraPlacaExtrusaoB = Add(cantoneiraPlacaExtrusaoPeca with { EspelhadoNoEixoX = true }, at: Placement.At(xFaceInternaPlacaB, yFaceFrontalExtrusaoX, zMeioExtrusaoX), name: "cantoneira_placa_extrusao_b", color: "#00CC6A");
 // --- Motor NEMA17, montado mais baixo, ao lado do carrinho X, apoiado em cima da extrusão 2020 ---
 var topoExtrusaoSobTrilhoX = alturaTopoCarrinhosY;
 // Centralizado no perfil de alumínio 2020 (extrusao_2020_sob_trilho_x), cujo centro em X é 0.
@@ -122,10 +114,21 @@ var furoMotor1Mundo = suporteMotorNema17.ToWorld(furoMotor1Local);
 var rotacaoEspacadorMotorZ = 225.0;
 var deslocamentoEspacadorMotor = Placement.RotationZ(rotacaoEspacadorMotorZ).ApplyVector(new Vector3D(cilindroEspacadorMotorPeca.DeslocamentoFuro, 0, 0));
 var zTopoSuporteMotor = zSuporteMotor + suporteMotorNema17Peca.Espessura;
-var cilindroEspacadorMotor = Add(cilindroEspacadorMotorPeca with { DiametroExterno = 5.9 },
-    at: Placement.At(furoMotor1Mundo.X - deslocamentoEspacadorMotor.X, furoMotor1Mundo.Y - deslocamentoEspacadorMotor.Y, zTopoSuporteMotor, rotationZDegrees: rotacaoEspacadorMotorZ),
-    name: "cilindro_espacador_motor", color: "#00CC6A");
+var cilindroEspacadorMotor = Add(cilindroEspacadorMotorPeca with { DiametroExterno = 5.9 }, at: Placement.At(furoMotor1Mundo.X - deslocamentoEspacadorMotor.X, furoMotor1Mundo.Y - deslocamentoEspacadorMotor.Y, zTopoSuporteMotor, rotationZDegrees: rotacaoEspacadorMotorZ), name: "cilindro_espacador_motor", color: "#00CC6A");
 // --- Bloco de pressao da correia (belt), fixado na lateral do bloco_fixacao_mgn9 ---
 // Acompanha o lado do motor: a correia vem da polia e o rebaixo inferior do bloco existe
 // justamente para passar livre do bloco_conexao_motor_2020.
-var blocoFixacaoBelt = Add(new BlocoFixacaoBelt(), at: Placement.At(0, 0, alturaTopoCarrinhosY + carrinhoXPeca.Altura, rotationZDegrees: rotacaoMotorZ), name: "bloco_fixacao_belt", color: "#00CC6A");
+var blocoFixacaoBeltPeca = new BlocoFixacaoBelt();
+var blocoFixacaoBelt = Add(blocoFixacaoBeltPeca, at: Placement.At(0, 0, alturaTopoCarrinhosY + carrinhoXPeca.Altura, rotationZDegrees: rotacaoMotorZ), name: "bloco_fixacao_belt", color: "#00CC6A");
+// --- Chapa de 20 x 10 mm (arestas chanfradas) assentada no topo do bloco_fixacao_belt ---
+// Reproduz, na mesma posição, os dois furos verticais de 3,2 mm do bloco (furo_vertical_3_2 e
+// o seu espelhado, distantes 11 mm). As posições são obtidas convertendo as coordenadas locais
+// desses furos para o mundo, então a chapa acompanha o bloco mesmo se ele for girado/movido.
+var chapaFurosBeltPeca = new ChapaFurosBelt();
+var xPlanoEspelhoBelt = blocoFixacaoBeltPeca.BaseCorpoX + blocoFixacaoBeltPeca.LarguraCorpoX;
+var furoVerticalBeltA = blocoFixacaoBelt.ToWorld(new Point3D(blocoFixacaoBeltPeca.FuroVerticalX, blocoFixacaoBeltPeca.FuroVerticalY, 0));
+var furoVerticalBeltB = blocoFixacaoBelt.ToWorld(new Point3D(2.0 * xPlanoEspelhoBelt - blocoFixacaoBeltPeca.FuroVerticalX, blocoFixacaoBeltPeca.FuroVerticalY, 0));
+var xChapaFurosBelt = (furoVerticalBeltA.X + furoVerticalBeltB.X) / 2.0 - chapaFurosBeltPeca.LarguraX / 2.0;
+var yChapaFurosBelt = (furoVerticalBeltA.Y + furoVerticalBeltB.Y) / 2.0 - chapaFurosBeltPeca.ComprimentoY / 2.0;
+var zChapaFurosBelt = alturaTopoCarrinhosY + carrinhoXPeca.Altura + blocoFixacaoBeltPeca.AlturaCorpo;
+var chapaFurosBelt = Add(chapaFurosBeltPeca, at: Placement.At(xChapaFurosBelt, yChapaFurosBelt, zChapaFurosBelt), name: "chapa_furos_belt", color: "#00CC6A");

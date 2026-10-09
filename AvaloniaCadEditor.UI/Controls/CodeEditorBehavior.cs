@@ -229,8 +229,9 @@ public static class CodeEditorBehavior
                 }
                 editor.ScrollToLine(request.Line);
                 // Só navegação explícita (F12, lista de referências) leva o foco ao editor;
-                // selecionar uma peça na árvore não deve tirar o foco dela.
-                if (request.SelectionLength > 0) editor.TextArea.Focus();
+                // selecionar algo na cena ou na árvore não deve tirar o foco de lá — senão os
+                // atalhos de ferramenta (M, R, ...) caem no editor como digitação.
+                if (request.TakeFocus) editor.TextArea.Focus();
             }
             catch (ArgumentOutOfRangeException) { /* documento trocou no meio do caminho */ }
         }, Avalonia.Threading.DispatcherPriority.Loaded);

@@ -62,11 +62,12 @@ public interface ICodeEditorCommands
 /// </summary>
 public sealed class EditorLineRequest
 {
-    public EditorLineRequest(int line, int column = 1, int selectionLength = 0)
+    public EditorLineRequest(int line, int column = 1, int selectionLength = 0, bool takeFocus = false)
     {
         Line = line;
         Column = column;
         SelectionLength = selectionLength;
+        TakeFocus = takeFocus;
     }
 
     /// <summary>Linha, começando em 1.</summary>
@@ -77,4 +78,11 @@ public sealed class EditorLineRequest
 
     /// <summary>Quantos caracteres selecionar a partir da coluna (0 = só posiciona o cursor).</summary>
     public int SelectionLength { get; }
+
+    /// <summary>
+    /// Se o editor deve ficar com o foco do teclado. Só para navegação explícita (F12, lista de
+    /// referências): quem navegou a partir da cena continua na cena, senão os atalhos de ferramenta
+    /// (M, R, ...) viram digitação no código.
+    /// </summary>
+    public bool TakeFocus { get; }
 }
