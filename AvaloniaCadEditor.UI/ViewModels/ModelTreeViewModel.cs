@@ -101,17 +101,32 @@ public class ModelTreeViewModel : INotifyPropertyChanged
         string iconPolygon = "M12,2L22,12L17,22H7L2,12L12,2M12,4.83L4.83,12L8.27,19.17H15.73L19.17,12L12,4.83Z";
         string iconLine = "M21.71,20.29L20.29,21.71L2.29,3.71L3.71,2.29L21.71,20.29Z";
 
-        // Find consumed features
+        // Find consumed features: operandos de booleanas, inclusive das que só entram na cena
+        // embrulhadas num x.Transformed(...) — senão os operandos de x apareciam soltos na raiz,
+        // como uma cópia "antes da transformação". A Source de um Transformed em si não é
+        // consumida: numa cópia (AddFeature(x); AddFeature(x.Transformed(...))) o original fica.
         var consumedFeatures = new HashSet<IFeature>();
-        foreach (var feature in CurrentSketch.Features)
+        var visited = new HashSet<IFeature>();
+        void MarkConsumed(IFeature feature)
         {
+            if (!visited.Add(feature)) return;
             if (feature is BooleanFeature bf)
             {
                 foreach (var dep in bf.Dependencies)
                 {
-                    if (dep != null) consumedFeatures.Add(dep);
+                    if (dep == null) continue;
+                    consumedFeatures.Add(dep);
+                    MarkConsumed(dep);
                 }
             }
+            else if (feature is TransformedFeature tf)
+            {
+                MarkConsumed(tf.Source);
+            }
+        }
+        foreach (var feature in CurrentSketch.Features)
+        {
+            MarkConsumed(feature);
         }
 
         var rootFeatures = CurrentSketch.Features.Where(f => !consumedFeatures.Contains(f)).ToList();
@@ -251,7 +266,12 @@ public class ModelTreeViewModel : INotifyPropertyChanged
 
         string icon = iconCube;
         string name = feature.Name;
-        if (feature is ExtrudeFeature ef)
+        // Um x.Transformed(...) aparece como o próprio x (ícone, cotas e operandos), já na posição
+        // final — só o nome vem do Transformed (numa cópia, ele é outro). O nó continua ligado ao
+        // Transformed, que é o que está na cena (seleção e visibilidade).
+        var shown = feature is TransformedFeature transformed ? transformed.Source : feature;
+        string label = feature.Name;
+        if (shown is ExtrudeFeature ef)
         {
             if (ef.Profile is CircleProfile cp)
             {
@@ -265,44 +285,44 @@ public class ModelTreeViewModel : INotifyPropertyChanged
         }
         // As primitivas nativas caíam todas no cubo genérico com o nome cru. Mostrar as cotas aqui
         // é o que diferencia duas features do mesmo tipo na árvore sem ter que abrir o código.
-        else if (feature is BoxFeature box)
+        else if (shown is BoxFeature box)
         {
-            name = $"{box.Name} — Caixa ({box.Width:F1} × {box.Length:F1} × {box.Height:F1})";
+            name = $"{label} — Caixa ({box.Width:F1} × {box.Length:F1} × {box.Height:F1})";
         }
-        else if (feature is CylinderFeature cyl)
+        else if (shown is CylinderFeature cyl)
         {
             icon = iconCylinder;
-            name = $"{cyl.Name} — Cilindro (R={cyl.Radius:F1}, H={cyl.Height:F1})";
+            name = $"{label} — Cilindro (R={cyl.Radius:F1}, H={cyl.Height:F1})";
         }
-        else if (feature is ConeFeature cone)
+        else if (shown is ConeFeature cone)
         {
             icon = iconCylinder;
             name = cone.IsFullCone
-                ? $"{cone.Name} — Cone (R={cone.BottomRadius:F1}, H={cone.Height:F1})"
-                : $"{cone.Name} — Tronco de cone (R={cone.BottomRadius:F1}→{cone.TopRadius:F1}, H={cone.Height:F1})";
+                ? $"{label} — Cone (R={cone.BottomRadius:F1}, H={cone.Height:F1})"
+                : $"{label} — Tronco de cone (R={cone.BottomRadius:F1}→{cone.TopRadius:F1}, H={cone.Height:F1})";
         }
-        else if (feature is PrismFeature prism)
+        else if (shown is PrismFeature prism)
         {
-            name = $"{prism.Name} — Prisma ({prism.Vertices.Count} lados, H={prism.Height:F1})";
+            name = $"{label} — Prisma ({prism.Vertices.Count} lados, H={prism.Height:F1})";
         }
-        else if (feature is SweepFeature sweep)
+        else if (shown is SweepFeature sweep)
         {
             icon = iconCylinder;
             int trechos = sweep.Path?.Segments.Count ?? 0;
             string forma = sweep.Path?.IsClosed == true ? "Varredura fechada" : "Varredura";
-            name = $"{sweep.Name} — {forma} ({trechos} trecho{(trechos == 1 ? "" : "s")})";
+            name = $"{label} — {forma} ({trechos} trecho{(trechos == 1 ? "" : "s")})";
         }
-        else if (feature is FilletFeature fillet)
+        else if (shown is FilletFeature fillet)
         {
-            name = $"{fillet.Name} — Fillet (R={fillet.Radius:F1})";
+            name = $"{label} — Fillet (R={fillet.Radius:F1})";
         }
-        else if (feature is BooleanFeature bf)
+        else if (shown is BooleanFeature bf)
         {
-            name = $"[{bf.Operation}] {bf.Name}";
+            name = $"[{bf.Operation}] {label}";
         }
-        else if (feature is PartInstance instance)
+        else if (shown is PartInstance instance)
         {
-            name = $"{instance.Name} ({instance.PartTypeName})";
+            name = $"{label} ({instance.PartTypeName})";
         }
         else if (feature is WorkPlaneFeature wpf)
         {
@@ -321,7 +341,7 @@ public class ModelTreeViewModel : INotifyPropertyChanged
         node.VisibilityChanged += (s, e) => OnNodeVisibilityChanged();
         node.PropertyChanged += OnNodePropertyChanged;
 
-        if (feature is BooleanFeature booleanFeature)
+        if (shown is BooleanFeature booleanFeature)
         {
             foreach (var b in booleanFeature.BaseFeatures)
             {

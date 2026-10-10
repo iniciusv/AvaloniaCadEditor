@@ -33,8 +33,6 @@ public sealed record SuporteMotorNema17(
     double RaioChanfro = 2.0,
     double PassoFurosLateral = 15,
     double DiametroFuroM3Lateral = 3.2,
-    double LarguraPorcaLateral = 5.83,
-    double EspessuraPorcaLateral = 3.0,
     double ParedeSolidaPorcaLateral = 4.0) : Part
 {
     /// <summary>Comprimento total (frente + trás). A face "frente" (y negativo) é a mais próxima da extrusão.</summary>
@@ -103,9 +101,7 @@ public sealed record SuporteMotorNema17(
             Insercao: InsercaoPorca.Lateral,
             EixoHexagono: Vector3D.UnitZ,
             ComprimentoCanal: comprimento_canal_lateral,
-            DiametroFuro: DiametroFuroM3Lateral,
-            EspessuraAlojamento: EspessuraPorcaLateral,
-            LarguraPorca: LarguraPorcaLateral).Instance("fixacao_lateral_a");
+            DiametroFuro: DiametroFuroM3Lateral).Instance("fixacao_lateral_a");
 
         var fixacao_lateral_b = new FuroPorca(
             Entrada: new Point3D(x_furos_lateral, -ComprimentoFrente - 1.0, z_centro_lateral),
@@ -114,9 +110,7 @@ public sealed record SuporteMotorNema17(
             Insercao: InsercaoPorca.Lateral,
             EixoHexagono: Vector3D.UnitZ,
             ComprimentoCanal: comprimento_canal_lateral,
-            DiametroFuro: DiametroFuroM3Lateral,
-            EspessuraAlojamento: EspessuraPorcaLateral,
-            LarguraPorca: LarguraPorcaLateral).Instance("fixacao_lateral_b");
+            DiametroFuro: DiametroFuroM3Lateral).Instance("fixacao_lateral_b");
 
         // -------------------------------------------------------------------------------
         // Vazio trapezoidal na borda traseira (lado oposto à extrusão), passante em toda a

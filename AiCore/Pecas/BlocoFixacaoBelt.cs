@@ -1,27 +1,8 @@
 /// <summary>
 /// Bloco de pressão da correia (belt), fixado na lateral do bloco_fixacao_mgn9.
-/// Corpo: 20,5 (X) x 16,5 (Y) x 17 (Z) por metade; base alinhada à base do bloco_fixacao_mgn9.
-/// - Vão superior por onde a correia passa (altura 35 a 43 no mundo).
-/// - 2 furos coaxiais em Y (X = -10, Z = 5) alinhados à fixação lateral esquerda do bloco.
-/// - Furo de pressão da correia (X = -16,11533, Z = 13), com alojamento hexagonal de porca M3
-///   (deslocado ~8,125 mm no -Y em relação à face traseira), no MESMO padrão da
-///   <see cref="PlacaSuporteCarrinhoY"/>: uma única instância de <see cref="FuroPorca"/> subtrai
-///   o furo de passagem E o alojamento da porca, ambos derivados das mesmas variáveis (portanto
-///   sempre coaxiais), com o canal de inserção da porca aberto no topo.
-/// - Dois furos verticais passantes de 3,2 mm, cada um com:
-///   * rebaixo CILÍNDRICO no TOPO (furo_vertical, Ø6 x 8 mm a partir de Z = 9); e
-///   * rebaixo CÔNICO (escareado de 90°) na PORÇÃO INFERIOR do furo, voltado para cima:
-///     o lado largo do cone fica na face inferior e estreita subindo até o diâmetro do furo
-///     passante, para alojar a cabeça do parafuso M3 inserido por baixo.
-/// - Rebaixo na parte inferior traseira (sobreposição de 3 mm + margem de 2 mm) para evitar conflito com o bloco_conexao_motor_2020.
-/// - Rebaixo na parte inferior frontal (vazio aberto na face Y = BaseCorpoY), na PONTA do corpo:
-///   começa na face de extremidade X = BaseCorpoX e avança LarguraRebaixoFrontal para dentro,
-///   com 4,5 mm de profundidade em Y e 5 mm de altura em Z. Largura limitada para não alcançar
-///   o rebaixo_fixacao (que fica em torno de X = -10).
-/// - ESPELHAMENTO: a peça foi modelada apenas como meia-peça; o Build() reflete toda a geometria
-///   em X pelo plano da face interna do corpo (local X = BaseCorpoX + LarguraCorpoX) e une as
-///   duas metades, gerando a peça completa. Como a instância na cena é girada 180° em Z, a nova
-///   metade espelhada aparece à esquerda (lado oposto) da metade original.
+/// Corpo: 20,5 (X) x 16,5 (Y) x 17 (Z) por metade; modelada como meia-peça e espelhada em X no Build().
+/// Furo de pressão da correia usa o mesmo padrão de <see cref="FuroPorca"/> da <see cref="PlacaSuporteCarrinhoY"/>:
+/// furo de passagem e alojamento hexagonal da porca M3 saem das mesmas variáveis (sempre coaxiais).
 /// Origem local = base do bloco_fixacao_mgn9 (local = mundo - (0, 0, 26)).
 /// </summary>
 public sealed record BlocoFixacaoBelt(
@@ -57,9 +38,7 @@ public sealed record BlocoFixacaoBelt(
     double ComprimentoFuroPassante = 20.0,
     double FuroPressaoX = -16.11533,
     double FuroPressaoZ = 13.0,
-    double RaioFuroPressao = 1.7,
     double PosicaoPorcaTraseiraY = 15.375,
-    double LarguraPorca = 5.83,
     double EspessuraPorca = 3.0) : Part
 {
     protected override IFeature Build()
@@ -135,10 +114,7 @@ public sealed record BlocoFixacaoBelt(
             profundidadePorca,
             ComprimentoCanal: alturaTopoPorca,
             FolgaAntes: folgaAntesPorca,
-            FolgaDepois: folgaDepoisPorca,
-            DiametroFuro: 2.0 * RaioFuroPressao,
-            LarguraPorca: LarguraPorca,
-            EspessuraAlojamento: EspessuraPorca).Instance("porca_pressao_correia");
+            FolgaDepois: folgaDepoisPorca).Instance("porca_pressao_correia");
 
         // ==================== METADE ESPELHADA EM X ====================
         // Cada sólido acima é refletido pelo plano X = xm (X' = 2*xm - X).
@@ -173,10 +149,7 @@ public sealed record BlocoFixacaoBelt(
             profundidadePorca,
             ComprimentoCanal: alturaTopoPorca,
             FolgaAntes: folgaAntesPorca,
-            FolgaDepois: folgaDepoisPorca,
-            DiametroFuro: 2.0 * RaioFuroPressao,
-            LarguraPorca: LarguraPorca,
-            EspessuraAlojamento: EspessuraPorca).Instance("porca_pressao_correia_espelhado");
+            FolgaDepois: folgaDepoisPorca).Instance("porca_pressao_correia_espelhado");
 
         // Une as duas metades e subtrai todos os vazios (originais + espelhados).
         var baseCorpos = new IFeature[] { corpo, corpo_espelhado };
