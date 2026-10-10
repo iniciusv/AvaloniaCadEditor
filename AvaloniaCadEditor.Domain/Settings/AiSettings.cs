@@ -13,6 +13,10 @@ public class AiSettings
     /// <summary>Manter o histórico da conversa entre turnos (multi-round). Desligado = cada envio é independente (stateless).</summary>
     public bool KeepConversationHistory { get; set; } = true;
 
-    /// <summary>Habilitar o reasoning/thinking mode (em modelos compatíveis). Desligado por padrão.</summary>
+    /// <summary>
+    /// Habilitar o reasoning/thinking mode (em modelos compatíveis). Desligado por padrão.
+    /// O valor é enviado explicitamente à API como <c>thinking: { type: "enabled" | "disabled" }</c>:
+    /// omitir o campo não desliga nada, já que o thinking mode é ligado por padrão no servidor.
+    /// </summary>
     public bool EnableReasoning { get; set; } = false;
 }

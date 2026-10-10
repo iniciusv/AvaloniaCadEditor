@@ -39,6 +39,77 @@ namespace AiCore.Services
             }
         }
 
+        /// <summary>Opções de serialização do corpo da requisição.</summary>
+        public static readonly JsonSerializerOptions SerializerOptions = new JsonSerializerOptions
+        {
+            PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
+        };
+
+        /// <summary>
+        /// Converte as mensagens da conversa para o formato da API.
+        /// O <c>reasoning_content</c> dos turnos anteriores não é reenviado: sem o parâmetro
+        /// <c>tools</c> na requisição a API o ignora e não o concatena ao contexto, então enviá-lo
+        /// apenas infla o payload (o raciocínio costuma ser maior que a resposta).
+        /// Atenção: se este cliente passar a enviar <c>tools</c>, a regra inverte — aí o
+        /// <c>reasoning_content</c> de todos os turnos anteriores torna-se obrigatório e a API
+        /// responde 400 sem ele.
+        /// </summary>
+        public static List<object> BuildApiMessages(IEnumerable<ChatMessage> messages)
+        {
+            var apiMessages = new List<object>();
+            foreach (var msg in messages)
+            {
+                apiMessages.Add(new { role = msg.Role, content = msg.Content });
+            }
+
+            return apiMessages;
+        }
+
+        /// <summary>
+        /// Indica se o destino aceita o toggle <c>thinking</c> da DeepSeek. Endpoints
+        /// OpenAI-compatíveis de outros provedores rejeitam o campo, por isso o gate.
+        /// </summary>
+        public static bool SupportsThinkingToggle(string modelName, string baseUrl) =>
+            (modelName ?? string.Empty).StartsWith("deepseek", StringComparison.OrdinalIgnoreCase) ||
+            (baseUrl ?? string.Empty).Contains("deepseek", StringComparison.OrdinalIgnoreCase);
+
+        /// <summary>
+        /// Monta o corpo da requisição de chat. O campo <c>thinking</c> é sempre declarado
+        /// explicitamente (<c>enabled</c>/<c>disabled</c>) nos destinos DeepSeek: omiti-lo não
+        /// desliga o raciocínio, pois o thinking mode é ligado por padrão no servidor.
+        /// </summary>
+        public static object BuildRequestBody(
+            string modelName,
+            string baseUrl,
+            List<object> apiMessages,
+            double temperature,
+            int maxTokens,
+            bool enableThinking)
+        {
+            if (!SupportsThinkingToggle(modelName, baseUrl))
+            {
+                return new
+                {
+                    model = modelName,
+                    messages = apiMessages,
+                    temperature = temperature,
+                    max_tokens = maxTokens,
+                    stream = false
+                };
+            }
+
+            return new
+            {
+                model = modelName,
+                messages = apiMessages,
+                thinking = new { type = enableThinking ? "enabled" : "disabled" },
+                temperature = temperature,
+                max_tokens = maxTokens,
+                stream = false
+            };
+        }
+
         /// <summary>
         /// Envia uma conversa completa à LLM e retorna o conteúdo, raciocínio e uso de tokens.
         /// </summary>
@@ -69,54 +140,16 @@ namespace AiCore.Services
             string endpoint = baseUrl + "v1/chat/completions";
             if (endpoint.Contains("/v1/v1/")) endpoint = endpoint.Replace("/v1/v1/", "/v1/");
 
-            var apiMessages = new List<object>();
-            foreach (var msg in messages)
-            {
-                if (!string.IsNullOrWhiteSpace(msg.ReasoningContent))
-                {
-                    apiMessages.Add(new { role = msg.Role, content = msg.Content, reasoning_content = msg.ReasoningContent });
-                }
-                else
-                {
-                    apiMessages.Add(new { role = msg.Role, content = msg.Content });
-                }
-            }
+            List<object> apiMessages = BuildApiMessages(messages);
 
             string modelName = options.Model ?? "deepseek-v4-pro";
             double temp = temperature ?? options.Temperature;
             int maxTokens = options.MaxTokens > 0 ? options.MaxTokens : 384000;
 
-            object requestBody;
-            if (options.EnableThinkingMode && (modelName.Contains("deepseek-v4") || modelName.Contains("reasoner")))
-            {
-                requestBody = new
-                {
-                    model = modelName,
-                    messages = apiMessages,
-                    thinking = new { type = "enabled" },
-                    temperature = temp,
-                    max_tokens = maxTokens,
-                    stream = false
-                };
-            }
-            else
-            {
-                requestBody = new
-                {
-                    model = modelName,
-                    messages = apiMessages,
-                    temperature = temp,
-                    max_tokens = maxTokens,
-                    stream = false
-                };
-            }
+            object requestBody = BuildRequestBody(
+                modelName, baseUrl, apiMessages, temp, maxTokens, options.EnableThinkingMode);
 
-            var jsonOptions = new JsonSerializerOptions
-            {
-                PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
-            };
-            string jsonContent = JsonSerializer.Serialize(requestBody, jsonOptions);
+            string jsonContent = JsonSerializer.Serialize(requestBody, SerializerOptions);
 
             using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
             request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiKey);
