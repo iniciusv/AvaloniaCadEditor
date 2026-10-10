@@ -66,7 +66,7 @@ public sealed class RoslynPartConverter : IPartConverter
         if (!scene.Declarations.ContainsKey(registration.Local))
             return PartConversion.Refuse($"'{registration.Local.Name}' precisa ser declarado sozinho no topo da cena (var {registration.Local.Name} = ...;).");
 
-        var slice = Slice.Compute(scene, registration);
+        var slice = SceneSlice.Compute(scene, registration);
         if (slice.Refusal != null) return PartConversion.Refuse(slice.Refusal);
 
         var parameters = BuildParameters(scene, slice, typeName);
@@ -84,284 +84,13 @@ public sealed class RoslynPartConverter : IPartConverter
         }, null);
     }
 
-    // ---------------------------------------------------------------- As instruções da cena
-
-    /// <summary>Um <c>AddFeature(x)</c> ou <c>AddFeature(x.Transformed(P))</c> no topo da cena.</summary>
-    private sealed record Registration(ExpressionStatementSyntax Statement, ILocalSymbol Local, ExpressionSyntax? Placement);
-
-    /// <summary>
-    /// As instruções top-level do arquivo e, para cada uma, as variáveis/funções locais da cena que
-    /// ela lê — a base do recorte.
-    /// </summary>
-    private sealed class SceneStatements
-    {
-        public SceneStatements(SyntaxTree tree, CSharpCompilation compilation)
-        {
-            Tree = tree;
-            Model = compilation.GetSemanticModel(tree);
-            FeatureType = compilation.GetTypeByMetadataName("AvaloniaCadEditor.Domain.Features.IFeature");
-            Statements = ((CompilationUnitSyntax)tree.GetRoot()).Members
-                .OfType<GlobalStatementSyntax>()
-                .Select(g => g.Statement)
-                .ToList();
-
-            foreach (var statement in Statements)
-            {
-                References[statement] = ReferencedSymbols(statement);
-
-                switch (statement)
-                {
-                    case LocalDeclarationStatementSyntax { Declaration.Variables: { Count: 1 } variables }
-                        when Model.GetDeclaredSymbol(variables[0]) is ILocalSymbol local:
-                        Declarations[local] = statement;
-                        break;
-                    case LocalFunctionStatementSyntax function when Model.GetDeclaredSymbol(function) is IMethodSymbol method:
-                        Declarations[method] = statement;
-                        break;
-                    case ExpressionStatementSyntax expression when AsRegistration(expression) is { } registration:
-                        Registrations.Add(registration);
-                        break;
-                    case ExpressionStatementSyntax expression when Subject(expression.Expression) is { } subject:
-                        Mutations.Add((subject, statement));
-                        break;
-                }
-            }
-        }
-
-        public SyntaxTree Tree { get; }
-        public SemanticModel Model { get; }
-        public INamedTypeSymbol? FeatureType { get; }
-        public IReadOnlyList<StatementSyntax> Statements { get; }
-
-        /// <summary>Variáveis e funções locais da cena lidas por cada instrução.</summary>
-        public Dictionary<StatementSyntax, HashSet<ISymbol>> References { get; } = new();
-
-        /// <summary>Onde cada variável movível (uma por declaração) e cada função local é declarada.</summary>
-        public Dictionary<ISymbol, StatementSyntax> Declarations { get; } = new(SymbolEqualityComparer.Default);
-
-        public List<Registration> Registrations { get; } = new();
-
-        /// <summary>Instruções do tipo <c>x.Prop = ...;</c> / <c>x.Metodo(...);</c>, pela variável que alteram.</summary>
-        public List<(ISymbol Subject, StatementSyntax Statement)> Mutations { get; } = new();
-
-        public bool IsFeature(ITypeSymbol? type) =>
-            type != null && FeatureType != null &&
-            (SymbolEqualityComparer.Default.Equals(type, FeatureType) ||
-             type.AllInterfaces.Contains(FeatureType, SymbolEqualityComparer.Default));
-
-        public int LineOf(SyntaxNode node) => Tree.GetLineSpan(node.Span).StartLinePosition.Line + 1;
-
-        public bool Covers(SyntaxNode node, int line)
-        {
-            var span = Tree.GetLineSpan(node.Span);
-            return line >= span.StartLinePosition.Line + 1 && line <= span.EndLinePosition.Line + 1;
-        }
-
-        public ISymbol? SceneSymbolOf(SyntaxNode node)
-        {
-            var info = Model.GetSymbolInfo(node);
-            var symbol = (info.Symbol ?? info.CandidateSymbols.FirstOrDefault())?.OriginalDefinition;
-            return symbol is ILocalSymbol or IMethodSymbol { MethodKind: MethodKind.LocalFunction } && IsTopLevel(symbol)
-                ? symbol
-                : null;
-        }
-
-        /// <summary>Declarado direto no topo do arquivo (não dentro de um laço, lambda ou função local).</summary>
-        private bool IsTopLevel(ISymbol symbol) =>
-            symbol.DeclaringSyntaxReferences.Any(r =>
-                r.SyntaxTree == Tree &&
-                r.GetSyntax() switch
-                {
-                    VariableDeclaratorSyntax declarator => declarator.Parent?.Parent?.Parent is GlobalStatementSyntax,
-                    LocalFunctionStatementSyntax function => function.Parent is GlobalStatementSyntax,
-                    SingleVariableDesignationSyntax designation => designation.FirstAncestorOrSelf<StatementSyntax>()?.Parent is GlobalStatementSyntax,
-                    _ => false
-                });
-
-        private HashSet<ISymbol> ReferencedSymbols(StatementSyntax statement)
-        {
-            var found = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
-            foreach (var identifier in statement.DescendantNodes().OfType<IdentifierNameSyntax>())
-            {
-                if (SceneSymbolOf(identifier) is { } symbol) found.Add(symbol);
-            }
-            return found;
-        }
-
-        private Registration? AsRegistration(ExpressionStatementSyntax statement)
-        {
-            if (statement.Expression is not InvocationExpressionSyntax
-                {
-                    Expression: IdentifierNameSyntax { Identifier.ValueText: "AddFeature" },
-                    ArgumentList.Arguments: { Count: 1 } arguments
-                })
-                return null;
-
-            var argument = arguments[0].Expression;
-            if (argument is IdentifierNameSyntax identifier)
-            {
-                return SceneSymbolOf(identifier) is ILocalSymbol local ? new Registration(statement, local, null) : null;
-            }
-            if (argument is InvocationExpressionSyntax
-                {
-                    Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Transformed", Expression: IdentifierNameSyntax inner },
-                    ArgumentList.Arguments: { Count: 1 } transformedArguments
-                } &&
-                SceneSymbolOf(inner) is ILocalSymbol transformedLocal)
-            {
-                return new Registration(statement, transformedLocal, transformedArguments[0].Expression);
-            }
-            return null;
-        }
-
-        /// <summary>A variável no começo do alvo de <c>x.A.B = ...</c>, <c>x = ...</c> ou <c>x.Metodo(...)</c>.</summary>
-        private ISymbol? Subject(ExpressionSyntax expression)
-        {
-            var target = expression switch
-            {
-                AssignmentExpressionSyntax assignment => assignment.Left,
-                InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax member } => member.Expression,
-                _ => null
-            };
-            while (target is MemberAccessExpressionSyntax access) target = access.Expression;
-            return target is IdentifierNameSyntax identifier ? SceneSymbolOf(identifier) as ILocalSymbol : null;
-        }
-    }
-
-    // ---------------------------------------------------------------- O recorte
-
-    private sealed class Slice
-    {
-        private Slice(string? refusal) => Refusal = refusal;
-
-        public string? Refusal { get; }
-
-        /// <summary>Instruções que vão para o Build(), na ordem do arquivo.</summary>
-        public List<StatementSyntax> Statements { get; } = new();
-
-        /// <summary>Instruções a apagar da cena: o recorte (menos funções locais que a cena ainda usa) e os AddFeature dos sólidos internos.</summary>
-        public HashSet<StatementSyntax> Removed { get; } = new();
-
-        /// <summary>Variáveis da cena que o Build() lê mas que ficam na cena: viram parâmetros.</summary>
-        public List<ILocalSymbol> Inputs { get; } = new();
-
-        public static Slice Compute(SceneStatements scene, Registration root)
-        {
-            var cut = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
-            var registrationsOf = scene.Registrations
-                .Where(r => r != root)
-                .ToLookup(r => (ISymbol)r.Local, SymbolEqualityComparer.Default);
-
-            while (true)
-            {
-                var (statements, symbols) = Close(scene, root.Local, cut);
-
-                // Quem fica na cena: tudo fora do recorte, exceto os AddFeature dos sólidos que entram
-                // nele (somem com eles). O AddFeature da raiz fica (vira o Add) e o placement dele
-                // continua lendo as variáveis da cena.
-                var outside = scene.Statements
-                    .Where(s => !statements.Contains(s))
-                    .Where(s => !symbols.Any(sym => registrationsOf[sym].Any(r => r.Statement == s && r.Placement == null)))
-                    .ToList();
-
-                var grow = symbols
-                    .OfType<ILocalSymbol>()
-                    .Where(local => !SymbolEqualityComparer.Default.Equals(local, root.Local))
-                    .Where(local => !scene.IsFeature(local.Type))
-                    .Where(local => !scene.Declarations.ContainsKey(local) || outside.Any(s => scene.References[s].Contains(local)))
-                    .Where(local => !cut.Contains(local))
-                    .ToList();
-                if (grow.Count > 0)
-                {
-                    cut.UnionWith(grow);
-                    continue;
-                }
-
-                foreach (var local in symbols.OfType<ILocalSymbol>())
-                {
-                    if (SymbolEqualityComparer.Default.Equals(local, root.Local) || !scene.IsFeature(local.Type)) continue;
-
-                    if (!scene.Declarations.ContainsKey(local))
-                        return new Slice($"'{local.Name}' é um sólido declarado de um jeito que não dá para mover (declare uma variável por instrução).");
-
-                    var user = outside.FirstOrDefault(s => scene.References[s].Contains(local));
-                    if (user != null)
-                    {
-                        string why = registrationsOf[local].Any(r => r.Statement == user)
-                            ? "é registrado deslocado (AddFeature(...Transformed(...)))"
-                            : "também é usado";
-                        return new Slice($"'{local.Name}' {why} na linha {scene.LineOf(user)}; a peça precisa ser dona dele. Tire essa dependência antes de converter.");
-                    }
-                }
-
-                var slice = new Slice(null);
-                slice.Statements.AddRange(scene.Statements.Where(statements.Contains));
-                foreach (var statement in slice.Statements)
-                {
-                    bool sharedFunction = statement is LocalFunctionStatementSyntax function &&
-                        scene.Model.GetDeclaredSymbol(function) is { } method &&
-                        outside.Any(s => scene.References[s].Contains(method));
-                    if (!sharedFunction) slice.Removed.Add(statement);
-                }
-                foreach (var local in symbols)
-                {
-                    foreach (var registration in registrationsOf[local]) slice.Removed.Add(registration.Statement);
-                }
-                slice.Inputs.AddRange(cut.OfType<ILocalSymbol>()
-                    .Where(local => slice.Statements.Any(s => scene.References[s].Contains(local)))
-                    .OrderBy(local => local.Locations.FirstOrDefault()?.SourceSpan.Start ?? 0));
-
-                if (slice.Statements.SelectMany(s => s.DescendantNodes().OfType<InvocationExpressionSyntax>())
-                        .FirstOrDefault(call => IsSceneRegistration(scene, call)) is { } nested)
-                    return new Slice($"A linha {scene.LineOf(nested)} registra outra feature na cena no meio do código do sólido; o Build() de uma peça não pode fazer isso.");
-
-                return slice;
-            }
-        }
-
-        /// <summary>Fecho para trás a partir da raiz, sem atravessar as variáveis cortadas.</summary>
-        private static (HashSet<StatementSyntax> Statements, HashSet<ISymbol> Symbols) Close(
-            SceneStatements scene, ILocalSymbol root, HashSet<ISymbol> cut)
-        {
-            var statements = new HashSet<StatementSyntax>();
-            var symbols = new HashSet<ISymbol>(SymbolEqualityComparer.Default);
-            var queue = new Queue<ISymbol>();
-            queue.Enqueue(root);
-
-            void Take(StatementSyntax statement)
-            {
-                if (!statements.Add(statement)) return;
-                foreach (var next in scene.References[statement]) queue.Enqueue(next);
-            }
-
-            while (queue.Count > 0)
-            {
-                var symbol = queue.Dequeue();
-                if (cut.Contains(symbol) || !symbols.Add(symbol)) continue;
-
-                if (scene.Declarations.TryGetValue(symbol, out var declaration)) Take(declaration);
-                foreach (var (subject, statement) in scene.Mutations)
-                {
-                    if (SymbolEqualityComparer.Default.Equals(subject, symbol)) Take(statement);
-                }
-            }
-            return (statements, symbols);
-        }
-
-        private static bool IsSceneRegistration(SceneStatements scene, InvocationExpressionSyntax call)
-        {
-            var info = scene.Model.GetSymbolInfo(call);
-            var method = info.Symbol ?? info.CandidateSymbols.FirstOrDefault();
-            return method?.ContainingType?.ToDisplayString() == "AvaloniaCadEditor.Domain.Scripting.Scene";
-        }
-    }
 
     // ---------------------------------------------------------------- Parâmetros
 
     /// <summary>Um parâmetro do record: a variável da cena que o alimenta, o nome, o tipo e o padrão (se constante).</summary>
     private sealed record Parameter(ILocalSymbol Local, string Name, string Type, string? Default);
 
-    private static (IReadOnlyList<Parameter> Items, string? Refusal) BuildParameters(SceneStatements scene, Slice slice, string typeName)
+    private static (IReadOnlyList<Parameter> Items, string? Refusal) BuildParameters(SceneStatements scene, SceneSlice slice, string typeName)
     {
         var taken = new HashSet<string>(ReservedNames, StringComparer.Ordinal) { typeName };
         foreach (var statement in slice.Statements)
@@ -425,8 +154,8 @@ public sealed class RoslynPartConverter : IPartConverter
     // ---------------------------------------------------------------- Os dois arquivos
 
     private static string BuildPartFile(
-        SceneStatements scene, Slice slice, IReadOnlyList<Parameter> parameters,
-        Registration root, string typeName, string sceneFile, string newLine)
+        SceneStatements scene, SceneSlice slice, IReadOnlyList<Parameter> parameters,
+        SceneRegistration root, string typeName, string sceneFile, string newLine)
     {
         var renames = parameters.ToDictionary(p => (ISymbol)p.Local, p => p.Name, SymbolEqualityComparer.Default);
         var body = new StringBuilder();
@@ -465,7 +194,7 @@ public sealed class RoslynPartConverter : IPartConverter
     }
 
     private static string RewriteScene(
-        SceneStatements scene, Slice slice, IReadOnlyList<Parameter> parameters, Registration root, string typeName)
+        SceneStatements scene, SceneSlice slice, IReadOnlyList<Parameter> parameters, SceneRegistration root, string typeName)
     {
         var changes = new List<TextChange>();
         foreach (var statement in slice.Removed)
@@ -489,7 +218,7 @@ public sealed class RoslynPartConverter : IPartConverter
     /// Divide os comentários acima da instrução: o que vem até a última linha em branco fica na
     /// cena (costuma ser o título de uma seção); o que está colado na instrução vai com ela.
     /// </summary>
-    private static (string Keep, string Move) SplitLeadingTrivia(StatementSyntax statement)
+    internal static (string Keep, string Move) SplitLeadingTrivia(StatementSyntax statement)
     {
         string leading = statement.GetLeadingTrivia().ToFullString();
         int keepLength = 0;
@@ -518,11 +247,11 @@ public sealed class RoslynPartConverter : IPartConverter
         return text.WithChanges(changes.Select(c => new TextChange(new TextSpan(c.Span.Start - offset, c.Span.Length), c.NewText!))).ToString();
     }
 
-    private static IEnumerable<string> Lines(string text) =>
+    internal static IEnumerable<string> Lines(string text) =>
         text.Replace("\r\n", "\n").TrimEnd('\n').Split('\n');
 
     /// <summary>Tira a indentação comum (a cena costuma estar na coluna 0, mas nada garante).</summary>
-    private static string Dedent(string text)
+    internal static string Dedent(string text)
     {
         var lines = Lines(text).ToList();
         int common = lines.Where(l => l.Trim().Length > 0)
@@ -532,6 +261,6 @@ public sealed class RoslynPartConverter : IPartConverter
         return string.Join("\n", lines.Select(l => l.Trim().Length == 0 ? string.Empty : l[common..]));
     }
 
-    private static bool SamePath(string a, string b) =>
+    internal static bool SamePath(string a, string b) =>
         string.Equals(a.Replace('\\', '/'), b.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase);
 }

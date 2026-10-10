@@ -43,6 +43,18 @@ public interface IPartCodeEditor
 
     /// <summary>Converte um sólido solto em peça (record em Pecas/) e reexecuta. Retorna a mensagem de erro, ou null.</summary>
     Task<string?> ConvertToPartAsync(IFeature feature, string typeName);
+
+    /// <summary>As instâncias de peça da última execução da cena (alvos possíveis de uma incorporação).</summary>
+    IReadOnlyList<PartInstance> ScenePartInstances();
+
+    /// <summary>As features de topo marcadas na cena (Ctrl+clique acumula várias), sem planos de trabalho.</summary>
+    IReadOnlyList<IFeature> SelectedSceneFeatures();
+
+    /// <summary>
+    /// Incorpora um sólido solto ao Build() da peça de <paramref name="target"/> (coordenadas convertidas
+    /// para o referencial local dela) e reexecuta. Retorna a mensagem de erro, ou null.
+    /// </summary>
+    Task<string?> MergeIntoPartAsync(IFeature feature, PartInstance target, AvaloniaCadEditor.Application.Interfaces.PartMergeMode mode);
 }
 
 /// <summary>Comandos de navegação disparados pelo teclado no editor (F12, Shift+F12, F2).</summary>

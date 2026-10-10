@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Globalization;
@@ -7,6 +8,7 @@ using System.Runtime.CompilerServices;
 using System.Windows.Input;
 using Avalonia.Media;
 using Avalonia.Threading;
+using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Application.Scenes;
 using AvaloniaCadEditor.Application.Services;
 using AvaloniaCadEditor.Domain.Entities;
@@ -43,6 +45,7 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
         });
         RenameCommand = new RelayCommand(async () => await RenameAsync());
         ConvertToPartCommand = new RelayCommand(async () => await ConvertToPartAsync());
+        MergeIntoPartCommand = new RelayCommand(async () => await MergeIntoPartAsync());
         OpenPartDefinitionCommand = new RelayCommand(() =>
         {
             if (_selectionService.SelectedObject is PartInstance instance)
@@ -144,6 +147,172 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
             return;
         }
         ConvertError = await editor.ConvertToPartAsync(feature, NewPartTypeName);
+    }
+
+    // --- Incorporar numa peça existente: o sólido solto vai para o Build() de uma peça da cena ---
+    /// <summary>Uma instância de peça que pode receber o sólido.</summary>
+    public sealed record MergeTargetItem(PartInstance Instance, string Label)
+    {
+        public override string ToString() => Label;
+    }
+
+    /// <summary>Um modo de incorporação, com o texto do combo.</summary>
+    public sealed record MergeModeItem(PartMergeMode Mode, string Label, string Hint)
+    {
+        public override string ToString() => Label;
+    }
+
+    public ObservableCollection<MergeTargetItem> MergeTargets { get; } = new();
+
+    public static IReadOnlyList<MergeModeItem> MergeModes { get; } = new[]
+    {
+        new MergeModeItem(PartMergeMode.UnionAfterCuts, "Unir depois dos cortes",
+            "Une ao resultado final da peça: os vazios que ela já tem não apagam o sólido novo."),
+        new MergeModeItem(PartMergeMode.UnionBeforeCuts, "Unir antes dos cortes",
+            "Entra nas bases da CreateDifference final: os vazios da peça também furam o sólido novo."),
+        new MergeModeItem(PartMergeMode.SubtractAsTool, "Subtrair (furo/rasgo)",
+            "O sólido vira ferramenta de corte da peça.")
+    };
+
+    private bool _canMergeIntoPart;
+    public bool CanMergeIntoPart
+    {
+        get => _canMergeIntoPart;
+        private set { _canMergeIntoPart = value; OnPropertyChanged(); }
+    }
+
+    private MergeTargetItem? _selectedMergeTarget;
+    public MergeTargetItem? SelectedMergeTarget
+    {
+        get => _selectedMergeTarget;
+        set { _selectedMergeTarget = value; OnPropertyChanged(); }
+    }
+
+    private MergeModeItem _selectedMergeMode = MergeModes[0];
+    public MergeModeItem SelectedMergeMode
+    {
+        get => _selectedMergeMode;
+        set { _selectedMergeMode = value ?? MergeModes[0]; OnPropertyChanged(); }
+    }
+
+    private string? _mergeError;
+    public string? MergeError
+    {
+        get => _mergeError;
+        private set { _mergeError = value; OnPropertyChanged(); }
+    }
+
+    /// <summary>
+    /// True quando a seleção é o par "sólido solto + instância de peça" (Ctrl+clique): o alvo já está
+    /// decidido pela própria seleção, então o combo de peças some e fica só o modo e o botão.
+    /// </summary>
+    private bool _isMergePair;
+    public bool IsMergePair
+    {
+        get => _isMergePair;
+        private set { _isMergePair = value; OnPropertyChanged(); }
+    }
+
+    private string _mergeCaption = "";
+    /// <summary>O que vai acontecer, no modo par: "Incorporar dente em bloco (BlocoBelt)".</summary>
+    public string MergeCaption
+    {
+        get => _mergeCaption;
+        private set { _mergeCaption = value; OnPropertyChanged(); }
+    }
+
+    public ICommand MergeIntoPartCommand { get; }
+
+    /// <summary>
+    /// O sólido solto a incorporar. Não é sempre a seleção primária: no par, a primária é o último
+    /// Ctrl+clique, que pode ter sido a peça.
+    /// </summary>
+    private IFeature? _mergeSolid;
+
+    private async System.Threading.Tasks.Task MergeIntoPartAsync()
+    {
+        if (_mergeSolid is not { } feature || SelectedMergeTarget is not { } target) return;
+        if (_partCodeEditor() is not { } editor)
+        {
+            MergeError = "Editor de código indisponível.";
+            return;
+        }
+        MergeError = await editor.MergeIntoPartAsync(feature, target.Instance, SelectedMergeMode.Mode);
+    }
+
+    private static bool IsLooseSolid(IFeature feature) => feature is not PartInstance and not WorkPlaneFeature;
+
+    /// <summary>
+    /// Prepara a incorporação para a seleção atual:
+    /// <list type="bullet">
+    ///   <item>um sólido solto + uma instância de peça (Ctrl+clique, em qualquer ordem): o alvo é essa peça;</item>
+    ///   <item>só um sólido solto: lista as peças da cena, já com a mais próxima dele selecionada (a que o
+    ///   envolve ou encosta nele costuma ser a certa).</item>
+    /// </list>
+    /// </summary>
+    private void RefreshMergeTargets(IFeature? primary)
+    {
+        MergeTargets.Clear();
+        SelectedMergeTarget = null;
+        MergeError = null;
+        _mergeSolid = null;
+        IsMergePair = false;
+        MergeCaption = "";
+        CanMergeIntoPart = false;
+        if (primary == null || _partCodeEditor() is not { } editor) return;
+
+        var selected = editor.SelectedSceneFeatures();
+        if (selected.Count == 2 && selected.Count(f => f is PartInstance) == 1 && selected.Count(IsLooseSolid) == 1)
+        {
+            var instance = selected.OfType<PartInstance>().Single();
+            _mergeSolid = selected.Single(IsLooseSolid);
+            var item = new MergeTargetItem(instance, $"{instance.Name} ({instance.PartTypeName})");
+            MergeTargets.Add(item);
+            SelectedMergeTarget = item;
+            MergeCaption = $"Incorporar {_mergeSolid.Name} em {item.Label}";
+            IsMergePair = true;
+            CanMergeIntoPart = true;
+            return;
+        }
+
+        if (selected.Count > 1 || !IsLooseSolid(primary)) return;
+        _mergeSolid = primary;
+
+        var solidBox = Bounds(primary);
+        var ranked = editor.ScenePartInstances()
+            .Select(i => (Instance: i, Distance: solidBox is { } a && Bounds(i) is { } b ? Gap(a, b) : double.MaxValue))
+            .OrderBy(x => x.Distance)
+            .ThenBy(x => x.Instance.Name, StringComparer.Ordinal)
+            .ToList();
+        foreach (var (instance, _) in ranked)
+            MergeTargets.Add(new MergeTargetItem(instance, $"{instance.Name} ({instance.PartTypeName})"));
+
+        SelectedMergeTarget = MergeTargets.FirstOrDefault();
+        CanMergeIntoPart = MergeTargets.Count > 0;
+    }
+
+    private static (Point3D Min, Point3D Max)? Bounds(IFeature feature)
+    {
+        try
+        {
+            var vertices = feature.GetVertices();
+            if (vertices.Count == 0) return null;
+            return (new Point3D(vertices.Min(v => v.X), vertices.Min(v => v.Y), vertices.Min(v => v.Z)),
+                    new Point3D(vertices.Max(v => v.X), vertices.Max(v => v.Y), vertices.Max(v => v.Z)));
+        }
+        catch (Exception ex) when (ex is NotSupportedException or InvalidOperationException or NotImplementedException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>Distância entre duas caixas alinhadas aos eixos (0 se se tocam ou se sobrepõem).</summary>
+    private static double Gap((Point3D Min, Point3D Max) a, (Point3D Min, Point3D Max) b)
+    {
+        double dx = Math.Max(0, Math.Max(a.Min.X - b.Max.X, b.Min.X - a.Max.X));
+        double dy = Math.Max(0, Math.Max(a.Min.Y - b.Max.Y, b.Min.Y - a.Max.Y));
+        double dz = Math.Max(0, Math.Max(a.Min.Z - b.Max.Z, b.Min.Z - a.Max.Z));
+        return Math.Sqrt(dx * dx + dy * dy + dz * dz);
     }
 
     /// <summary>Sugestão de nome do tipo: <c>bloco_fixacao</c> vira <c>BlocoFixacao</c>.</summary>
@@ -391,6 +560,7 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
             HasSelection = false;
             IsFeature = false;
             CanConvertToPart = false;
+            RefreshMergeTargets(null);
             Title = "Nenhum elemento selecionado";
             TypeBadge = "";
             IsCylinder = false;
@@ -407,6 +577,7 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
         CanConvertToPart = obj is IFeature and not PartInstance and not WorkPlaneFeature;
         NewPartTypeName = CanConvertToPart ? SuggestedTypeName(FeatureName) : "";
         ConvertError = null;
+        RefreshMergeTargets(obj as IFeature);
 
         if (obj is ExtrudeFeature feature)
         {

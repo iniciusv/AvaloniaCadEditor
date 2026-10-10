@@ -38,6 +38,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
     private readonly ISceneCodeNavigator _codeNavigator;
     private readonly IPartSolidTracer _partSolidTracer;
     private readonly IPartConverter _partConverter;
+    private readonly IPartMerger _partMerger;
     private readonly ILastSceneProvider _lastSceneProvider;
 
     // Modo projeto: texto de cada arquivo em memória e o último conteúdo visto em disco.
@@ -57,11 +58,13 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         ISceneCodeNavigator? codeNavigator = null,
         ILastSceneProvider? lastSceneProvider = null,
         IPartSolidTracer? partSolidTracer = null,
-        IPartConverter? partConverter = null)
+        IPartConverter? partConverter = null,
+        IPartMerger? partMerger = null)
     {
         _codeNavigator = codeNavigator ?? new AvaloniaCadEditor.Infrastructure.Scripting.RoslynCodeNavigator();
         _partSolidTracer = partSolidTracer ?? new AvaloniaCadEditor.Infrastructure.Scripting.RoslynPartSolidTracer();
         _partConverter = partConverter ?? new AvaloniaCadEditor.Infrastructure.Scripting.RoslynPartConverter();
+        _partMerger = partMerger ?? new AvaloniaCadEditor.Infrastructure.Scripting.RoslynPartMerger();
         _cadViewModel = cadViewModel;
         _sceneEvaluator = sceneEvaluator;
         _filePickerService = filePickerService;
@@ -1471,6 +1474,48 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         _cadViewModel.StatusText = verdict.GeometryVerified
             ? $"✓ {feature.Name} virou a peça {typeName.Trim()} ({conversion.Changes[^1].FilePath})"
             : $"✓ {feature.Name} virou a peça {typeName.Trim()} — a cena executa, mas esta geometria (fillet/extrusão) não pôde ser comparada com a original";
+        return null;
+    }
+
+    public IReadOnlyList<PartInstance> ScenePartInstances() =>
+        _cadViewModel.Sketch.Features.OfType<PartInstance>().ToList();
+
+    public IReadOnlyList<IFeature> SelectedSceneFeatures() =>
+        _cadViewModel.Sketch.Features.Where(f => f.IsSelected && f is not WorkPlaneFeature).ToList();
+
+    /// <summary>
+    /// Incorpora um sólido solto ao Build() de uma peça existente (ver <see cref="IPartMerger"/>). Como na
+    /// conversão, a cena alterada é avaliada antes de gravar e só é aplicada se o sólido continuar no
+    /// mesmo lugar do mundo (<see cref="PartMergeCheck"/>). Retorna a mensagem de erro, ou null.
+    /// </summary>
+    public async Task<string?> MergeIntoPartAsync(IFeature feature, PartInstance target, PartMergeMode mode)
+    {
+        if (_sceneEvaluator == null) return "Evaluator não configurado.";
+        if (feature is PartInstance) return "Este elemento já é uma peça.";
+
+        var origin = FeatureOrigin.Of(feature);
+        if (origin == null || origin.Line <= 0) return "Não sei de onde este elemento veio no código.";
+
+        var documents = CurrentDocuments();
+        var request = new PartMergeRequest(SourceFileOf(origin), origin.Line, target.PartTypeName, target.Placement,
+            (feature as TransformedFeature)?.Placement, mode);
+        var merge = _partMerger.Merge(documents, request);
+        if (merge.Refusal != null) return merge.Refusal;
+
+        var featuresBefore = _cadViewModel.Sketch.Features.ToList();
+        var merged = await _sceneEvaluator.EvaluateAsync(merge.ApplyTo(documents));
+        var verdict = PartMergeCheck.Verify(feature, featuresBefore, merged, target.Name);
+        if (verdict.Problem != null) return verdict.Problem;
+
+        var warnings = merge.Warnings.Concat(PartMergeWarnings.For(target, featuresBefore)).ToList();
+        await ApplyExternalChangesAsync(merge.Changes);
+        if (HasErrors) return ErrorSummary;
+        SelectFeatureByName(target.Name);
+
+        string status = $"✓ {feature.Name} incorporado a {target.PartTypeName} ({merge.Changes[^1].FilePath})";
+        if (!verdict.GeometryVerified) status += " — a cena executa, mas esta geometria (fillet/extrusão) não pôde ser comparada com a original";
+        if (warnings.Count > 0) status += " ⚠ " + string.Join(" ", warnings);
+        _cadViewModel.StatusText = status;
         return null;
     }
 

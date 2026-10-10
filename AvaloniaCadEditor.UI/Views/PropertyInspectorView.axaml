@@ -65,6 +65,26 @@
                                    IsVisible="{Binding ConvertError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                     </StackPanel>
 
+                    <!-- Incorporar numa peça existente: o sólido solto vai para o Build() dela, em coordenadas locais -->
+                    <StackPanel Spacing="2" IsVisible="{Binding CanMergeIntoPart}">
+                        <!-- Par selecionado (sólido solto + peça, Ctrl+clique): o alvo já é a peça da seleção -->
+                        <TextBlock Text="{Binding MergeCaption}" Foreground="#00BFFF" FontSize="11" TextWrapping="Wrap"
+                                   IsVisible="{Binding IsMergePair}" />
+                        <ComboBox ItemsSource="{Binding MergeTargets}" SelectedItem="{Binding SelectedMergeTarget, Mode=TwoWay}"
+                                  HorizontalAlignment="Stretch" Height="26" FontSize="11" IsVisible="{Binding !IsMergePair}"
+                                  ToolTip.Tip="Peça que recebe o sólido (a mais próxima vem primeiro). Dica: Ctrl+clique no sólido e na peça para já escolher o alvo" />
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                            <ComboBox ItemsSource="{Binding MergeModes}" SelectedItem="{Binding SelectedMergeMode, Mode=TwoWay}"
+                                      HorizontalAlignment="Stretch" Height="26" FontSize="11"
+                                      ToolTip.Tip="{Binding SelectedMergeMode.Hint}" />
+                            <Button Grid.Column="1" Content="Incorporar na peça" Command="{Binding MergeIntoPartCommand}"
+                                    FontSize="11" Padding="6,2"
+                                    ToolTip.Tip="Move o código deste sólido para o Build() da peça escolhida, convertendo as coordenadas do mundo para o referencial local dela (posição e rotação da instância)" />
+                        </Grid>
+                        <TextBlock Text="{Binding MergeError}" Foreground="#FF6B6B" FontSize="10" TextWrapping="Wrap"
+                                   IsVisible="{Binding MergeError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    </StackPanel>
+
                     <!-- Mathematical Center -->
                     <Border Background="#262626" CornerRadius="4" Padding="8">
                         <StackPanel Spacing="4">

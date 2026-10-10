@@ -28,7 +28,7 @@ public class RoslynSceneEvaluator : ISceneEvaluator
 {
     private const string GlobalUsingsFile = "GlobalUsings.g.cs";
 
-    private static readonly CSharpParseOptions ParseOptions =
+    internal static readonly CSharpParseOptions ParseOptions =
         CSharpParseOptions.Default.WithLanguageVersion(LanguageVersion.Latest);
 
     private static readonly Lazy<IReadOnlyList<MetadataReference>> References = new(BuildReferences);

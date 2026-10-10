@@ -35,6 +35,15 @@ public abstract class PartInstance : FeatureBase
     /// <summary>Converte uma direção local da peça para coordenadas do mundo.</summary>
     public Vector3D ToWorld(Vector3D localDirection) => Placement.ApplyVector(localDirection);
 
+    /// <summary>
+    /// Converte um ponto do mundo para as coordenadas locais da peça (o inverso de <see cref="ToWorld(Point3D)"/>):
+    /// desfaz a translação E a rotação do <see cref="Placement"/>.
+    /// </summary>
+    public Point3D ToLocal(Point3D world) => Placement.Inverse().Apply(world);
+
+    /// <summary>Converte uma direção do mundo para as coordenadas locais da peça (só desfaz a rotação).</summary>
+    public Vector3D ToLocal(Vector3D worldDirection) => Placement.Inverse().ApplyVector(worldDirection);
+
     public override IReadOnlyList<Point3D> GetVertices() =>
         Definition.GetVertices().Select(Placement.Apply).ToList();
 
