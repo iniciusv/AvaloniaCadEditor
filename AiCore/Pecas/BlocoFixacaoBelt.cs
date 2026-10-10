@@ -153,8 +153,34 @@ public sealed record BlocoFixacaoBelt(
 
         // Une as duas metades e subtrai todos os vazios (originais + espelhados).
         var baseCorpos = new IFeature[] { corpo, corpo_espelhado };
-        return BooleanFeature.CreateDifference(
-            "bloco_fixacao_belt",
+        // Incorporado da cena (Cena.cs): coordenadas convertidas para o referencial local da peça.
+        var prism_f62c_verts = new[]
+        {
+            new Point3D(26, 3.25, 0),
+            new Point3D(26, 6.25, 0),
+            new Point3D(30.3, 6.25, 0),
+            new Point3D(30.3, 7.55, 0),
+            new Point3D(41, 7.55, 0),
+            new Point3D(41, 3.25, 0)
+        };
+        var prism_f62c_plane = new WorkPlane(new Point3D(20.38467, 25, 9), new Vector3D(0, 0, 1), new Vector3D(-1, 0, 0));
+        var prism_f62c = new PrismFeature(prism_f62c_verts, height: 8, plane: prism_f62c_plane)
+        {
+            Name = "prism_f62c"
+        };
+        var cylinder_821a = new CylinderFeature(globalBaseCenter: new Point3D(-9.91533, 18.75, 9), globalDirection: new Vector3D(0, 0, 1), radius: 1.3, height: 8)
+        {
+            Name = "cylinder_821a"
+        };
+        var cylinder_54d2 = new CylinderFeature(globalBaseCenter: new Point3D(-5.61533, 18.75, 9), globalDirection: new Vector3D(0, 0, 1), radius: 3, height: 8)
+        {
+            Name = "cylinder_54d2"
+        };
+        var boolOp_7b90 = new BooleanFeature(name: "boolOp_7b90", operation: BooleanOperationType.Union, baseFeature: prism_f62c, toolFeatures: new IFeature[] { cylinder_821a });
+        var boolOp_16db = new BooleanFeature(name: "boolOp_16db", operation: BooleanOperationType.Subtract, baseFeature: boolOp_7b90, toolFeatures: new IFeature[] { cylinder_54d2 });
+
+        var bloco_fixacao_belt_base = BooleanFeature.CreateDifference(
+            "bloco_fixacao_belt_base",
             baseCorpos,
             rebaixo_inferior, rebaixo_inferior_espelhado,
             rebaixo_frontal, rebaixo_frontal_espelhado,
@@ -165,5 +191,6 @@ public sealed record BlocoFixacaoBelt(
             rebaixo_fixacao, rebaixo_fixacao_espelhado,
             furo_fixacao, furo_fixacao_espelhado,
             porca_pressao_correia, porca_pressao_correia_espelhado);
+        return BooleanFeature.CreateUnion("bloco_fixacao_belt", bloco_fixacao_belt_base, boolOp_16db);
     }
 }

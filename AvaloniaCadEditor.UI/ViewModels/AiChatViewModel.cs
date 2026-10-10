@@ -468,6 +468,8 @@ public class AiChatViewModel : INotifyPropertyChanged
                     item.ApplyCommand = new RelayCommand(async () =>
                     {
                         await _scriptEditor.ApplyExternalChangesAsync(changes);
+                        // Só a última resposta aplicada fica marcada; as demais podem ser reaplicadas.
+                        foreach (var other in Messages) other.IsApplied = false;
                         item.IsApplied = true;
                     });
                 }

@@ -167,20 +167,20 @@
                                                 MaxHeight="220"
                                                 Margin="4" />
 
-                                            <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto" Margin="4,0,4,4">
+                                            <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto,Auto" Margin="4,0,4,4">
                                                 <TextBlock Grid.Column="0" Text="{Binding ValidationText}"
                                                            Classes.validationOk="{Binding IsValidCode}"
                                                            FontSize="10" VerticalAlignment="Center" TextWrapping="Wrap" />
                                                 <Button Grid.Column="1" Content="Copy" Click="OnCopyCodeClick"
                                                         FontSize="10" Padding="6,2" Margin="0,0,4,0" />
-                                                <Button Grid.Column="2" Content="Apply" Command="{Binding ApplyCommand}"
-                                                        IsVisible="{Binding !IsApplied}" IsEnabled="{Binding IsValidCode}"
-                                                        Background="#27AE60" Foreground="White" FontWeight="Bold"
-                                                        FontSize="10" Padding="6,2" />
                                                 <Border Grid.Column="2" IsVisible="{Binding IsApplied}"
-                                                        Background="#1B5E20" CornerRadius="3" Padding="6,2">
+                                                        Background="#1B5E20" CornerRadius="3" Padding="6,2" Margin="0,0,4,0">
                                                     <TextBlock Text="✓ Applied" Foreground="White" FontSize="10" />
                                                 </Border>
+                                                <Button Grid.Column="3" Content="{Binding ApplyButtonText}" Command="{Binding ApplyCommand}"
+                                                        IsEnabled="{Binding IsValidCode}"
+                                                        Background="#27AE60" Foreground="White" FontWeight="Bold"
+                                                        FontSize="10" Padding="6,2" />
                                             </Grid>
                                         </Grid>
                                     </Border>

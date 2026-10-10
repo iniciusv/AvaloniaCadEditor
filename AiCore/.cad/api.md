@@ -202,6 +202,8 @@ Propriedades comuns a TODAS as features (herdadas de FeatureBase):
   string PartTypeName { get; }
   Point3D ToWorld(Point3D local)
   Vector3D ToWorld(Vector3D localDirection)
+  Point3D ToLocal(Point3D world)
+  Vector3D ToLocal(Vector3D worldDirection)
   IReadOnlyList<Point3D> GetVertices()
 
 ### SweepSection

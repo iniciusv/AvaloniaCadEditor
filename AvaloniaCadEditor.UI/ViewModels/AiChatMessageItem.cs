@@ -71,8 +71,11 @@ public class AiChatMessageItem : INotifyPropertyChanged
     public bool IsApplied
     {
         get => _isApplied;
-        set { _isApplied = value; OnPropertyChanged(); }
+        set { _isApplied = value; OnPropertyChanged(); OnPropertyChanged(nameof(ApplyButtonText)); }
     }
+
+    /// <summary>Permite reaplicar o código de uma resposta anterior (ex.: voltar a uma versão antiga).</summary>
+    public string ApplyButtonText => _isApplied ? "Re-apply" : "Apply";
 
     public ICommand? ApplyCommand { get; set; }
 

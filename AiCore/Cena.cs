@@ -147,32 +147,3 @@ var furoFixacaoPlacaB1Mundo = placaSuporteYB.ToWorld(new Point3D(passoFurosPlaca
 var furoFixacaoPlacaB2Mundo = placaSuporteYB.ToWorld(new Point3D(passoFurosPlacaCarrinhoY / 2 * sxPlacaSuporteYB, passoFurosPlacaCarrinhoY / 2, 0));
 var topoPlacaSuporteYB = placaSuporteYB.ToWorld(new Point3D(0, 0, 5.5));
 var blocoConexaoPlacaCarrinhoYB = Add(blocoConexaoPlacaCarrinhoYPeca, at: Placement.At((furoFixacaoPlacaB1Mundo.X + furoFixacaoPlacaB2Mundo.X) / 2.0, (furoFixacaoPlacaB1Mundo.Y + furoFixacaoPlacaB2Mundo.Y) / 2.0, topoPlacaSuporteYB.Z), name: "bloco_conexao_placa_carrinho_y_b", color: "#00CC6A");
-var prism_f62c_verts = new[]
-{
-    new Point3D(26, 3.25, 0),
-    new Point3D(26, 6.25, 0),
-    new Point3D(30.3, 6.25, 0),
-    new Point3D(30.3, 7.55, 0),
-    new Point3D(41, 7.55, 0),
-    new Point3D(41, 3.25, 0)
-};
-var prism_f62c_plane = new WorkPlane(new Point3D(-20.38467, -25, 35), new Vector3D(0, 0, 1), new Vector3D(1, 0, 0));
-var prism_f62c = new PrismFeature(prism_f62c_verts, height: 8, plane: prism_f62c_plane)
-{
-    Name = "prism_f62c"
-};
-AddFeature(prism_f62c);
-var cylinder_821a = new CylinderFeature(globalBaseCenter: new Point3D(9.91533, -18.75, 35), globalDirection: new Vector3D(0, 0, 1), radius: 1.3, height: 10)
-{
-    Name = "cylinder_821a"
-};
-AddFeature(cylinder_821a);
-var cylinder_54d2 = new CylinderFeature(globalBaseCenter: new Point3D(5.61533, -18.75, 35), globalDirection: new Vector3D(0, 0, 1), radius: 3, height: 10)
-{
-    Name = "cylinder_54d2"
-};
-AddFeature(cylinder_54d2);
-var boolOp_7b90 = new BooleanFeature(name: "boolOp_7b90", operation: BooleanOperationType.Union, baseFeature: prism_f62c, toolFeatures: new IFeature[] { cylinder_821a });
-AddFeature(boolOp_7b90);
-var boolOp_16db = new BooleanFeature(name: "boolOp_16db", operation: BooleanOperationType.Subtract, baseFeature: boolOp_7b90, toolFeatures: new IFeature[] { cylinder_54d2 });
-AddFeature(boolOp_16db);

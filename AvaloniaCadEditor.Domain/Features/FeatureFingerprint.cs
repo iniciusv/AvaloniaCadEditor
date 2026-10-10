@@ -35,7 +35,7 @@ public static class FeatureFingerprint
     {
         if (feature == null) return false;
 
-        sb.Append(feature.GetType().FullName).Append('{');
+        sb.Append(StableTypeName(feature.GetType())).Append('{');
         sb.Append(feature.IsEnabled ? 'E' : 'D').Append(';');
 
         bool ok = feature switch
@@ -56,6 +56,14 @@ public static class FeatureFingerprint
         sb.Append('}');
         return ok;
     }
+
+    /// <summary>
+    /// Nome do tipo sem os argumentos genéricos. O <c>FullName</c> de <c>PartInstance&lt;FuroPorca&gt;</c>
+    /// traz o nome qualificado do assembly da cena, que ganha um GUID novo a cada execução, e a chave
+    /// nunca se repetiria. O argumento (o tipo da peça) não muda a geometria: a definição entra logo depois.
+    /// </summary>
+    private static string? StableTypeName(Type type) =>
+        type.IsGenericType ? type.GetGenericTypeDefinition().FullName : type.FullName;
 
     private static bool AppendBox(StringBuilder sb, BoxFeature box)
     {

@@ -152,6 +152,47 @@ public class GeometryMeshCacheTests
         kernel.MeshBuildCount.Should().Be(1, "fillets são cacheados pela geometria, como as booleanas");
     }
 
+    /// <summary>
+    /// Peça da cena com outra peça da cena aninhada (<c>.Instance()</c>) numa booleana: o tipo
+    /// <c>PartInstance&lt;Furo&gt;</c> vem do assembly da cena, que é novo (GUID) a cada execução.
+    /// </summary>
+    [Fact]
+    public async Task PecaComPecaAninhadaDaCena_ReexecutarSemMudar_NaoRetessela()
+    {
+        const string code = """
+            Add(new Placa(), name: "placa");
+
+            record Furo(double X) : Part
+            {
+                protected override IFeature Build() =>
+                    new CylinderFeature(new Point3D(X, 5, -1), new Vector3D(0, 0, 1), 1.5, 12);
+            }
+
+            record Placa : Part
+            {
+                protected override IFeature Build()
+                {
+                    var corpo = new BoxFeature(Point3D.Origin, 30, 10, 10);
+                    var furo_1 = new Furo(10).Instance("furo_1");
+                    return BooleanFeature.CreateDifference("placa", corpo, furo_1);
+                }
+            }
+            """;
+        var evaluator = new AvaloniaCadEditor.Infrastructure.Scripting.RoslynSceneEvaluator();
+        var kernel = new OpenCascadeGeometryKernel();
+        var settings = new TessellationSettings();
+
+        var primeira = await evaluator.EvaluateAsync(code);
+        primeira.Success.Should().BeTrue(because: primeira.ErrorMessage);
+        kernel.BuildFeatureMesh(primeira.Features.Single(), settings);
+
+        kernel.BeginSceneRebuild();
+        var segunda = await evaluator.EvaluateAsync(code);
+        kernel.BuildFeatureMesh(segunda.Features.Single(), settings);
+
+        kernel.MeshBuildCount.Should().Be(1, "a cena não mudou; só o assembly compilado é outro");
+    }
+
     /// <summary>Subclasse de um perfil conhecido: pode ter parâmetros a mais, então não tem chave.</summary>
     private sealed class PerfilDesconhecido : AvaloniaCadEditor.Domain.Profiles.PolygonProfile
     {
