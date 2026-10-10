@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -99,9 +99,9 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
             }
         });
 
-        NewSceneCommand = new RelayCommand(async () => await NewSceneAsync());
-        OpenSceneCommand = new RelayCommand(async () => await OpenSceneAsync());
-        LoadLastSceneCommand = new RelayCommand(async () => await LoadLastSceneAsync());
+        NewSceneCommand = new RelayCommand(async () => await ReportingFailureAsync(NewSceneAsync));
+        OpenSceneCommand = new RelayCommand(async () => await ReportingFailureAsync(OpenSceneAsync));
+        LoadLastSceneCommand = new RelayCommand(async () => await ReportingFailureAsync(LoadLastSceneAsync));
         CreateFileCommand = new RelayCommand(async () => await CreateFileAsync());
         GoToFirstErrorCommand = new RelayCommand(GoToFirstError);
         InsertPartCommand = new RelayCommand(async () => await InsertPartAsync(SelectedPartType));
@@ -302,8 +302,10 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
             documents = project.ReadDocuments();
             SceneProjectTemplate.RefreshGeneratedFiles(project);
         }
-        catch (Exception ex) when (ex is IOException or InvalidOperationException or UnauthorizedAccessException)
+        catch (Exception ex)
         {
+            // Qualquer falha ao ler a pasta vira mensagem: o comando é async void e a exceção
+            // morreria sem a janela mostrar nada.
             _cadViewModel.StatusText = $"✗ {ex.Message}";
             return;
         }
@@ -336,15 +338,39 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         await RunCodeAsync();
     }
 
+    /// <summary>
+    /// Roda a ação de um comando mostrando a falha no status. Os comandos são <c>async void</c>:
+    /// sem isto, uma exceção no meio do caminho só fazia o botão parecer não ter feito nada.
+    /// </summary>
+    private async Task ReportingFailureAsync(Func<Task> action)
+    {
+        try
+        {
+            await action();
+        }
+        catch (Exception ex)
+        {
+            _cadViewModel.StatusText = $"✗ {ex.Message}";
+            Console.WriteLine($"[Cena] {ex}");
+        }
+    }
+
     /// <summary>Carrega a cena da última inicialização, se houver uma registrada e ela ainda existir.</summary>
     public async Task LoadLastSceneAsync()
     {
         string? folder = _lastSceneProvider.GetLastScenePath();
-        if (string.IsNullOrEmpty(folder) || !Directory.Exists(folder))
+        if (string.IsNullOrEmpty(folder))
         {
-            _cadViewModel.StatusText = "Nenhuma última cena encontrada.";
+            _cadViewModel.StatusText = "Nenhuma última cena registrada.";
             return;
         }
+        if (!Directory.Exists(folder))
+        {
+            _cadViewModel.StatusText = $"✗ A última cena não existe mais: {folder}";
+            return;
+        }
+
+        _cadViewModel.StatusText = $"Abrindo {folder}…";
         await OpenProjectAsync(folder);
     }
 

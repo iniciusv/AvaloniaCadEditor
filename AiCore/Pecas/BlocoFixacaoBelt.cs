@@ -3,9 +3,11 @@
 /// Corpo: 20,5 (X) x 16,5 (Y) x 17 (Z) por metade; base alinhada à base do bloco_fixacao_mgn9.
 /// - Vão superior por onde a correia passa (altura 35 a 43 no mundo).
 /// - 2 furos coaxiais em Y (X = -10, Z = 5) alinhados à fixação lateral esquerda do bloco.
-/// - Furo de pressão da correia (X = -16,11533, Z = 13) + alojamento hexagonal M3
-///   (deslocado 9 mm no -Y em relação à face traseira), igual aos alojamentos laterais
-///   do bloco_fixacao_mgn9.
+/// - Furo de pressão da correia (X = -16,11533, Z = 13), com alojamento hexagonal de porca M3
+///   (deslocado ~8,125 mm no -Y em relação à face traseira), no MESMO padrão da
+///   <see cref="PlacaSuporteCarrinhoY"/>: uma única instância de <see cref="FuroPorca"/> subtrai
+///   o furo de passagem E o alojamento da porca, ambos derivados das mesmas variáveis (portanto
+///   sempre coaxiais), com o canal de inserção da porca aberto no topo.
 /// - Dois furos verticais passantes de 3,2 mm, cada um com:
 ///   * rebaixo CILÍNDRICO no TOPO (furo_vertical, Ø6 x 8 mm a partir de Z = 9); e
 ///   * rebaixo CÔNICO (escareado de 90°) na PORÇÃO INFERIOR do furo, voltado para cima:
@@ -77,6 +79,18 @@ public sealed record BlocoFixacaoBelt(
         var zBaseEscareado = 5;
         var alturaEscareado = profundidadeEscareado + margemEscareadoAbaixo;
 
+        // ---- Furo de pressão da correia: furo + porca numa ÚNICA <FuroPorca> (padrão da
+        //      PlacaSuporteCarrinhoY). O furo de passagem e o alojamento hexagonal saem das MESMAS
+        //      variáveis, então ficam sempre coaxiais. O canal de inserção da porca abre no topo
+        //      (EixoHexagono = +Z, que é o default do FuroPorca para furos horizontais);
+        //      ComprimentoCanal = alturaTopoPorca extrapola 1 mm o topo do corpo, p/ corte limpo.
+        var alturaTopoPorca = AlturaCorpo - FuroPressaoZ + 1.0;              // 5 mm
+        var entradaPorcaY = yFundo + 1.0;                                   // 1 mm fora da face traseira
+        var fundoPorcaY = PosicaoPorcaTraseiraY + EspessuraPorca / 2.0;     // face de entrada do alojamento
+        var profundidadePorca = entradaPorcaY - fundoPorcaY;
+        const double folgaAntesPorca = 10.0;                                // furo p/ fora da face traseira
+        const double folgaDepoisPorca = 9.0;                                // furo p/ fora da face frontal
+
         // ==================== METADE ORIGINAL (como modelada) ====================
 
         var corpo = new BoxFeature(
@@ -111,26 +125,20 @@ public sealed record BlocoFixacaoBelt(
             height: alturaEscareado) { Name = "rebaixo_conico", IsTransientTool = true };
         var rebaixo_fixacao = new CylinderFeature(new Point3D(FuroLateralX, yFundo, FuroLateralZ), new Vector3D(0, -1, 0), RaioFuroRebaixo, ComprimentoFuroRebaixo) { Name = "rebaixo_fixacao", IsTransientTool = true };
         var furo_fixacao = new CylinderFeature(new Point3D(FuroLateralX, yFundo, FuroLateralZ), new Vector3D(0, -1, 0), RaioFuroPassante, ComprimentoFuroPassante) { Name = "furo_fixacao", IsTransientTool = true };
-        var furo_pressao_correia = new CylinderFeature(new Point3D(FuroPressaoX, yFundo, FuroPressaoZ), new Vector3D(0, -1, 0), RaioFuroPressao, ComprimentoFuroPassante) { Name = "furo_pressao_correia", IsTransientTool = true };
 
-        // Alojamento hexagonal da porca M3 com saída vertical (+Z), desenhado num plano normal a Y.
-        var raioVerticePorca = (LarguraPorca / 2.0) / (System.Math.Sqrt(3.0) / 2.0); // raio até os vértices
-        var alturaTopoPorca = AlturaCorpo - FuroPressaoZ + 1.0;              // extrapola o topo para corte limpo
-        var verticesPorca = new[]
-        {
-            new Point3D(0, -raioVerticePorca, 0),
-            new Point3D(LarguraPorca / 2.0, -raioVerticePorca / 2.0, 0),
-            new Point3D(LarguraPorca / 2.0, raioVerticePorca / 2.0, 0),
-            new Point3D(LarguraPorca / 2.0, alturaTopoPorca, 0),
-            new Point3D(-LarguraPorca / 2.0, alturaTopoPorca, 0),
-            new Point3D(-LarguraPorca / 2.0, raioVerticePorca / 2.0, 0),
-            new Point3D(-LarguraPorca / 2.0, -raioVerticePorca / 2.0, 0)
-        };
-        var planoPorca = new WorkPlane(
-            origin: new Point3D(FuroPressaoX, PosicaoPorcaTraseiraY - EspessuraPorca / 2.0, FuroPressaoZ),
-            normal: Vector3D.UnitY,
-            xAxis: new Vector3D(-1, 0, 0));
-        var porca_pressao_correia = new PrismFeature(verticesPorca, height: EspessuraPorca, plane: planoPorca) { Name = "porca_pressao_correia", IsTransientTool = true };
+        // Furo de pressão da correia + alojamento hexagonal da porca M3, construído por uma única
+        // FuroPorca (subtrai furo e alojamento juntos). O furo entra pela face traseira (Y = yFundo)
+        // e a porca é inserida pelo canal aberto no topo.
+        var porca_pressao_correia = new FuroPorca(
+            new Point3D(FuroPressaoX, entradaPorcaY, FuroPressaoZ),
+            new Vector3D(0, -1, 0),
+            profundidadePorca,
+            ComprimentoCanal: alturaTopoPorca,
+            FolgaAntes: folgaAntesPorca,
+            FolgaDepois: folgaDepoisPorca,
+            DiametroFuro: 2.0 * RaioFuroPressao,
+            LarguraPorca: LarguraPorca,
+            EspessuraAlojamento: EspessuraPorca).Instance("porca_pressao_correia");
 
         // ==================== METADE ESPELHADA EM X ====================
         // Cada sólido acima é refletido pelo plano X = xm (X' = 2*xm - X).
@@ -157,26 +165,18 @@ public sealed record BlocoFixacaoBelt(
             height: alturaEscareado) { Name = "rebaixo_conico_espelhado", IsTransientTool = true };
         var rebaixo_fixacao_espelhado = new CylinderFeature(new Point3D(2.0 * xm - FuroLateralX, yFundo, FuroLateralZ), new Vector3D(0, -1, 0), RaioFuroRebaixo, ComprimentoFuroRebaixo) { Name = "rebaixo_fixacao_espelhado", IsTransientTool = true };
         var furo_fixacao_espelhado = new CylinderFeature(new Point3D(2.0 * xm - FuroLateralX, yFundo, FuroLateralZ), new Vector3D(0, -1, 0), RaioFuroPassante, ComprimentoFuroPassante) { Name = "furo_fixacao_espelhado", IsTransientTool = true };
-        var furo_pressao_correia_espelhado = new CylinderFeature(new Point3D(2.0 * xm - FuroPressaoX, yFundo, FuroPressaoZ), new Vector3D(0, -1, 0), RaioFuroPressao, ComprimentoFuroPassante) { Name = "furo_pressao_correia_espelhado", IsTransientTool = true };
 
-        // Alojamento da porca espelhado: mesmo eixo (+Y), mesma coordenada Y da original
-        // (deslocada 9 mm no -Y), origem em X refletido e xAxis invertido
-        // (o eixo local v é negado para manter a mesma faixa de Z após a reflexão).
-        var verticesPorcaEspelhado = new[]
-        {
-            new Point3D(0, raioVerticePorca, 0),
-            new Point3D(LarguraPorca / 2.0, raioVerticePorca / 2.0, 0),
-            new Point3D(LarguraPorca / 2.0, -raioVerticePorca / 2.0, 0),
-            new Point3D(LarguraPorca / 2.0, -alturaTopoPorca, 0),
-            new Point3D(-LarguraPorca / 2.0, -alturaTopoPorca, 0),
-            new Point3D(-LarguraPorca / 2.0, -raioVerticePorca / 2.0, 0),
-            new Point3D(-LarguraPorca / 2.0, raioVerticePorca / 2.0, 0)
-        };
-        var planoPorcaEspelhado = new WorkPlane(
-            origin: new Point3D(2.0 * xm - FuroPressaoX, PosicaoPorcaTraseiraY - EspessuraPorca / 2.0, FuroPressaoZ),
-            normal: Vector3D.UnitY,
-            xAxis: new Vector3D(1, 0, 0));
-        var porca_pressao_correia_espelhado = new PrismFeature(verticesPorcaEspelhado, height: EspessuraPorca, plane: planoPorcaEspelhado) { Name = "porca_pressao_correia_espelhado", IsTransientTool = true };
+        // Mesmo conjunto furo + porca, reconstruído na posição espelhada em X.
+        var porca_pressao_correia_espelhado = new FuroPorca(
+            new Point3D(2.0 * xm - FuroPressaoX, entradaPorcaY, FuroPressaoZ),
+            new Vector3D(0, -1, 0),
+            profundidadePorca,
+            ComprimentoCanal: alturaTopoPorca,
+            FolgaAntes: folgaAntesPorca,
+            FolgaDepois: folgaDepoisPorca,
+            DiametroFuro: 2.0 * RaioFuroPressao,
+            LarguraPorca: LarguraPorca,
+            EspessuraAlojamento: EspessuraPorca).Instance("porca_pressao_correia_espelhado");
 
         // Une as duas metades e subtrai todos os vazios (originais + espelhados).
         var baseCorpos = new IFeature[] { corpo, corpo_espelhado };
@@ -191,7 +191,6 @@ public sealed record BlocoFixacaoBelt(
             rebaixo_conico, rebaixo_conico_espelhado,
             rebaixo_fixacao, rebaixo_fixacao_espelhado,
             furo_fixacao, furo_fixacao_espelhado,
-            furo_pressao_correia, furo_pressao_correia_espelhado,
             porca_pressao_correia, porca_pressao_correia_espelhado);
     }
 }
