@@ -40,6 +40,9 @@ public interface IPartCodeEditor
 
     /// <summary>Renomeia a feature no código (<c>name:</c> ou o literal do nome) e reexecuta. Retorna a mensagem de erro, ou null.</summary>
     Task<string?> RenameFeatureAsync(IFeature feature, string newName);
+
+    /// <summary>Converte um sólido solto em peça (record em Pecas/) e reexecuta. Retorna a mensagem de erro, ou null.</summary>
+    Task<string?> ConvertToPartAsync(IFeature feature, string typeName);
 }
 
 /// <summary>Comandos de navegação disparados pelo teclado no editor (F12, Shift+F12, F2).</summary>

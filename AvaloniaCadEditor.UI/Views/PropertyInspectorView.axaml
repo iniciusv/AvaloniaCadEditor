@@ -48,6 +48,23 @@
                                    IsVisible="{Binding NameError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
                     </StackPanel>
 
+                    <!-- Converter em peça: sólido solto vira um record em Pecas/ -->
+                    <StackPanel Spacing="2" IsVisible="{Binding CanConvertToPart}">
+                        <Grid ColumnDefinitions="*,Auto" ColumnSpacing="4">
+                            <TextBox Text="{Binding NewPartTypeName, Mode=TwoWay}" Height="26" FontSize="11"
+                                     Watermark="Nome da peça" ToolTip.Tip="Nome do record criado em Pecas/">
+                                <TextBox.KeyBindings>
+                                    <KeyBinding Gesture="Enter" Command="{Binding ConvertToPartCommand}" />
+                                </TextBox.KeyBindings>
+                            </TextBox>
+                            <Button Grid.Column="1" Content="Converter em peça" Command="{Binding ConvertToPartCommand}"
+                                    FontSize="11" Padding="6,2"
+                                    ToolTip.Tip="Move o código deste sólido para um record em Pecas/ e a cena passa a usar Add(new Peca(...))" />
+                        </Grid>
+                        <TextBlock Text="{Binding ConvertError}" Foreground="#FF6B6B" FontSize="10" TextWrapping="Wrap"
+                                   IsVisible="{Binding ConvertError, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                    </StackPanel>
+
                     <!-- Mathematical Center -->
                     <Border Background="#262626" CornerRadius="4" Padding="8">
                         <StackPanel Spacing="4">

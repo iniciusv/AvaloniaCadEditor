@@ -37,6 +37,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
     private readonly Action<Action> _uiInvoker;
     private readonly ISceneCodeNavigator _codeNavigator;
     private readonly IPartSolidTracer _partSolidTracer;
+    private readonly IPartConverter _partConverter;
     private readonly ILastSceneProvider _lastSceneProvider;
 
     // Modo projeto: texto de cada arquivo em memória e o último conteúdo visto em disco.
@@ -55,10 +56,12 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         Action<Action>? uiInvoker = null,
         ISceneCodeNavigator? codeNavigator = null,
         ILastSceneProvider? lastSceneProvider = null,
-        IPartSolidTracer? partSolidTracer = null)
+        IPartSolidTracer? partSolidTracer = null,
+        IPartConverter? partConverter = null)
     {
         _codeNavigator = codeNavigator ?? new AvaloniaCadEditor.Infrastructure.Scripting.RoslynCodeNavigator();
         _partSolidTracer = partSolidTracer ?? new AvaloniaCadEditor.Infrastructure.Scripting.RoslynPartSolidTracer();
+        _partConverter = partConverter ?? new AvaloniaCadEditor.Infrastructure.Scripting.RoslynPartConverter();
         _cadViewModel = cadViewModel;
         _sceneEvaluator = sceneEvaluator;
         _filePickerService = filePickerService;
@@ -1368,6 +1371,36 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         await RunCodeAsync();
         if (HasErrors) return ErrorSummary;
         SelectFeatureByName(newName);
+        return null;
+    }
+
+    /// <summary>
+    /// Converte um sólido solto em peça (ver <see cref="IPartConverter"/>). A cena convertida é
+    /// avaliada antes de gravar e só é aplicada se produzir o mesmo sólido. Retorna a mensagem de erro, ou null.
+    /// </summary>
+    public async Task<string?> ConvertToPartAsync(IFeature feature, string typeName)
+    {
+        if (_project == null) return "Abra a cena como pasta: a peça nova vai para Pecas/.";
+        if (_sceneEvaluator == null) return "Evaluator não configurado.";
+        if (feature is PartInstance) return "Este elemento já é uma peça.";
+
+        var origin = FeatureOrigin.Of(feature);
+        if (origin == null || origin.Line <= 0) return "Não sei de onde este elemento veio no código.";
+
+        var documents = CurrentDocuments();
+        var conversion = _partConverter.Convert(documents, SourceFileOf(origin), origin.Line, typeName);
+        if (conversion.Refusal != null) return conversion.Refusal;
+
+        var converted = await _sceneEvaluator.EvaluateAsync(conversion.ApplyTo(documents));
+        var verdict = PartConversionCheck.Verify(feature, _cadViewModel.Sketch.Features.ToList(), converted, typeName.Trim());
+        if (verdict.Problem != null) return verdict.Problem;
+
+        await ApplyExternalChangesAsync(conversion.Changes);
+        if (HasErrors) return ErrorSummary;
+        SelectFeatureByName(feature.Name);
+        _cadViewModel.StatusText = verdict.GeometryVerified
+            ? $"✓ {feature.Name} virou a peça {typeName.Trim()} ({conversion.Changes[^1].FilePath})"
+            : $"✓ {feature.Name} virou a peça {typeName.Trim()} — a cena executa, mas esta geometria (fillet/extrusão) não pôde ser comparada com a original";
         return null;
     }
 

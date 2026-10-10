@@ -148,6 +148,7 @@ de todo o resto. Falha segura: fingerprint `null` = sem cache, nunca cache errad
 | Mudar a tesselação / arestas | `Infrastructure/OpenCascade/OcctTessellator.cs`, `Domain/Settings/TessellationSettings.cs` | settings novos entram em `GeometryKey()` |
 | Mudar o código gerado pelas ferramentas | `Application/Services/FeatureCodeGenerator.cs` | respeite a regra de sólidos rastreáveis (§5.2) |
 | Editar o fonte da cena a partir da UI | `Application/Scenes/PartSourceEditor.cs` ou um `Roslyn*` em `Application/Services/` | edição sintática pontual, nunca reescrita do arquivo |
+| Mudar a conversão de sólido solto em peça | `Infrastructure/Scripting/RoslynPartConverter.cs` (atrás de `IPartConverter`), `Application/Scenes/PartConversionCheck.cs` | puro: não grava nem executa. O `SceneScriptViewModel.ConvertToPartAsync` avalia a cena convertida e só aplica se o `FeatureFingerprint` do sólido não mudar. Literais continuam literais; só variáveis que ficam na cena viram parâmetros |
 | Mudar o que a IA vê | `Application/Ai/Context/AiContextBuilder.cs` | o motivo de cada arquivo é rastreável (`AiContextReason`) |
 | Mudar o que a IA pode escrever | `Application/Ai/Context/AiEditScopePolicy.cs` | só arquivos no escopo + peça nova em `Pecas/` |
 | Mudar as regras do dialeto | `Application/Ai/CadScriptRules.cs` | fonte **única**: prompt + `.cad/api.md` + `AGENTS.md`. Há teste que falha se divergirem |

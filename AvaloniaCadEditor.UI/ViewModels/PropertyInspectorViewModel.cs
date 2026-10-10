@@ -42,6 +42,7 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
             _colorWriteTimer.Start();
         });
         RenameCommand = new RelayCommand(async () => await RenameAsync());
+        ConvertToPartCommand = new RelayCommand(async () => await ConvertToPartAsync());
         OpenPartDefinitionCommand = new RelayCommand(() =>
         {
             if (_selectionService.SelectedObject is PartInstance instance)
@@ -109,6 +110,46 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
         }
         NameError = await editor.RenameFeatureAsync(feature, FeatureName);
     }
+
+    // --- Converter em peça: um sólido solto vira um record em Pecas/ ---
+    private bool _canConvertToPart;
+    public bool CanConvertToPart
+    {
+        get => _canConvertToPart;
+        private set { _canConvertToPart = value; OnPropertyChanged(); }
+    }
+
+    private string _newPartTypeName = "";
+    public string NewPartTypeName
+    {
+        get => _newPartTypeName;
+        set { _newPartTypeName = value ?? ""; OnPropertyChanged(); }
+    }
+
+    private string? _convertError;
+    public string? ConvertError
+    {
+        get => _convertError;
+        private set { _convertError = value; OnPropertyChanged(); }
+    }
+
+    public ICommand ConvertToPartCommand { get; }
+
+    private async System.Threading.Tasks.Task ConvertToPartAsync()
+    {
+        if (_selectionService.SelectedObject is not IFeature feature) return;
+        if (_partCodeEditor() is not { } editor)
+        {
+            ConvertError = "Editor de código indisponível.";
+            return;
+        }
+        ConvertError = await editor.ConvertToPartAsync(feature, NewPartTypeName);
+    }
+
+    /// <summary>Sugestão de nome do tipo: <c>bloco_fixacao</c> vira <c>BlocoFixacao</c>.</summary>
+    private static string SuggestedTypeName(string featureName) =>
+        string.Concat(featureName.Split('_', StringSplitOptions.RemoveEmptyEntries)
+            .Select(part => char.ToUpperInvariant(part[0]) + part[1..]));
 
     // --- Cor da peça: o seletor muda muito rápido ao arrastar, então o código só é reescrito
     // depois de uma pausa (o timer), numa única reexecução.
@@ -349,6 +390,7 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
         {
             HasSelection = false;
             IsFeature = false;
+            CanConvertToPart = false;
             Title = "Nenhum elemento selecionado";
             TypeBadge = "";
             IsCylinder = false;
@@ -362,6 +404,9 @@ public class PropertyInspectorViewModel : INotifyPropertyChanged
         IsFeature = obj is IFeature;
         FeatureName = (obj as IFeature)?.Name ?? "";
         NameError = null;
+        CanConvertToPart = obj is IFeature and not PartInstance and not WorkPlaneFeature;
+        NewPartTypeName = CanConvertToPart ? SuggestedTypeName(FeatureName) : "";
+        ConvertError = null;
 
         if (obj is ExtrudeFeature feature)
         {
