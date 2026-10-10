@@ -11,8 +11,9 @@ namespace AvaloniaCadEditor.Application.Commands;
 /// <summary>
 /// Gira as features selecionadas em torno de um eixo (Z por padrão, trocável com as setas), como
 /// o transferidor do SketchUp: 3 cliques — centro, referência (define o 0°) e o ângulo final —
-/// com o ângulo também digitável no VCB. Só instâncias de peça têm o ângulo gravado no código
-/// (ver <c>CadViewModel.RotateTool_FeaturesRotated</c>); outras features selecionadas são ignoradas.
+/// com o ângulo também digitável no VCB. A rotação é gravada no código por
+/// <c>CadViewModel.RotateTool_FeaturesRotated</c>: no <c>at:</c> de instâncias, num <c>.Transformed(...)</c>
+/// em features soltas e na declaração de um sólido de peça (ver <see cref="SelectionOverride"/>).
 /// </summary>
 public class RotateTool : ICommandTool, ITransformPreviewTool, IGuideProvider
 {
@@ -54,6 +55,13 @@ public class RotateTool : ICommandTool, ITransformPreviewTool, IGuideProvider
     /// </summary>
     public WorkPlane Plane { get; set; } = WorkPlane.XY;
 
+    /// <summary>
+    /// O que girar quando não é a seleção do sketch: com o grupo de uma peça aberto, o sólido do
+    /// <c>Build()</c> realçado (mesmo papel de <see cref="MoveTool.SelectionOverride"/>). Consultado no
+    /// clique do pivô; null, ou devolvendo null, usa as features selecionadas.
+    /// </summary>
+    public Func<IReadOnlyList<IFeature>?>? SelectionOverride { get; set; }
+
     /// <summary>Eixo de rotação: a normal do plano ativo, ou um eixo global escolhido pelas setas.</summary>
     private Vector3D Axis => _axisOverride ?? Plane.Normal;
 
@@ -86,7 +94,7 @@ public class RotateTool : ICommandTool, ITransformPreviewTool, IGuideProvider
                 _pivot = point;
                 _currentMouseRaw = point;
                 _hasMouse = true;
-                _selectedFeatures = sketch.Features.Where(f => f.IsSelected).ToList();
+                _selectedFeatures = SelectionOverride?.Invoke()?.ToList() ?? sketch.Features.Where(f => f.IsSelected).ToList();
                 _currentState = State.WaitingForReference;
                 break;
 

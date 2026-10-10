@@ -37,6 +37,13 @@ public class MoveTool : ICommandTool, ITransformPreviewTool
     /// </summary>
     public WorkPlane Plane { get; set; } = WorkPlane.XY;
 
+    /// <summary>
+    /// O que arrastar quando não é a seleção do sketch: com o grupo de uma peça aberto, o sólido do
+    /// <c>Build()</c> realçado, que não está no sketch (ver <c>CadViewModel</c>). Consultado no 1º clique;
+    /// null, ou devolvendo null, usa as entidades e features selecionadas.
+    /// </summary>
+    public System.Func<IReadOnlyList<Domain.Features.IFeature>?>? SelectionOverride { get; set; }
+
     private Vector3D ToWorld(Vector3D v) => Plane.XAxis * v.X + Plane.YAxis * v.Y + Plane.Normal * v.Z;
 
     public System.Numerics.Matrix4x4 PreviewTransform
@@ -55,10 +62,11 @@ public class MoveTool : ICommandTool, ITransformPreviewTool
             _basePoint = point;
             _currentMouse = point;
             
-            _selectedOriginals = sketch.Entities.Where(e => e.IsSelected).ToList();
+            var overridden = SelectionOverride?.Invoke();
+            _selectedOriginals = overridden != null ? new List<Entity>() : sketch.Entities.Where(e => e.IsSelected).ToList();
             _previewClones = _selectedOriginals.Select(e => e.Clone()).ToList();
-            
-            _selectedFeatures = sketch.Features.Where(f => f.IsSelected).ToList();
+
+            _selectedFeatures = overridden?.ToList() ?? sketch.Features.Where(f => f.IsSelected).ToList();
             
             _currentState = State.WaitingForTargetPoint;
         }

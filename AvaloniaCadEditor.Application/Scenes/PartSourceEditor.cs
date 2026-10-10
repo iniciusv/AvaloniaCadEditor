@@ -479,8 +479,11 @@ public static class PartSourceEditor
     /// visível) nascia no lugar de destino. Ver <see cref="EditDeclarationInsteadOfAddFeature"/>.
     /// </summary>
     public static string TranslateFeature(string source, int line, double dx, double dy, double dz) =>
-        EditTransformedFeature(source, line, TranslationCall(dx, dy, dz),
-            (currentSource, placement) => { var edits = new List<TextChange>(); return TryMergeTranslate(placement, dx, dy, dz, edits) ? Apply(currentSource, edits) : null; });
+        EditTransformedFeature(source, line, TranslationCall(dx, dy, dz), MergeTranslate(dx, dy, dz));
+
+    /// <summary>Soma (dx, dy, dz) a um <c>Placement.Translate(...)</c> existente; null se o placement for outro.</summary>
+    private static Func<string, ExpressionSyntax, string?> MergeTranslate(double dx, double dy, double dz) =>
+        (currentSource, placement) => { var edits = new List<TextChange>(); return TryMergeTranslate(placement, dx, dy, dz, edits) ? Apply(currentSource, edits) : null; };
 
     /// <summary>
     /// Gira a feature solta registrada por <c>AddFeature(x)</c> na linha dada em torno de
@@ -996,6 +999,82 @@ public static class PartSourceEditor
             return null;
         }
         return null;
+    }
+
+    /// <summary>
+    /// Move um sólido do <c>Build()</c> de <paramref name="partTypeName"/> (um furo aberto com duplo-clique
+    /// na instância) por (dx, dy, dz) em coordenadas <b>locais</b> da peça. É o caminho de
+    /// <see cref="TranslateFeature"/> aplicado direto à declaração —
+    /// <c>var furo = new CylinderFeature(...).Transformed(Placement.Translate(...))</c>, somando num
+    /// <c>Translate</c> que já esteja lá — porque dentro de uma peça não há <c>AddFeature</c>: quem usa o
+    /// sólido é a booleana. A definição é uma só, então o movimento vale para todas as instâncias.
+    /// Recusa (InvalidOperationException) quando a variável também aparece como <c>furo.Algo</c> no
+    /// record: virar <see cref="Domain.Features.TransformedFeature"/> mudaria o tipo dela e quebraria essa chamada.
+    /// </summary>
+    public static string TranslatePartSolid(string source, string partTypeName, string solidName, double dx, double dy, double dz) =>
+        EditPartSolidPlacement(source, partTypeName, solidName, TranslationCall(dx, dy, dz), MergeTranslate(dx, dy, dz));
+
+    /// <summary>
+    /// Gira um sólido do <c>Build()</c> de <paramref name="partTypeName"/> em torno de
+    /// <paramref name="pivot"/>/<paramref name="axis"/>, em coordenadas <b>locais</b> da peça — mesmo
+    /// caminho de <see cref="TranslatePartSolid"/>, com a fusão de <see cref="RotateFeature"/> (mesmo
+    /// pivô/eixo soma o ângulo; um placement de outro tipo ganha um <c>.Then(...)</c>).
+    /// </summary>
+    public static string RotatePartSolid(string source, string partTypeName, string solidName, Point3D pivot, Vector3D axis, double degrees) =>
+        EditPartSolidPlacement(source, partTypeName, solidName, RotationCall(pivot, axis, degrees),
+            (currentSource, placement) => TryMergeRotation(placement, pivot, axis, degrees, out string? merged) ? Replace(currentSource, placement.Span, merged!) : null);
+
+    private static string EditPartSolidPlacement(string source, string partTypeName, string solidName, string newPlacementCode, Func<string, ExpressionSyntax, string?> tryMerge)
+    {
+        var type = Parse(source).DescendantNodes().OfType<RecordDeclarationSyntax>()
+            .FirstOrDefault(t => t.Identifier.ValueText == partTypeName)
+            ?? throw new InvalidOperationException($"Não achei o record {partTypeName} neste arquivo.");
+
+        var declarator = FindSolidDeclarator(type, solidName)
+            ?? throw new InvalidOperationException($"Não achei a declaração de {solidName} em {partTypeName} (nome gerado em laço?).");
+
+        string variableName = declarator.Identifier.ValueText;
+        bool usedAsMemberTarget = type.DescendantNodes()
+            .OfType<MemberAccessExpressionSyntax>()
+            .Any(m => m.Expression is IdentifierNameSyntax id && id.Identifier.ValueText == variableName);
+        if (usedAsMemberTarget)
+        {
+            throw new InvalidOperationException(
+                $"'{variableName}' é usado com '.algumMembro' em {partTypeName}; mover ou girar assim quebraria essa chamada. " +
+                $"Edite a posição de '{variableName}' direto no código.");
+        }
+
+        return ApplyPlacement(source, declarator.Initializer!.Value, newPlacementCode, tryMerge);
+    }
+
+    /// <summary>
+    /// A declaração do sólido <paramref name="solidName"/> dentro do record: a variável com o mesmo nome
+    /// ou, na falta dela, a que traz o nome como literal no inicializador (mesma busca de
+    /// <see cref="FindToolDeclaration"/>, mas devolvendo o nó para editar). O literal tem de ser da
+    /// própria criação da declaração: um sólido criado inline dentro de outra expressão
+    /// (<c>CreateDifference("b", corpo, new CylinderFeature(...) { Name = "furo" })</c>) não tem
+    /// declaração própria, e mover "a declaração" ali moveria a peça inteira.
+    /// </summary>
+    private static VariableDeclaratorSyntax? FindSolidDeclarator(RecordDeclarationSyntax type, string solidName)
+    {
+        var declarators = type.DescendantNodes().OfType<VariableDeclaratorSyntax>()
+            .Where(v => v.Initializer?.Value != null)
+            .ToList();
+        return declarators.FirstOrDefault(v => v.Identifier.ValueText == solidName)
+            ?? declarators.FirstOrDefault(v => OwnCreation(v.Initializer!.Value) is { } creation &&
+                creation.DescendantTokens().Any(t =>
+                    t.IsKind(SyntaxKind.StringLiteralToken) && t.ValueText == solidName &&
+                    t.Parent?.FirstAncestorOrSelf<BaseObjectCreationExpressionSyntax>() == creation));
+    }
+
+    /// <summary>O <c>new X(...)</c> de um inicializador, por baixo de <c>.Transformed(...)</c> já aplicados.</summary>
+    private static BaseObjectCreationExpressionSyntax? OwnCreation(ExpressionSyntax value)
+    {
+        while (value is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Transformed" } member })
+        {
+            value = member.Expression;
+        }
+        return value as BaseObjectCreationExpressionSyntax;
     }
 
     private static CodeLocation ToLocation(ScriptDocument doc, SyntaxNode root, TextSpan span)

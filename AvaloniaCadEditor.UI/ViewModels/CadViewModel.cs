@@ -261,6 +261,14 @@ public class CadViewModel : INotifyPropertyChanged
 		var selectedFeatureNames = moved.Select(f => f.Name).ToList();
 		ReturnToSelectTool();
 
+		if (moved.OfType<TransformedFeature>().FirstOrDefault(f => _partTools.Contains(f)) is { } partSolid && _partToolsOwner is { } owner)
+		{
+			var localOffset = owner.Placement.Inverse().ApplyVector(vector);
+			await EditPartSolidAsync(owner, partSolid.Source.Name, "movido",
+				(partTypeName, solidName) => ScriptEditor.MovePartSolidAsync(partTypeName, solidName, localOffset));
+			return;
+		}
+
 		var instances = moved.OfType<PartInstance>().ToList();
 		var loose = moved.Where(f => f is not PartInstance).ToList();
 
@@ -297,6 +305,23 @@ public class CadViewModel : INotifyPropertyChanged
 
 		var selectedFeatureNames = rotated.Select(f => f.Name).ToList();
 		ReturnToSelectTool();
+
+		if (rotated.OfType<TransformedFeature>().FirstOrDefault(f => _partTools.Contains(f)) is { } partSolid && _partToolsOwner is { } owner)
+		{
+			// Girar em torno de (p, a) no mundo é, no referencial da peça, girar em torno de P⁻¹(p) e
+			// P⁻¹(a) pelo mesmo ângulo. Arredondado como o código grava, para "mesmo pivô/eixo soma o
+			// ângulo" reconhecer o giro anterior apesar do ruído de ponto flutuante da inversa.
+			var toLocal = owner.Placement.Inverse();
+			var localPivot = toLocal.Apply(pivot);
+			var localAxis = toLocal.ApplyVector(axis);
+			await EditPartSolidAsync(owner, partSolid.Source.Name, "girado",
+				(partTypeName, solidName) => ScriptEditor.RotatePartSolidAsync(partTypeName, solidName,
+					new AvaloniaCadEditor.Domain.ValueObjects.Point3D(Round(localPivot.X), Round(localPivot.Y), Round(localPivot.Z)),
+					new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(Round(localAxis.X), Round(localAxis.Y), Round(localAxis.Z)),
+					degrees));
+			return;
+		}
+
 		var instances = rotated.OfType<PartInstance>().ToList();
 		var loose = rotated.Where(f => f is not PartInstance).ToList();
 
@@ -328,9 +353,51 @@ public class CadViewModel : INotifyPropertyChanged
 			CurrentTool = new SelectTool(_geometryEngine, _selectionService);
 	}
 
+	/// <summary>
+	/// Com o grupo de uma peça aberto e um sólido do <c>Build()</c> realçado, é ele que o Mover arrasta,
+	/// e não a instância (que segue selecionada desde o duplo-clique). Null: a seleção normal do sketch.
+	/// </summary>
+	private IReadOnlyList<IFeature>? HighlightedPartSolidSelection()
+	{
+		if (HighlightedToolId is not { } id) return null;
+		var tools = ActiveToolFeatures;
+		if (!ReferenceEquals(tools, _partTools)) return null;
+		var solid = tools.FirstOrDefault(t => t.Id == id);
+		return solid != null ? new[] { solid } : null;
+	}
+
+	/// <summary>
+	/// Move/gira um sólido do <c>Build()</c> da peça aberta: a transformação vai para a declaração dele no
+	/// record, em coordenadas da peça (quem chama já converteu — a instância pode estar girada). A
+	/// definição é compartilhada, então todas as instâncias da peça mudam.
+	/// </summary>
+	private async System.Threading.Tasks.Task EditPartSolidAsync(PartInstance owner, string solidName, string pastParticiple,
+		Func<string, string, System.Threading.Tasks.Task<string?>> edit)
+	{
+		string? error = await edit(owner.PartTypeName, solidName);
+		if (error != null)
+		{
+			StatusText = $"✗ {error}";
+			return;
+		}
+
+		// A cena reexecutou: o grupo continua aberto (é guardado por nome), mas as ferramentas são
+		// objetos novos. Reencontra o sólido pelo nome para ele seguir realçado e pronto para outro movimento.
+		var moved = ActiveToolFeatures.FirstOrDefault(f => f is TransformedFeature w && w.Source.Name == solidName);
+		if (moved != null) RevealToolFeature(moved);
+		StatusText = $"✓ {solidName} {pastParticiple} em {owner.PartTypeName} (todas as instâncias)";
+	}
+
+	private static double Round(double value) => Math.Round(value, 6);
+
 	private void MoveTool_FeaturesCopied(AvaloniaCadEditor.Domain.ValueObjects.Vector3D vector, System.Collections.Generic.IEnumerable<AvaloniaCadEditor.Domain.Features.IFeature> features)
 	{
 		ReturnToSelectTool();
+		if (features.Any(f => _partTools.Contains(f)))
+		{
+			StatusText = "✗ Copiar um sólido de dentro da peça ainda não é suportado: duplique a declaração no Build().";
+			return;
+		}
 		CopyFeatures(features,
 			instances => ScriptEditor.CopyPartInstances(instances, (source, line) =>
 				AvaloniaCadEditor.Application.Scenes.PartSourceEditor.TranslateInstance(source, line, vector.X, vector.Y, vector.Z)),
@@ -341,6 +408,11 @@ public class CadViewModel : INotifyPropertyChanged
 	private void RotateTool_FeaturesCopied(AvaloniaCadEditor.Domain.ValueObjects.Point3D pivot, AvaloniaCadEditor.Domain.ValueObjects.Vector3D axis, double degrees, System.Collections.Generic.IEnumerable<AvaloniaCadEditor.Domain.Features.IFeature> features)
 	{
 		ReturnToSelectTool();
+		if (features.Any(f => _partTools.Contains(f)))
+		{
+			StatusText = "✗ Copiar um sólido de dentro da peça ainda não é suportado: duplique a declaração no Build().";
+			return;
+		}
 		CopyFeatures(features,
 			instances => ScriptEditor.CopyPartInstances(instances, (source, line) =>
 				AvaloniaCadEditor.Application.Scenes.PartSourceEditor.RotateInstance(source, line, pivot, axis, degrees)),
@@ -867,8 +939,8 @@ public class CadViewModel : INotifyPropertyChanged
 		});
 
 		SelectSelectToolCommand = new RelayCommand(() => CurrentTool = new SelectTool(_geometryEngine, _selectionService));
-		SelectMoveToolCommand = new RelayCommand(() => CurrentTool = new MoveTool { Plane = ActiveWorkPlane });
-		SelectRotateToolCommand = new RelayCommand(() => CurrentTool = new RotateTool { WorldUnitsPerPixel = WorldUnitsPerPixel, Plane = ActiveWorkPlane });
+		SelectMoveToolCommand = new RelayCommand(() => CurrentTool = new MoveTool { Plane = ActiveWorkPlane, SelectionOverride = HighlightedPartSolidSelection });
+		SelectRotateToolCommand = new RelayCommand(() => CurrentTool = new RotateTool { WorldUnitsPerPixel = WorldUnitsPerPixel, Plane = ActiveWorkPlane, SelectionOverride = HighlightedPartSolidSelection });
 		SelectSetWorkPlaneCommand = new RelayCommand(() => CurrentTool = new SetWorkPlaneCommand());
 
 		// Entra em esboço no plano, não só troca ActiveWorkPlane: a grade só gira em SketchEdit

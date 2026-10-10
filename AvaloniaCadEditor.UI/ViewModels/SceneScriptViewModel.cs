@@ -885,6 +885,50 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
     }
 
     /// <summary>
+    /// Move um sólido do <c>Build()</c> de uma peça reescrevendo a declaração dele no record (ver
+    /// <see cref="PartSourceEditor.TranslatePartSolid"/>) e reexecuta. <paramref name="localOffset"/>
+    /// está em coordenadas da peça. Devolve o motivo da recusa/erro, ou null.
+    /// </summary>
+    public Task<string?> MovePartSolidAsync(string partTypeName, string solidName, AvaloniaCadEditor.Domain.ValueObjects.Vector3D localOffset) =>
+        EditPartSolidAsync(partTypeName, source =>
+            PartSourceEditor.TranslatePartSolid(source, partTypeName, solidName, localOffset.X, localOffset.Y, localOffset.Z));
+
+    /// <summary>
+    /// Gira um sólido do <c>Build()</c> de uma peça (ver <see cref="PartSourceEditor.RotatePartSolid"/>) e
+    /// reexecuta. Pivô e eixo em coordenadas da peça. Devolve o motivo da recusa/erro, ou null.
+    /// </summary>
+    public Task<string?> RotatePartSolidAsync(string partTypeName, string solidName,
+        AvaloniaCadEditor.Domain.ValueObjects.Point3D localPivot, AvaloniaCadEditor.Domain.ValueObjects.Vector3D localAxis, double degrees) =>
+        EditPartSolidAsync(partTypeName, source =>
+            PartSourceEditor.RotatePartSolid(source, partTypeName, solidName, localPivot, localAxis, degrees));
+
+    private async Task<string?> EditPartSolidAsync(string partTypeName, Func<string, string> edit)
+    {
+        // O arquivo da PEÇA: a ferramenta não tem FeatureOrigin próprio na cena.
+        var type = PartSourceEditor.FindPartTypes(CurrentDocuments())
+            .FirstOrDefault(t => t.Name == partTypeName);
+        if (type == null) return $"Não achei a declaração de {partTypeName} nos arquivos da cena.";
+
+        string? source = GetDocumentText(type.FilePath);
+        if (source == null) return $"O arquivo {type.FilePath} não faz parte da cena aberta.";
+
+        string updated;
+        try
+        {
+            updated = edit(source);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return ex.Message;
+        }
+        if (updated == source) return null;
+
+        SetDocumentText(type.FilePath, updated);
+        await RunCodeAsync();
+        return HasErrors ? ErrorSummary : null;
+    }
+
+    /// <summary>
     /// Quantas instâncias de <paramref name="partTypeName"/> na cena passam
     /// <paramref name="parameterName"/> na própria chamada <c>Add(...)</c> — essas não sentem uma
     /// mudança no valor padrão do record, e o inspector precisa dizer isso.
