@@ -35,7 +35,7 @@ var alturaTopoCarrinhosY = carrinhoYPeca.Altura;
 // e seus centros ficam deslocados meia-malha (12,5 mm) em X e Y, de modo que os 3 furos
 // coincidam com 3 dos 4 furos M3 do carrinho (o 4º canto é o recorte da placa).
 // A placa B é espelhada no eixo Y (EspelhadoNoEixoY), tornando-se a imagem especular da placa A.
-var placaSuporteYA = Add(placaSuporteCarrinhoYPeca, at: Placement.At(centroXTrilhoA - 12.5, -12.5, alturaTopoCarrinhosY + 5.5, rotationZDegrees: 180), name: "placa_suporte_carrinho_y_a", color: "#0078D7");
+var placaSuporteYA = Add(placaSuporteCarrinhoYPeca, at: Placement.At(centroXTrilhoA - 12.5, -12.5, alturaTopoCarrinhosY + 5.5, rotationZDegrees: 180), name: "placa_suporte_carrinho_y_a", color: "#00CC6A");
 var placaSuporteYB = Add(placaSuporteCarrinhoYPeca with { EspelhadoNoEixoY = true }, at: Placement.At(centroXTrilhoB + 12.5, -12.5, alturaTopoCarrinhosY + 5.5, rotationZDegrees: 180), name: "placa_suporte_carrinho_y_b", color: "#00CC6A");
 var trilhoX = Add(trilhoXPeca, at: Placement.At(-trilhoXPeca.Comprimento / 2, trilhoXPeca.Largura / 2, alturaTopoCarrinhosY, rotationZDegrees: -90), name: "trilho_mgn9_x");
 var carrinhoX = Add(carrinhoXPeca, at: Placement.At(-carrinhoXPeca.Comprimento / 2, carrinhoXPeca.Largura / 2, alturaTopoCarrinhosY, rotationZDegrees: -90), name: "carrinho_mgn9c_x");
@@ -146,4 +146,32 @@ var sxPlacaSuporteYB = placaSuporteYB.Part.EspelhadoNoEixoY ? -1.0 : 1.0;
 var furoFixacaoPlacaB1Mundo = placaSuporteYB.ToWorld(new Point3D(passoFurosPlacaCarrinhoY / 2 * sxPlacaSuporteYB, -passoFurosPlacaCarrinhoY / 2, 0));
 var furoFixacaoPlacaB2Mundo = placaSuporteYB.ToWorld(new Point3D(passoFurosPlacaCarrinhoY / 2 * sxPlacaSuporteYB, passoFurosPlacaCarrinhoY / 2, 0));
 var topoPlacaSuporteYB = placaSuporteYB.ToWorld(new Point3D(0, 0, 5.5));
-var blocoConexaoPlacaCarrinhoYB = Add(blocoConexaoPlacaCarrinhoYPeca, at: Placement.At((furoFixacaoPlacaB1Mundo.X + furoFixacaoPlacaB2Mundo.X) / 2.0, (furoFixacaoPlacaB1Mundo.Y + furoFixacaoPlacaB2Mundo.Y) / 2.0, topoPlacaSuporteYB.Z), name: "bloco_conexao_placa_carrinho_y_b", color: "#00CC6A");
+var blocoConexaoPlacaCarrinhoYB = Add(blocoConexaoPlacaCarrinhoYPeca, at: Placement.At((furoFixacaoPlacaB1Mundo.X + furoFixacaoPlacaB2Mundo.X) / 2.0, (furoFixacaoPlacaB1Mundo.Y + furoFixacaoPlacaB2Mundo.Y) / 2.0, topoPlacaSuporteYB.Z), name: "bloco_conexao_placa_carrinho_y_b", color: "#00CC6A");var prism_f62c_verts = new[]
+{
+    new Point3D(26, 3.25, 0),
+    new Point3D(26, 6.25, 0),
+    new Point3D(30.3, 6.25, 0),
+    new Point3D(30.3, 7.55, 0),
+    new Point3D(41, 7.55, 0),
+    new Point3D(41, 3.25, 0)
+};
+var prism_f62c_plane = new WorkPlane(new Point3D(-20.38467, -25, 43), new Vector3D(0, 0, 1), new Vector3D(1, 0, 0));
+var prism_f62c = new PrismFeature(prism_f62c_verts, height: 10, plane: prism_f62c_plane)
+{
+    Name = "prism_f62c"
+};
+AddFeature(prism_f62c);
+var cylinder_821a = new CylinderFeature(globalBaseCenter: new Point3D(9.91533, -18.75, 43), globalDirection: new Vector3D(0, 0, 1), radius: 1.3, height: 10)
+{
+    Name = "cylinder_821a"
+};
+AddFeature(cylinder_821a);
+var cylinder_54d2 = new CylinderFeature(globalBaseCenter: new Point3D(5.61533, -18.75, 43), globalDirection: new Vector3D(0, 0, 1), radius: 3, height: 10)
+{
+    Name = "cylinder_54d2"
+};
+AddFeature(cylinder_54d2);
+var boolOp_7b90 = new BooleanFeature(name: "boolOp_7b90", operation: BooleanOperationType.Union, baseFeature: prism_f62c, toolFeatures: new IFeature[] { cylinder_821a });
+AddFeature(boolOp_7b90);
+var boolOp_16db = new BooleanFeature(name: "boolOp_16db", operation: BooleanOperationType.Subtract, baseFeature: boolOp_7b90, toolFeatures: new IFeature[] { cylinder_54d2 });
+AddFeature(boolOp_16db.Transformed(Placement.Translate(new Vector3D(0, 0, -8))));

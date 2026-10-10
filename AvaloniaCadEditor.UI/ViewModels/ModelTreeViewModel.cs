@@ -345,24 +345,43 @@ public class ModelTreeViewModel : INotifyPropertyChanged
         SyncSelectionFromService();
     }
 
+    /// <summary>
+    /// Ctrl+clique na árvore: soma (ou retira) este item da seleção, sem desmarcar o resto — o
+    /// irmão do Ctrl+clique na viewport. Vale para sólidos (inclusive as bases e ferramentas de
+    /// uma booleana, que seguem no sketch) e para arestas. Devolve <c>false</c> para o que não é
+    /// acumulável — pastas, planos de trabalho e perfis —, e aí o clique segue o caminho normal,
+    /// de seleção única.
+    /// </summary>
+    public bool ToggleNodeSelection(TreeItemNode node)
+    {
+        if (CurrentSketch == null) return false;
+
+        switch (node.Tag)
+        {
+            case IFeature feature when feature is not WorkPlaneFeature && CurrentSketch.Features.Contains(feature):
+                _selectionService.ToggleFeature(CurrentSketch, feature);
+                return true;
+            case Entity entity:
+                _selectionService.ToggleEntity(CurrentSketch, entity);
+                return true;
+            default:
+                return false;
+        }
+    }
+
     private void SyncSelectionFromService()
     {
         _isUpdatingSelectionInternally = true;
         try
         {
-            var selectedId = _selectionService.SelectedId;
-            if (!selectedId.HasValue)
-            {
-                SelectedNode = null;
-                ClearSelection(RootNodes);
-                return;
-            }
+            // Realça TODOS os itens marcados, não só o primário: Ctrl+clique (aqui ou na viewport) e
+            // o retângulo de seleção marcam vários, e a árvore mostrava um só.
+            MarkSelected(RootNodes);
 
-            ClearSelection(RootNodes);
-            if (FindAndSelectNode(RootNodes, selectedId.Value, out var foundNode))
-            {
-                SelectedNode = foundNode;
-            }
+            var selectedId = _selectionService.SelectedId;
+            SelectedNode = selectedId.HasValue && FindAndSelectNode(RootNodes, selectedId.Value, out var foundNode)
+                ? foundNode
+                : null;
         }
         finally
         {
@@ -370,12 +389,23 @@ public class ModelTreeViewModel : INotifyPropertyChanged
         }
     }
 
-    private void ClearSelection(IEnumerable<TreeItemNode> nodes)
+    /// <summary>
+    /// Espelha nos nós o <c>IsSelected</c> do objeto de domínio de cada um. Pastas e perfis
+    /// compostos não têm objeto próprio marcável: quem os realça é o <see cref="FindAndSelectNode"/>,
+    /// pelo id da seleção primária.
+    /// </summary>
+    private void MarkSelected(IEnumerable<TreeItemNode> nodes)
     {
         foreach (var node in nodes)
         {
-            node.IsSelected = false;
-            ClearSelection(node.Children);
+            node.IsSelected = node.Tag switch
+            {
+                IFeature feature => feature.IsSelected,
+                IProfile profile => profile.IsSelected,
+                Entity entity => entity.IsSelected,
+                _ => false
+            };
+            MarkSelected(node.Children);
         }
     }
 

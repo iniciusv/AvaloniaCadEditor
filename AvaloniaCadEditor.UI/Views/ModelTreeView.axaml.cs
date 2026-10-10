@@ -98,12 +98,26 @@ public partial class ModelTreeView : UserControl
         {
             var sourceObj = e.Source;
             var control = sourceObj as Control;
-            
+
             // Do not start drag if they clicked a button (like the expand/collapse arrow or visibility eye)
             if (control is Avalonia.Controls.Primitives.ToggleButton) return;
 
             var dataContext = control?.DataContext as TreeItemNode;
-            
+
+            // Ctrl+clique soma/retira o item da seleção em vez de trocá-la. Tratado aqui, e marcado
+            // como tratado, porque a seleção que vale é a do SelectionService (a mesma da viewport):
+            // deixar o TreeView alternar o nó por conta dele faria a árvore divergir do modelo.
+            // O handler roda nas fases de túnel e de bolha, daí o teste de e.Handled.
+            if (!e.Handled
+                && e.KeyModifiers.HasFlag(KeyModifiers.Control)
+                && dataContext != null
+                && DataContext is ModelTreeViewModel vm
+                && vm.ToggleNodeSelection(dataContext))
+            {
+                e.Handled = true;
+                return;
+            }
+
             if (dataContext != null && dataContext.Category == TreeItemCategory.FeatureItem)
             {
                 _draggedNode = dataContext;

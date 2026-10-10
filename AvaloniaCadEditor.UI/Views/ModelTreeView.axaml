@@ -17,8 +17,11 @@
             </Border>
 
             <!-- Tree View -->
+            <!-- Multiple: vários nós ficam realçados ao mesmo tempo. Sem isso o TreeView desmarcaria
+                 os outros ao pintar o segundo item de uma seleção múltipla (Ctrl+clique, retângulo). -->
             <TreeView Grid.Row="1" x:Name="Tree"
                       ItemsSource="{Binding RootNodes}"
+                      SelectionMode="Multiple"
                       Background="Transparent"
                       DragDrop.AllowDrop="True"
                       DragDrop.DragOver="OnDragOver"

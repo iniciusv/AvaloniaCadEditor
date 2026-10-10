@@ -273,3 +273,124 @@ public class ModelTreeAndPropertyInspectorTests
         Assert.Equal(35.0f, maxZ, 1e-2f);
     }
 }
+
+public class ModelTreeSelecaoMultiplaTests
+{
+    /// <summary>Cena com dois sólidos soltos e uma linha, já ligada à árvore.</summary>
+    private static (ModelTreeViewModel Tree, SelectionService Selecao, Sketch Sketch,
+        IFeature A, IFeature B, Entity Linha) Cena()
+    {
+        var selecao = new SelectionService();
+        var tree = new ModelTreeViewModel(selecao);
+        var sketch = new Sketch();
+
+        var a = new ExtrudeFeature(new CircleProfile(new Point3D(0, 0, 0), 10.0), 20.0) { Name = "A" };
+        var b = new ExtrudeFeature(new CircleProfile(new Point3D(50, 0, 0), 10.0), 20.0) { Name = "B" };
+        sketch.AddFeature(a);
+        sketch.AddFeature(b);
+        var linha = new LineEntity(new Point3D(0, 0, 0), new Point3D(100, 0, 0));
+        sketch.AddEntity(linha);
+
+        tree.BindSketch(sketch);
+        return (tree, selecao, sketch, a, b, linha);
+    }
+
+    private static TreeItemNode No(ModelTreeViewModel tree, object tag) =>
+        Flatten(tree.RootNodes).First(n => ReferenceEquals(n.Tag, tag));
+
+    private static IEnumerable<TreeItemNode> Flatten(IEnumerable<TreeItemNode> nodes) =>
+        nodes.SelectMany(n => new[] { n }.Concat(Flatten(n.Children)));
+
+    [Fact]
+    public void CtrlCliqueNaArvore_SomaOSegundoSolidoSemDesmarcarOPrimeiro()
+    {
+        var (tree, selecao, sketch, a, b, _) = Cena();
+
+        selecao.SelectById(sketch, a.Id);                       // clique simples no primeiro
+        Assert.True(tree.ToggleNodeSelection(No(tree, b)));     // Ctrl+clique no segundo
+
+        Assert.True(a.IsSelected);
+        Assert.True(b.IsSelected);
+        Assert.Equal(b.Id, selecao.SelectedId);
+    }
+
+    [Fact]
+    public void CtrlCliqueNaArvore_RealcaTodosOsNosSelecionados()
+    {
+        var (tree, selecao, sketch, a, b, _) = Cena();
+
+        selecao.SelectById(sketch, a.Id);
+        tree.ToggleNodeSelection(No(tree, b));
+
+        Assert.True(No(tree, a).IsSelected);
+        Assert.True(No(tree, b).IsSelected);
+    }
+
+    [Fact]
+    public void ArvoreRealcaSelecaoMultiplaFeitaForaDela()
+    {
+        var (tree, selecao, sketch, a, b, _) = Cena();
+
+        // Ctrl+clique na viewport passa pelo serviço, não pela árvore.
+        selecao.SelectById(sketch, a.Id);
+        selecao.ToggleFeature(sketch, b);
+
+        Assert.True(No(tree, a).IsSelected);
+        Assert.True(No(tree, b).IsSelected);
+    }
+
+    [Fact]
+    public void CtrlCliqueNaArvore_NoMesmoItemDeNovo_Desmarca()
+    {
+        var (tree, selecao, sketch, a, b, _) = Cena();
+
+        selecao.SelectById(sketch, a.Id);
+        tree.ToggleNodeSelection(No(tree, b));
+        tree.ToggleNodeSelection(No(tree, b));
+
+        Assert.True(a.IsSelected);
+        Assert.False(b.IsSelected);
+        Assert.False(No(tree, b).IsSelected);
+        Assert.Equal(a.Id, selecao.SelectedId);
+    }
+
+    [Fact]
+    public void CtrlCliqueNaArvore_AcumulaArestas()
+    {
+        var (tree, _, _, _, _, linha) = Cena();
+
+        Assert.True(tree.ToggleNodeSelection(No(tree, linha)));
+
+        Assert.True(linha.IsSelected);
+        Assert.True(No(tree, linha).IsSelected);
+    }
+
+    [Fact]
+    public void CtrlCliqueNaArvore_RecusaPastaEPlanoDeTrabalho_ParaOCliqueSeguirOCaminhoNormal()
+    {
+        var (tree, _, sketch, _, _, _) = Cena();
+
+        var pasta = tree.RootNodes[0];
+        Assert.False(tree.ToggleNodeSelection(pasta));
+
+        var planoBase = No(tree, sketch.WorkPlanes[0]);
+        Assert.False(tree.ToggleNodeSelection(planoBase));
+        Assert.False(sketch.WorkPlanes[0].IsSelected);
+    }
+
+    [Fact]
+    public void CliqueSimplesNaArvore_TrocaASelecaoInteira()
+    {
+        var (tree, selecao, sketch, a, b, _) = Cena();
+
+        selecao.SelectById(sketch, a.Id);
+        tree.ToggleNodeSelection(No(tree, b));
+
+        // Clique sem Ctrl: o TreeView marca o nó, e é o SelectedNode que vai ao serviço.
+        tree.SelectedNode = No(tree, a);
+
+        Assert.True(a.IsSelected);
+        Assert.False(b.IsSelected);
+        Assert.False(No(tree, b).IsSelected);
+    }
+}

@@ -1413,6 +1413,10 @@ public class CadViewModel : INotifyPropertyChanged
 	public void ExitSketchMode()
 	{
 		CurrentMode = EditorMode.Part;
+		// O EnterSketchMode troca o tipo de seleção para Edges; sem desfazer isso, sair do esboço
+		// deixava o editor marcando arestas — e o retângulo de seleção, que despacha pelo tipo
+		// (ver BoxSelector), continuava pegando linhas em vez de sólidos.
+		CurrentSelectionMode = TargetSelectionMode.Feature;
 		SelectSelectToolCommand.Execute(null);
 	}
 
