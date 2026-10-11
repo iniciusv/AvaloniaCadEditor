@@ -1,6 +1,6 @@
 /// <summary>
 /// Bloco de pressão da correia (belt), fixado na lateral do bloco_fixacao_mgn9.
-/// Corpo: 20,5 (X) x 16,5 (Y) x 17 (Z) por metade; modelada como meia-peça e espelhada em X no Build().
+/// Modela apenas a metade esquerda (X de BaseCorpoX até BaseCorpoX + LarguraCorpoX) e a espelha em X.
 /// Furo de pressão da correia usa o mesmo padrão de <see cref="FuroPorca"/> da <see cref="PlacaSuporteCarrinhoY"/>:
 /// furo de passagem e alojamento hexagonal da porca M3 saem das mesmas variáveis (sempre coaxiais).
 /// Origem local = base do bloco_fixacao_mgn9 (local = mundo - (0, 0, 26)).
@@ -46,7 +46,6 @@ public sealed record BlocoFixacaoBelt(
         var yFundo = BaseCorpoY + ComprimentoCorpoY;
 
         // Plano de espelhamento: face interna/direita do corpo (local X = BaseCorpoX + LarguraCorpoX).
-        // A reflexão de qualquer ponto é X' = 2 * xm - X.
         var xm = BaseCorpoX + LarguraCorpoX;
 
         // Escareado de 90° (o raio decresce 1 mm por mm de altura) na PORÇÃO INFERIOR do furo,
@@ -70,7 +69,7 @@ public sealed record BlocoFixacaoBelt(
         const double folgaAntesPorca = 10.0;                                // furo p/ fora da face traseira
         const double folgaDepoisPorca = 9.0;                                // furo p/ fora da face frontal
 
-        // ==================== METADE ORIGINAL (como modelada) ====================
+        // ==================== METADE ESQUERDA (como modelada) ====================
 
         var corpo = new BoxFeature(
             new Point3D(BaseCorpoX, BaseCorpoY, 0),
@@ -103,7 +102,7 @@ public sealed record BlocoFixacaoBelt(
             topRadius: RaioFuroVertical3_2,
             height: alturaEscareado) { Name = "rebaixo_conico", IsTransientTool = true };
         var rebaixo_fixacao = new CylinderFeature(new Point3D(FuroLateralX, yFundo, FuroLateralZ), new Vector3D(0, -1, 0), RaioFuroRebaixo, ComprimentoFuroRebaixo) { Name = "rebaixo_fixacao", IsTransientTool = true };
-        var furo_fixacao = new CylinderFeature(new Point3D(FuroLateralX, yFundo, FuroLateralZ), new Vector3D(0, -1, 0), RaioFuroPassante, ComprimentoFuroPassante) { Name = "furo_fixacao", IsTransientTool = true };
+        var furo_fixacao = new CylinderFeature(new Point3D(FuroLateralX, yFundo, FuroLateralZ), new Vector3D(0, -1, 0), RaioFuroPassante, ComprimentoFuroPassante) { Name = "furo_fixacao", IsTransientTool = true }.Transformed(Placement.Translate(new Vector3D(0, 0, 0)));
 
         // Furo de pressão da correia + alojamento hexagonal da porca M3, construído por uma única
         // FuroPorca (subtrai furo e alojamento juntos). O furo entra pela face traseira (Y = yFundo)
@@ -116,43 +115,6 @@ public sealed record BlocoFixacaoBelt(
             FolgaAntes: folgaAntesPorca,
             FolgaDepois: folgaDepoisPorca).Instance("porca_pressao_correia");
 
-        // ==================== METADE ESPELHADA EM X ====================
-        // Cada sólido acima é refletido pelo plano X = xm (X' = 2*xm - X).
-
-        var corpo_espelhado = new BoxFeature(
-            new Point3D(xm, BaseCorpoY, 0),
-            LarguraCorpoX,
-            ComprimentoCorpoY,
-            AlturaCorpo)
-        {
-            Name = "corpo_espelhado"
-        };
-
-        var rebaixo_inferior_espelhado = new BoxFeature(new Point3D(xm, yFundo - ComprimentoRebaixoInferior - MargemRebaixoInferior, 0.0), LarguraCorpoX, ComprimentoRebaixoInferior + MargemRebaixoInferior, AlturaRebaixoInferior + MargemRebaixoInferior) { Name = "rebaixo_inferior_espelhado", IsTransientTool = true };
-        var rebaixo_frontal_espelhado = new BoxFeature(new Point3D(2.0 * xm - BaseCorpoX - LarguraRebaixoFrontal, BaseCorpoY, 0.0), LarguraRebaixoFrontal, ProfundidadeRebaixoFrontal, AlturaRebaixoFrontal) { Name = "rebaixo_frontal_espelhado", IsTransientTool = true };
-        var vao_correia_espelhado = new BoxFeature(new Point3D(2.0 * xm - BaseVaoX - LarguraVaoX, BaseVaoY, BaseVaoZ), LarguraVaoX, ComprimentoVaoY, AlturaVao) { Name = "vao_correia_espelhado", IsTransientTool = true };
-        var furo_vertical_espelhado = new CylinderFeature(new Point3D(2.0 * xm - FuroVerticalX, FuroVerticalY, FuroVerticalZ), Vector3D.UnitZ, RaioFuroVertical, AlturaFuroVertical) { Name = "furo_vertical_espelhado", IsTransientTool = true };
-        var furo_vertical_3_2_espelhado = new CylinderFeature(new Point3D(2.0 * xm - FuroVerticalX, FuroVerticalY, -1.0), Vector3D.UnitZ, RaioFuroVertical3_2, AlturaCorpo + 2.0) { Name = "furo_vertical_3_2_espelhado", IsTransientTool = true };
-        var rebaixo_conico_espelhado = new ConeFeature(
-            globalBaseCenter: new Point3D(2.0 * xm - FuroVerticalX, FuroVerticalY, zBaseEscareado),
-            globalDirection: Vector3D.UnitZ,
-            bottomRadius: RaioEscareadoFuroVertical + margemEscareadoAbaixo,
-            topRadius: RaioFuroVertical3_2,
-            height: alturaEscareado) { Name = "rebaixo_conico_espelhado", IsTransientTool = true };
-        var rebaixo_fixacao_espelhado = new CylinderFeature(new Point3D(2.0 * xm - FuroLateralX, yFundo, FuroLateralZ), new Vector3D(0, -1, 0), RaioFuroRebaixo, ComprimentoFuroRebaixo) { Name = "rebaixo_fixacao_espelhado", IsTransientTool = true };
-        var furo_fixacao_espelhado = new CylinderFeature(new Point3D(2.0 * xm - FuroLateralX, yFundo, FuroLateralZ), new Vector3D(0, -1, 0), RaioFuroPassante, ComprimentoFuroPassante) { Name = "furo_fixacao_espelhado", IsTransientTool = true };
-
-        // Mesmo conjunto furo + porca, reconstruído na posição espelhada em X.
-        var porca_pressao_correia_espelhado = new FuroPorca(
-            new Point3D(2.0 * xm - FuroPressaoX, entradaPorcaY, FuroPressaoZ),
-            new Vector3D(0, -1, 0),
-            profundidadePorca,
-            ComprimentoCanal: alturaTopoPorca,
-            FolgaAntes: folgaAntesPorca,
-            FolgaDepois: folgaDepoisPorca).Instance("porca_pressao_correia_espelhado");
-
-        // Une as duas metades e subtrai todos os vazios (originais + espelhados).
-        var baseCorpos = new IFeature[] { corpo, corpo_espelhado };
         // Incorporado da cena (Cena.cs): coordenadas convertidas para o referencial local da peça.
         var prism_f62c_verts = new[]
         {
@@ -179,18 +141,23 @@ public sealed record BlocoFixacaoBelt(
         var boolOp_7b90 = new BooleanFeature(name: "boolOp_7b90", operation: BooleanOperationType.Union, baseFeature: prism_f62c, toolFeatures: new IFeature[] { cylinder_821a });
         var boolOp_16db = new BooleanFeature(name: "boolOp_16db", operation: BooleanOperationType.Subtract, baseFeature: boolOp_7b90, toolFeatures: new IFeature[] { cylinder_54d2 });
 
-        var bloco_fixacao_belt_base = BooleanFeature.CreateDifference(
-            "bloco_fixacao_belt_base",
-            baseCorpos,
-            rebaixo_inferior, rebaixo_inferior_espelhado,
-            rebaixo_frontal, rebaixo_frontal_espelhado,
-            vao_correia, vao_correia_espelhado,
-            furo_vertical, furo_vertical_espelhado,
-            furo_vertical_3_2, furo_vertical_3_2_espelhado,
-            rebaixo_conico, rebaixo_conico_espelhado,
-            rebaixo_fixacao, rebaixo_fixacao_espelhado,
-            furo_fixacao, furo_fixacao_espelhado,
-            porca_pressao_correia, porca_pressao_correia_espelhado);
-        return BooleanFeature.CreateUnion("bloco_fixacao_belt", bloco_fixacao_belt_base, boolOp_16db);
+        var bloco_fixacao_belt_metade = BooleanFeature.CreateDifference(
+            "bloco_fixacao_belt_metade",
+            corpo,
+            rebaixo_inferior,
+            rebaixo_frontal,
+            vao_correia,
+            furo_vertical,
+            furo_vertical_3_2,
+            rebaixo_conico,
+            rebaixo_fixacao,
+            furo_fixacao,
+            porca_pressao_correia);
+        var bloco_fixacao_belt_metade_com_extra = BooleanFeature.CreateUnion("bloco_fixacao_belt_metade_com_extra", bloco_fixacao_belt_metade, boolOp_16db);
+
+        // ==================== METADE ESPELHADA EM X ====================
+        var bloco_fixacao_belt_espelhado = bloco_fixacao_belt_metade_com_extra.Transformed(Placement.MirrorX(atX: xm), name: "bloco_fixacao_belt_espelhado");
+
+        return BooleanFeature.CreateUnion("bloco_fixacao_belt", bloco_fixacao_belt_metade_com_extra, bloco_fixacao_belt_espelhado);
     }
 }
