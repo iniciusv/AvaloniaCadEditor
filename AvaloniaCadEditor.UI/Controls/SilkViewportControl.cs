@@ -1,12 +1,14 @@
 using System.Collections.Generic;
 using System.Numerics;
 using Avalonia;
+using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
 using AvaloniaCadEditor.Domain.Entities;
 using AvaloniaCadEditor.UI.Controls.Input;
 using AvaloniaCadEditor.UI.Controls.Rendering;
+using AvaloniaCadEditor.UI.Resources;
 using AvaloniaCadEditor.UI.ViewModels;
 using Silk.NET.OpenGL;
 
@@ -40,6 +42,7 @@ public class SilkViewportControl : OpenGlControlBase
         _shaderManager = new ViewportShaderManager();
         _inputHandler = new ViewportInputHandler();
         _inputHandler.SelectionBoxChanged += (rect, window) => SelectionBoxChanged?.Invoke(rect, window);
+        _inputHandler.ContextMenuRequested += OpenContextMenu;
 
         // Exact rendering order preserved:
         // 1. Solid features (3D) — sombreado ou wireframe, um dos dois desenha (CadViewModel.IsWireframe)
@@ -213,5 +216,44 @@ public class SilkViewportControl : OpenGlControlBase
     public void HandlePointerReleased(PointerReleasedEventArgs e)
     {
         _inputHandler.HandlePointerReleased(e, this, Bounds.Size, _camera, ViewModel, RequestNextFrameRendering);
+    }
+
+    /// <summary>
+    /// Menu do botão direito sobre a seleção: espelhar (ou copiar espelhado) pelo centro da seleção em
+    /// X/Y/Z, ou escolher o plano com o mouse (<see cref="AvaloniaCadEditor.Application.Commands.MirrorTool"/>). Sem seleção,
+    /// ou com outra ferramenta em andamento, não abre nada — o clique direito continua sendo só órbita.
+    /// </summary>
+    private void OpenContextMenu()
+    {
+        if (ViewModel is not { CanMirrorSelection: true } vm) return;
+
+        MenuItem Item(string header, System.Action action) => new MenuItem
+        {
+            Header = header,
+            Command = new RelayCommand(() => { action(); RequestNextFrameRendering(); })
+        };
+
+        MenuItem MirrorSubmenu(string header, bool copy) => new MenuItem
+        {
+            Header = header,
+            ItemsSource = new Control[]
+            {
+                Item(Strings.MirrorInX, () => vm.MirrorSelectionAtCenter(AvaloniaCadEditor.Domain.ValueObjects.Vector3D.UnitX, copy)),
+                Item(Strings.MirrorInY, () => vm.MirrorSelectionAtCenter(AvaloniaCadEditor.Domain.ValueObjects.Vector3D.UnitY, copy)),
+                Item(Strings.MirrorInZ, () => vm.MirrorSelectionAtCenter(AvaloniaCadEditor.Domain.ValueObjects.Vector3D.UnitZ, copy)),
+                new Separator(),
+                Item(Strings.MirrorPickPlane, () => vm.StartMirrorTool(copy)),
+            }
+        };
+
+        var menu = new ContextMenu
+        {
+            ItemsSource = new Control[]
+            {
+                MirrorSubmenu(Strings.MirrorMenu, copy: false),
+                MirrorSubmenu(Strings.MirrorCopyMenu, copy: true),
+            }
+        };
+        menu.Open(this);
     }
 }

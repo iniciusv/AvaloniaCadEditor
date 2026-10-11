@@ -93,4 +93,10 @@
   <data name="DraftingPickTip" xml:space="preserve"><value>Add dimensions: click two points, then where the dimension line goes (same hole center twice = diameter). Click a dimension text to hide/remove it. Esc cancels.</value></data>
   <data name="DraftingReset" xml:space="preserve"><value>Reset</value></data>
   <data name="DraftingResetTip" xml:space="preserve"><value>Remove manual dimensions and show hidden ones again (this view)</value></data>
+  <data name="MirrorMenu" xml:space="preserve"><value>Mirror</value></data>
+  <data name="MirrorCopyMenu" xml:space="preserve"><value>Mirror copy</value></data>
+  <data name="MirrorInX" xml:space="preserve"><value>In X (through selection center)</value></data>
+  <data name="MirrorInY" xml:space="preserve"><value>In Y (through selection center)</value></data>
+  <data name="MirrorInZ" xml:space="preserve"><value>In Z (through selection center)</value></data>
+  <data name="MirrorPickPlane" xml:space="preserve"><value>Pick plane...</value></data>
 </root>

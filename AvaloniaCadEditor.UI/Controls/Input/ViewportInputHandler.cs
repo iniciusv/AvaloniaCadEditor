@@ -27,6 +27,13 @@ public sealed class ViewportInputHandler
     /// (true, esquerda → direita) ou crossing (false).</summary>
     public event Action<Rect?, bool>? SelectionBoxChanged;
 
+    // Botão direito: arrastar orbita; clicar sem arrastar abre o menu de contexto. Mesma folga do retângulo.
+    private Point? _rightPressPos;
+    private bool _rightDragged;
+
+    /// <summary>Clique com o botão direito sem arrastar (a órbita não chegou a acontecer).</summary>
+    public event Action? ContextMenuRequested;
+
     public void HandlePointerWheelChanged(PointerWheelEventArgs e, CameraState camera, Action requestRender)
     {
         Debug.WriteLine($"[DEBUG] Mouse Wheel: {e.Delta.Y}");
@@ -65,6 +72,11 @@ public sealed class ViewportInputHandler
                 Debug.WriteLine("[DEBUG] Started Orbiting");
             }
             _lastMousePos = point.Position;
+            if (point.Properties.IsRightButtonPressed)
+            {
+                _rightPressPos = point.Position;
+                _rightDragged = false;
+            }
         }
         else if (point.Properties.IsLeftButtonPressed)
         {
@@ -309,6 +321,12 @@ public sealed class ViewportInputHandler
     {
         var point = e.GetCurrentPoint(visual);
 
+        if (_rightPressPos is { } rightStart && !_rightDragged)
+        {
+            var d = point.Position - rightStart;
+            _rightDragged = Math.Sqrt(d.X * d.X + d.Y * d.Y) > BoxDragThreshold;
+        }
+
         if (_boxStart is { } boxStart)
         {
             if (!point.Properties.IsLeftButtonPressed)
@@ -457,6 +475,13 @@ public sealed class ViewportInputHandler
             _isPanning = false;
             _isOrbiting = false;
             _lastMousePos = null;
+        }
+
+        if (e.InitialPressMouseButton == MouseButton.Right && _rightPressPos != null)
+        {
+            bool click = !_rightDragged;
+            _rightPressPos = null;
+            if (click) ContextMenuRequested?.Invoke();
         }
     }
 

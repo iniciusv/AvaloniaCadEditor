@@ -199,6 +199,11 @@ public class CadViewModel : INotifyPropertyChanged
 					oldRotate.FeaturesRotated -= RotateTool_FeaturesRotated;
 					oldRotate.FeaturesCopied -= RotateTool_FeaturesCopied;
 				}
+				if (_currentTool is MirrorTool oldMirror)
+				{
+					oldMirror.FeaturesMirrored -= MirrorTool_FeaturesMirrored;
+					oldMirror.FeaturesCopied -= MirrorTool_FeaturesCopied;
+				}
 				if (_currentTool is BooleanTool oldBoolean)
 				{
 					oldBoolean.OperandAppendRequested -= BooleanTool_OperandAppendRequested;
@@ -221,6 +226,11 @@ public class CadViewModel : INotifyPropertyChanged
 					newRotate.FeaturesRotated += RotateTool_FeaturesRotated;
 					newRotate.FeaturesCopied += RotateTool_FeaturesCopied;
 				}
+				if (_currentTool is MirrorTool newMirror)
+				{
+					newMirror.FeaturesMirrored += MirrorTool_FeaturesMirrored;
+					newMirror.FeaturesCopied += MirrorTool_FeaturesCopied;
+				}
 				if (_currentTool is BooleanTool newBoolean)
 				{
 					newBoolean.OperandAppendRequested += BooleanTool_OperandAppendRequested;
@@ -238,7 +248,7 @@ public class CadViewModel : INotifyPropertyChanged
 			// SweepCommand está na lista pelo mesmo motivo: ele recebe a região e as arestas
 			// pré-selecionadas no construtor, e limpar aqui apagaria o destaque do que ele acabou
 			// de receber (e, numa recusa, o usuário não veria mais o que estava marcado).
-			if (value != null && !(value is SelectTool) && !(value is MoveTool) && !(value is RotateTool) && !(value is FilletTool) && !(value is BooleanTool) && !(value is SweepCommand))
+			if (value != null && !(value is SelectTool) && !(value is MoveTool) && !(value is RotateTool) && !(value is MirrorTool) && !(value is FilletTool) && !(value is BooleanTool) && !(value is SweepCommand))
 			{
 				ClearSelection();
 			}
@@ -349,7 +359,7 @@ public class CadViewModel : INotifyPropertyChanged
 	/// </summary>
 	private void ReturnToSelectTool()
 	{
-		if (CurrentTool is MoveTool or RotateTool)
+		if (CurrentTool is MoveTool or RotateTool or MirrorTool)
 			CurrentTool = new SelectTool(_geometryEngine, _selectionService);
 	}
 
@@ -418,6 +428,104 @@ public class CadViewModel : INotifyPropertyChanged
 				AvaloniaCadEditor.Application.Scenes.PartSourceEditor.RotateInstance(source, line, pivot, axis, degrees)),
 			loose => ScriptEditor.CopyLooseFeatures(loose,
 				AvaloniaCadEditor.Application.Scenes.PartSourceEditor.RotationCall(pivot, axis, degrees)));
+	}
+
+	// ---------------------------------------------------------------- Espelhar (menu do botão direito)
+
+	/// <summary>O que o Espelhar age sobre: o sólido de peça realçado no grupo aberto, ou a seleção do sketch.</summary>
+	public System.Collections.Generic.IReadOnlyList<IFeature> MirrorTargets() =>
+		HighlightedPartSolidSelection()
+		?? Sketch.Features.Where(f => f.IsSelected && f is not WorkPlaneFeature).ToList();
+
+	/// <summary>O menu de Espelhar só aparece sem outra operação em andamento e com algo para espelhar.</summary>
+	public bool CanMirrorSelection => CurrentTool is SelectTool && MirrorTargets().Count > 0;
+
+	/// <summary>Espelha (ou copia espelhado) pelo plano de normal <paramref name="normal"/> que passa pelo centro da seleção.</summary>
+	public void MirrorSelectionAtCenter(AvaloniaCadEditor.Domain.ValueObjects.Vector3D normal, bool copy)
+	{
+		var targets = MirrorTargets();
+		if (targets.Count == 0)
+		{
+			StatusText = "✗ Espelhar: nada selecionado.";
+			return;
+		}
+		var c = MirrorTool.SelectionCenter(targets);
+		var center = new AvaloniaCadEditor.Domain.ValueObjects.Point3D(Round(c.X), Round(c.Y), Round(c.Z));
+		if (copy) MirrorTool_FeaturesCopied(center, normal, targets);
+		else MirrorTool_FeaturesMirrored(center, normal, targets);
+	}
+
+	/// <summary>Abre a ferramenta que escolhe o plano do espelho com o mouse (ver <see cref="MirrorTool"/>).</summary>
+	public void StartMirrorTool(bool copy)
+	{
+		var targets = MirrorTargets();
+		if (targets.Count == 0)
+		{
+			StatusText = "✗ Espelhar: nada selecionado.";
+			return;
+		}
+		CurrentTool = new MirrorTool(targets, copy) { Plane = ActiveWorkPlane };
+	}
+
+	/// <summary>Mesma ideia de <see cref="RotateTool_FeaturesRotated"/>, para espelhar por um plano.</summary>
+	private async void MirrorTool_FeaturesMirrored(AvaloniaCadEditor.Domain.ValueObjects.Point3D pointOnPlane, AvaloniaCadEditor.Domain.ValueObjects.Vector3D normal, System.Collections.Generic.IEnumerable<IFeature> features)
+	{
+		var mirrored = features.ToList();
+		ReturnToSelectTool();
+		if (mirrored.Count == 0)
+		{
+			StatusText = "✗ Espelhar: nada selecionado.";
+			return;
+		}
+
+		if (mirrored.OfType<TransformedFeature>().FirstOrDefault(f => _partTools.Contains(f)) is { } partSolid && _partToolsOwner is { } owner)
+		{
+			// O plano vai para o referencial da peça (a instância pode estar girada/espelhada).
+			var toLocal = owner.Placement.Inverse();
+			var localPoint = toLocal.Apply(pointOnPlane);
+			var localNormal = toLocal.ApplyVector(normal);
+			await EditPartSolidAsync(owner, partSolid.Source.Name, "espelhado",
+				(partTypeName, solidName) => ScriptEditor.MirrorPartSolidAsync(partTypeName, solidName,
+					new AvaloniaCadEditor.Domain.ValueObjects.Point3D(Round(localPoint.X), Round(localPoint.Y), Round(localPoint.Z)),
+					new AvaloniaCadEditor.Domain.ValueObjects.Vector3D(Round(localNormal.X), Round(localNormal.Y), Round(localNormal.Z))));
+			return;
+		}
+
+		var selectedFeatureNames = mirrored.Select(f => f.Name).ToList();
+		var instances = mirrored.OfType<PartInstance>().ToList();
+		var loose = mirrored.Where(f => f is not PartInstance).ToList();
+
+		bool changed = false;
+		if (instances.Count > 0) changed |= ScriptEditor.MirrorPartInstances(instances, pointOnPlane, normal);
+		if (loose.Count > 0) changed |= ScriptEditor.MirrorLooseFeatures(loose, pointOnPlane, normal);
+
+		if (!changed) return;
+
+		await ScriptEditor.RunCodeAsync();
+
+		foreach (var featureName in selectedFeatureNames)
+		{
+			var newFeature = Sketch.Features.FirstOrDefault(f => f.Name == featureName);
+			if (newFeature != null)
+			{
+				_selectionService.SelectById(Sketch, newFeature.Id);
+			}
+		}
+	}
+
+	private void MirrorTool_FeaturesCopied(AvaloniaCadEditor.Domain.ValueObjects.Point3D pointOnPlane, AvaloniaCadEditor.Domain.ValueObjects.Vector3D normal, System.Collections.Generic.IEnumerable<IFeature> features)
+	{
+		ReturnToSelectTool();
+		if (features.Any(f => _partTools.Contains(f)))
+		{
+			StatusText = "✗ Copiar um sólido de dentro da peça ainda não é suportado: duplique a declaração no Build().";
+			return;
+		}
+		CopyFeatures(features,
+			instances => ScriptEditor.CopyPartInstances(instances, (source, line) =>
+				AvaloniaCadEditor.Application.Scenes.PartSourceEditor.MirrorInstance(source, line, pointOnPlane, normal)),
+			loose => ScriptEditor.CopyLooseFeatures(loose,
+				AvaloniaCadEditor.Application.Scenes.PartSourceEditor.MirrorCall(pointOnPlane, normal)));
 	}
 
 	/// <summary>
@@ -1637,6 +1745,7 @@ public class CadViewModel : INotifyPropertyChanged
 	{
 		if (CurrentTool is RotateTool rotate) rotate.Plane = ActiveWorkPlane;
 		else if (CurrentTool is MoveTool move) move.Plane = ActiveWorkPlane;
+		else if (CurrentTool is MirrorTool mirror) mirror.Plane = ActiveWorkPlane;
 	}
 
 	private void UpdateStatusText(Point3D snapped)

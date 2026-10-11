@@ -102,4 +102,10 @@ public static class Strings
     public static string DraftingPickTip => ResourceManager.GetString("DraftingPickTip") ?? "Add dimensions";
     public static string DraftingReset => ResourceManager.GetString("DraftingReset") ?? "Reset";
     public static string DraftingResetTip => ResourceManager.GetString("DraftingResetTip") ?? "Reset dimensions of this view";
+    public static string MirrorMenu => ResourceManager.GetString("MirrorMenu") ?? "Mirror";
+    public static string MirrorCopyMenu => ResourceManager.GetString("MirrorCopyMenu") ?? "Mirror copy";
+    public static string MirrorInX => ResourceManager.GetString("MirrorInX") ?? "In X (through selection center)";
+    public static string MirrorInY => ResourceManager.GetString("MirrorInY") ?? "In Y (through selection center)";
+    public static string MirrorInZ => ResourceManager.GetString("MirrorInZ") ?? "In Z (through selection center)";
+    public static string MirrorPickPlane => ResourceManager.GetString("MirrorPickPlane") ?? "Pick plane...";
 }
