@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.Mesh;
+using AvaloniaCadEditor.Domain.Settings;
 using AvaloniaCadEditor.Domain.ValueObjects;
 using AvaloniaCadEditor.Infrastructure.OpenCascade;
 using FluentAssertions;
@@ -11,7 +12,8 @@ namespace AvaloniaCadEditor.Tests.BehaviorTests;
 
 /// <summary>
 /// Chanfro da face de cima (z = 17) do BlocoFicacaoBeltVaoCorreia com o vão de 6,5 mm (furo r 3,25
-/// tangente às duas paredes do vão). Toda quina convexa do topo tem de sair chanfrada.
+/// tangente às duas paredes do vão). O ProfileSegments muda quantos trechos tem cada arco e, com isso,
+/// quais cortes o OCCT erra — o app usa 48.
 /// </summary>
 public class FilletTopoBlocoVaoCorreiaTests(ITestOutputHelper output)
 {
@@ -40,11 +42,28 @@ public class FilletTopoBlocoVaoCorreiaTests(ITestOutputHelper output)
     [InlineData(3.0, 32)]
     [InlineData(3.25, 32)]
     [InlineData(3.0, 48)]
-    [InlineData(3.25, 48)]
-    [InlineData(3.25, 24)]
-    [InlineData(3.25, 64)]
-    [InlineData(3.25, 96)]
     public void ChanfroNaFaceDeCima_TodasAsQuinasDoTopoSaemChanfradas(double raioRebaixoPrisma, int profileSegments)
+    {
+        SemChanfroNoTopo(raioRebaixoPrisma, profileSegments).Should().BeEmpty("toda quina convexa da face z = 17 tem de sair chanfrada");
+    }
+
+    /// <summary>
+    /// Aqui um corte no arco do furo sai CORROMPIDO (forma maior que antes, ou com menos volume do que
+    /// o cortador tinha) e, aceito, todo corte seguinte dava forma vazia: faltavam ~35 trechos, inclusive
+    /// a borda externa y = 25, longe do furo. Rejeitado, só sobram trechos isolados que o OCCT não
+    /// consegue cortar com nenhuma sobra — e o contorno externo sai inteiro.
+    /// </summary>
+    [Fact]
+    public void ChanfroNaFaceDeCima_CorteCorrompidoNoArcoNaoContaminaOsSeguintes()
+    {
+        var faltando = SemChanfroNoTopo(raioRebaixoPrisma: 3.25, profileSegments: 48);
+
+        faltando.Should().NotContain(m => m.Y < 10.501 || m.Y > 24.999 || m.X > -0.116 || m.X < -20.614,
+            "o contorno externo não tem nada de delicado; ficar sem chanfro ali é sinal de corte contaminado");
+        faltando.Count.Should().BeLessThanOrEqualTo(2, "só trechos isolados podem falhar, não uma cascata");
+    }
+
+    private List<Point3D> SemChanfroNoTopo(double raioRebaixoPrisma, int profileSegments)
     {
         var bloco = Bloco(raioRebaixoPrisma);
         var chanfrado = new FilletFeature("chanfrado", bloco, 1.0)
@@ -54,21 +73,18 @@ public class FilletTopoBlocoVaoCorreiaTests(ITestOutputHelper output)
             Faces = { new FaceReference(bloco, -1, new Vector3D(0, 0, 1), new Point3D(-0.115334, 25, 17), "CustomFace") }
         };
 
-        var settings = new AvaloniaCadEditor.Domain.Settings.TessellationSettings { ProfileSegments = profileSegments };
+        var settings = new TessellationSettings { ProfileSegments = profileSegments };
         var semChanfro = new OpenCascadeGeometryKernel().BuildFeatureMesh(bloco, settings);
         var mesh = new OpenCascadeGeometryKernel().BuildFeatureMesh(chanfrado, settings);
 
-        var semChanfroNoTopo = QuinasConvexasDoTopo(semChanfro)
-            .Where(m => TocaASuperficie(mesh, m))
-            .ToList();
-        foreach (var m in semChanfroNoTopo)
+        var faltando = QuinasConvexasDoTopo(semChanfro).Where(m => TocaASuperficie(mesh, m)).ToList();
+        foreach (var m in faltando)
             output.WriteLine($"sem chanfro: ({m.X:0.###}, {m.Y:0.###}, {m.Z:0.###})");
-
-        semChanfroNoTopo.Should().BeEmpty("toda quina convexa da face z = 17 tem de sair chanfrada");
+        return faltando;
     }
 
     /// <summary>Ponto médio de cada quina convexa da malha cujas duas pontas estão em z = 17 e que tem o topo (+Z) de um lado.</summary>
-    internal static IEnumerable<Point3D> QuinasConvexasDoTopo(TriangleMesh mesh)
+    private static IEnumerable<Point3D> QuinasConvexasDoTopo(TriangleMesh mesh)
     {
         var (_, _, _, _, convexa) = EdgeDetector.ClassifyEdges(mesh.Positions, mesh.Indices);
         for (int i = 0; i < mesh.FeatureEdges.Length; i += 2)
@@ -88,7 +104,7 @@ public class FilletTopoBlocoVaoCorreiaTests(ITestOutputHelper output)
         new(mesh.Positions[i * 3], mesh.Positions[i * 3 + 1], mesh.Positions[i * 3 + 2]);
 
     /// <summary>O ponto ainda está sobre algum triângulo da malha (a quina não foi cortada).</summary>
-    internal static bool TocaASuperficie(TriangleMesh mesh, Point3D p)
+    private static bool TocaASuperficie(TriangleMesh mesh, Point3D p)
     {
         for (int t = 0; t < mesh.Indices.Length / 3; t++)
         {

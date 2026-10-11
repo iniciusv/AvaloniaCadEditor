@@ -1,9 +1,8 @@
 /// <summary>
 /// Sólido base do <see cref="BlocoFixacaoBelt"/> reduzido à METADE ESQUERDA do vão da correia
 /// (a composição completa é espelhada em X). Contém o corpo, o vão da correia, os dois furos
-/// verticais (furo_vertical e furo_vertical_3_2) e o extra (prism_f62c + cylinder_821a −
-/// cylinder_54d2, agrupados em boolOp_16db), mas SEM porca_pressao_correia, rebaixo_fixacao,
-/// furo_fixacao, rebaixo_frontal nem rebaixo_inferior.
+/// verticais (furo_vertical e furo_vertical_3_2) e o extra (prism_f62c + cylinder_821a),
+/// mas SEM porca_pressao_correia, rebaixo_fixacao, furo_fixacao, rebaixo_frontal nem rebaixo_inferior.
 /// A altura geral foi reduzida subindo o limite INFERIOR do corpo (BaseCorpoZ), mantendo o vão
 /// da correia intacto (o vão já começa acima do novo piso).
 /// O vão da correia tem 10 mm de altura (AlturaVao), para a correia de 10 mm: o teto do vão
@@ -13,8 +12,7 @@
 /// mais exposto como parâmetro.
 /// O furo_vertical (rebaixo cilíndrico) e o boolOp_7b90 (prism_f62c + cylinder_821a) começam
 /// junto com o vão da correia (Z = BaseVaoZ = 7) e sobem até o topo do corpo (Z = AlturaCorpo = 17),
-/// preenchendo todo o rasgo verticalmente. O cylinder_54d2 (rebaixo de 3 mm) e o boolOp_16db
-/// acompanham a mesma faixa (Z = 7 a 17).
+/// preenchendo todo o rasgo verticalmente.
 /// O furo_vertical_3_2 (furo passante) atravessa toda a peça (de Z = 3 a Z = 18).
 /// Origem local = base do bloco_fixacao_mgn9 (local = mundo - (0, 0, 26)), igual ao BlocoFixacaoBelt.
 /// </summary>
@@ -54,14 +52,11 @@ public sealed record BlocoFicacaoBeltVaoCorreia(
         var vao_correia = new BoxFeature(new Point3D(BaseVaoX, BaseVaoY, BaseVaoZ), LarguraVaoX, comprimentoVaoY, AlturaVao) { Name = "vao_correia", IsTransientTool = true }.Transformed(Placement.Translate(new Vector3D(0, -0.25, 0)));
 
         // Rebaixo CILÍNDRICO no topo (alojamento da cabeça do parafuso M3 inserido por cima).
-        // Começa junto com o vão da correia (Z = BaseVaoZ) e sobe até o topo do corpo (Z = AlturaCorpo).
         var furo_vertical = new CylinderFeature(new Point3D(FuroVerticalX, FuroVerticalY, FuroVerticalZ), Vector3D.UnitZ, RaioFuroVertical, AlturaFuroVertical) { Name = "furo_vertical", IsTransientTool = true };
-        // Furo vertical passante de 3,2 mm, atravessando toda a peça (de BaseCorpoZ - 1 até AlturaCorpo + 1).
+        // Furo vertical passante de 3,2 mm, atravessando toda a peça.
         var furo_vertical_3_2 = new CylinderFeature(new Point3D(FuroVerticalX, FuroVerticalY, BaseCorpoZ - 1.0), Vector3D.UnitZ, RaioFuroVertical3_2, AlturaCorpo - BaseCorpoZ + 2.0) { Name = "furo_vertical_3_2", IsTransientTool = true };
 
-        // Extra incorporado do BlocoFixacaoBelt: prisma com furo de 1,3 mm e rebaixo de 3 mm.
-        // Começa junto com o vão da correia (Z = BaseVaoZ = 7) e sobe até o topo do corpo (Z = 17).
-        // A face superior do prisma foi estendida em 0,25 mm para acompanhar a nova face superior do vão.
+        // Extra incorporado do BlocoFixacaoBelt: prisma com furo de 1,3 mm.
         var prism_f62c_verts = new[]
         {
             new Point3D(26, 3.0, 0),
@@ -80,21 +75,18 @@ public sealed record BlocoFicacaoBeltVaoCorreia(
         {
             Name = "cylinder_821a"
         };
-        var cylinder_54d2 = new CylinderFeature(globalBaseCenter: new Point3D(-5.61533, 18.75, 7), globalDirection: new Vector3D(0, 0, 1), radius: 3.25, height: 10)
-        {
-            Name = "cylinder_54d2"
-        };
-        var boolOp_7b90 = new BooleanFeature(name: "boolOp_7b90", operation: BooleanOperationType.Union, baseFeature: prism_f62c, toolFeatures: new IFeature[] { cylinder_821a });
-        var boolOp_16db = new BooleanFeature(name: "boolOp_16db", operation: BooleanOperationType.Subtract, baseFeature: boolOp_7b90, toolFeatures: new IFeature[] { cylinder_54d2 });
+        var boolOp_7b90 = new BooleanFeature(name: "boolOp_7b90", operation: BooleanOperationType.Union, baseFeature: prism_f62c, toolFeatures: new IFeature[] { cylinder_821a }).Transformed(Placement.Translate(new Vector3D(0, 0.5, 0)));
 
-        var bloco_ficacao_belt_vao_correia_metade = BooleanFeature.CreateDifference(
-            "bloco_ficacao_belt_vao_correia_metade",
-            corpo,
-            vao_correia,
+        // O vão é subtraído antes da união com o extra para que o extra permaneça dentro do rasgo.
+        var corpo_com_vao = BooleanFeature.CreateDifference("corpo_com_vao", corpo, vao_correia);
+        var corpo_com_extra = BooleanFeature.CreateUnion("corpo_com_extra", corpo_com_vao, boolOp_7b90);
+
+        // Os furos verticais são subtraídos POR ÚLTIMO, cortando corpo e extra simultaneamente.
+        var bloco_ficacao_belt_vao_correia = BooleanFeature.CreateDifference(
+            "bloco_ficacao_belt_vao_correia",
+            corpo_com_extra,
             furo_vertical,
             furo_vertical_3_2);
-
-        var bloco_ficacao_belt_vao_correia = BooleanFeature.CreateUnion("bloco_ficacao_belt_vao_correia", bloco_ficacao_belt_vao_correia_metade, boolOp_16db);
 
         var bloco_ficacao_belt_vao_correia_chanfrado = new FilletFeature(name: "bloco_ficacao_belt_vao_correia_chanfrado", baseFeature: bloco_ficacao_belt_vao_correia, radius: 1)
         {
