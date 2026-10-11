@@ -1678,6 +1678,7 @@ public class CadViewModel : INotifyPropertyChanged
 			return true;
 		}
 
+		string statusBefore = StatusText;
 		if (CurrentTool is SelectTool)
 		{
 			// Fora do SketchEdit, a seleção de sólidos 3D é feita pelo raycast 3D no
@@ -1689,7 +1690,7 @@ public class CadViewModel : INotifyPropertyChanged
 		else
 			CurrentTool?.OnMouseDown(Sketch, localSnapped);
 
-		UpdateStatusText(localSnapped);
+		UpdateStatusTextUnlessToolReported(localSnapped, statusBefore);
 
 		if (CurrentTool is DrawLineCommand || CurrentTool is DrawCircleCommand || CurrentTool is DrawPolygonCommand || CurrentTool is TrimCommand || CurrentTool is ExtendCommand || CurrentTool is OffsetCommand)
 		{
@@ -1757,6 +1758,19 @@ public class CadViewModel : INotifyPropertyChanged
 		OnPropertyChanged(nameof(VcbText)); // Force update
 	}
 
+	/// <summary>
+	/// Como <see cref="UpdateStatusText"/>, mas preserva o que a ferramenta escreveu no status durante o
+	/// evento: Mover/Girar/Espelhar concluem no clique (ou no Enter do VCB) e deixam ali o resultado
+	/// ("✗ Não achei a chamada Add(...)", "Avaliando código..."), que a coordenada do cursor apagaria.
+	/// </summary>
+	private void UpdateStatusTextUnlessToolReported(Point3D snapped, string statusBefore)
+	{
+		if (StatusText == statusBefore)
+			UpdateStatusText(snapped);
+		else
+			OnPropertyChanged(nameof(VcbText));
+	}
+
 	public bool IsCtrlPressed { get; set; }
 
 	public void OnKeyDown(string keyName, bool isCtrlPressed = false)
@@ -1784,9 +1798,10 @@ public class CadViewModel : INotifyPropertyChanged
 			}
 		}
 
+		string statusBefore = StatusText;
 		if (VcbService.ProcessKeyDown(keyName, Sketch, CurrentTool, () => RefreshProfiles()))
 		{
-			UpdateStatusText(CurrentSnappedPoint);
+			UpdateStatusTextUnlessToolReported(CurrentSnappedPoint, statusBefore);
 			if (CurrentTool is ExtrudeCommand extCmd && extCmd.IsFinished)
 			{
 				ExitSketchMode();

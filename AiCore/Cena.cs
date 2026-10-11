@@ -147,3 +147,25 @@ var furoFixacaoPlacaB1Mundo = placaSuporteYB.ToWorld(new Point3D(passoFurosPlaca
 var furoFixacaoPlacaB2Mundo = placaSuporteYB.ToWorld(new Point3D(passoFurosPlacaCarrinhoY / 2 * sxPlacaSuporteYB, passoFurosPlacaCarrinhoY / 2, 0));
 var topoPlacaSuporteYB = placaSuporteYB.ToWorld(new Point3D(0, 0, 5.5));
 var blocoConexaoPlacaCarrinhoYB = Add(blocoConexaoPlacaCarrinhoYPeca, at: Placement.At((furoFixacaoPlacaB1Mundo.X + furoFixacaoPlacaB2Mundo.X) / 2.0, (furoFixacaoPlacaB1Mundo.Y + furoFixacaoPlacaB2Mundo.Y) / 2.0, topoPlacaSuporteYB.Z), name: "bloco_conexao_placa_carrinho_y_b", color: "#00CC6A");
+// --- Bloco espelhado no eixo X (plano Y = 0), montado sobre a placa A ---
+// O bloco é simétrico em Y (os dois furos verticais ficam em y = ±PassoFuros/2), então o
+// espelhamento em X mantém os furos verticais na mesma posição relativa ao eixo dos furos da
+// placa. A posição sai das coordenadas locais dos furos da placa A convertidas para o mundo.
+var sxPlacaSuporteYA = placaSuporteYA.Part.EspelhadoNoEixoY ? -1.0 : 1.0;
+var furoFixacaoPlacaA1Mundo = placaSuporteYA.ToWorld(new Point3D(passoFurosPlacaCarrinhoY / 2 * sxPlacaSuporteYA, -passoFurosPlacaCarrinhoY / 2, 0));
+var furoFixacaoPlacaA2Mundo = placaSuporteYA.ToWorld(new Point3D(passoFurosPlacaCarrinhoY / 2 * sxPlacaSuporteYA, passoFurosPlacaCarrinhoY / 2, 0));
+var topoPlacaSuporteYA = placaSuporteYA.ToWorld(new Point3D(0, 0, 5.5));
+var blocoConexaoPlacaCarrinhoYA = Add(blocoConexaoPlacaCarrinhoYPeca, at: Placement.At((furoFixacaoPlacaA1Mundo.X + furoFixacaoPlacaA2Mundo.X) / 2.0, (furoFixacaoPlacaA1Mundo.Y + furoFixacaoPlacaA2Mundo.Y) / 2.0, topoPlacaSuporteYA.Z), name: "bloco_conexao_placa_carrinho_y_a", color: "#00CC6A");
+// --- Sólido base do bloco de fixação da belt, reduzido ao vão da correia (metade esquerda) ---
+// Posicionado logo ABAIXO do bloco_conexao_placa_carrinho_y_a e AO LADO da placa_suporte_carrinho_y_a:
+// a posição sai das coordenadas locais dos furos da placa A convertidas para o mundo (mesmo padrão
+// do bloco de conexão), com X deslocado para fora da face da placa (ao lado dela) e Z logo abaixo
+// da base do bloco de conexão. Acompanha o lado do motor, como o bloco_fixacao_belt completo.
+var blocoFicacaoBeltVaoCorreiaPeca = new BlocoFicacaoBeltVaoCorreia();
+var xFaceExternaPlacaA = placaSuporteYA.ToWorld(new Point3D(16 * sxPlacaSuporteYA, 0, 0)).X;
+var xBlocoFicacaoBeltVaoCorreia = xFaceExternaPlacaA + blocoFicacaoBeltVaoCorreiaPeca.LarguraCorpoX / 2.0;
+var yBlocoFicacaoBeltVaoCorreia = (furoFixacaoPlacaA1Mundo.Y + furoFixacaoPlacaA2Mundo.Y) / 2.0;
+var zBlocoFicacaoBeltVaoCorreia = topoPlacaSuporteYA.Z - blocoFicacaoBeltVaoCorreiaPeca.AlturaCorpo;
+var blocoFicacaoBeltVaoCorreia = Add(blocoFicacaoBeltVaoCorreiaPeca, at: Placement.At(xBlocoFicacaoBeltVaoCorreia - 30, yBlocoFicacaoBeltVaoCorreia, zBlocoFicacaoBeltVaoCorreia, rotationZDegrees: rotacaoMotorZ).Then(Placement.RotationAbout(new Point3D(-158.134659, -37.5, 27), Vector3D.UnitZ, -90)).Then(Placement.Translate(new Vector3D(0, 22, 0))).Then(Placement.MirrorZ()).Then(Placement.Translate(new Vector3D(5, 0, 41))), name: "bloco_ficacao_belt_vao_correia", color: "#00CC6A");var fillet_2033 = new FilletFeature(name: "fillet_2033", baseFeature: blocoFicacaoBeltVaoCorreiaPeca, radius: 2.0) { Mode = FilletMode.Bevel, ApplyToAllEdges = false };
+    fillet_2033.Faces.Add(new FaceReference(blocoFicacaoBeltVaoCorreiaPeca, -1, new Vector3D(0, -0, -1), "CustomFace"));
+AddFeature(fillet_2033);

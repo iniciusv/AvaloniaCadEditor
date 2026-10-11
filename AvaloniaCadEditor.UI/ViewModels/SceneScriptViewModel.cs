@@ -993,31 +993,57 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
     /// Cópias: processa de baixo para cima, para a instrução inserida por uma cópia não deslocar as
     /// linhas das chamadas que ainda faltam no mesmo arquivo.
     /// </param>
+    /// <remarks>
+    /// Quem chama não reexecuta quando nada mudou, então cada feature que fica de fora diz o motivo
+    /// no status — senão a ferramenta "termina" e a peça simplesmente continua onde estava.
+    /// </remarks>
     private bool EditFeatureCalls(IEnumerable<IFeature> features, Func<string, int, string> edit, bool bottomUp = false)
     {
-        var origins = features
-            .Select(FeatureOrigin.Of)
-            .Where(o => o != null && o.Line > 0)
-            .Select(o => (File: SourceFileOf(o!), o!.Line))
-            .Distinct();
-        var calls = (bottomUp ? origins.OrderByDescending(c => c.Line) : origins).ToList();
+        var problems = new List<string>();
+        var origins = new List<(string File, int Line, string Name)>();
+        foreach (var feature in features)
+        {
+            var origin = FeatureOrigin.Of(feature);
+            if (origin == null || origin.Line <= 0)
+            {
+                problems.Add($"não sei de que linha do código '{feature.Name}' veio");
+                continue;
+            }
+            origins.Add((SourceFileOf(origin), origin.Line, feature.Name));
+        }
+
+        var unique = origins.DistinctBy(o => (o.File, o.Line));
+        var calls = (bottomUp ? unique.OrderByDescending(c => c.Line) : unique).ToList();
 
         bool changed = false;
-        foreach (var (file, line) in calls)
+        foreach (var (file, line, name) in calls)
         {
             string? source = GetDocumentText(file);
-            if (source == null) continue;
+            if (source == null)
+            {
+                problems.Add($"'{name}' veio de {file}, que não está entre os arquivos abertos da cena");
+                continue;
+            }
             try
             {
                 string updated = edit(source, line);
-                if (updated == source) continue;
+                if (updated == source)
+                {
+                    problems.Add($"o código de '{name}' ({file}, linha {line}) não mudou");
+                    continue;
+                }
                 SetDocumentText(file, updated);
                 changed = true;
             }
             catch (InvalidOperationException ex)
             {
-                _cadViewModel.StatusText = $"✗ {ex.Message}";
+                problems.Add($"{ex.Message} ('{name}', {file})");
             }
+        }
+
+        if (problems.Count > 0)
+        {
+            _cadViewModel.StatusText = "✗ " + string.Join("; ", problems);
         }
         return changed;
     }
