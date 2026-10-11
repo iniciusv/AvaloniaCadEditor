@@ -341,6 +341,7 @@
                                      controls:CodeEditorBehavior.ErrorLines="{Binding ScriptEditor.ActiveFileErrorLines}"
                                      controls:CodeEditorBehavior.RevealLine="{Binding ScriptEditor.RevealLine}"
                                      controls:CodeEditorBehavior.CodeCommands="{Binding ScriptEditor}"
+                                     controls:CodeEditorBehavior.HighlightSelectionOccurrences="True"
                                      FontFamily="Consolas, Fira Code, Monospace"
                                      Background="#1E1E1E"
                                      Foreground="#D4D4D4"

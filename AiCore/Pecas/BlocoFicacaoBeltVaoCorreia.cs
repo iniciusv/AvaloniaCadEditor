@@ -9,6 +9,8 @@
 /// O vão da correia tem 10 mm de altura (AlturaVao), para a correia de 10 mm: o teto do vão
 /// coincide com o topo do corpo, então o piso do vão (BaseVaoZ = 7) desce 2 mm e a correia fica
 /// apoiada no fundo do vão com o topo rente à face superior do bloco, sem alterar o envelope.
+/// O comprimento do vão (ComprimentoVaoY) é derivado do RaioFuroVertical (2 × raio), não sendo
+/// mais exposto como parâmetro.
 /// O furo_vertical (rebaixo cilíndrico) e o boolOp_7b90 (prism_f62c + cylinder_821a) começam
 /// junto com o vão da correia (Z = BaseVaoZ = 7) e sobem até o topo do corpo (Z = AlturaCorpo = 17),
 /// preenchendo todo o rasgo verticalmente. O cylinder_54d2 (rebaixo de 3 mm) e o boolOp_16db
@@ -24,21 +26,22 @@ public sealed record BlocoFicacaoBeltVaoCorreia(
     double BaseCorpoY = 10.5,
     double BaseCorpoZ = 4.0,
     double LarguraVaoX = 17.0,
-    double ComprimentoVaoY = 6.0,
     double AlturaVao = 10.0,
     double BaseVaoX = -22.61533,
     double BaseVaoY = 15.75,
     double BaseVaoZ = 7.0,
-    double RaioFuroVertical = 3.0,
+    double RaioFuroVertical = 3.25,
     double FuroVerticalX = -5.61533,
     double FuroVerticalY = 18.75,
     double FuroVerticalZ = 7.0,
     double AlturaFuroVertical = 10.0,
-    double RaioFuroVertical3_2 = 1.6,
-    double RaioChanfro = 1.0) : Part
+    double RaioFuroVertical3_2 = 1.6) : Part
 {
     protected override IFeature Build()
     {
+        // Comprimento do vão derivado do raio do furo vertical (2 × raio).
+        var comprimentoVaoY = 2.0 * RaioFuroVertical;
+
         var corpo = new BoxFeature(
             new Point3D(BaseCorpoX, BaseCorpoY, BaseCorpoZ),
             LarguraCorpoX,
@@ -48,7 +51,7 @@ public sealed record BlocoFicacaoBeltVaoCorreia(
             Name = "corpo"
         };
 
-        var vao_correia = new BoxFeature(new Point3D(BaseVaoX, BaseVaoY, BaseVaoZ), LarguraVaoX, ComprimentoVaoY, AlturaVao) { Name = "vao_correia", IsTransientTool = true };
+        var vao_correia = new BoxFeature(new Point3D(BaseVaoX, BaseVaoY, BaseVaoZ), LarguraVaoX, comprimentoVaoY, AlturaVao) { Name = "vao_correia", IsTransientTool = true }.Transformed(Placement.Translate(new Vector3D(0, -0.25, 0)));
 
         // Rebaixo CILÍNDRICO no topo (alojamento da cabeça do parafuso M3 inserido por cima).
         // Começa junto com o vão da correia (Z = BaseVaoZ) e sobe até o topo do corpo (Z = AlturaCorpo).
@@ -58,14 +61,15 @@ public sealed record BlocoFicacaoBeltVaoCorreia(
 
         // Extra incorporado do BlocoFixacaoBelt: prisma com furo de 1,3 mm e rebaixo de 3 mm.
         // Começa junto com o vão da correia (Z = BaseVaoZ = 7) e sobe até o topo do corpo (Z = 17).
+        // A face superior do prisma foi estendida em 0,25 mm para acompanhar a nova face superior do vão.
         var prism_f62c_verts = new[]
         {
-            new Point3D(26, 3.25, 0),
+            new Point3D(26, 3.0, 0),
             new Point3D(26, 6.25, 0),
             new Point3D(30.3, 6.25, 0),
             new Point3D(30.3, 7.55, 0),
             new Point3D(41, 7.55, 0),
-            new Point3D(41, 3.25, 0)
+            new Point3D(41, 3.0, 0)
         };
         var prism_f62c_plane = new WorkPlane(new Point3D(20.38467, 25, 7), new Vector3D(0, 0, 1), new Vector3D(-1, 0, 0));
         var prism_f62c = new PrismFeature(prism_f62c_verts, height: 10, plane: prism_f62c_plane)
@@ -76,7 +80,7 @@ public sealed record BlocoFicacaoBeltVaoCorreia(
         {
             Name = "cylinder_821a"
         };
-        var cylinder_54d2 = new CylinderFeature(globalBaseCenter: new Point3D(-5.61533, 18.75, 7), globalDirection: new Vector3D(0, 0, 1), radius: 3, height: 10)
+        var cylinder_54d2 = new CylinderFeature(globalBaseCenter: new Point3D(-5.61533, 18.75, 7), globalDirection: new Vector3D(0, 0, 1), radius: 3.25, height: 10)
         {
             Name = "cylinder_54d2"
         };
@@ -96,7 +100,7 @@ public sealed record BlocoFicacaoBeltVaoCorreia(
         {
             Mode = FilletMode.Bevel,
             ApplyToAllEdges = false,
-            Faces = { new FaceReference(bloco_ficacao_belt_vao_correia, -1, new Vector3D(0, 0, 1), new Point3D(-10.365334, 17.75, 17), "CustomFace") }
+            Faces = { new FaceReference(bloco_ficacao_belt_vao_correia, -1, new Vector3D(0, 0, 1), new Point3D(-0.115334, 25, 17), "CustomFace") }
         };
         return bloco_ficacao_belt_vao_correia_chanfrado;
     }

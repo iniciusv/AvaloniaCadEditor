@@ -191,6 +191,31 @@ internal static class OcctTessellator
     }
 
     /// <summary>
+    /// Volume do sólido pela malha (teorema da divergência, com a orientação já corrigida por
+    /// <see cref="FixTriangleWinding"/>). O OcctNet.Wrapper não expõe o volume do B-Rep; isto é o
+    /// substituto, com o erro da tesselação. 0 para forma vazia ou sem triângulos.
+    /// </summary>
+    public static double Volume(OcctShape shape, double linearDeflection, double angularDeflection)
+    {
+        var occtMesh = shape.Triangulate(linearDeflection, angularDeflection);
+        if (occtMesh == null || occtMesh.TriangleCount == 0) return 0;
+
+        var verts = occtMesh.Vertices;
+        var triIndices = FixTriangleWinding(occtMesh);
+        double volume = 0;
+        for (int i = 0; i < triIndices.Length; i += 3)
+        {
+            var p1 = verts[(int)triIndices[i]];
+            var p2 = verts[(int)triIndices[i + 1]];
+            var p3 = verts[(int)triIndices[i + 2]];
+            volume += (p1.X * (p2.Y * p3.Z - p2.Z * p3.Y)
+                     + p1.Y * (p2.Z * p3.X - p2.X * p3.Z)
+                     + p1.Z * (p2.X * p3.Y - p2.Y * p3.X)) / 6.0;
+        }
+        return volume;
+    }
+
+    /// <summary>
     /// Corrige a orientação (sentido de giro) de cada triângulo tesselado pelo OCCT, garantindo
     /// que todas as normais de um mesmo sólido apontem consistentemente para fora — mesmo em
     /// peças côncavas, com furos, ou resultantes de um boolean com vários corpos.

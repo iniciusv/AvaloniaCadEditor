@@ -76,6 +76,7 @@ internal static class OcctFilletBuilder
         if (segments < 2) segments = 2;
         bool isIntermediate = false;
         OcctBoundingBox? currentBox = null; // caixa de currentShape, para não recalcular a cada aresta
+        double? currentVolume = null; // idem, volume
 
         // --- MESH-BASED GENERALIZED FILLET FOR ANY FEATURE (ESPECIALLY BOOLEANS) ---
         if (!(fillet.BaseFeature is BoxFeature))
@@ -94,6 +95,7 @@ internal static class OcctFilletBuilder
                 var targetFaces = fillet.ApplyToAllEdges
                     ? new List<(Vector3D Normal, WorkPlane? Plane)>()
                     : fillet.Faces.Select(f => (f.NormalHint, f.PointOnFace.HasValue ? f.GetWorkPlane() : (WorkPlane?)null)).ToList();
+                var candidates = new List<(Point3D Start, Point3D End, Vector3D N1, Vector3D N2)>();
                 for (int i = 0; i < mesh.FeatureEdges.Length; i += 2)
                 {
                     // O cutter deste fillet só remove material (chanfro/arredondamento de quina).
@@ -131,66 +133,28 @@ internal static class OcctFilletBuilder
                         if (!match) continue;
                     }
 
-                    var vEdge = new Vector3D(end.X - start.X, end.Y - start.Y, end.Z - start.Z);
-                    double len = Math.Sqrt(vEdge.X * vEdge.X + vEdge.Y * vEdge.Y + vEdge.Z * vEdge.Z);
-                    if (len < 1e-5) continue;
-                    var dEdge = new Vector3D(vEdge.X / len, vEdge.Y / len, vEdge.Z / len);
-                    var extStart = new Point3D(start.X - dEdge.X * 0.1 * r, start.Y - dEdge.Y * 0.1 * r, start.Z - dEdge.Z * 0.1 * r);
-                    double extLen = len + 0.2 * r;
+                    if (start.DistanceTo(end) < 1e-5) continue;
+                    candidates.Add((start, end, n1, n2));
+                }
 
-                    var profilePoints = new List<Point3D>();
-                    profilePoints.Add(Get3DPoint(extStart, n1, n2, 0.1 * r, 0.1 * r));
-                    profilePoints.Add(Get3DPoint(extStart, n1, n2, -r, 0.1 * r));
-                    profilePoints.Add(Get3DPoint(extStart, n1, n2, -r, 0));
-
-                    if (fillet.Mode == FilletMode.Round)
+                foreach (var (start, end, n1, n2) in MergeCollinearEdges(candidates))
+                {
+                    // Um corte que o OCCT erra (forma vazia, ou só um caco do sólido) costuma acertar com
+                    // o cortador um pouco mais curto ou mais longo: a falha vem de faces quase
+                    // coincidentes com o chanfro já feito na aresta vizinha, e mudar a sobra nas pontas
+                    // desfaz a coincidência.
+                    foreach (var overhang in CutterOverhangs)
                     {
-                        for (int k = 1; k < segments; k++)
-                        {
-                            double theta = (Math.PI / 2.0) * (1.0 - (double)k / segments);
-                            double x = -r + r * Math.Cos(theta);
-                            double y = -r + r * Math.Sin(theta);
-                            profilePoints.Add(Get3DPoint(extStart, n1, n2, x, y));
-                        }
-                    }
+                        if (BuildEdgeCutter(start, end, n1, n2, r, overhang * r, fillet.Mode, segments) is not var (cutter, cutterVolume)) continue;
 
-                    profilePoints.Add(Get3DPoint(extStart, n1, n2, 0, -r));
-                    profilePoints.Add(Get3DPoint(extStart, n1, n2, 0.1 * r, -r));
-
-                    OcctShape cutter;
-                    try
-                    {
-                        var edges = new List<OcctEdge>();
-                        for (int k = 0; k < profilePoints.Count; k++)
-                        {
-                            var p1 = profilePoints[k];
-                            var p2 = profilePoints[(k + 1) % profilePoints.Count];
-                            edges.Add(new OcctEdge(
-                                new OcctPointCoordinates(p1.X, p1.Y, p1.Z),
-                                new OcctPointCoordinates(p2.X, p2.Y, p2.Z)
-                            ));
-                        }
-
-                        var wire = new OcctWire(edges.ToArray());
-                        var face = new OcctFace(wire);
-                        cutter = face.Extrude(new OcctVector3d(dEdge.X * extLen, dEdge.Y * extLen, dEdge.Z * extLen));
-                    }
-                    catch (OcctException)
-                    {
-                        // Cortador degenerado numa aresta de malha: essa aresta fica sem chanfro, mas o
-                        // sólido (e o chanfro das demais) continua — antes, a peça inteira sumia.
-                        continue;
-                    }
-
-                    if (cutter != null && !cutter.IsNull)
-                    {
-                        if (TryCutKeepingSolid(currentShape, ref currentBox, cutter, r) is { } cutShape)
-                        {
-                            if (isIntermediate) currentShape.Dispose();
-                            currentShape = cutShape;
-                            isIntermediate = true;
-                        }
+                        var cutShape = TryCutKeepingSolid(currentShape, ref currentBox, ref currentVolume, cutter, cutterVolume, r, settings);
                         cutter.Dispose();
+                        if (cutShape == null) continue;
+
+                        if (isIntermediate) currentShape.Dispose();
+                        currentShape = cutShape;
+                        isIntermediate = true;
+                        break;
                     }
                 }
             }
@@ -228,62 +192,136 @@ internal static class OcctFilletBuilder
                     var n1 = geom.Normal1;
                     var n2 = geom.Normal2;
 
-                    var vEdge = new Vector3D(end.X - start.X, end.Y - start.Y, end.Z - start.Z);
-                    double len = Math.Sqrt(vEdge.X * vEdge.X + vEdge.Y * vEdge.Y + vEdge.Z * vEdge.Z);
-                    if (len < 1e-5) continue;
-                    var dEdge = new Vector3D(vEdge.X / len, vEdge.Y / len, vEdge.Z / len);
-                    var extStart = new Point3D(start.X - dEdge.X * 0.1 * r, start.Y - dEdge.Y * 0.1 * r, start.Z - dEdge.Z * 0.1 * r);
-                    double extLen = len + 0.2 * r;
+                    if (start.DistanceTo(end) < 1e-5) continue;
+                    if (BuildEdgeCutter(start, end, n1, n2, r, 0.1 * r, fillet.Mode, segments) is not var (cutter, cutterVolume)) continue;
 
-                    var profilePoints = new List<Point3D>();
-                    profilePoints.Add(Get3DPoint(extStart, n1, n2, 0.1 * r, 0.1 * r));
-                    profilePoints.Add(Get3DPoint(extStart, n1, n2, -r, 0.1 * r));
-                    profilePoints.Add(Get3DPoint(extStart, n1, n2, -r, 0));
-
-                    if (fillet.Mode == FilletMode.Round)
+                    if (TryCutKeepingSolid(currentShape, ref currentBox, ref currentVolume, cutter, cutterVolume, r, settings) is { } cutShape)
                     {
-                        for (int i = 1; i < segments; i++)
-                        {
-                            double theta = (Math.PI / 2.0) * (1.0 - (double)i / segments);
-                            double x = -r + r * Math.Cos(theta);
-                            double y = -r + r * Math.Sin(theta);
-                            profilePoints.Add(Get3DPoint(extStart, n1, n2, x, y));
-                        }
+                        if (isIntermediate) currentShape.Dispose();
+                        currentShape = cutShape;
+                        isIntermediate = true;
                     }
-
-                    profilePoints.Add(Get3DPoint(extStart, n1, n2, 0, -r));
-                    profilePoints.Add(Get3DPoint(extStart, n1, n2, 0.1 * r, -r));
-
-                    var edges = new List<OcctEdge>();
-                    for (int i = 0; i < profilePoints.Count; i++)
-                    {
-                        var p1 = profilePoints[i];
-                        var p2 = profilePoints[(i + 1) % profilePoints.Count];
-                        edges.Add(new OcctEdge(
-                            new OcctPointCoordinates(p1.X, p1.Y, p1.Z),
-                            new OcctPointCoordinates(p2.X, p2.Y, p2.Z)
-                        ));
-                    }
-
-                    var wire = new OcctWire(edges.ToArray());
-                    var face = new OcctFace(wire);
-                    var cutter = face.Extrude(new OcctVector3d(dEdge.X * extLen, dEdge.Y * extLen, dEdge.Z * extLen));
-
-                    if (cutter != null && !cutter.IsNull)
-                    {
-                        if (TryCutKeepingSolid(currentShape, ref currentBox, cutter, r) is { } cutShape)
-                        {
-                            if (isIntermediate) currentShape.Dispose();
-                            currentShape = cutShape;
-                            isIntermediate = true;
-                        }
-                        cutter.Dispose();
-                    }
+                    cutter.Dispose();
                 }
             }
         }
 
         return currentShape;
+    }
+
+    /// <summary>
+    /// Sobra do cortador além de cada ponta da aresta, em múltiplos do raio, na ordem em que é
+    /// tentada. A primeira é a de sempre; as outras só entram se o corte com ela falhar.
+    /// </summary>
+    private static readonly double[] CutterOverhangs = { 0.1, 0.0, 0.3 };
+
+    /// <summary>
+    /// Prisma que corta a quina da aresta <paramref name="start"/>–<paramref name="end"/> (perfil de
+    /// chanfro ou de arredondamento no plano de <paramref name="n1"/>/<paramref name="n2"/>, extrudado ao
+    /// longo da aresta com <paramref name="overhang"/> de sobra em cada ponta) e o volume dele, ou null
+    /// se o OCCT recusar o perfil.
+    /// </summary>
+    private static (OcctShape Shape, double Volume)? BuildEdgeCutter(Point3D start, Point3D end, Vector3D n1, Vector3D n2, double r, double overhang, FilletMode mode, int segments)
+    {
+        var vEdge = new Vector3D(end.X - start.X, end.Y - start.Y, end.Z - start.Z);
+        double len = Math.Sqrt(vEdge.X * vEdge.X + vEdge.Y * vEdge.Y + vEdge.Z * vEdge.Z);
+        var dEdge = new Vector3D(vEdge.X / len, vEdge.Y / len, vEdge.Z / len);
+        var extStart = new Point3D(start.X - dEdge.X * overhang, start.Y - dEdge.Y * overhang, start.Z - dEdge.Z * overhang);
+        double extLen = len + 2 * overhang;
+
+        // Perfil em (x ao longo de n1, y ao longo de n2), com a quina na origem.
+        var profile = new List<(double X, double Y)> { (0.1 * r, 0.1 * r), (-r, 0.1 * r), (-r, 0) };
+        if (mode == FilletMode.Round)
+        {
+            for (int k = 1; k < segments; k++)
+            {
+                double theta = (Math.PI / 2.0) * (1.0 - (double)k / segments);
+                profile.Add((-r + r * Math.Cos(theta), -r + r * Math.Sin(theta)));
+            }
+        }
+        profile.Add((0, -r));
+        profile.Add((0.1 * r, -r));
+
+        // Área pela fórmula do laço, corrigida por |n1 × n2|: o perfil está na base (n1, n2), que só é
+        // ortonormal numa quina de 90°. A extrusão corre ao longo da aresta, perpendicular às duas normais.
+        double area = 0;
+        for (int k = 0; k < profile.Count; k++)
+        {
+            var (x1, y1) = profile[k];
+            var (x2, y2) = profile[(k + 1) % profile.Count];
+            area += x1 * y2 - x2 * y1;
+        }
+
+        try
+        {
+            var edges = new List<OcctEdge>();
+            for (int k = 0; k < profile.Count; k++)
+            {
+                var p1 = Get3DPoint(extStart, n1, n2, profile[k].X, profile[k].Y);
+                var p2 = Get3DPoint(extStart, n1, n2, profile[(k + 1) % profile.Count].X, profile[(k + 1) % profile.Count].Y);
+                edges.Add(new OcctEdge(
+                    new OcctPointCoordinates(p1.X, p1.Y, p1.Z),
+                    new OcctPointCoordinates(p2.X, p2.Y, p2.Z)
+                ));
+            }
+
+            var wire = new OcctWire(edges.ToArray());
+            var face = new OcctFace(wire);
+            var cutter = face.Extrude(new OcctVector3d(dEdge.X * extLen, dEdge.Y * extLen, dEdge.Z * extLen));
+            double volume = Math.Abs(area) / 2 * n1.CrossProduct(n2).Length * extLen;
+            return cutter == null || cutter.IsNull ? null : (cutter, volume);
+        }
+        catch (OcctException)
+        {
+            // Cortador degenerado numa aresta de malha: essa aresta fica sem chanfro, mas o
+            // sólido (e o chanfro das demais) continua — antes, a peça inteira sumia.
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Junta trechos de malha que são a mesma quina reta: encostam numa ponta, são colineares e têm
+    /// as mesmas duas faces. Acontece quando dois operandos de uma união têm faces coplanares (ex.:
+    /// a lateral do corpo e a de um extra rente a ela) — a quina sai partida na emenda. Cortada em
+    /// pedaços, o cortador do segundo trecho cai sobre o chanfro que o primeiro acabou de fazer, no
+    /// MESMO plano, e o OCCT devolve uma forma vazia: esse trecho ficava sem chanfro.
+    /// </summary>
+    private static List<(Point3D Start, Point3D End, Vector3D N1, Vector3D N2)> MergeCollinearEdges(
+        List<(Point3D Start, Point3D End, Vector3D N1, Vector3D N2)> edges)
+    {
+        const double pointTolerance = 1e-4;
+        var result = new List<(Point3D Start, Point3D End, Vector3D N1, Vector3D N2)>(edges);
+
+        static Vector3D Direction(Point3D a, Point3D b) => new Vector3D(b.X - a.X, b.Y - a.Y, b.Z - a.Z).Normalize();
+        static bool SameFaces((Point3D, Point3D, Vector3D N1, Vector3D N2) a, (Point3D, Point3D, Vector3D N1, Vector3D N2) b) =>
+            (a.N1.Normalize().DotProduct(b.N1.Normalize()) > 0.999 && a.N2.Normalize().DotProduct(b.N2.Normalize()) > 0.999) ||
+            (a.N1.Normalize().DotProduct(b.N2.Normalize()) > 0.999 && a.N2.Normalize().DotProduct(b.N1.Normalize()) > 0.999);
+
+        for (int i = 0; i < result.Count; i++)
+        {
+            for (int j = i + 1; j < result.Count; j++)
+            {
+                var a = result[i];
+                var b = result[j];
+                if (!SameFaces(a, b)) continue;
+                if (Math.Abs(Direction(a.Start, a.End).DotProduct(Direction(b.Start, b.End))) < 0.99999) continue;
+
+                // Ponta comum: as outras duas pontas são as do trecho juntado.
+                (Point3D, Point3D)? span =
+                    a.End.DistanceTo(b.Start) < pointTolerance ? (a.Start, b.End) :
+                    a.End.DistanceTo(b.End) < pointTolerance ? (a.Start, b.Start) :
+                    a.Start.DistanceTo(b.Start) < pointTolerance ? (a.End, b.End) :
+                    a.Start.DistanceTo(b.End) < pointTolerance ? (a.End, b.Start) :
+                    null;
+                if (span is not { } s) continue;
+
+                result[i] = (s.Item1, s.Item2, a.N1, a.N2);
+                result.RemoveAt(j);
+                j = i; // o trecho cresceu: um que já foi descartado pode encostar na ponta nova
+            }
+        }
+
+        return result;
     }
 
     /// <summary>
@@ -293,8 +331,20 @@ internal static class OcctFilletBuilder
     /// nula" porém vazia — ex.: chanfro maior que o raio da boca de um furo, cortadores do anel se
     /// cruzando no eixo — e, aceita, ela apagava o sólido inteiro (e todos os cortes seguintes).
     /// Rejeitado, só aquela aresta fica sem chanfro.
+    /// <para>
+    /// Pelo mesmo motivo a caixa não pode CRESCER: um corte só tira material, e uma forma que sai
+    /// maior (ex.: com 0,1 mm a mais em Z, a sobra do cortador acima do topo) é uma booleana
+    /// corrompida. Aceita, ela não some na hora, mas todo corte seguinte sobre ela dá forma vazia — e
+    /// o resto do chanfro (até arestas longe dali) ficava faltando.
+    /// </para>
+    /// <para>
+    /// Nem toda booleana corrompida muda a caixa, então o teste final é o volume: um corte válido
+    /// remove entre zero e o volume do cortador. A forma corrompida foge disso por mm³ inteiros
+    /// (sai maior, ou perde mais do que o cortador tinha), enquanto o volume pela malha de um corte
+    /// válido bate com a conta até a terceira casa.
+    /// </para>
     /// </summary>
-    private static OcctShape TryCutKeepingSolid(OcctShape shape, ref OcctBoundingBox? shapeBox, OcctShape cutter, double radius)
+    private static OcctShape TryCutKeepingSolid(OcctShape shape, ref OcctBoundingBox? shapeBox, ref double? shapeVolume, OcctShape cutter, double cutterVolume, double radius, TessellationSettings settings)
     {
         OcctShape cut = null;
         try
@@ -309,10 +359,23 @@ internal static class OcctFilletBuilder
                 after.SizeX < before.SizeX - 2 * tolerance ||
                 after.SizeY < before.SizeY - 2 * tolerance ||
                 after.SizeZ < before.SizeZ - 2 * tolerance;
-            if (!shrankTooMuch)
+            const double growthTolerance = 1e-3;
+            bool grew =
+                after.MinX < before.MinX - growthTolerance || after.MaxX > before.MaxX + growthTolerance ||
+                after.MinY < before.MinY - growthTolerance || after.MaxY > before.MaxY + growthTolerance ||
+                after.MinZ < before.MinZ - growthTolerance || after.MaxZ > before.MaxZ + growthTolerance;
+            if (!shrankTooMuch && !grew)
             {
-                shapeBox = after;
-                return cut;
+                double volumeBefore = shapeVolume ??= OcctTessellator.Volume(shape, settings.LinearDeflection, settings.AngularDeflection);
+                double volumeAfter = OcctTessellator.Volume(cut, settings.LinearDeflection, settings.AngularDeflection);
+                double removed = volumeBefore - volumeAfter;
+                double volumeTolerance = volumeBefore * 1e-4 + cutterVolume * 0.05;
+                if (volumeAfter > 0 && removed > -volumeTolerance && removed < cutterVolume + volumeTolerance)
+                {
+                    shapeBox = after;
+                    shapeVolume = volumeAfter;
+                    return cut;
+                }
             }
         }
         catch (OcctException)

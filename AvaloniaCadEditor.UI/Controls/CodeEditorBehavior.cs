@@ -96,7 +96,65 @@ public static class CodeEditorBehavior
         PartSolidSpansProperty.Changed.AddClassHandler<TextEditor>((editor, e) => HandlePartSolidSpansChanged(editor, e));
         CodeCommandsProperty.Changed.AddClassHandler<TextEditor>((editor, e) => HandleCodeCommandsChanged(editor));
         FocusWhenProperty.Changed.AddClassHandler<TextBox>((box, e) => HandleFocusWhenChanged(box, e));
+        HighlightSelectionOccurrencesProperty.Changed.AddClassHandler<TextEditor>((editor, e) => HandleHighlightSelectionOccurrencesChanged(editor, e));
     }
+
+    /// <summary>Realça as outras ocorrências do texto selecionado (ex.: duplo clique numa palavra).</summary>
+    public static readonly AttachedProperty<bool> HighlightSelectionOccurrencesProperty =
+        AvaloniaProperty.RegisterAttached<TextEditor, bool>("HighlightSelectionOccurrences", typeof(CodeEditorBehavior));
+
+    public static bool GetHighlightSelectionOccurrences(AvaloniaObject element) => element.GetValue(HighlightSelectionOccurrencesProperty);
+    public static void SetHighlightSelectionOccurrences(AvaloniaObject element, bool value) => element.SetValue(HighlightSelectionOccurrencesProperty, value);
+
+    private const int MaxOccurrenceSelectionLength = 200;
+    private const int MaxOccurrences = 2000;
+
+    private static void HandleHighlightSelectionOccurrencesChanged(TextEditor editor, AvaloniaPropertyChangedEventArgs e)
+    {
+        if (e.NewValue is not true) return;
+        var textView = editor.TextArea.TextView;
+        if (textView.BackgroundRenderers.OfType<SelectionOccurrenceRenderer>().Any()) return;
+
+        var renderer = new SelectionOccurrenceRenderer();
+        textView.BackgroundRenderers.Add(renderer);
+
+        editor.TextArea.SelectionChanged += (_, _) =>
+        {
+            renderer.Occurrences.Clear();
+            if (GetHighlightSelectionOccurrences(editor) && editor.Document != null)
+                FindSelectionOccurrences(editor, renderer.Occurrences);
+            textView.InvalidateLayer(renderer.Layer);
+        };
+    }
+
+    private static void FindSelectionOccurrences(TextEditor editor, System.Collections.Generic.List<AvaloniaEdit.Document.TextSegment> result)
+    {
+        string selected = editor.SelectedText;
+        if (selected.Length == 0 || selected.Length > MaxOccurrenceSelectionLength ||
+            string.IsNullOrWhiteSpace(selected) || selected.Contains('\n') || selected.Contains('\r'))
+            return;
+
+        string text = editor.Document.Text;
+        int selectionStart = editor.SelectionStart;
+
+        // Palavra inteira: só casa com a palavra inteira, para "x" não acender dentro de "max".
+        bool wholeWord = selected.All(IsWordChar) &&
+                         (selectionStart == 0 || !IsWordChar(text[selectionStart - 1])) &&
+                         (selectionStart + selected.Length >= text.Length || !IsWordChar(text[selectionStart + selected.Length]));
+
+        int index = 0;
+        while (result.Count < MaxOccurrences && (index = text.IndexOf(selected, index, StringComparison.Ordinal)) >= 0)
+        {
+            int end = index + selected.Length;
+            bool matches = index != selectionStart &&
+                           (!wholeWord || ((index == 0 || !IsWordChar(text[index - 1])) && (end >= text.Length || !IsWordChar(text[end]))));
+            if (matches)
+                result.Add(new AvaloniaEdit.Document.TextSegment { StartOffset = index, Length = selected.Length });
+            index = end;
+        }
+    }
+
+    private static bool IsWordChar(char c) => char.IsLetterOrDigit(c) || c == '_';
 
     private static void ApplyVSDarkThemeToCSharp()
     {
