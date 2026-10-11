@@ -89,6 +89,29 @@ public static class CadScriptRules
           acrescenta a sua posição.
         """;
 
+    /// <summary>
+    /// Mover, girar, copiar e espelhar um sólido já declarado, sem reescrever as coordenadas dele —
+    /// sólido solto, instância de peça ou metade dentro do Build().
+    /// </summary>
+    public const string Transforms =
+        """
+        - Placement descreve mover/girar/espelhar; encadeie com .Then (aplica da esquerda para a direita):
+          Placement.MirrorX(atX: 50).Then(Placement.At(0, 100, 0)).
+        - Espelhos: Placement.MirrorX(atX) inverte a coordenada X em torno do plano X = atX (Y e Z ficam);
+          MirrorY(atY) e MirrorZ(atZ) idem; Placement.Mirror(pontoNoPlano, normal) para um plano qualquer.
+        - Cópia transformada de um sólido solto (o original continua): declare a cópia com nome literal e
+          registre-a — var furo_b = furo_a.Transformed(Placement.MirrorX(atX: 50), name: "furo_b");
+          AddFeature(furo_b);
+          Para MOVER o próprio sólido em vez de copiar: AddFeature(furo_a.Transformed(Placement.Translate(new Vector3D(10, 0, 0))));
+        - Instância espelhada: Add(p1.Part, at: Placement.MirrorX().Then(Placement.At(200, 0, 0)), name: "suporte_b").
+        - Peça simétrica: modele só a metade no Build() e una com o espelho dela —
+          var metade_espelhada = metade.Transformed(Placement.MirrorX(atX: Largura / 2), name: "metade_espelhada");
+          return BooleanFeature.CreateUnion("corpo", metade, metade_espelhada);
+          Prefira isso a duplicar cada furo com coordenadas "2 * plano - x" ou a criar um parâmetro bool Espelhado*.
+        - Um sólido que depende de FilletFeature não pode ser girado nem espelhado como operando de booleana:
+          espelhe ANTES e aplique o fillet no resultado.
+        """;
+
     /// <summary>Peça simples: uma chapa retangular.</summary>
     public const string PartExamplePlaca =
         """

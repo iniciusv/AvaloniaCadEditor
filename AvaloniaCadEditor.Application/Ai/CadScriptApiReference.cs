@@ -82,6 +82,8 @@ public static class CadScriptApiReference
         sb.AppendLine("    — coloca uma instância de peça na cena (só no arquivo de entrada). color é \"#RRGGBB\" e pinta o sólido inteiro.");
         sb.AppendLine("  PartInstance<T> part.Instance<T>(string name, Placement? at = null) where T : Part");
         sb.AppendLine("    — peça usada como operando de BooleanFeature dentro do Build() de outra peça (não entra na cena).");
+        sb.AppendLine("  TransformedFeature feature.Transformed(Placement placement, string? name = null)");
+        sb.AppendLine("    — cópia da feature movida/girada/espelhada pelo placement, sem tocar na original (vale em qualquer arquivo).");
 
         return sb.ToString();
     }

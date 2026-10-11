@@ -18,7 +18,8 @@ public class CadScriptRulesTests
         CadScriptRules.TrackableSolids,
         CadScriptRules.SceneFile,
         CadScriptRules.PartFile,
-        CadScriptRules.PartUsage
+        CadScriptRules.PartUsage,
+        CadScriptRules.Transforms
     };
 
     /// <summary>Os consumidores escrevem com terminadores diferentes; o texto é que precisa bater.</summary>

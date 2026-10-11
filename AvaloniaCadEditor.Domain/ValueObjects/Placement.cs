@@ -4,13 +4,15 @@ namespace AvaloniaCadEditor.Domain.ValueObjects;
 
 /// <summary>
 /// Posição de uma instância de peça no mundo: uma rotação (em torno da origem da peça) seguida
-/// de uma translação. Imutável; combine com <see cref="Then"/>.
+/// de uma translação — ou, com <see cref="Mirror"/>, uma reflexão. A parte linear é sempre
+/// ortonormal (determinante +1 na rotação, -1 no espelho). Imutável; combine com <see cref="Then"/>.
 /// </summary>
 /// <example>
 /// <code>
 /// Placement.At(100, 0, 0)                      // só move
 /// Placement.At(100, 0, 0, rotationZDegrees: 90) // gira 90° em Z e move
 /// Placement.Rotation(Vector3D.UnitX, 90).Then(Placement.At(0, 0, 50))
+/// Placement.MirrorX(atX: 50)                    // espelha pelo plano X = 50
 /// </code>
 /// </example>
 public sealed class Placement
@@ -34,14 +36,35 @@ public sealed class Placement
 
     public Vector3D Translation { get; }
 
-    /// <summary>True se o posicionamento inclui rotação (não é só translação).</summary>
+    /// <summary>
+    /// True se o posicionamento não é só translação: inclui rotação e/ou espelho. Quem só sabe
+    /// transladar um sólido pronto precisa reconstruí-lo nesse caso.
+    /// </summary>
     public bool HasRotation =>
         !(Close(_m00, 1, 1e-9) && Close(_m11, 1, 1e-9) && Close(_m22, 1, 1e-9) &&
           Close(_m01, 0, 1e-9) && Close(_m02, 0, 1e-9) && Close(_m10, 0, 1e-9) &&
           Close(_m12, 0, 1e-9) && Close(_m20, 0, 1e-9) && Close(_m21, 0, 1e-9));
 
-    /// <summary>True se a rotação (se houver) é só em torno de Z: o eixo Z local continua sendo o Z do mundo.</summary>
+    /// <summary>Determinante da parte linear: +1 para rotação pura, -1 quando há espelho.</summary>
+    public double Determinant =>
+        _m00 * (_m11 * _m22 - _m12 * _m21) -
+        _m01 * (_m10 * _m22 - _m12 * _m20) +
+        _m02 * (_m10 * _m21 - _m11 * _m20);
+
+    /// <summary>
+    /// True se o posicionamento espelha (inverte a "mão" do sólido). Faces e triângulos transformados
+    /// por ele saem com a ordem dos vértices invertida, e eixos de revolução (pseudovetores)
+    /// precisam do sinal trocado.
+    /// </summary>
+    public bool IsMirrored => Determinant < 0;
+
+    /// <summary>
+    /// True se a rotação (se houver) é só em torno de Z: o eixo Z local continua sendo o Z do mundo.
+    /// Um espelho nunca é: <c>MirrorX()</c> tem a mesma diagonal de um giro de 180° em Z só em X, e
+    /// <see cref="RotationZRadians"/> o confundiria com esse giro.
+    /// </summary>
     public bool IsRotationAboutZOnly =>
+        !IsMirrored &&
         Close(_m02, 0, 1e-9) && Close(_m12, 0, 1e-9) &&
         Close(_m20, 0, 1e-9) && Close(_m21, 0, 1e-9) && Close(_m22, 1, 1e-9);
 
@@ -89,6 +112,35 @@ public sealed class Placement
             new Vector3D(0, 0, 0));
     }
 
+    /// <summary>
+    /// Espelho pelo plano que passa por <paramref name="pointOnPlane"/> com normal
+    /// <paramref name="normal"/>: cada ponto vai para o lado oposto do plano, à mesma distância.
+    /// Aplicar duas vezes volta ao original.
+    /// </summary>
+    public static Placement Mirror(Point3D pointOnPlane, Vector3D normal)
+    {
+        var n = normal.Normalize();
+        if (n.Length < 1e-9) throw new ArgumentException("A normal do plano de espelho não pode ser nula.", nameof(normal));
+
+        // Householder: R = I − 2·n·nᵀ; t = 2·(p·n)·n, para que os pontos do plano fiquem parados.
+        double x = n.X, y = n.Y, z = n.Z;
+        double d = 2 * (pointOnPlane.X * x + pointOnPlane.Y * y + pointOnPlane.Z * z);
+        return new Placement(
+            1 - 2 * x * x, -2 * x * y, -2 * x * z,
+            -2 * y * x, 1 - 2 * y * y, -2 * y * z,
+            -2 * z * x, -2 * z * y, 1 - 2 * z * z,
+            new Vector3D(d * x, d * y, d * z));
+    }
+
+    /// <summary>Espelho pelo plano X = <paramref name="atX"/>: inverte a coordenada X em torno dele (Y e Z ficam).</summary>
+    public static Placement MirrorX(double atX = 0) => Mirror(new Point3D(atX, 0, 0), Vector3D.UnitX);
+
+    /// <summary>Espelho pelo plano Y = <paramref name="atY"/>: inverte a coordenada Y em torno dele (X e Z ficam).</summary>
+    public static Placement MirrorY(double atY = 0) => Mirror(new Point3D(0, atY, 0), Vector3D.UnitY);
+
+    /// <summary>Espelho pelo plano Z = <paramref name="atZ"/>: inverte a coordenada Z em torno dele (X e Y ficam).</summary>
+    public static Placement MirrorZ(double atZ = 0) => Mirror(new Point3D(0, 0, atZ), Vector3D.UnitZ);
+
     /// <summary>Aplica este posicionamento e depois <paramref name="next"/>.</summary>
     public Placement Then(Placement next)
     {
@@ -110,7 +162,7 @@ public sealed class Placement
     /// <summary>O posicionamento que desfaz este: <c>p.Then(p.Inverse())</c> é a identidade.</summary>
     public Placement Inverse()
     {
-        // Rotação ortonormal: a inversa é a transposta; a translação vira -Rᵀ·t.
+        // Parte linear ortonormal (rotação ou espelho): a inversa é a transposta; a translação vira -Rᵀ·t.
         var t = Translation;
         return new Placement(
             _m00, _m10, _m20,
@@ -128,7 +180,10 @@ public sealed class Placement
             _m10 * p.X + _m11 * p.Y + _m12 * p.Z,
             _m20 * p.X + _m21 * p.Y + _m22 * p.Z) + Translation;
 
-    /// <summary>Aplica só a rotação (para direções e normais).</summary>
+    /// <summary>
+    /// Aplica só a parte linear (para direções e normais — que, por ela ser ortonormal, se
+    /// transformam igual). Eixos de revolução são pseudovetores: com <see cref="IsMirrored"/>, troque o sinal.
+    /// </summary>
     public Vector3D ApplyVector(Vector3D v) =>
         new Vector3D(
             _m00 * v.X + _m01 * v.Y + _m02 * v.Z,

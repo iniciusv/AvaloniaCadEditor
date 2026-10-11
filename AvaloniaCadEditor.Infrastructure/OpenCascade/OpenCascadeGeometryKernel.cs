@@ -234,7 +234,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
                     // nessa orientação. EnsureCanBeBooleanOperand já barra isso mais cedo; isto é
                     // uma segunda trava, para qualquer outro caminho que chegue aqui girado.
                     throw new NotSupportedException(
-                        $"O fillet de '{feature.Name}' não pode ser reconstruído girado (depende das arestas do sólido base).");
+                        $"O fillet de '{feature.Name}' não pode ser reconstruído girado nem espelhado (depende das arestas do sólido base).");
                 }
                 // O builder recebe o sólido base pronto: ele corta arestas, não constrói
                 // features, e assim não precisa do dispatch nem do cache.
@@ -541,7 +541,10 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
                 tangent = transform.ApplyVector(tangent);
                 lineVector = transform.ApplyVector(lineVector);
                 arcCenter = transform.Apply(arcCenter);
+                // O eixo de revolução é um pseudovetor: o espelho inverte o sentido do giro, então o
+                // eixo espelhado troca de sinal para o cotovelo continuar indo para o lado espelhado.
                 arcAxis = transform.ApplyVector(arcAxis);
+                if (transform.IsMirrored) arcAxis = arcAxis * -1;
             }
 
             OcctShape piece;

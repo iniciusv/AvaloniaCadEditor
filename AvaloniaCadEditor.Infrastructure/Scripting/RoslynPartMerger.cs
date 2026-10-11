@@ -193,9 +193,20 @@ public sealed class RoslynPartMerger : IPartMerger
 
     internal static string VectorCode(Vector3D v) => $"new Vector3D({Number(v.X)}, {Number(v.Y)}, {Number(v.Z)})";
 
-    /// <summary>O placement como código, quando ele é uma rotação só em Z (o caso de <c>Placement.At</c>); senão null.</summary>
+    /// <summary>
+    /// O placement como código, quando ele é uma rotação só em Z (o caso de <c>Placement.At</c>),
+    /// opcionalmente precedida de um espelho; senão null.
+    /// </summary>
     internal static string? PlacementCode(Placement placement)
     {
+        if (placement.IsMirrored)
+        {
+            // MirrorX é a própria inversa: placement = MirrorX ∘ (MirrorX ∘ placement), e o segundo
+            // fator já não espelha. MirrorX preserva Z, então ele é só-Z quando o placement era.
+            string? rest = PlacementCode(Placement.MirrorX().Then(placement));
+            return rest == null ? null : $"Placement.MirrorX().Then({rest})";
+        }
+
         var t = placement.Translation;
         if (!placement.HasRotation) return $"Placement.Translate({VectorCode(t)})";
         if (!placement.IsRotationAboutZOnly) return null;
@@ -269,6 +280,10 @@ public sealed class RoslynPartMerger : IPartMerger
         /// <summary>Faz as trocas; devolve por que não foi possível (e então nada vale), ou null.</summary>
         private string? TryRewrite()
         {
+            // Espelho: os WorkPlane reescritos (normal + eixo X) recalculam o eixo Y pela mão direita e
+            // desfariam a reflexão das coordenadas no plano. Mais seguro deixar o código como está.
+            if (_transform.IsMirrored) return "o sólido ou a peça está espelhado";
+
             var nodes = _slice.Statements.SelectMany(s => s.DescendantNodes()).ToList();
 
             // Toda feature do recorte precisa ser de um tipo cujas coordenadas sabemos reescrever.

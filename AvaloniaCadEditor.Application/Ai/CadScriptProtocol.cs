@@ -153,6 +153,9 @@ public class CadScriptProtocol : IAiProtocol<CadScriptContext, CadScriptChanges>
         sb.AppendLine("USANDO UMA PEÇA NO ARQUIVO DE ENTRADA:");
         sb.AppendLine(CadScriptRules.PartUsage);
         sb.AppendLine();
+        sb.AppendLine("MOVER, GIRAR, COPIAR E ESPELHAR UM SÓLIDO JÁ DECLARADO:");
+        sb.AppendLine(CadScriptRules.Transforms);
+        sb.AppendLine();
         sb.AppendLine("REGRAS COMUNS AOS DOIS FORMATOS:");
         sb.AppendLine(CadScriptRules.Common);
         sb.AppendLine(CadScriptRules.TrackableSolids);

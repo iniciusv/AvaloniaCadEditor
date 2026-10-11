@@ -96,6 +96,9 @@ public static class SceneProjectTemplate
         ### Instanciando uma peça no arquivo de entrada
         {CadScriptRules.PartUsage}
 
+        ### Mover, girar, copiar e espelhar um sólido já declarado
+        {CadScriptRules.Transforms}
+
         ### Exemplos de peça
 
         ```csharp
@@ -188,6 +191,9 @@ public static class SceneProjectTemplate
 
         ### Instanciando uma peça na cena
         {CadScriptRules.PartUsage}
+
+        ### Mover, girar, copiar e espelhar um sólido já declarado
+        {CadScriptRules.Transforms}
 
         Exemplos completos em `{ApiReferenceFile}` (seção "Como escrever o código da cena").
 

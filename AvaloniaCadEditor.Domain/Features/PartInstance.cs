@@ -60,18 +60,18 @@ public abstract class PartInstance : FeatureBase
         if (feature is PartInstance instance && instance.Placement.HasRotation && DependsOnFixedGeometry(instance.Definition))
         {
             throw new NotSupportedException(
-                $"A instância '{instance.Name}' ({instance.PartTypeName}) está girada e não pode ser operando de uma " +
+                $"A instância '{instance.Name}' ({instance.PartTypeName}) está girada ou espelhada e não pode ser operando de uma " +
                 "operação booleana: a definição usa fillet ou malha importada, que dependem das arestas/malha do sólido " +
-                "não-girado e não podem ser reconstruídos girados. Faça a operação dentro da peça (no Build) ou use uma " +
-                "instância sem rotação.");
+                "não-girado e não podem ser reconstruídos girados ou espelhados. Faça a operação dentro da peça (no Build) ou use uma " +
+                "instância sem rotação nem espelho.");
         }
 
         if (feature is TransformedFeature transformed && transformed.Placement.HasRotation && DependsOnFixedGeometry(transformed.Source))
         {
             throw new NotSupportedException(
-                $"'{transformed.Name}' está girada (Transformed) e não pode ser operando de uma operação booleana: " +
+                $"'{transformed.Name}' está girada ou espelhada (Transformed) e não pode ser operando de uma operação booleana: " +
                 "depende de fillet ou malha importada, que dependem das arestas/malha do sólido não-girado e não podem " +
-                "ser reconstruídos girados. Use uma transformação sem rotação, ou aplique o fillet depois da booleana.");
+                "ser reconstruídos girados ou espelhados. Use uma transformação sem rotação nem espelho, ou aplique o fillet depois da booleana.");
         }
     }
 

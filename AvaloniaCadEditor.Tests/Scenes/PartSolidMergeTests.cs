@@ -282,6 +282,26 @@ public class PartSolidMergeTests
     }
 
     [Fact]
+    public async Task RegistradoEspelhado_MantemOCodigoEEnvolveEmTransformedComEspelho()
+    {
+        // Reescrever coordenadas com espelho desfaria a reflexão dentro dos WorkPlane; o código fica
+        // como está e o espelho vai inteiro para o .Transformed — sem virar um giro de 180° por engano.
+        const string scene = """
+            var bloco = Add(new BlocoBelt(), at: Placement.At(0, 0, 26, rotationZDegrees: 180), name: "bloco");
+            var pino = new CylinderFeature(new Point3D(2, -20, 43), Vector3D.UnitZ, 1, 5) { Name = "pino" };
+            AddFeature(pino.Transformed(Placement.MirrorX(atX: 5)));
+            """;
+
+        var outcome = await MergeAndVerify(Docs(scene), "pino");
+
+        outcome.Verdict.Problem.Should().BeNull();
+        outcome.Verdict.GeometryVerified.Should().BeTrue();
+        outcome.Part.Should().Contain("new Point3D(2, -20, 43)")
+            .And.Contain(".Transformed(Placement.MirrorX().Then(Placement.At(");
+        outcome.Scene.Should().NotContain("pino");
+    }
+
+    [Fact]
     public async Task ValorNaoLiteral_MantemOCodigoEEnvolveEmTransformed()
     {
         const string scene = """

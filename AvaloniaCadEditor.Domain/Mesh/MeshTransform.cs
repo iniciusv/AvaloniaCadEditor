@@ -6,7 +6,8 @@ public static class MeshTransform
 {
     /// <summary>
     /// Nova malha com posições transformadas e normais rotacionadas. Índices e arestas são
-    /// compartilhados com a original (não mudam com a transformação).
+    /// compartilhados com a original (não mudam com a transformação) — exceto num espelho, que
+    /// inverte a ordem dos vértices de cada triângulo para ele continuar anti-horário visto de fora.
     /// </summary>
     public static TriangleMesh Transform(this TriangleMesh mesh, Placement placement)
     {
@@ -18,11 +19,21 @@ public static class MeshTransform
         return new TriangleMesh(
             TransformArray(mesh.Positions, placement, isPoint: true),
             TransformArray(mesh.Normals, placement, isPoint: false),
-            mesh.Indices,
+            placement.IsMirrored ? ReverseWinding(mesh.Indices) : mesh.Indices,
             mesh.FeatureEdges,
             mesh.InternalEdges,
             TransformArray(mesh.FeatureNormals1, placement, isPoint: false),
             TransformArray(mesh.FeatureNormals2, placement, isPoint: false));
+    }
+
+    private static uint[] ReverseWinding(uint[] indices)
+    {
+        var result = (uint[])indices.Clone();
+        for (int i = 0; i + 2 < result.Length; i += 3)
+        {
+            (result[i + 1], result[i + 2]) = (result[i + 2], result[i + 1]);
+        }
+        return result;
     }
 
     private static float[] TransformArray(float[] source, Placement placement, bool isPoint)
