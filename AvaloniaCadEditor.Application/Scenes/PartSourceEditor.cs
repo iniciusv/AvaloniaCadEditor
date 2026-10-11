@@ -375,6 +375,145 @@ public static class PartSourceEditor
         return Replace(source, at.Expression.Span, $"{target}.Then({RotationCall(pivot, axis, degrees)})");
     }
 
+    // ---------------------------------------------------------------- Espelhar
+
+    /// <summary>
+    /// Espelha a instância criada pela chamada <c>Add(...)</c> da linha dada pelo plano que passa por
+    /// <paramref name="pointOnPlane"/> com normal <paramref name="normal"/>, no mesmo padrão de
+    /// <see cref="RotateInstance"/>:
+    /// <list type="bullet">
+    /// <item>sem <c>at:</c>: acrescenta <c>at: Placement.MirrorX(...)</c> (ou o espelho equivalente);</item>
+    /// <item>o mesmo espelho, direto ou no fim de um <c>.Then(...)</c>: espelhar de novo desfaz, então
+    /// ele sai do código em vez de ganhar um segundo espelho;</item>
+    /// <item>qualquer outro posicionamento: acrescenta <c>.Then(Placement.MirrorX(...))</c>.</item>
+    /// </list>
+    /// </summary>
+    public static string MirrorInstance(string source, int line, Point3D pointOnPlane, Vector3D normal)
+    {
+        var root = Parse(source);
+        var call = FindAddCall(root, line)
+            ?? throw new InvalidOperationException($"Não achei a chamada Add(...) na linha {line}.");
+
+        var args = call.ArgumentList.Arguments;
+        var at = args.FirstOrDefault(a => a.NameColon?.Name.Identifier.ValueText == "at")
+            ?? (args.Count > 1 && args[1].NameColon == null ? args[1] : null);
+
+        string mirrorCode = MirrorCall(pointOnPlane, normal);
+        if (at == null)
+        {
+            return Insert(source, call.ArgumentList.CloseParenToken.SpanStart, $", at: {mirrorCode}");
+        }
+
+        if (TryCancelMirror(at.Expression, Placement.Mirror(pointOnPlane, normal), out var remaining))
+        {
+            if (remaining != null) return Replace(source, at.Expression.Span, remaining.ToString());
+
+            // O at: era só esse espelho. Tirar o argumento só é seguro se ninguém posicional vem depois dele.
+            bool isLast = args.IndexOf(at) == args.Count - 1;
+            return at.NameColon != null || isLast
+                ? Replace(source, call.ArgumentList.Span, call.ArgumentList.WithArguments(args.Remove(at)).ToString())
+                : Replace(source, at.Expression.Span, "null");
+        }
+
+        string target = NeedsParentheses(at.Expression) ? $"({at.Expression})" : at.Expression.ToString();
+        return Replace(source, at.Expression.Span, $"{target}.Then({mirrorCode})");
+    }
+
+    /// <summary>
+    /// O espelho como código: <c>Placement.MirrorX(atX: 50)</c> (ou Y/Z) quando a normal é um eixo,
+    /// senão <c>Placement.Mirror(new Point3D(...), new Vector3D(...))</c>.
+    /// </summary>
+    public static string MirrorCall(Point3D pointOnPlane, Vector3D normal)
+    {
+        var n = normal.Normalize();
+        if (IsAlong(n, Vector3D.UnitX)) return AxisMirrorCall("MirrorX", "atX", pointOnPlane.X);
+        if (IsAlong(n, Vector3D.UnitY)) return AxisMirrorCall("MirrorY", "atY", pointOnPlane.Y);
+        if (IsAlong(n, Vector3D.UnitZ)) return AxisMirrorCall("MirrorZ", "atZ", pointOnPlane.Z);
+        return $"Placement.Mirror({PointText(pointOnPlane)}, {AxisText(normal)})";
+    }
+
+    private static bool IsAlong(Vector3D direction, Vector3D axis) =>
+        Math.Abs(Math.Abs(direction.DotProduct(axis)) - 1) < 1e-12;
+
+    private static string AxisMirrorCall(string method, string parameter, double at) =>
+        at == 0 ? $"Placement.{method}()" : FormattableString.Invariant($"Placement.{method}({parameter}: {Number(at)})");
+
+    /// <summary>
+    /// Fusão de <see cref="EditTransformedFeature"/>/<see cref="EditPartSolidPlacement"/> para o espelho:
+    /// o mesmo espelho de novo se cancela. No fim de um <c>.Then</c>, sai o <c>.Then</c>; sozinho num
+    /// <c>x.Transformed(espelho)</c>, sai o <c>.Transformed</c> inteiro (se ele não tiver também um <c>name:</c>).
+    /// </summary>
+    private static Func<string, ExpressionSyntax, string?> MergeMirror(Placement mirror) =>
+        (currentSource, placement) =>
+        {
+            if (!TryCancelMirror(placement, mirror, out var remaining)) return null;
+            if (remaining != null) return Replace(currentSource, placement.Span, remaining.ToString());
+
+            if (placement.Parent?.Parent?.Parent is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax receiver } transformed &&
+                transformed.ArgumentList.Arguments.Count == 1)
+            {
+                return Replace(currentSource, transformed.Span, receiver.Expression.ToString());
+            }
+            return null;
+        };
+
+    /// <summary>
+    /// True se <paramref name="placement"/> é <paramref name="mirror"/> (então <paramref name="remaining"/>
+    /// é null: não sobra nada) ou termina num <c>.Then(mirror)</c> (então <paramref name="remaining"/> é
+    /// o que vem antes do <c>.Then</c>). Compara o plano, não o texto: <c>MirrorX(50)</c> e
+    /// <c>MirrorX(atX: 50.0)</c> são o mesmo espelho.
+    /// </summary>
+    private static bool TryCancelMirror(ExpressionSyntax placement, Placement mirror, out ExpressionSyntax? remaining)
+    {
+        remaining = null;
+        if (TryParseMirror(placement, out var direct)) return SamePlacement(direct, mirror);
+
+        if (placement is InvocationExpressionSyntax { Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Then" } thenMember } then &&
+            then.ArgumentList.Arguments.Count == 1 &&
+            TryParseMirror(then.ArgumentList.Arguments[0].Expression, out var last) &&
+            SamePlacement(last, mirror))
+        {
+            remaining = thenMember.Expression;
+            return true;
+        }
+        return false;
+    }
+
+    private static bool TryParseMirror(ExpressionSyntax expression, out Placement mirror)
+    {
+        mirror = Placement.Identity;
+        if (expression is not InvocationExpressionSyntax call) return false;
+        var args = call.ArgumentList.Arguments;
+
+        switch (MethodName(call.Expression))
+        {
+            case "MirrorX" or "MirrorY" or "MirrorZ" when args.Count <= 1:
+                double at = 0;
+                if (args.Count == 1 && !TryNumber(args[0].Expression, out at)) return false;
+                mirror = MethodName(call.Expression) switch
+                {
+                    "MirrorX" => Placement.MirrorX(at),
+                    "MirrorY" => Placement.MirrorY(at),
+                    _ => Placement.MirrorZ(at)
+                };
+                return true;
+            case "Mirror" when args.Count == 2 &&
+                               TryPoint3D(args[0].Expression, out var point) &&
+                               TryVector3D(args[1].Expression, out var normal) &&
+                               normal.Length > 1e-9:
+                mirror = Placement.Mirror(point, normal);
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool SamePlacement(Placement a, Placement b) =>
+        a.Apply(Point3D.Origin).DistanceTo(b.Apply(Point3D.Origin)) < 1e-9 &&
+        (a.ApplyVector(Vector3D.UnitX) - b.ApplyVector(Vector3D.UnitX)).Length < 1e-9 &&
+        (a.ApplyVector(Vector3D.UnitY) - b.ApplyVector(Vector3D.UnitY)).Length < 1e-9 &&
+        (a.ApplyVector(Vector3D.UnitZ) - b.ApplyVector(Vector3D.UnitZ)).Length < 1e-9;
+
     /// <summary>
     /// Se <paramref name="expression"/> já é (ou termina num <c>.Then</c> de)
     /// <c>Placement.RotationAbout(pivot, axis, d)</c> com o mesmo pivô e eixo, devolve o texto com
@@ -494,6 +633,15 @@ public static class PartSourceEditor
     public static string RotateFeature(string source, int line, Point3D pivot, Vector3D axis, double degrees) =>
         EditTransformedFeature(source, line, RotationCall(pivot, axis, degrees),
             (currentSource, placement) => TryMergeRotation(placement, pivot, axis, degrees, out string? merged) ? Replace(currentSource, placement.Span, merged!) : null);
+
+    /// <summary>
+    /// Espelha a feature solta registrada por <c>AddFeature(x)</c> na linha dada pelo plano que passa por
+    /// <paramref name="pointOnPlane"/> com normal <paramref name="normal"/>, no padrão de
+    /// <see cref="TranslateFeature"/> (inclusive o desvio para a declaração) — e espelhar de novo pelo
+    /// mesmo plano desfaz, em vez de empilhar dois espelhos (ver <see cref="MirrorInstance"/>).
+    /// </summary>
+    public static string MirrorFeature(string source, int line, Point3D pointOnPlane, Vector3D normal) =>
+        EditTransformedFeature(source, line, MirrorCall(pointOnPlane, normal), MergeMirror(Placement.Mirror(pointOnPlane, normal)));
 
     /// <summary>
     /// Aplica um novo placement à feature solta de <c>AddFeature(x)</c> na linha dada. Se <c>x</c> é só
@@ -1024,6 +1172,14 @@ public static class PartSourceEditor
         EditPartSolidPlacement(source, partTypeName, solidName, RotationCall(pivot, axis, degrees),
             (currentSource, placement) => TryMergeRotation(placement, pivot, axis, degrees, out string? merged) ? Replace(currentSource, placement.Span, merged!) : null);
 
+    /// <summary>
+    /// Espelha um sólido do <c>Build()</c> de <paramref name="partTypeName"/> pelo plano dado em
+    /// coordenadas <b>locais</b> da peça — mesmo caminho de <see cref="TranslatePartSolid"/>, com a
+    /// fusão de <see cref="MirrorFeature"/> (o mesmo espelho de novo se cancela).
+    /// </summary>
+    public static string MirrorPartSolid(string source, string partTypeName, string solidName, Point3D pointOnPlane, Vector3D normal) =>
+        EditPartSolidPlacement(source, partTypeName, solidName, MirrorCall(pointOnPlane, normal), MergeMirror(Placement.Mirror(pointOnPlane, normal)));
+
     private static string EditPartSolidPlacement(string source, string partTypeName, string solidName, string newPlacementCode, Func<string, ExpressionSyntax, string?> tryMerge)
     {
         var type = Parse(source).DescendantNodes().OfType<RecordDeclarationSyntax>()
@@ -1040,7 +1196,7 @@ public static class PartSourceEditor
         if (usedAsMemberTarget)
         {
             throw new InvalidOperationException(
-                $"'{variableName}' é usado com '.algumMembro' em {partTypeName}; mover ou girar assim quebraria essa chamada. " +
+                $"'{variableName}' é usado com '.algumMembro' em {partTypeName}; mover, girar ou espelhar assim quebraria essa chamada. " +
                 $"Edite a posição de '{variableName}' direto no código.");
         }
 

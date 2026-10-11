@@ -931,6 +931,15 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         EditPartSolidAsync(partTypeName, source =>
             PartSourceEditor.RotatePartSolid(source, partTypeName, solidName, localPivot, localAxis, degrees));
 
+    /// <summary>
+    /// Espelha um sólido do <c>Build()</c> de uma peça (ver <see cref="PartSourceEditor.MirrorPartSolid"/>) e
+    /// reexecuta. Plano em coordenadas da peça. Devolve o motivo da recusa/erro, ou null.
+    /// </summary>
+    public Task<string?> MirrorPartSolidAsync(string partTypeName, string solidName,
+        AvaloniaCadEditor.Domain.ValueObjects.Point3D localPointOnPlane, AvaloniaCadEditor.Domain.ValueObjects.Vector3D localNormal) =>
+        EditPartSolidAsync(partTypeName, source =>
+            PartSourceEditor.MirrorPartSolid(source, partTypeName, solidName, localPointOnPlane, localNormal));
+
     private async Task<string?> EditPartSolidAsync(string partTypeName, Func<string, string> edit)
     {
         // O arquivo da PEÇA: a ferramenta não tem FeatureOrigin próprio na cena.
@@ -1028,6 +1037,10 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
     public bool RotatePartInstances(IEnumerable<PartInstance> instances, AvaloniaCadEditor.Domain.ValueObjects.Point3D pivot, AvaloniaCadEditor.Domain.ValueObjects.Vector3D axis, double degrees) =>
         EditFeatureCalls(instances, (source, line) => PartSourceEditor.RotateInstance(source, line, pivot, axis, degrees));
 
+    /// <summary>Espelha instâncias de peça pelo plano dado, reescrevendo o <c>at:</c> (ver <see cref="RotatePartInstances"/>).</summary>
+    public bool MirrorPartInstances(IEnumerable<PartInstance> instances, AvaloniaCadEditor.Domain.ValueObjects.Point3D pointOnPlane, AvaloniaCadEditor.Domain.ValueObjects.Vector3D normal) =>
+        EditFeatureCalls(instances, (source, line) => PartSourceEditor.MirrorInstance(source, line, pointOnPlane, normal));
+
     /// <summary>
     /// Copia instâncias de peça: duplica a chamada <c>Add(...)</c> de cada uma e aplica
     /// <paramref name="placeCopy"/> (ex.: <see cref="PartSourceEditor.TranslateInstance"/>) só na cópia.
@@ -1050,6 +1063,10 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
     /// <summary>Gira uma feature solta em torno de <paramref name="pivot"/>/<paramref name="axis"/> (ver <see cref="MoveLooseFeatures"/>).</summary>
     public bool RotateLooseFeatures(IEnumerable<IFeature> features, AvaloniaCadEditor.Domain.ValueObjects.Point3D pivot, AvaloniaCadEditor.Domain.ValueObjects.Vector3D axis, double degrees) =>
         EditFeatureCalls(features, (source, line) => PartSourceEditor.RotateFeature(source, line, pivot, axis, degrees));
+
+    /// <summary>Espelha uma feature solta pelo plano dado (ver <see cref="MoveLooseFeatures"/>).</summary>
+    public bool MirrorLooseFeatures(IEnumerable<IFeature> features, AvaloniaCadEditor.Domain.ValueObjects.Point3D pointOnPlane, AvaloniaCadEditor.Domain.ValueObjects.Vector3D normal) =>
+        EditFeatureCalls(features, (source, line) => PartSourceEditor.MirrorFeature(source, line, pointOnPlane, normal));
 
     /// <summary>
     /// Copia uma feature solta: acrescenta <c>var nome = x.Transformed(placementCode, name: "nome"); AddFeature(nome);</c>
