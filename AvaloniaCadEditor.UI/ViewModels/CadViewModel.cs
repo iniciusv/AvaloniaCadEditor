@@ -208,6 +208,10 @@ public class CadViewModel : INotifyPropertyChanged
 				{
 					oldBoolean.OperandAppendRequested -= BooleanTool_OperandAppendRequested;
 				}
+				if (_currentTool is FilletTool oldFillet)
+				{
+					oldFillet.PartFilletRequested -= FilletTool_PartFilletRequested;
+				}
 				_currentTool.Cancel();
 			}
 
@@ -234,6 +238,10 @@ public class CadViewModel : INotifyPropertyChanged
 				if (_currentTool is BooleanTool newBoolean)
 				{
 					newBoolean.OperandAppendRequested += BooleanTool_OperandAppendRequested;
+				}
+				if (_currentTool is FilletTool newFillet)
+				{
+					newFillet.PartFilletRequested += FilletTool_PartFilletRequested;
 				}
 			}
 
@@ -563,6 +571,25 @@ public class CadViewModel : INotifyPropertyChanged
 		{
 			_selectionService.SelectById(Sketch, copy.Id);
 		}
+	}
+
+	/// <summary>
+	/// Fillet/chanfro numa instância de peça: vai para o <c>Build()</c> do record (todas as instâncias),
+	/// não para a cena. As normais chegam no mundo e vão para o referencial da peça (a instância pode
+	/// estar girada/espelhada), arredondadas como o código grava — mesmo caminho do Espelhar.
+	/// </summary>
+	private async void FilletTool_PartFilletRequested(object? sender,
+		(PartInstance Owner, System.Collections.Generic.IReadOnlyList<(AvaloniaCadEditor.Domain.ValueObjects.Vector3D Normal, AvaloniaCadEditor.Domain.ValueObjects.Point3D Point)> WorldFaces,
+		 AvaloniaCadEditor.Domain.ValueObjects.FilletMode Mode, double Radius) request)
+	{
+		CurrentTool = new SelectTool(_geometryEngine, _selectionService);
+
+		var localFaces = AvaloniaCadEditor.Application.Scenes.PartBuildFilletEditor.ToPartFrame(request.Owner.Placement, request.WorldFaces);
+		string? error = await ScriptEditor.AddPartFilletAsync(request.Owner.PartTypeName, request.Mode, request.Radius, localFaces);
+		string what = request.Mode == AvaloniaCadEditor.Domain.ValueObjects.FilletMode.Bevel ? "Chanfro" : "Arredondamento";
+		StatusText = error != null
+			? $"✗ {error}"
+			: $"✓ {what} aplicado em {request.Owner.PartTypeName} (todas as instâncias)";
 	}
 
 	private void CurrentTool_CodeGenerated(object? sender, string codeSnippet)
@@ -1561,11 +1588,17 @@ public class CadViewModel : INotifyPropertyChanged
 		}
 	}
 
+	/// <summary>
+	/// Desenhando (modo de esboço), o snap no sólido fica no plano de trabalho: só o contorno da face em
+	/// que se desenha, nunca vértices de outra altura. Fora do esboço, Mover/Girar seguem com o snap 3D.
+	/// </summary>
+	private bool SolidSnapOnPlaneOnly => CurrentMode == EditorMode.SketchEdit;
+
 	public bool OnPointerPressed(Point3D worldPoint, bool isCtrlPressed = false)
 	{
 		SyncToolPlane();
 		var refPt = CurrentTool?.GetReferencePoint();
-		var snappedWorld = _osnapService.GetSnappedPoint(Sketch, worldPoint, refPt != null ? ActiveWorkPlane.ToWorldSpace(refPt.Value) : null, SolidMesh);
+		var snappedWorld = _osnapService.GetSnappedPoint(Sketch, worldPoint, refPt != null ? ActiveWorkPlane.ToWorldSpace(refPt.Value) : null, SolidMesh, SolidSnapOnPlaneOnly);
 		var localSnapped = ActiveWorkPlane.ToLocalSpace(snappedWorld);
 		localSnapped = new Point3D(localSnapped.X, localSnapped.Y, 0.0);
 
@@ -1713,7 +1746,7 @@ public class CadViewModel : INotifyPropertyChanged
 	{
 		SyncToolPlane();
 		var refPt = CurrentTool?.GetReferencePoint();
-		var snappedWorld = _osnapService.GetSnappedPoint(Sketch, worldPoint, refPt != null ? ActiveWorkPlane.ToWorldSpace(refPt.Value) : null, SolidMesh);
+		var snappedWorld = _osnapService.GetSnappedPoint(Sketch, worldPoint, refPt != null ? ActiveWorkPlane.ToWorldSpace(refPt.Value) : null, SolidMesh, SolidSnapOnPlaneOnly);
 		var localSnapped = ActiveWorkPlane.ToLocalSpace(snappedWorld);
 		CurrentSnappedPoint = localSnapped;
 		ApplyHitTolerance();

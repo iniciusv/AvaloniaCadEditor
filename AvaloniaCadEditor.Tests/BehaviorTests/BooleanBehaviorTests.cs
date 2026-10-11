@@ -127,8 +127,8 @@ public class BooleanBehaviorTests
         var kernel = new OpenCascadeGeometryKernel();
         var mockEngine = new Mock<IGeometryEngine>();
         var mockSnap = new Mock<IOSnapService>();
-        mockSnap.Setup(s => s.GetSnappedPoint(It.IsAny<Sketch>(), It.IsAny<Point3D>(), It.IsAny<Point3D?>(), It.IsAny<AvaloniaCadEditor.Domain.Mesh.TriangleMesh>()))
-                .Returns<Sketch, Point3D, Point3D?, AvaloniaCadEditor.Domain.Mesh.TriangleMesh>((s, p, t, m) => p);
+        mockSnap.Setup(s => s.GetSnappedPoint(It.IsAny<Sketch>(), It.IsAny<Point3D>(), It.IsAny<Point3D?>(), It.IsAny<AvaloniaCadEditor.Domain.Mesh.TriangleMesh>(), It.IsAny<bool>()))
+                .Returns<Sketch, Point3D, Point3D?, AvaloniaCadEditor.Domain.Mesh.TriangleMesh, bool>((s, p, t, m, o) => p);
         var profileService = new ProfileRecognitionService();
         var selectionService = new SelectionService();
         var vm = TestUtils.CreateCadViewModel(mockEngine.Object, mockSnap.Object, profileService, kernel, selectionService);

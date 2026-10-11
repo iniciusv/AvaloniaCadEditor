@@ -16,7 +16,7 @@ public class OSnapService : IOSnapService
         _geometryEngine = geometryEngine;
     }
 
-    public Point3D GetSnappedPoint(Sketch sketch, Point3D cursor, Point3D? referencePoint, AvaloniaCadEditor.Domain.Mesh.TriangleMesh? solidMesh = null)
+    public Point3D GetSnappedPoint(Sketch sketch, Point3D cursor, Point3D? referencePoint, AvaloniaCadEditor.Domain.Mesh.TriangleMesh? solidMesh = null, bool solidSnapOnPlaneOnly = false)
     {
         if (!IsEnabled) return ApplyPolarAndGridSnap(sketch, cursor, referencePoint);
 
@@ -51,7 +51,22 @@ public class OSnapService : IOSnapService
             }
         }
 
-        if (solidMesh != null && solidMesh.Positions != null && Settings.EndpointEnabled)
+        if (solidSnapOnPlaneOnly)
+        {
+            if (solidMesh != null)
+            {
+                foreach (var pt in SolidSnapPointsOnPlane(solidMesh, sketch.Plane))
+                {
+                    var dist = cursor.DistanceTo(pt);
+                    if (dist < minDistance)
+                    {
+                        minDistance = dist;
+                        bestSnap = pt;
+                    }
+                }
+            }
+        }
+        else if (solidMesh != null && solidMesh.Positions != null && Settings.EndpointEnabled)
         {
             for (int i = 0; i < solidMesh.Positions.Length; i += 3)
             {
@@ -73,6 +88,37 @@ public class OSnapService : IOSnapService
 
         return ApplyPolarAndGridSnap(sketch, cursor, referencePoint);
     }
+
+    /// <summary>
+    /// Pontos de snap do sólido que ficam no plano de trabalho: as pontas e os pontos médios das arestas
+    /// de contorno (<c>FeatureEdges</c>) com as duas pontas no plano. É o mesmo critério de "face" do
+    /// realce de seleção e do chanfro por face (<see cref="WorkPlane.Contains"/>), então ao desenhar
+    /// sobre uma face o snap gruda no contorno dela — inclusive bocas de furo — e nunca em outra altura.
+    /// </summary>
+    private IEnumerable<Point3D> SolidSnapPointsOnPlane(AvaloniaCadEditor.Domain.Mesh.TriangleMesh mesh, WorkPlane plane)
+    {
+        if (mesh.Positions == null || mesh.FeatureEdges == null) yield break;
+
+        for (int i = 0; i + 1 < mesh.FeatureEdges.Length; i += 2)
+        {
+            var a = Vertex(mesh, mesh.FeatureEdges[i]);
+            var b = Vertex(mesh, mesh.FeatureEdges[i + 1]);
+            if (!plane.Contains(a) || !plane.Contains(b)) continue;
+
+            if (Settings.EndpointEnabled)
+            {
+                yield return a;
+                yield return b;
+            }
+            if (Settings.MidpointEnabled)
+            {
+                yield return new Point3D((a.X + b.X) / 2, (a.Y + b.Y) / 2, (a.Z + b.Z) / 2);
+            }
+        }
+    }
+
+    private static Point3D Vertex(AvaloniaCadEditor.Domain.Mesh.TriangleMesh mesh, uint index) =>
+        new(mesh.Positions[index * 3], mesh.Positions[index * 3 + 1], mesh.Positions[index * 3 + 2]);
 
     private bool IsSnapTypeEnabled(SnapPointType type)
     {

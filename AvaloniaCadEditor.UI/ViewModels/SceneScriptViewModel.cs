@@ -940,6 +940,16 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         EditPartSolidAsync(partTypeName, source =>
             PartSourceEditor.MirrorPartSolid(source, partTypeName, solidName, localPointOnPlane, localNormal));
 
+    /// <summary>
+    /// Declara um fillet/chanfro no fim do <c>Build()</c> de uma peça (ver
+    /// <see cref="PartBuildFilletEditor.AddFillet"/>) e reexecuta. Faces (normal + ponto) em coordenadas da
+    /// peça; vazio = todas as arestas. Devolve o motivo da recusa/erro, ou null.
+    /// </summary>
+    public Task<string?> AddPartFilletAsync(string partTypeName, AvaloniaCadEditor.Domain.ValueObjects.FilletMode mode, double radius,
+        IReadOnlyList<(AvaloniaCadEditor.Domain.ValueObjects.Vector3D Normal, AvaloniaCadEditor.Domain.ValueObjects.Point3D Point)> localFaces) =>
+        EditPartSolidAsync(partTypeName, source =>
+            PartBuildFilletEditor.AddFillet(source, partTypeName, mode, radius, localFaces));
+
     private async Task<string?> EditPartSolidAsync(string partTypeName, Func<string, string> edit)
     {
         // O arquivo da PEÇA: a ferramenta não tem FeatureOrigin próprio na cena.
@@ -1573,7 +1583,15 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
             GeneratedCSharpCode = string.Empty;
         }
 
-        GeneratedCSharpCode = HoistMovedOperands(GeneratedCSharpCode + codeSnippet);
+        // O trecho começa numa linha nova: sem isto, ele grudava na última instrução quando o
+        // arquivo não terminava em quebra de linha ("...Add(...);var fillet_x = ...").
+        string current = GeneratedCSharpCode;
+        if (current.Length > 0 && !current.EndsWith('\n'))
+        {
+            current += current.Contains("\r\n") ? "\r\n" : "\n";
+        }
+
+        GeneratedCSharpCode = HoistMovedOperands(current + codeSnippet);
     }
 
     /// <summary>

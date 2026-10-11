@@ -70,6 +70,14 @@ public class WorkPlane : IEquatable<WorkPlane>
         return new Point3D(u, v, w);
     }
 
+    /// <summary>
+    /// True se <paramref name="point"/> está no plano (distância ao longo da normal abaixo da tolerância).
+    /// É o critério que define "a face" selecionada: o realce (<c>FaceProfile</c>), as arestas que um
+    /// chanfro por face corta e os pontos de snap ao desenhar sobre a face usam o mesmo teste.
+    /// </summary>
+    public bool Contains(Point3D point, double tolerance = 1e-3) =>
+        Math.Abs((point - Origin).DotProduct(Normal)) < tolerance;
+
     public bool Equals(WorkPlane? other)
     {
         if (other is null) return false;

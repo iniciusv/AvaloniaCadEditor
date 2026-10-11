@@ -42,8 +42,8 @@ public class MoverInstanciaPeloViewportTests
 
         // Snap desligado: o ponto clicado é o ponto usado.
         var osnap = new Mock<IOSnapService>();
-        osnap.Setup(o => o.GetSnappedPoint(It.IsAny<Sketch>(), It.IsAny<Point3D>(), It.IsAny<Point3D?>(), It.IsAny<TriangleMesh?>()))
-             .Returns((Sketch _, Point3D cursor, Point3D? _, TriangleMesh? _) => cursor);
+        osnap.Setup(o => o.GetSnappedPoint(It.IsAny<Sketch>(), It.IsAny<Point3D>(), It.IsAny<Point3D?>(), It.IsAny<TriangleMesh?>(), It.IsAny<bool>()))
+             .Returns((Sketch _, Point3D cursor, Point3D? _, TriangleMesh? _, bool _) => cursor);
 
         var vm = TestUtils.CreateCadViewModel(
             new Mock<AvaloniaCadEditor.Domain.Interfaces.IGeometryEngine>().Object,

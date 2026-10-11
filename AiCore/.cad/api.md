@@ -123,6 +123,7 @@ Propriedades comuns a TODAS as features (herdadas de FeatureBase):
   Vector3D YAxis { get; }
   Point3D ToWorldSpace(Point3D localPoint)
   Point3D ToLocalSpace(Point3D worldPoint)
+  bool Contains(Point3D point, double tolerance = 0.001)
   bool Equals(WorkPlane other)
   bool Equals(Object obj)
   int GetHashCode()
@@ -138,10 +139,12 @@ Propriedades comuns a TODAS as features (herdadas de FeatureBase):
 
 ### FaceReference
   new FaceReference(IFeature parent, int faceId, Vector3D normalHint, string name)
+  new FaceReference(IFeature parent, int faceId, Vector3D normalHint, Point3D pointOnFace, string name)
   IFeature ParentFeature { get; }
   string Name { get; set; }
   int FaceId { get; }
   Vector3D NormalHint { get; }
+  Point3D? PointOnFace { get; }
   WorkPlane GetWorkPlane()
 
 ### EdgeReference
