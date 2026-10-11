@@ -1,0 +1,9 @@
+{
+  "description": "Sólido selecionado na viewport: espelhar sem reescrever coordenadas.",
+  "select": [ "suporte_a" ],
+  "instruction": "Crie uma cópia espelhada deste sólido em relação ao plano X = 100.",
+  "checks": {
+    "onlyChangeFiles": [ "Cena.cs" ],
+    "mustMatch": [ "Mirror" ]
+  }
+}

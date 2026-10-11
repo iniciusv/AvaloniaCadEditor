@@ -1,4 +1,5 @@
 using AvaloniaCadEditor.Application.Ai;
+using AvaloniaCadEditor.Application.Ai.Prompts;
 using AvaloniaCadEditor.Application.Scenes;
 using FluentAssertions;
 using Xunit;
@@ -69,13 +70,16 @@ public class CadScriptRulesTests
     }
 
     [Fact]
-    public void PartExamplesDoProtocolo_SaoOsDaFonteUnica()
+    public void ExemplosDePecaDoPerfilAtual_SaoOsDaFonteUnica()
     {
-        CadScriptProtocol.PartExamples.Should().Equal(
+        var examples = new CurrentPromptProfile().Examples;
+
+        examples.Where(e => e.Kind == CadScriptExampleKind.Part).Select(e => e.Code).Should().Equal(
             CadScriptRules.PartExamplePlaca,
             CadScriptRules.PartExampleChapaFurada,
             CadScriptRules.PartExampleBlocoQuatroFuros);
 
-        CadScriptProtocol.SceneUsingPartExample.Should().Be(CadScriptRules.SceneUsingPartExample);
+        examples.Where(e => e.Kind == CadScriptExampleKind.SceneUsingPart).Select(e => e.Code).Should().Equal(
+            CadScriptRules.SceneUsingPartExample);
     }
 }

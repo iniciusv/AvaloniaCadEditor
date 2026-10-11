@@ -1,0 +1,10 @@
+{
+  "description": "Arquivo único vazio: chapa com 4 furos — sólidos com nome literal, um por linha.",
+  "project": false,
+  "instruction": "Crie uma chapa de 80 x 50 x 6 mm com 4 furos passantes de 5 mm de diâmetro, cada um a 8 mm das bordas, perto de cada canto.",
+  "checks": {
+    "minOccurrences": { "new CylinderFeature": 4 },
+    "mustMatch": [ "CreateDifference" ],
+    "mustNotMatch": [ "Name\\s*=\\s*\\$\"", "Name\\s*=\\s*\"[^\"]*\"\\s*\\+" ]
+  }
+}

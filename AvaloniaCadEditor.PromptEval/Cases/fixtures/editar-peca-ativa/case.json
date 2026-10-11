@@ -1,0 +1,9 @@
+{
+  "description": "Arquivo ativo é a peça: alterar só ela.",
+  "activeFile": "Pecas/ChapaFurada.cs",
+  "instruction": "Passe esta chapa para 4 furos, um perto de cada canto.",
+  "checks": {
+    "onlyChangeFiles": [ "Pecas/ChapaFurada.cs" ],
+    "minOccurrences": { "new CylinderFeature": 4 }
+  }
+}

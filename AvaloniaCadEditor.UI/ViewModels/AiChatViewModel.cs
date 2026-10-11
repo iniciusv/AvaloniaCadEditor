@@ -9,6 +9,8 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 using AvaloniaCadEditor.Application.Ai;
 using AvaloniaCadEditor.Application.Ai.Context;
+using AvaloniaCadEditor.Application.Ai.Prompts;
+using AvaloniaCadEditor.Application.Ai.Recording;
 using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Domain.Settings;
 
@@ -30,6 +32,7 @@ public class AiChatViewModel : INotifyPropertyChanged
     private readonly ISceneEvaluator _evaluator;
     private readonly IAiSettingsProvider _settingsProvider;
     private CadScriptChatSession? _session;
+    private CadScriptProtocol? _protocol;
     private CancellationTokenSource? _cts;
 
     private readonly IAiContextBuilder _contextBuilder;
@@ -40,6 +43,10 @@ public class AiChatViewModel : INotifyPropertyChanged
 
     // Id crescente do turno (par pergunta/resposta), usado para deletar o turno inteiro.
     private int _nextTurnId;
+
+    // Os rounds da conversa atual, para gravá-la como caso de teste (botão 💾).
+    private readonly AiConversationRecorder _recorder = new();
+    private string _sessionModelId = string.Empty;
 
     public ObservableCollection<AiChatMessageItem> Messages { get; } = new();
 
@@ -65,6 +72,14 @@ public class AiChatViewModel : INotifyPropertyChanged
     }
 
     public bool IsAvailable => _session != null;
+
+    private string? _recordingStatus;
+    /// <summary>Onde a última conversa foi gravada (some ao enviar o próximo pedido).</summary>
+    public string? RecordingStatus
+    {
+        get => _recordingStatus;
+        private set { _recordingStatus = value; OnPropertyChanged(); }
+    }
 
     private string? _configError;
     public string? ConfigError
@@ -138,6 +153,17 @@ public class AiChatViewModel : INotifyPropertyChanged
             ?? options[0];
     }
 
+    /// <summary>As versões de pré-prompt (system prompt) que podem ser escolhidas.</summary>
+    public IReadOnlyList<ICadScriptPromptProfile> PromptProfileOptions => CadScriptPromptProfiles.All;
+
+    private ICadScriptPromptProfile _selectedPromptProfile = CadScriptPromptProfiles.Default;
+    /// <summary>Perfil de pré-prompt (aplicado ao salvar as configurações; recomeça a conversa).</summary>
+    public ICadScriptPromptProfile SelectedPromptProfile
+    {
+        get => _selectedPromptProfile;
+        set { _selectedPromptProfile = value; OnPropertyChanged(); }
+    }
+
     private string _baseUrlInput = string.Empty;
     public string BaseUrlInput
     {
@@ -190,6 +216,7 @@ public class AiChatViewModel : INotifyPropertyChanged
     public ICommand NewConversationCommand { get; }
     public ICommand ToggleSettingsCommand { get; }
     public ICommand SaveSettingsCommand { get; }
+    public ICommand SaveConversationCommand { get; }
 
     public AiChatViewModel(
         CadViewModel cadViewModel,
@@ -211,6 +238,7 @@ public class AiChatViewModel : INotifyPropertyChanged
         _baseUrlInput = settings.BaseUrl;
         _keepHistoryInput = settings.KeepConversationHistory;
         _enableReasoningInput = settings.EnableReasoning;
+        _selectedPromptProfile = CadScriptPromptProfiles.Find(settings.PromptProfile);
 
         InitializeSession();
 
@@ -220,12 +248,14 @@ public class AiChatViewModel : INotifyPropertyChanged
         {
             _session?.NewConversation();
             Messages.Clear();
+            _recorder.Clear();
             _nextTurnId = 0;
             _contextAdjustments.Reset();
             RefreshContextFiles();
         }, () => IsAvailable && !IsBusy);
         ToggleSettingsCommand = new RelayCommand(() => IsSettingsOpen = !IsSettingsOpen);
         SaveSettingsCommand = new RelayCommand(SaveSettings);
+        SaveConversationCommand = new RelayCommand(SaveConversation, () => _recorder.Count > 0 && !IsBusy);
 
         _cadViewModel.SelectionService.SelectionChanged += RefreshContextFiles;
         _scriptEditor.ProjectFiles.CollectionChanged += (_, _) => RefreshContextFiles();
@@ -352,6 +382,23 @@ public class AiChatViewModel : INotifyPropertyChanged
         if (removedAny)
         {
             _session?.DeleteTurn(position);
+            _recorder.Remove(turnId);
+            RaiseCommandsCanExecuteChanged();
+        }
+    }
+
+    /// <summary>Grava a conversa (contexto exato de cada round + respostas) para reexecutá-la com outros pré-prompts.</summary>
+    private void SaveConversation()
+    {
+        try
+        {
+            var record = _recorder.ToRecord(_sessionModelId, _protocol?.Profile.Id ?? string.Empty, DateTimeOffset.Now);
+            string path = AiConversationRecordStore.Save(record, AiConversationRecordStore.DefaultDirectory);
+            RecordingStatus = $"Conversa gravada em {path}";
+        }
+        catch (Exception ex)
+        {
+            RecordingStatus = $"Falha ao gravar a conversa: {ex.Message}";
         }
     }
 
@@ -364,21 +411,28 @@ public class AiChatViewModel : INotifyPropertyChanged
         var (options, error) = CadScriptChatSession.LoadOptions(_settingsProvider);
         if (options != null)
         {
-            if (_session == null)
+            var settings = _settingsProvider.GetSettings();
+            var profile = CadScriptPromptProfiles.Find(settings.PromptProfile);
+
+            // O system prompt é fixado quando a sessão começa: trocar de perfil exige uma sessão nova.
+            if (_session == null || _protocol?.Profile.Id != profile.Id)
             {
-                _session = new CadScriptChatSession(options, new CadScriptProtocol(), _evaluator);
+                _protocol = new CadScriptProtocol(profile);
+                _session = new CadScriptChatSession(options, _protocol, _evaluator);
             }
             else
             {
                 _session.UpdateOptions(options);
             }
-            _session.KeepHistory = _settingsProvider.GetSettings().KeepConversationHistory;
-            ModelName = ResolveModelOption(ModelOptions, options.Model).DisplayName;
+            _session.KeepHistory = settings.KeepConversationHistory;
+            _sessionModelId = options.Model ?? string.Empty;
+            ModelName = $"{ResolveModelOption(ModelOptions, options.Model).DisplayName} · {profile.Id}";
             ConfigError = null;
         }
         else
         {
             _session = null;
+            _protocol = null;
             ModelName = string.Empty;
             ConfigError = error;
         }
@@ -396,7 +450,8 @@ public class AiChatViewModel : INotifyPropertyChanged
             Model = ModelInput.Trim(),
             BaseUrl = BaseUrlInput.Trim(),
             KeepConversationHistory = KeepHistoryInput,
-            EnableReasoning = EnableReasoningInput
+            EnableReasoning = EnableReasoningInput,
+            PromptProfile = SelectedPromptProfile.Id
         };
         _settingsProvider.SaveSettings(settings);
 
@@ -404,6 +459,7 @@ public class AiChatViewModel : INotifyPropertyChanged
         // histórico da API em sincronia.
         _session?.NewConversation();
         Messages.Clear();
+        _recorder.Clear();
         _nextTurnId = 0;
         InitializeSession();
         IsSettingsOpen = false;
@@ -414,6 +470,7 @@ public class AiChatViewModel : INotifyPropertyChanged
         (SendCommand as RelayCommand)?.RaiseCanExecuteChanged();
         (CancelCommand as RelayCommand)?.RaiseCanExecuteChanged();
         (NewConversationCommand as RelayCommand)?.RaiseCanExecuteChanged();
+        (SaveConversationCommand as RelayCommand)?.RaiseCanExecuteChanged();
     }
 
     private async Task SendAsync()
@@ -422,6 +479,7 @@ public class AiChatViewModel : INotifyPropertyChanged
 
         string instruction = InputText.Trim();
         InputText = string.Empty;
+        RecordingStatus = null;
 
         int turnId = _nextTurnId++;
         var userItem = new AiChatMessageItem(isUser: true, text: instruction) { TurnId = turnId };
@@ -439,6 +497,8 @@ public class AiChatViewModel : INotifyPropertyChanged
             userItem.SentContext = BuildSentContextSnapshot(context);
 
             var result = await _session.SendAsync(instruction, context, _cts.Token);
+            _recorder.Record(turnId, instruction, context, _protocol!.BuildUserMessage(context, instruction), result,
+                _session.History.LastOrDefault(m => m.Role == "assistant")?.Content ?? string.Empty);
 
             Messages.Remove(thinking);
 

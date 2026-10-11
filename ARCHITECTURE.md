@@ -152,7 +152,8 @@ de todo o resto. Falha segura: fingerprint `null` = sem cache, nunca cache errad
 | Mudar o que a IA vê | `Application/Ai/Context/AiContextBuilder.cs` | o motivo de cada arquivo é rastreável (`AiContextReason`) |
 | Mudar o que a IA pode escrever | `Application/Ai/Context/AiEditScopePolicy.cs` | só arquivos no escopo + peça nova em `Pecas/` |
 | Mudar as regras do dialeto | `Application/Ai/CadScriptRules.cs` | fonte **única**: prompt + `.cad/api.md` + `AGENTS.md`. Há teste que falha se divergirem |
-| Adicionar exemplo few-shot para a IA | `Application/Ai/CadScriptProtocol.Examples` | há teste que compila e executa **cada** exemplo |
+| Adicionar exemplo few-shot para a IA | `Application/Ai/Prompts/CurrentPromptProfile.Examples` | há teste que compila e executa **cada** exemplo de **cada** perfil |
+| Testar outra estratégia de pré-prompt | novo `ICadScriptPromptProfile` em `Application/Ai/Prompts/`, registrado em `CadScriptPromptProfiles` | o perfil `atual` é congelado por golden (`Tests/Ai/Golden`); compare perfis com `AvaloniaCadEditor.PromptEval` |
 | Mudar a renderização | `UI/Controls/Rendering/*RenderPass.cs` (implemente `IRenderPass`) | registre em `SilkViewportControl._renderPasses` |
 | Mudar o modo wireframe (linhas ocultas tracejadas) | `UI/Controls/Rendering/WireframeRenderPass.cs`, `WireframeEdgeShader.cs`, `WireframeGeometry.cs` | quem entra no frame e com que cor vem de `SolidRenderables`, compartilhado com o sombreado. As arestas e silhuetas são calculadas sob demanda pelo `EdgeDetector`, só para as malhas exibidas no modo: a mudança é só visual e não acrescenta nada à `TriangleMesh` |
 | Mudar o referencial da peça isolada (H) | `Application/Isolation/PartFrameResolver.cs`, `Domain/ValueObjects/PartFrame.cs`, `CadViewModel.ToggleIsolateSelection`/`ReapplyIsolation` | só visual: a grade e as vistas usam o referencial, o código continua em mundo. O isolamento é guardado **por nome** e reaplicado em `RunCodeAsync`, porque cada execução recria as features |
@@ -195,7 +196,7 @@ geometria velha do cache):
    nunca é cacheada entre execuções** (degrada desempenho, mas é seguro). `FeatureFingerprintTests`
    falha se uma propriedade pública geométrica ficar de fora.
 4. `Application/Services/FeatureCodeGenerator` — se alguma ferramenta gera a feature.
-5. `Application/Ai/CadScriptRules` + `CadScriptProtocol.Examples` — para a IA saber que existe.
+5. `Application/Ai/CadScriptRules` + `Prompts/CurrentPromptProfile.Examples` — para a IA saber que existe.
 6. `UI/ViewModels/ModelTreeViewModel` / `PropertyInspectorViewModel` — se precisa aparecer ou ser editável.
 7. `Analysis/FactExtractor` — um `case` no `Walk` e o tipo em `HandledFeatureTypes`, **ou** o motivo em
    `IgnoredFeatureTypes`. Sem isso a feature some das cotas e das guias de referência sem erro;
@@ -379,6 +380,7 @@ atalho, não do código** — as outras 531 valem.
 Três testes funcionam como travas de arquitetura e devem continuar passando:
 
 - `FeatureFingerprintTests` — falha se uma propriedade geométrica pública ficar fora do fingerprint.
-- `CadScriptProtocolExamplesTests` — compila e executa **cada** exemplo few-shot: o dialeto
-  ensinado à IA não pode apodrecer.
+- `CadScriptProtocolExamplesTests` — compila e executa **cada** exemplo few-shot de **cada** perfil de
+  pré-prompt: o dialeto ensinado à IA não pode apodrecer.
+- `CadScriptPromptProfilesTests` — o perfil `atual` bate com o golden; todo perfil traz o formato de resposta.
 - `CadScriptRulesTests` — garante que prompt, `.cad/api.md` e `AGENTS.md` usem o mesmo texto.

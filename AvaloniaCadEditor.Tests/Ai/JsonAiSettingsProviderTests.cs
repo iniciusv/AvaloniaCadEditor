@@ -44,6 +44,27 @@ public class JsonAiSettingsProviderTests
     }
 
     [Fact]
+    public void PromptProfile_RoundTrip_EArquivoAntigoSemOCampo_FicaVazio()
+    {
+        string folder = Path.Combine(Path.GetTempPath(), "ai-settings-" + Guid.NewGuid().ToString("N"));
+        try
+        {
+            var provider = new JsonAiSettingsProvider(folder);
+
+            provider.SaveSettings(new AiSettings { PromptProfile = "enxuto" });
+            provider.GetSettings().PromptProfile.Should().Be("enxuto");
+
+            // Arquivo gravado antes do campo existir: cai no vazio (= perfil padrão).
+            File.WriteAllText(Path.Combine(folder, "ai_settings.json"), "{ \"ApiKey\": \"k\" }");
+            provider.GetSettings().PromptProfile.Should().BeEmpty();
+        }
+        finally
+        {
+            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
+        }
+    }
+
+    [Fact]
     public void GetSettings_QuandoArquivoNaoExiste_RetornaSettingsVazias()
     {
         string path = FilePath();

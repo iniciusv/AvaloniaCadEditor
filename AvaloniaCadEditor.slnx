@@ -5,6 +5,7 @@
   <Project Path="AvaloniaCadEditor.Domain/AvaloniaCadEditor.Domain.csproj" />
   <Project Path="AvaloniaCadEditor.Drafting/AvaloniaCadEditor.Drafting.csproj" />
   <Project Path="AvaloniaCadEditor.Infrastructure/AvaloniaCadEditor.Infrastructure.csproj" />
+  <Project Path="AvaloniaCadEditor.PromptEval/AvaloniaCadEditor.PromptEval.csproj" />
   <Project Path="AvaloniaCadEditor.Tests/AvaloniaCadEditor.Tests.csproj" />
   <Project Path="AvaloniaCadEditor.UI/AvaloniaCadEditor.UI.csproj" />
 </Solution>

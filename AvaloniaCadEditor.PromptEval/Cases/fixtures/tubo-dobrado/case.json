@@ -1,0 +1,9 @@
+{
+  "description": "Arquivo único vazio: tubo com duas dobras — deve usar SweepPath.FromPolyline.",
+  "project": false,
+  "instruction": "Faça um tubo maciço de 12 mm de diâmetro que anda 100 mm em X, sobe 80 mm em Z e depois anda 60 mm em Y, com raio de dobra de 20 mm.",
+  "checks": {
+    "mustMatch": [ "SweepPath\\.FromPolyline" ],
+    "maxFeatures": 3
+  }
+}

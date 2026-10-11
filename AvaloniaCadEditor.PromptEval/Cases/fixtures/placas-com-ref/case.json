@@ -1,0 +1,9 @@
+{
+  "description": "Mesmo pedido com Pecas/Placa.cs na cena (só a assinatura vai no contexto): deve usar Add(new Placa(...)) sem redeclarar.",
+  "instruction": "Coloque 4 placas de 100 x 60 x 5 mm lado a lado ao longo de X, com 10 mm de folga entre elas.",
+  "checks": {
+    "onlyChangeFiles": [ "Cena.cs" ],
+    "mustNotRedeclare": [ "Placa" ],
+    "minOccurrences": { "Add\\(": 4 }
+  }
+}

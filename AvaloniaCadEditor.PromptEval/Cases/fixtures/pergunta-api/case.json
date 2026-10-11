@@ -1,0 +1,6 @@
+{
+  "description": "Pergunta sobre a API: a resposta deve ser só texto.",
+  "project": false,
+  "instruction": "Qual a diferença entre AddFeature e Add? Só explique, não altere o código.",
+  "checks": { "expectNoCode": true }
+}

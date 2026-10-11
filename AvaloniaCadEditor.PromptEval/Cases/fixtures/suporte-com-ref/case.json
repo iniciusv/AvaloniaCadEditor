@@ -1,0 +1,12 @@
+{
+  "description": "Mesmo pedido, com Placa e FuroPassante na cena e fixados no contexto: deve reaproveitar FuroPassante com .Instance.",
+  "instruction": "Crie uma peça Suporte em L: base de 60 x 40 x 5 mm, aba vertical de 40 mm de altura e 5 mm de espessura numa das bordas, e 2 furos de 6 mm na base. Coloque dois suportes na cena, a 100 mm um do outro em X. Reaproveite as peças que já existem.",
+  "pin": [ "Pecas/Placa.cs", "Pecas/FuroPassante.cs" ],
+  "checks": {
+    "expectNewFiles": [ "Pecas/*.cs" ],
+    "minOccurrences": { "Add\\(": 2 },
+    "mustNotRedeclare": [ "Placa", "FuroPassante" ],
+    "mustMatch": [ "\\.Instance\\(" ],
+    "maxPartParameters": 6
+  }
+}

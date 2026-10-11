@@ -19,4 +19,7 @@ public class AiSettings
     /// omitir o campo não desliga nada, já que o thinking mode é ligado por padrão no servidor.
     /// </summary>
     public bool EnableReasoning { get; set; } = false;
+
+    /// <summary>Id do perfil de pré-prompt (system prompt) do chat. Vazio = o perfil padrão.</summary>
+    public string PromptProfile { get; set; } = string.Empty;
 }

@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using AvaloniaCadEditor.Application.Ai;
+using AvaloniaCadEditor.Application.Ai.Prompts;
 using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Application.Scenes;
 using AvaloniaCadEditor.Infrastructure.Scripting;
@@ -11,32 +11,39 @@ using Xunit;
 namespace AvaloniaCadEditor.Tests.Ai;
 
 /// <summary>
-/// Garante que os exemplos few-shot ensinados à IA no system prompt (<see cref="CadScriptProtocol.Examples"/> e
-/// <see cref="CadScriptProtocol.PartExamples"/>) realmente compilam e executam no <see cref="RoslynSceneEvaluator"/>
+/// Garante que os exemplos few-shot ensinados à IA por TODOS os perfis de pré-prompt
+/// (<see cref="CadScriptPromptProfiles.All"/>) realmente compilam e executam no <see cref="RoslynSceneEvaluator"/>
 /// — ou seja, os dois "dialetos" de CadScript (script e peça) ensinados à IA são sempre válidos em relação ao
 /// Domain atual do projeto.
 /// </summary>
 public class CadScriptProtocolExamplesTests
 {
-    public static IEnumerable<object[]> Examples => CadScriptProtocol.Examples.Select(e => new object[] { e });
+    private static IEnumerable<object[]> ExamplesOf(CadScriptExampleKind kind) =>
+        CadScriptPromptProfiles.All.SelectMany(profile => profile.Examples
+            .Where(e => e.Kind == kind)
+            .Select((e, i) => new object[] { profile.Id, i, e.Code }));
 
-    public static IEnumerable<object[]> PartExamples => CadScriptProtocol.PartExamples.Select(e => new object[] { e });
+    public static IEnumerable<object[]> Examples => ExamplesOf(CadScriptExampleKind.Script);
+
+    public static IEnumerable<object[]> PartExamples => ExamplesOf(CadScriptExampleKind.Part);
+
+    public static IEnumerable<object[]> SceneUsingPartExamples => ExamplesOf(CadScriptExampleKind.SceneUsingPart);
 
     [Theory]
     [MemberData(nameof(Examples))]
-    public async Task Exemplo_DoSystemPrompt_CompilaEExecutaComSucesso(string example)
+    public async Task Exemplo_DoSystemPrompt_CompilaEExecutaComSucesso(string profileId, int index, string example)
     {
         var evaluator = new RoslynSceneEvaluator();
 
         var result = await evaluator.EvaluateAsync(example);
 
-        result.Success.Should().BeTrue(because: result.ErrorMessage ?? "esperava sucesso na avaliação do exemplo");
+        result.Success.Should().BeTrue(because: result.ErrorMessage ?? $"esperava sucesso no exemplo {index} do perfil {profileId}");
         result.Features.Should().NotBeEmpty();
     }
 
     [Theory]
     [MemberData(nameof(PartExamples))]
-    public async Task ExemploDePeca_DoSystemPrompt_CompilaEExecutaComSucesso(string example)
+    public async Task ExemploDePeca_DoSystemPrompt_CompilaEExecutaComSucesso(string profileId, int index, string example)
     {
         var evaluator = new RoslynSceneEvaluator();
         var partDoc = new ScriptDocument("Pecas/Peca.cs", example);
@@ -49,20 +56,26 @@ public class CadScriptProtocolExamplesTests
 
         var result = await evaluator.EvaluateAsync(new[] { partDoc, entryDoc });
 
-        result.Success.Should().BeTrue(because: result.ErrorMessage ?? "esperava sucesso na avaliação do exemplo de peça");
+        result.Success.Should().BeTrue(because: result.ErrorMessage ?? $"esperava sucesso no exemplo de peça {index} do perfil {profileId}");
         result.Features.Should().NotBeEmpty();
     }
 
-    [Fact]
-    public async Task ExemploDeUsoDePeca_JuntoDoExemploDePecaQueDeclaraPlaca_CompilaEExecutaComSucesso()
+    /// <summary>O exemplo de uso não redeclara a peça: compila junto com os exemplos de peça do mesmo perfil.</summary>
+    [Theory]
+    [MemberData(nameof(SceneUsingPartExamples))]
+    public async Task ExemploDeUsoDePeca_JuntoDasPecasDoMesmoPerfil_CompilaEExecutaComSucesso(string profileId, int index, string example)
     {
         var evaluator = new RoslynSceneEvaluator();
-        var partDoc = new ScriptDocument("Pecas/Placa.cs", CadScriptProtocol.PartExamples[0]);
-        var sceneDoc = new ScriptDocument(ScriptDocument.DefaultSceneFile, CadScriptProtocol.SceneUsingPartExample);
+        var profile = CadScriptPromptProfiles.Find(profileId);
+        var docs = profile.Examples
+            .Where(e => e.Kind == CadScriptExampleKind.Part)
+            .Select((e, i) => new ScriptDocument($"Pecas/Peca{i}.cs", e.Code))
+            .Append(new ScriptDocument(ScriptDocument.DefaultSceneFile, example))
+            .ToList();
 
-        var result = await evaluator.EvaluateAsync(new[] { partDoc, sceneDoc });
+        var result = await evaluator.EvaluateAsync(docs);
 
-        result.Success.Should().BeTrue(because: result.ErrorMessage ?? "esperava sucesso ao usar a peça já declarada");
+        result.Success.Should().BeTrue(because: result.ErrorMessage ?? $"esperava sucesso no exemplo de uso {index} do perfil {profileId}");
         result.Features.Should().NotBeEmpty();
     }
 }
