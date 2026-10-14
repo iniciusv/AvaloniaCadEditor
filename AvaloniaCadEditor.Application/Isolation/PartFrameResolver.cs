@@ -12,9 +12,12 @@ public static class PartFrameResolver
 {
     /// <summary>
     /// Só há referencial para uma peça posicionada (<see cref="PartInstance"/> ou
-    /// <see cref="TransformedFeature"/>) cuja rotação seja só em Z — a câmera é orbital com Z para
-    /// cima, então é a única rotação que as vistas padrão conseguem acompanhar. Qualquer outro caso
-    /// devolve <c>null</c> e o isolamento segue sem referencial (grade na origem do mundo).
+    /// <see cref="TransformedFeature"/>) cujo eixo Z local continue no eixo Z do mundo — a câmera é
+    /// orbital com Z para cima, então só a rotação em Z as vistas padrão conseguem acompanhar.
+    /// Espelhos que mantêm o eixo Z (<c>MirrorZ</c>, <c>MirrorX</c>...) também valem: o referencial
+    /// fica sendo a rotação em Z que leva o X da peça, e o espelho segue só no posicionamento das
+    /// features (o desenho mostra a peça como ela está na cena). Qualquer outro caso devolve
+    /// <c>null</c> e o isolamento segue sem referencial (grade na origem do mundo).
     /// </summary>
     /// <param name="feature">A feature de topo isolada.</param>
     /// <param name="worldPositions">Posições xyz (planas) da malha da feature, em coordenadas do mundo.</param>
@@ -29,13 +32,23 @@ public static class PartFrameResolver
             _ => null
         };
 
-        if (placement is null || !placement.IsRotationAboutZOnly || worldPositions is null || worldPositions.Length < 3)
+        if (placement is null || worldPositions is null || worldPositions.Length < 3)
         {
             return null;
         }
 
-        // Caixa medida nos eixos da peça: volta cada vértice para o sistema local da instância.
-        var worldToLocal = placement.Inverse();
+        var z = placement.ApplyVector(Vector3D.UnitZ);
+        if (Math.Abs(Math.Abs(z.Z) - 1) > 1e-9)
+        {
+            return null;
+        }
+
+        // Rotação em Z que leva o X da peça (igual ao placement quando não há espelho).
+        var axes = Placement.RotationZ(placement.RotationZRadians * 180.0 / Math.PI)
+            .Then(Placement.Translate(placement.Translation));
+
+        // Caixa medida nos eixos do referencial: volta cada vértice para esses eixos.
+        var worldToLocal = axes.Inverse();
         double minX = double.MaxValue, minY = double.MaxValue, minZ = double.MaxValue;
         for (int i = 0; i + 2 < worldPositions.Length; i += 3)
         {
@@ -45,7 +58,7 @@ public static class PartFrameResolver
             if (local.Z < minZ) minZ = local.Z;
         }
 
-        var frameToWorld = Placement.Translate(new Vector3D(minX, minY, minZ)).Then(placement);
+        var frameToWorld = Placement.Translate(new Vector3D(minX, minY, minZ)).Then(axes);
         return new PartFrame(feature.Name, frameToWorld);
     }
 }

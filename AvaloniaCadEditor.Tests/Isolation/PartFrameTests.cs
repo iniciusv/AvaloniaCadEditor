@@ -78,6 +78,29 @@ public class PartFrameTests
     }
 
     [Fact]
+    public void Resolve_InstanciaEspelhadaEmZ_ReferencialSegueOMundoComZParaCima()
+    {
+        // Como o bloco_ficacao_belt_vao_correia da cena: girado em Z e depois espelhado em Z.
+        var placement = Placement.At(5, 0, 26, rotationZDegrees: 90).Then(Placement.MirrorZ()).Then(Placement.Translate(new Vector3D(0, 0, 41)));
+        var instancia = new PartInstance<PecaDeTeste>(new PecaDeTeste(), Corpo(), placement) { Name = "espelhada" };
+
+        var frame = PartFrameResolver.Resolve(instancia, WorldPositions(instancia));
+
+        frame.Should().NotBeNull();
+        frame!.XAxis.X.Should().BeApproximately(0, 1e-9);
+        frame.XAxis.Y.Should().BeApproximately(1, 1e-9);
+        frame.ZAxis.Should().Be(Vector3D.UnitZ);
+
+        var noReferencial = instancia.GetVertices().Select(frame.ToFrame).ToList();
+        noReferencial.Min(p => p.X).Should().BeApproximately(0, 1e-6);
+        noReferencial.Min(p => p.Y).Should().BeApproximately(0, 1e-6);
+        noReferencial.Min(p => p.Z).Should().BeApproximately(0, 1e-6);
+        noReferencial.Max(p => p.X).Should().BeApproximately(40, 1e-6);
+        noReferencial.Max(p => p.Y).Should().BeApproximately(16, 1e-6);
+        noReferencial.Max(p => p.Z).Should().BeApproximately(17, 1e-6);
+    }
+
+    [Fact]
     public void Resolve_FeatureSolta_SemReferencial()
     {
         var corpo = Corpo();
