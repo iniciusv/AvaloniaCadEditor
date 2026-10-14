@@ -13,6 +13,8 @@
 ///   para cada lado do meio dos furos de fixação e AlturaRasgo acima do topo da placa.
 /// - fixacao_superior: chapa horizontal assentada no topo da placa, com os furos coincidentes com
 ///   furo_fixacao_carrinho_1 e furo_fixacao_carrinho_2 (o mesmo parafuso vai à porca do carrinho).
+/// Todo o contorno externo leva um chanfro (bevel) de RaioChanfro mm; as bocas do canal, dos furos
+/// e dos rasgos ficam vivas (ver o comentário do envelope_chanfrado).
 /// </summary>
 public sealed record BlocoFicacaoBeltVaoCorreia(
     double AlturaParede = 20.0,
@@ -25,7 +27,8 @@ public sealed record BlocoFicacaoBeltVaoCorreia(
     double DistanciaFuroLateralTopo = 4.375, // eixo da fixacao_x_6 abaixo do topo da placa
     double DistanciaRasgos = 10.0,
     double AlturaRasgo = 12.5,
-    double RasgoMeiaAltura = 4.0) : Part
+    double RasgoMeiaAltura = 4.0,
+    double RaioChanfro = 1.0) : Part
 {
     private static readonly GarraCorreia Garra = new GarraCorreia();
 
@@ -69,9 +72,28 @@ public sealed record BlocoFicacaoBeltVaoCorreia(
         var cilindro_rasgo_superior_2 = new CylinderFeature(new Point3D(xRasgo2, -1.0, zRasgo + RasgoMeiaAltura), Vector3D.UnitY, raioFuro, yParede + 2.0) { Name = "cilindro_rasgo_superior_2", IsTransientTool = true };
         var cilindro_rasgo_inferior_2 = new CylinderFeature(new Point3D(xRasgo2, -1.0, zRasgo - RasgoMeiaAltura), Vector3D.UnitY, raioFuro, yParede + 2.0) { Name = "cilindro_rasgo_inferior_2", IsTransientTool = true };
 
-        return BooleanFeature.CreateDifference("bloco_ficacao_belt_vao_correia", corpo,
+        var bloco_furado = BooleanFeature.CreateDifference("bloco_furado", corpo,
             furo_fixacao_1, furo_fixacao_2, furo_fixacao_x_6,
             rasgo_1, cilindro_rasgo_superior_1, cilindro_rasgo_inferior_1,
             rasgo_2, cilindro_rasgo_superior_2, cilindro_rasgo_inferior_2);
+
+        if (RaioChanfro <= 0.001)
+        {
+            return bloco_furado;
+        }
+
+        // Chanfro no ENVELOPE (garra bruta + suporte, sem vazio nenhum), intersectado com a peça furada:
+        // o chanfro por malha faz uma booleana por aresta convexa, e no sólido já furado cada boca de
+        // furo/alojamento viraria dezenas de arestas. Assim só o contorno externo é chanfrado e as bocas
+        // do canal, dos furos e dos rasgos ficam vivas.
+        var envelope_garra = new BoxFeature(new Point3D(-metadeX, 0, 0), Garra.Comprimento, Garra.Largura, Garra.Altura) { Name = "envelope_garra" };
+        var envelope = BooleanFeature.CreateUnion("envelope", envelope_garra, suporte);
+        var envelope_chanfrado = new FilletFeature("envelope_chanfrado", envelope, RaioChanfro)
+        {
+            Mode = FilletMode.Bevel,
+            ApplyToAllEdges = true
+        };
+
+        return BooleanFeature.CreateIntersection("bloco_ficacao_belt_vao_correia", bloco_furado, envelope_chanfrado);
     }
 }

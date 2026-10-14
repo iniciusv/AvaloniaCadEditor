@@ -15,6 +15,9 @@
 ///   disso o alojamento corta o nariz e a folga real ali passa a ser a do alojamento.
 /// As ferramentas passam 1 mm do topo e a lingueta/nariz sobram 1 mm para todo lado que não é face
 /// de trabalho, para não haver faces coplanares nas booleanas.
+/// A boca do canal, nas pontas, leva um chanfro de ChanfroEntrada (funil) nas duas paredes e no
+/// fundo, para guiar a correia na entrada; a boca de cima do alojamento leva um cone de
+/// ChanfroAlojamento, que chanfra também a parede do canal junto dele.
 /// </summary>
 public sealed record GarraCorreia(
     double Comprimento = 41.0,       // X, as duas garras
@@ -27,7 +30,9 @@ public sealed record GarraCorreia(
     double RaioAlojamento = 3.25,    // parafuso + uma volta de correia + folga
     double LarguraCanal = 2.45,      // duas camadas de correia, apertadas
     double RaioNariz = 1.3,          // raio de dobra do fio de retorno
-    double FolgaNariz = 1.43) : Part // nunca igual a RaioAlojamento − RaioParafuso (tangência)
+    double FolgaNariz = 1.43,        // nunca igual a RaioAlojamento − RaioParafuso (tangência)
+    double ChanfroEntrada = 1.0,     // funil na boca do canal, por onde a correia entra
+    double ChanfroAlojamento = 1.0) : Part // cone na boca de cima do alojamento e da parede do canal
 {
     /// <summary>Face do canal do lado da face de apoio: entre y = 0 e ela a garra é parede maciça.</summary>
     public double YParede => ParafusoY - RaioAlojamento;
@@ -65,7 +70,54 @@ public sealed record GarraCorreia(
         var canal_correia = BooleanFeature.CreateDifference("canal_correia", vao_sem_lingueta, nariz);
 
         var corpo_com_canal = BooleanFeature.CreateDifference("corpo_com_canal", corpo, canal_correia);
-        var metade = BooleanFeature.CreateDifference("metade", corpo_com_canal, alojamento, furo_parafuso);
+        var metade_furada = BooleanFeature.CreateDifference("metade_furada", corpo_com_canal, alojamento, furo_parafuso);
+
+        // Entrada da correia: chanfro de ChanfroEntrada a 45° nas três arestas da boca do canal (as duas
+        // paredes e o fundo), um funil que é a interseção de um prisma na planta (abre em Y) com um no
+        // perfil (desce em Z). Para dentro, o funil continua afunilando 0,5 mm além do chanfro: ali ele
+        // já é mais estreito que o canal, então as faces inclinadas CRUZAM as paredes do canal em vez de
+        // coincidir com elas. Para fora, sobra além da ponta; os dois prismas terminam em pontos
+        // diferentes para não terem faces coplanares entre si.
+        IFeature metade = metade_furada;
+
+        // Bevel da boca do alojamento: cone a 45° que abre ChanfroAlojamento na face de cima. Como a parede
+        // do canal é tangente ao alojamento, o mesmo cone chanfra a parede do canal junto dele (e a ponta
+        // do nariz). Passa 1 mm acima do topo e, para baixo, continua afunilando 0,5 mm para dentro do
+        // alojamento, para CRUZAR a parede do furo em vez de encostar nela.
+        if (ChanfroAlojamento > 0.001)
+        {
+            var bevel_alojamento = new ConeFeature(new Point3D(xParafuso, ParafusoY, Altura - ChanfroAlojamento - 0.5), Vector3D.UnitZ,
+                RaioAlojamento - 0.5, RaioAlojamento + ChanfroAlojamento + 1.0, ChanfroAlojamento + 1.5) { Name = "bevel_alojamento", IsTransientTool = true };
+            var metade_com_bevel = BooleanFeature.CreateDifference("metade_com_bevel", metade, bevel_alojamento);
+            metade = metade_com_bevel;
+        }
+
+        if (ChanfroEntrada > 0.001)
+        {
+            var xBoca = -metadeX;
+            var xFimFunil = xBoca + ChanfroEntrada + 0.5;
+            var zBaseFunil = zVao - ChanfroEntrada - 2.0;
+
+            var funil_planta = new PrismFeature(new[]
+            {
+                new Point3D(xBoca - 1.0, yParede - ChanfroEntrada - 1.0, 0),
+                new Point3D(xFimFunil, yParede + 0.5, 0),
+                new Point3D(xFimFunil, yTetoCanal - 0.5, 0),
+                new Point3D(xBoca - 1.0, yTetoCanal + ChanfroEntrada + 1.0, 0)
+            }, Altura + 2.0 - zBaseFunil, new WorkPlane(new Point3D(0, 0, zBaseFunil), Vector3D.UnitZ, Vector3D.UnitX), "funil_planta");
+            // Plano XZ com normal −Y: u = X e v = Z; atravessa a garra inteira em Y.
+            var funil_perfil = new PrismFeature(new[]
+            {
+                new Point3D(xBoca - 2.0, zVao - ChanfroEntrada - 2.0, 0),
+                new Point3D(xFimFunil + 0.3, zVao + 0.8, 0),
+                new Point3D(xFimFunil + 0.3, Altura + 1.0, 0),
+                new Point3D(xBoca - 2.0, Altura + 1.0, 0)
+            }, Largura + 2.0, new WorkPlane(new Point3D(0, Largura + 1.0, 0), new Vector3D(0, -1, 0), Vector3D.UnitX), "funil_perfil");
+            var funil_entrada = BooleanFeature.CreateIntersection("funil_entrada", funil_planta, funil_perfil);
+
+            var metade_com_entrada = BooleanFeature.CreateDifference("metade_com_entrada", metade, funil_entrada);
+            metade = metade_com_entrada;
+        }
 
         // Garra do lado +X: a mesma metade espelhada pelo plano de simetria.
         var metade_espelhada = metade.Transformed(Placement.MirrorX(atX: 0), name: "metade_espelhada");
