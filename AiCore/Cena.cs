@@ -133,37 +133,17 @@ var xChapaFurosBelt = (furoVerticalBeltA.X + furoVerticalBeltB.X) / 2.0 - chapaF
 var yChapaFurosBelt = (furoVerticalBeltA.Y + furoVerticalBeltB.Y) / 2.0 - chapaFurosBeltPeca.ComprimentoY / 2.0;
 var zChapaFurosBelt = alturaTopoCarrinhosY + carrinhoXPeca.Altura + blocoFixacaoBeltPeca.AlturaCorpo;
 var chapaFurosBelt = Add(chapaFurosBeltPeca, at: Placement.At(xChapaFurosBelt, yChapaFurosBelt, zChapaFurosBelt), name: "chapa_furos_belt", color: "#00CC6A");
-// --- Bloco 15 × 48 × 25 mm conectado à placa do carrinho Y pelos furos de fixação ---
-// Assenta no topo da placa e seus dois furos passantes coincidem com os furo_fixacao_carrinho_1
-// e furo_fixacao_carrinho_2 (25 mm de passo em Y, 3,5 mm da face externa da placa): o mesmo
-// parafuso atravessa o bloco, a placa e vai à porca do carrinho MGN15H.
-// A posição sai das PRÓPRIAS coordenadas locais dos furos da placa convertidas para o mundo
-// (a placa B é espelhada em X, por isso o fator sx), então o bloco acompanha a placa se ela
-// for movida/girada. O bloco é simétrico, logo não precisa de rotação para alinhar os furos.
-var blocoConexaoPlacaCarrinhoYPeca = new BlocoConexaoPlacaCarrinhoY();
-const double passoFurosPlacaCarrinhoY = 25.0;
-var sxPlacaSuporteYB = placaSuporteYB.Part.EspelhadoNoEixoY ? -1.0 : 1.0;
-var furoFixacaoPlacaB1Mundo = placaSuporteYB.ToWorld(new Point3D(passoFurosPlacaCarrinhoY / 2 * sxPlacaSuporteYB, -passoFurosPlacaCarrinhoY / 2, 0));
-var furoFixacaoPlacaB2Mundo = placaSuporteYB.ToWorld(new Point3D(passoFurosPlacaCarrinhoY / 2 * sxPlacaSuporteYB, passoFurosPlacaCarrinhoY / 2, 0));
-var topoPlacaSuporteYB = placaSuporteYB.ToWorld(new Point3D(0, 0, 5.5));
-var blocoConexaoPlacaCarrinhoYB = Add(blocoConexaoPlacaCarrinhoYPeca, at: Placement.At((furoFixacaoPlacaB1Mundo.X + furoFixacaoPlacaB2Mundo.X) / 2.0, (furoFixacaoPlacaB1Mundo.Y + furoFixacaoPlacaB2Mundo.Y) / 2.0, topoPlacaSuporteYB.Z), name: "bloco_conexao_placa_carrinho_y_b", color: "#00CC6A");
-// --- Bloco espelhado no eixo X (plano Y = 0), montado sobre a placa A ---
-// O bloco é simétrico em Y (os dois furos verticais ficam em y = ±PassoFuros/2), então o
-// espelhamento em X mantém os furos verticais na mesma posição relativa ao eixo dos furos da
-// placa. A posição sai das coordenadas locais dos furos da placa A convertidas para o mundo.
+// Referências da placa A para posicionar a conexão da correia (a placa B é a espelhada, por isso sx).
 var sxPlacaSuporteYA = placaSuporteYA.Part.EspelhadoNoEixoY ? -1.0 : 1.0;
-var furoFixacaoPlacaA1Mundo = placaSuporteYA.ToWorld(new Point3D(passoFurosPlacaCarrinhoY / 2 * sxPlacaSuporteYA, -passoFurosPlacaCarrinhoY / 2, 0));
-var furoFixacaoPlacaA2Mundo = placaSuporteYA.ToWorld(new Point3D(passoFurosPlacaCarrinhoY / 2 * sxPlacaSuporteYA, passoFurosPlacaCarrinhoY / 2, 0));
 var topoPlacaSuporteYA = placaSuporteYA.ToWorld(new Point3D(0, 0, 5.5));
-var blocoConexaoPlacaCarrinhoYA = Add(blocoConexaoPlacaCarrinhoYPeca, at: Placement.At((furoFixacaoPlacaA1Mundo.X + furoFixacaoPlacaA2Mundo.X) / 2.0, (furoFixacaoPlacaA1Mundo.Y + furoFixacaoPlacaA2Mundo.Y) / 2.0, topoPlacaSuporteYA.Z), name: "bloco_conexao_placa_carrinho_y_a", color: "#00CC6A");
-// --- Sólido base do bloco de fixação da belt, reduzido ao vão da correia (metade esquerda) ---
-// Posicionado logo ABAIXO do bloco_conexao_placa_carrinho_y_a e AO LADO da placa_suporte_carrinho_y_a:
-// a posição sai das coordenadas locais dos furos da placa A convertidas para o mundo (mesmo padrão
-// do bloco de conexão), com X deslocado para fora da face da placa (ao lado dela) e Z logo abaixo
-// da base do bloco de conexão. Acompanha o lado do motor, como o bloco_fixacao_belt completo.
+// --- Conexão da correia à placa A: garra de correia + parede + fixação superior ---
+// A face de apoio da peça (y = 0 local) encosta na face externa da placa A e o topo da garra fica
+// rente ao topo da placa. O plano de simetria da garra (x = 0 local) fica no eixo da fixacao_x_6
+// da placa (y = 2 local da placa), que atravessa a garra; os furos da fixação superior caem sobre
+// furo_fixacao_carrinho_1 e furo_fixacao_carrinho_2. Girada 90° em Z: o +Y local (para fora da
+// garra) aponta para −X do mundo, para longe da placa.
 var blocoFicacaoBeltVaoCorreiaPeca = new BlocoFicacaoBeltVaoCorreia();
 var xFaceExternaPlacaA = placaSuporteYA.ToWorld(new Point3D(16 * sxPlacaSuporteYA, 0, 0)).X;
-var xBlocoFicacaoBeltVaoCorreia = xFaceExternaPlacaA + blocoFicacaoBeltVaoCorreiaPeca.LarguraCorpoX / 2.0;
-var yBlocoFicacaoBeltVaoCorreia = (furoFixacaoPlacaA1Mundo.Y + furoFixacaoPlacaA2Mundo.Y) / 2.0;
-var zBlocoFicacaoBeltVaoCorreia = topoPlacaSuporteYA.Z - blocoFicacaoBeltVaoCorreiaPeca.AlturaCorpo;
-var blocoFicacaoBeltVaoCorreia = Add(blocoFicacaoBeltVaoCorreiaPeca, at: Placement.At(xBlocoFicacaoBeltVaoCorreia - 30, yBlocoFicacaoBeltVaoCorreia, zBlocoFicacaoBeltVaoCorreia, rotationZDegrees: rotacaoMotorZ).Then(Placement.RotationAbout(new Point3D(-158.134659, -37.5, 27), Vector3D.UnitZ, -90)).Then(Placement.Translate(new Vector3D(0, 22, 0))).Then(Placement.MirrorZ()).Then(Placement.Translate(new Vector3D(5, 0, 41))), name: "bloco_ficacao_belt_vao_correia", color: "#00CC6A");
+var yFixacaoX6PlacaA = placaSuporteYA.ToWorld(new Point3D(16 * sxPlacaSuporteYA, 2, 0)).Y;
+var zBlocoFicacaoBeltVaoCorreia = topoPlacaSuporteYA.Z - blocoFicacaoBeltVaoCorreiaPeca.Altura;
+var blocoFicacaoBeltVaoCorreia = Add(blocoFicacaoBeltVaoCorreiaPeca, at: Placement.At(xFaceExternaPlacaA, yFixacaoX6PlacaA, zBlocoFicacaoBeltVaoCorreia, rotationZDegrees: 90), name: "bloco_ficacao_belt_vao_correia", color: "#00CC6A");

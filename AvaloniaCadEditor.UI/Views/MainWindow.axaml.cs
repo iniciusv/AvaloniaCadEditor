@@ -13,6 +13,7 @@ public partial class MainWindow : Window
         GuideLabelsOverlay.AttachTo(ViewportControl);
         DraftingLabelsOverlay.AttachTo(ViewportControl);
         SelectionBoxOverlay.AttachTo(ViewportControl);
+        AxisTriadOverlay.AttachTo(ViewportControl);
 
         this.DataContextChanged += (s, e) =>
         {

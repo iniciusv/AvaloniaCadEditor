@@ -1,77 +1,77 @@
 /// <summary>
-/// Sólido base do <see cref="BlocoFixacaoBelt"/> reduzido à METADE ESQUERDA do vão da correia
-/// (a composição completa é espelhada em X), SEM porca_pressao_correia, rebaixo_fixacao,
-/// furo_fixacao, rebaixo_frontal nem rebaixo_inferior.
-/// A correia entra pelo canal, dá a volta no parafuso (furo_parafuso) dentro do alojamento e volta
-/// pelo mesmo canal, contornando o nariz: as duas camadas ficam espremidas em LarguraCanal.
-/// O vazio é montado no espaço das ferramentas: lingueta (material acima do canal) e nariz (raio de
-/// dobra do fio de retorno) são TIRADOS do vao_correia antes de ele cortar o corpo — nenhum sólido
-/// é unido dentro do vazio. Todas as posições derivam do parafuso:
-/// - a parede de entrada (y = ParafusoY − RaioAlojamento) é tangente ao alojamento, para o fio de
-///   entrada ir reto até enrolar no parafuso;
-/// - o nariz é tangente ao teto do canal e fica a FolgaNariz da superfície do parafuso. FolgaNariz
-///   nunca pode ser igual a RaioAlojamento − RaioParafuso (nariz tangente ao alojamento); abaixo
-///   disso o alojamento corta o nariz e a folga real ali passa a ser a do alojamento.
-/// As ferramentas passam 1 mm do topo (z = AlturaCorpo) e a lingueta/nariz sobram 1 mm para todo
-/// lado que não é face de trabalho, para não haver faces coplanares nas booleanas.
-/// O vão da correia vai de BaseVaoZ = 7 ao topo (10 mm, para a correia de 10 mm).
-/// Origem local = base do bloco_fixacao_mgn9 (local = mundo - (0, 0, 26)), igual ao BlocoFixacaoBelt.
+/// Conexão da correia à <see cref="PlacaSuporteCarrinhoY"/>: uma <see cref="GarraCorreia"/> encostada
+/// na face externa da placa (x = 16 local da placa), com o topo rente ao topo da placa, mais o
+/// suporte que a prende na placa.
+/// Mesmo referencial da garra: x = 0 no plano de simetria, y = 0 na face de apoio (encostada na
+/// placa; a garra cresce em +Y, para fora, e a fixação superior avança em −Y, sobre a placa), z = 0
+/// na base da garra.
+/// - furo_fixacao_x_6: furo horizontal no plano de simetria, coaxial à fixacao_x_6 da placa — o
+///   parafuso entra pela face de fora da garra e rosqueia na porca da placa. Passa pela nervura
+///   entre os dois alojamentos (paredes de ~0,55 mm de cada lado).
+/// - parede: continua para cima a parede maciça da garra (de y = 0 até a parede do canal), sem
+///   cobrir o canal; leva dois rasgos verticais (stadium) que a atravessam em Y, a DistanciaRasgos
+///   para cada lado do meio dos furos de fixação e AlturaRasgo acima do topo da placa.
+/// - fixacao_superior: chapa horizontal assentada no topo da placa, com os furos coincidentes com
+///   furo_fixacao_carrinho_1 e furo_fixacao_carrinho_2 (o mesmo parafuso vai à porca do carrinho).
 /// </summary>
 public sealed record BlocoFicacaoBeltVaoCorreia(
-    double LarguraCorpoX = 20.5,
-    double ComprimentoCorpoY = 14.5,
-    double AlturaCorpo = 17.0,
-    double BaseCorpoX = -20.615334,
-    double BaseCorpoY = 10.5,
-    double BaseCorpoZ = 4.0,
-    double BaseVaoX = -22.61533,
-    double BaseVaoZ = 7.0,
-    double ParafusoX = -5.61533,
-    double ParafusoY = 18.75,
-    double RaioParafuso = 1.6,
-    double RaioAlojamento = 3.25,  // parafuso + uma volta de correia + folga
-    double LarguraCanal = 2.45,    // duas camadas de correia, apertadas
-    double RaioNariz = 1.3,        // raio de dobra do fio de retorno
-    double FolgaNariz = 1.43) : Part // nunca igual a RaioAlojamento − RaioParafuso (tangência)
+    double AlturaParede = 20.0,
+    double EspessuraFixacaoSuperior = 5.0,
+    double PassoFurosFixacao = 25.0,
+    double DeslocamentoFurosFixacao = 2.0,   // em X, do plano de simetria ao meio dos dois furos
+    double DistanciaFurosFixacaoFace = 3.5,  // dos furos à face de apoio (= dos furos da placa à face dela)
+    double MargemFurosFixacao = 4.0,         // da chapa além dos furos
+    double DiametroFuro = 3.4,
+    double DistanciaFuroLateralTopo = 4.375, // eixo da fixacao_x_6 abaixo do topo da placa
+    double DistanciaRasgos = 10.0,
+    double AlturaRasgo = 12.5,
+    double RasgoMeiaAltura = 4.0) : Part
 {
+    private static readonly GarraCorreia Garra = new GarraCorreia();
+
+    public double Altura => Garra.Altura;
+
     protected override IFeature Build()
     {
-        // As ferramentas passam 1 mm acima do topo: nada termina coplanar com z = AlturaCorpo.
-        var topoFerramenta = AlturaCorpo + 1.0;
-        var alturaFerramenta = topoFerramenta - BaseVaoZ;
+        var metadeX = Garra.Comprimento / 2.0;
+        var raioFuro = DiametroFuro / 2.0;
+        var topoGarra = Garra.Altura;
+        var yParede = Garra.YParede;
 
-        // Parede de entrada tangente ao alojamento: o fio de entrada vai reto até enrolar no parafuso.
-        var yParede = ParafusoY - RaioAlojamento;
-        var yTetoCanal = yParede + LarguraCanal;
-        // Nariz tangente ao teto do canal, a FolgaNariz da superfície do parafuso.
-        var yNariz = yTetoCanal + RaioNariz;
-        var dyNariz = yNariz - ParafusoY;
-        var xNariz = ParafusoX - Math.Sqrt(Math.Pow(RaioParafuso + FolgaNariz + RaioNariz, 2) - dyNariz * dyNariz);
+        var garra_correia = Garra.Instance("garra_correia");
 
-        var corpo = new BoxFeature(new Point3D(BaseCorpoX, BaseCorpoY, BaseCorpoZ), LarguraCorpoX, ComprimentoCorpoY, AlturaCorpo - BaseCorpoZ) { Name = "corpo" };
+        // Parede maciça da garra continuada para cima; apoiada no topo dela (faces coincidentes).
+        var parede = new BoxFeature(new Point3D(-metadeX, 0, topoGarra), Garra.Comprimento, yParede, AlturaParede) { Name = "parede" };
+        // Chapa horizontal sobre a placa, da parede até MargemFurosFixacao além dos furos.
+        var yFurosFixacao = -DistanciaFurosFixacaoFace;
+        var yInicioFixacao = yFurosFixacao - MargemFurosFixacao;
+        var fixacao_superior = new BoxFeature(new Point3D(-metadeX, yInicioFixacao, topoGarra), Garra.Comprimento, yParede - yInicioFixacao, EspessuraFixacaoSuperior) { Name = "fixacao_superior" };
 
-        var vao_correia = new BoxFeature(new Point3D(BaseVaoX, yParede, BaseVaoZ), ParafusoX - BaseVaoX, yNariz - yParede, alturaFerramenta) { Name = "vao_correia", IsTransientTool = true };
-        // Material acima do canal estreito; sobra 1 mm para todo lado que não é face de trabalho.
-        var lingueta = new BoxFeature(new Point3D(BaseVaoX - 1.0, yTetoCanal, BaseVaoZ - 1.0), xNariz - BaseVaoX + 1.0, yNariz - yTetoCanal + 1.0, alturaFerramenta + 2.0) { Name = "lingueta", IsTransientTool = true };
-        var nariz = new CylinderFeature(new Point3D(xNariz, yNariz, BaseVaoZ - 1.0), Vector3D.UnitZ, RaioNariz, alturaFerramenta + 2.0) { Name = "nariz", IsTransientTool = true };
-        // Espaço da volta da correia em torno do parafuso.
-        var alojamento = new CylinderFeature(new Point3D(ParafusoX, ParafusoY, BaseVaoZ), Vector3D.UnitZ, RaioAlojamento, alturaFerramenta) { Name = "alojamento", IsTransientTool = true };
-        // Furo passante do parafuso em que a correia dá a volta.
-        var furo_parafuso = new CylinderFeature(new Point3D(ParafusoX, ParafusoY, BaseCorpoZ - 1.0), Vector3D.UnitZ, RaioParafuso, AlturaCorpo - BaseCorpoZ + 2.0) { Name = "furo_parafuso", IsTransientTool = true };
+        var suporte = BooleanFeature.CreateUnion("suporte", parede, fixacao_superior);
+        var corpo = BooleanFeature.CreateUnion("corpo", garra_correia, suporte);
 
-        // O vazio é montado no espaço das ferramentas: lingueta e nariz saem do vão, uma por booleana.
-        var vao_sem_lingueta = BooleanFeature.CreateDifference("vao_sem_lingueta", vao_correia, lingueta);
-        var canal_correia = BooleanFeature.CreateDifference("canal_correia", vao_sem_lingueta, nariz);
+        // Furos verticais coincidentes com furo_fixacao_carrinho_1 e furo_fixacao_carrinho_2 da placa.
+        var furo_fixacao_1 = new CylinderFeature(new Point3D(DeslocamentoFurosFixacao - PassoFurosFixacao / 2.0, yFurosFixacao, topoGarra - 1.0), Vector3D.UnitZ, raioFuro, EspessuraFixacaoSuperior + 2.0) { Name = "furo_fixacao_1", IsTransientTool = true };
+        var furo_fixacao_2 = new CylinderFeature(new Point3D(DeslocamentoFurosFixacao + PassoFurosFixacao / 2.0, yFurosFixacao, topoGarra - 1.0), Vector3D.UnitZ, raioFuro, EspessuraFixacaoSuperior + 2.0) { Name = "furo_fixacao_2", IsTransientTool = true };
 
-        var corpo_com_canal = BooleanFeature.CreateDifference("corpo_com_canal", corpo, canal_correia);
-        var bloco_ficacao_belt_vao_correia = BooleanFeature.CreateDifference("bloco_ficacao_belt_vao_correia", corpo_com_canal, alojamento, furo_parafuso);
+        // Furo horizontal coaxial à fixacao_x_6 da placa, atravessando a garra no plano de simetria.
+        var furo_fixacao_x_6 = new CylinderFeature(new Point3D(0, -1.0, topoGarra - DistanciaFuroLateralTopo), Vector3D.UnitY, raioFuro, Garra.Largura + 2.0) { Name = "furo_fixacao_x_6", IsTransientTool = true };
 
-        var bloco_ficacao_belt_vao_correia_chanfrado = new FilletFeature(name: "bloco_ficacao_belt_vao_correia_chanfrado", baseFeature: bloco_ficacao_belt_vao_correia, radius: 1)
-        {
-            Mode = FilletMode.Bevel,
-            ApplyToAllEdges = false,
-            Faces = { new FaceReference(bloco_ficacao_belt_vao_correia, -1, new Vector3D(0, 0, 1), new Point3D(BaseCorpoX + LarguraCorpoX, BaseCorpoY + ComprimentoCorpoY, AlturaCorpo), "CustomFace") }
-        };
-        return bloco_ficacao_belt_vao_correia_chanfrado;
+        // Rasgos verticais (stadium) na parede, atravessando-a em Y: a caixa dá o trecho reto e os
+        // dois cilindros arredondam as pontas.
+        var xRasgo1 = DeslocamentoFurosFixacao - DistanciaRasgos;
+        var xRasgo2 = DeslocamentoFurosFixacao + DistanciaRasgos;
+        var zRasgo = topoGarra + AlturaRasgo;
+        var rasgo_1 = new BoxFeature(new Point3D(xRasgo1 - raioFuro, -1.0, zRasgo - RasgoMeiaAltura), DiametroFuro, yParede + 2.0, 2.0 * RasgoMeiaAltura) { Name = "rasgo_1", IsTransientTool = true };
+        var cilindro_rasgo_superior_1 = new CylinderFeature(new Point3D(xRasgo1, -1.0, zRasgo + RasgoMeiaAltura), Vector3D.UnitY, raioFuro, yParede + 2.0) { Name = "cilindro_rasgo_superior_1", IsTransientTool = true };
+        var cilindro_rasgo_inferior_1 = new CylinderFeature(new Point3D(xRasgo1, -1.0, zRasgo - RasgoMeiaAltura), Vector3D.UnitY, raioFuro, yParede + 2.0) { Name = "cilindro_rasgo_inferior_1", IsTransientTool = true };
+        var rasgo_2 = new BoxFeature(new Point3D(xRasgo2 - raioFuro, -1.0, zRasgo - RasgoMeiaAltura), DiametroFuro, yParede + 2.0, 2.0 * RasgoMeiaAltura) { Name = "rasgo_2", IsTransientTool = true };
+        var cilindro_rasgo_superior_2 = new CylinderFeature(new Point3D(xRasgo2, -1.0, zRasgo + RasgoMeiaAltura), Vector3D.UnitY, raioFuro, yParede + 2.0) { Name = "cilindro_rasgo_superior_2", IsTransientTool = true };
+        var cilindro_rasgo_inferior_2 = new CylinderFeature(new Point3D(xRasgo2, -1.0, zRasgo - RasgoMeiaAltura), Vector3D.UnitY, raioFuro, yParede + 2.0) { Name = "cilindro_rasgo_inferior_2", IsTransientTool = true };
+
+        return BooleanFeature.CreateDifference("bloco_ficacao_belt_vao_correia", corpo,
+            furo_fixacao_1, furo_fixacao_2, furo_fixacao_x_6,
+            rasgo_1, cilindro_rasgo_superior_1, cilindro_rasgo_inferior_1,
+            rasgo_2, cilindro_rasgo_superior_2, cilindro_rasgo_inferior_2);
     }
 }

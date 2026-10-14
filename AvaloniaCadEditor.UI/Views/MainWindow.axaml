@@ -210,6 +210,7 @@
                 <drafting:DraftingLegend DataContext="{Binding Drafting}"
                                          HorizontalAlignment="Right" VerticalAlignment="Top" Margin="8" />
                 <controls:SelectionBoxOverlay x:Name="SelectionBoxOverlay" />
+                <controls:AxisTriadOverlay x:Name="AxisTriadOverlay" />
 
                 <!-- Erro na cena: o modelo exibido é o último que executou com sucesso -->
                 <Border IsVisible="{Binding ScriptEditor.HasErrors}"
