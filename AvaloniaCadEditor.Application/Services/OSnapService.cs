@@ -1,5 +1,6 @@
 using AvaloniaCadEditor.Domain.Entities;
 using AvaloniaCadEditor.Domain.Interfaces;
+using AvaloniaCadEditor.Domain.Mesh;
 using AvaloniaCadEditor.Domain.ValueObjects;
 
 namespace AvaloniaCadEditor.Application.Services;
@@ -16,7 +17,7 @@ public class OSnapService : IOSnapService
         _geometryEngine = geometryEngine;
     }
 
-    public Point3D GetSnappedPoint(Sketch sketch, Point3D cursor, Point3D? referencePoint, AvaloniaCadEditor.Domain.Mesh.TriangleMesh? solidMesh = null, bool solidSnapOnPlaneOnly = false)
+    public Point3D GetSnappedPoint(Sketch sketch, Point3D cursor, Point3D? referencePoint, AvaloniaCadEditor.Domain.Mesh.TriangleMesh? solidMesh = null, bool solidSnapOnPlaneOnly = false, IReadOnlyList<PlaneReference>? planeReferences = null)
     {
         if (!IsEnabled) return ApplyPolarAndGridSnap(sketch, cursor, referencePoint);
 
@@ -53,9 +54,11 @@ public class OSnapService : IOSnapService
 
         if (solidSnapOnPlaneOnly)
         {
-            if (solidMesh != null)
+            var references = planeReferences
+                ?? (solidMesh != null ? PlaneSection.Compute(solidMesh, sketch.Plane) : null);
+            if (references != null)
             {
-                foreach (var pt in SolidSnapPointsOnPlane(solidMesh, sketch.Plane))
+                foreach (var pt in PlaneReferenceSnapPoints(references, sketch.Plane))
                 {
                     var dist = cursor.DistanceTo(pt);
                     if (dist < minDistance)
@@ -90,35 +93,47 @@ public class OSnapService : IOSnapService
     }
 
     /// <summary>
-    /// Pontos de snap do sólido que ficam no plano de trabalho: as pontas e os pontos médios das arestas
-    /// de contorno (<c>FeatureEdges</c>) com as duas pontas no plano. É o mesmo critério de "face" do
-    /// realce de seleção e do chanfro por face (<see cref="WorkPlane.Contains"/>), então ao desenhar
-    /// sobre uma face o snap gruda no contorno dela — inclusive bocas de furo — e nunca em outra altura.
+    /// Pontos de snap das referências do plano de trabalho (<see cref="PlaneSection"/>): o contorno das faces
+    /// que estão no plano — inclusive bocas de furo — e o corte dos sólidos que o atravessam, nunca vértices
+    /// de outra altura. Polilinha comum dá seus cantos e o ponto médio de cada trecho reto; laço circular dá
+    /// o centro e os quatro quadrantes, e não os vértices da tesselação.
     /// </summary>
-    private IEnumerable<Point3D> SolidSnapPointsOnPlane(AvaloniaCadEditor.Domain.Mesh.TriangleMesh mesh, WorkPlane plane)
+    private IEnumerable<Point3D> PlaneReferenceSnapPoints(IReadOnlyList<PlaneReference> references, WorkPlane plane)
     {
-        if (mesh.Positions == null || mesh.FeatureEdges == null) yield break;
-
-        for (int i = 0; i + 1 < mesh.FeatureEdges.Length; i += 2)
+        foreach (var reference in references)
         {
-            var a = Vertex(mesh, mesh.FeatureEdges[i]);
-            var b = Vertex(mesh, mesh.FeatureEdges[i + 1]);
-            if (!plane.Contains(a) || !plane.Contains(b)) continue;
+            if (reference.IsCircle)
+            {
+                var c = reference.Center!.Value;
+                var r = reference.Radius!.Value;
+                if (Settings.CenterEnabled) yield return plane.ToWorldSpace(c);
+                if (Settings.EndpointEnabled)
+                {
+                    yield return plane.ToWorldSpace(new Point3D(c.X + r, c.Y, 0));
+                    yield return plane.ToWorldSpace(new Point3D(c.X - r, c.Y, 0));
+                    yield return plane.ToWorldSpace(new Point3D(c.X, c.Y + r, 0));
+                    yield return plane.ToWorldSpace(new Point3D(c.X, c.Y - r, 0));
+                }
+                continue;
+            }
 
+            var pts = reference.Points;
             if (Settings.EndpointEnabled)
             {
-                yield return a;
-                yield return b;
+                foreach (var p in pts) yield return plane.ToWorldSpace(p);
             }
             if (Settings.MidpointEnabled)
             {
-                yield return new Point3D((a.X + b.X) / 2, (a.Y + b.Y) / 2, (a.Z + b.Z) / 2);
+                int segments = reference.Closed ? pts.Count : pts.Count - 1;
+                for (int i = 0; i < segments; i++)
+                {
+                    var a = pts[i];
+                    var b = pts[(i + 1) % pts.Count];
+                    yield return plane.ToWorldSpace(new Point3D((a.X + b.X) / 2, (a.Y + b.Y) / 2, 0));
+                }
             }
         }
     }
-
-    private static Point3D Vertex(AvaloniaCadEditor.Domain.Mesh.TriangleMesh mesh, uint index) =>
-        new(mesh.Positions[index * 3], mesh.Positions[index * 3 + 1], mesh.Positions[index * 3 + 2]);
 
     private bool IsSnapTypeEnabled(SnapPointType type)
     {

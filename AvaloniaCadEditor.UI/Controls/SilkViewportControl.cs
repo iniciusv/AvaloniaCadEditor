@@ -56,6 +56,7 @@ public class SilkViewportControl : OpenGlControlBase
             new WireframeRenderPass(),
             new GridRenderPass(),
             new ProfileFaceRenderPass(),
+            new PlaneReferenceRenderPass(),
             new SketchEntityRenderPass(),
             new AvaloniaCadEditor.UI.ReferenceGuides.ReferenceGuideRenderPass(),
             new AvaloniaCadEditor.UI.Drafting.DraftingRenderPass(),

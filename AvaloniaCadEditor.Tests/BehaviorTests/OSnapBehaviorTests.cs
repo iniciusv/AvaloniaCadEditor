@@ -76,4 +76,30 @@ public class OSnapBehaviorTests
 
         snapped.Should().Be(new Point3D(1, 1, -1), "Mover/Girar levam sólidos até vértices de qualquer altura");
     }
+
+    [Fact]
+    public void OSnap_DesenhandoNoPlano_PegaOCentroDaBocaDeUmCilindro()
+    {
+        var sketch = new Sketch();
+        var osnap = new OSnapService(new Mock<IGeometryEngine>().Object);
+        var cilindro = AvaloniaCadEditor.Tests.Features.PlaneSectionTests.Cylinder(30, 30, 8, -10, 0);
+
+        var snapped = osnap.GetSnappedPoint(sketch, new Point3D(31, 29, 0), null, cilindro, solidSnapOnPlaneOnly: true);
+
+        snapped.X.Should().BeApproximately(30, 1e-4);
+        snapped.Y.Should().BeApproximately(30, 1e-4);
+    }
+
+    [Fact]
+    public void OSnap_DesenhandoNoPlano_PegaOPontoMedioDoCorteDeUmSolidoQueAtravessa()
+    {
+        var sketch = new Sketch();
+        var osnap = new OSnapService(new Mock<IGeometryEngine>().Object);
+        var caixa = AvaloniaCadEditor.Tests.Features.PlaneSectionTests.Box(0, 0, 40, 40, -5, 5);
+
+        var snapped = osnap.GetSnappedPoint(sketch, new Point3D(19, 1, 0), null, caixa, solidSnapOnPlaneOnly: true);
+
+        snapped.X.Should().BeApproximately(20, 1e-6, "o corte de cada parede é uma aresta reta, e o meio dela é ponto de snap");
+        snapped.Y.Should().BeApproximately(0, 1e-6);
+    }
 }

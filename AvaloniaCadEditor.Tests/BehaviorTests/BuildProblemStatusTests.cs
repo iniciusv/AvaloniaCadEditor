@@ -23,8 +23,8 @@ public class BuildProblemStatusTests
         var kernel = new OpenCascadeGeometryKernel();
         var mockEngine = new Mock<IGeometryEngine>();
         var mockSnap = new Mock<IOSnapService>();
-        mockSnap.Setup(s => s.GetSnappedPoint(It.IsAny<Sketch>(), It.IsAny<Point3D>(), It.IsAny<Point3D?>(), It.IsAny<TriangleMesh>(), It.IsAny<bool>()))
-                .Returns<Sketch, Point3D, Point3D?, TriangleMesh, bool>((s, p, t, m, o) => p);
+        mockSnap.Setup(s => s.GetSnappedPoint(It.IsAny<Sketch>(), It.IsAny<Point3D>(), It.IsAny<Point3D?>(), It.IsAny<TriangleMesh>(), It.IsAny<bool>(), It.IsAny<System.Collections.Generic.IReadOnlyList<AvaloniaCadEditor.Domain.ValueObjects.PlaneReference>?>()))
+                .Returns<Sketch, Point3D, Point3D?, TriangleMesh, bool, System.Collections.Generic.IReadOnlyList<AvaloniaCadEditor.Domain.ValueObjects.PlaneReference>?>((s, p, t, m, o, r) => p);
 
         var vm = TestUtils.CreateCadViewModel(mockEngine.Object, mockSnap.Object, null, kernel, new SelectionService());
         return new CadViewModelFixture(vm, kernel);

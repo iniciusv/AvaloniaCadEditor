@@ -213,8 +213,8 @@ public class ModelTreeAndPropertyInspectorTests
     {
         var mockGeo = new Moq.Mock<AvaloniaCadEditor.Domain.Interfaces.IGeometryEngine>();
         var mockSnap = new Moq.Mock<AvaloniaCadEditor.Application.Services.IOSnapService>();
-        mockSnap.Setup(s => s.GetSnappedPoint(Moq.It.IsAny<Sketch>(), Moq.It.IsAny<Point3D>(), Moq.It.IsAny<Point3D?>(), Moq.It.IsAny<AvaloniaCadEditor.Domain.Mesh.TriangleMesh>(), Moq.It.IsAny<bool>()))
-                .Returns<Sketch, Point3D, Point3D?, AvaloniaCadEditor.Domain.Mesh.TriangleMesh, bool>((s, p, t, m, o) => p);
+        mockSnap.Setup(s => s.GetSnappedPoint(Moq.It.IsAny<Sketch>(), Moq.It.IsAny<Point3D>(), Moq.It.IsAny<Point3D?>(), Moq.It.IsAny<AvaloniaCadEditor.Domain.Mesh.TriangleMesh>(), Moq.It.IsAny<bool>(), Moq.It.IsAny<System.Collections.Generic.IReadOnlyList<AvaloniaCadEditor.Domain.ValueObjects.PlaneReference>?>()))
+                .Returns<Sketch, Point3D, Point3D?, AvaloniaCadEditor.Domain.Mesh.TriangleMesh, bool, System.Collections.Generic.IReadOnlyList<AvaloniaCadEditor.Domain.ValueObjects.PlaneReference>?>((s, p, t, m, o, r) => p);
 
         var selectionService = new SelectionService();
         var vm = TestUtils.CreateCadViewModel(mockGeo.Object, mockSnap.Object, null, null, selectionService);
@@ -243,8 +243,8 @@ public class ModelTreeAndPropertyInspectorTests
         var kernel = new PureMathGeometryKernel();
         var mockGeo = new Moq.Mock<AvaloniaCadEditor.Domain.Interfaces.IGeometryEngine>();
         var mockSnap = new Moq.Mock<AvaloniaCadEditor.Application.Services.IOSnapService>();
-        mockSnap.Setup(s => s.GetSnappedPoint(Moq.It.IsAny<Sketch>(), Moq.It.IsAny<Point3D>(), Moq.It.IsAny<Point3D?>(), Moq.It.IsAny<AvaloniaCadEditor.Domain.Mesh.TriangleMesh>(), Moq.It.IsAny<bool>()))
-                .Returns<Sketch, Point3D, Point3D?, AvaloniaCadEditor.Domain.Mesh.TriangleMesh, bool>((s, p, t, m, o) => p);
+        mockSnap.Setup(s => s.GetSnappedPoint(Moq.It.IsAny<Sketch>(), Moq.It.IsAny<Point3D>(), Moq.It.IsAny<Point3D?>(), Moq.It.IsAny<AvaloniaCadEditor.Domain.Mesh.TriangleMesh>(), Moq.It.IsAny<bool>(), Moq.It.IsAny<System.Collections.Generic.IReadOnlyList<AvaloniaCadEditor.Domain.ValueObjects.PlaneReference>?>()))
+                .Returns<Sketch, Point3D, Point3D?, AvaloniaCadEditor.Domain.Mesh.TriangleMesh, bool, System.Collections.Generic.IReadOnlyList<AvaloniaCadEditor.Domain.ValueObjects.PlaneReference>?>((s, p, t, m, o, r) => p);
 
         var selectionService = new SelectionService();
         var vm = TestUtils.CreateCadViewModel(mockGeo.Object, mockSnap.Object, null, kernel, selectionService);

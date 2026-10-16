@@ -1480,6 +1480,7 @@ public class CadViewModel : INotifyPropertyChanged
 		}
 
 		SolidMesh = MeshManager.BuildCompositeMesh(Sketch, previewFeature);
+		_planeReferences = null;
 		ReportBuildProblems();
 
 		// The scene changed: the last guide analysis (if any) is now out of date. It is not
@@ -1588,6 +1589,55 @@ public class CadViewModel : INotifyPropertyChanged
 		}
 	}
 
+	private readonly Dictionary<Guid, (TriangleMesh Mesh, WorkPlane Plane, List<PlaneReference> References)> _planeReferenceCache = new();
+	private IReadOnlyList<PlaneReference>? _planeReferences;
+	private WorkPlane? _planeReferencesPlane;
+
+	/// <summary>
+	/// Geometria de referência do plano de trabalho no esboço: os contornos das faces que estão no plano e o
+	/// corte dos sólidos que o atravessam (<see cref="PlaneSection"/>). Só sólidos visíveis — o H e o olho da
+	/// árvore limpam o excesso — e sem o preview da extrusão. É calculada por feature (sólidos sobrepostos
+	/// não misturam laços) e guardada junto da malha e do plano: o arrasto da extrusão chama
+	/// <see cref="RefreshSolidMesh"/> a cada passo, mas a malha das outras features é a mesma instância.
+	/// </summary>
+	public IReadOnlyList<PlaneReference> PlaneReferences
+	{
+		get
+		{
+			if (CurrentMode != EditorMode.SketchEdit) return Array.Empty<PlaneReference>();
+			if (_planeReferences != null && Equals(_planeReferencesPlane, ActiveWorkPlane)) return _planeReferences;
+
+			_planeReferencesPlane = ActiveWorkPlane;
+			_planeReferences = BuildPlaneReferences(ActiveWorkPlane);
+			return _planeReferences;
+		}
+	}
+
+	private List<PlaneReference> BuildPlaneReferences(WorkPlane plane)
+	{
+		var result = new List<PlaneReference>();
+		var alive = new HashSet<Guid>();
+		foreach (var feature in Sketch.Features)
+		{
+			if (!feature.IsVisible || feature is WorkPlaneFeature) continue;
+			var mesh = MeshManager.GetFeatureMesh(Sketch, feature.Id, null);
+			if (mesh == null || mesh.TriangleCount == 0) continue;
+
+			alive.Add(feature.Id);
+			if (!_planeReferenceCache.TryGetValue(feature.Id, out var cached)
+				|| !ReferenceEquals(cached.Mesh, mesh) || !Equals(cached.Plane, plane))
+			{
+				cached = (mesh, plane, PlaneSection.Compute(mesh, plane));
+				_planeReferenceCache[feature.Id] = cached;
+			}
+			result.AddRange(cached.References);
+		}
+
+		foreach (var stale in _planeReferenceCache.Keys.Where(id => !alive.Contains(id)).ToList())
+			_planeReferenceCache.Remove(stale);
+		return result;
+	}
+
 	/// <summary>
 	/// Desenhando (modo de esboço), o snap no sólido fica no plano de trabalho: só o contorno da face em
 	/// que se desenha, nunca vértices de outra altura. Fora do esboço, Mover/Girar seguem com o snap 3D.
@@ -1598,7 +1648,7 @@ public class CadViewModel : INotifyPropertyChanged
 	{
 		SyncToolPlane();
 		var refPt = CurrentTool?.GetReferencePoint();
-		var snappedWorld = _osnapService.GetSnappedPoint(Sketch, worldPoint, refPt != null ? ActiveWorkPlane.ToWorldSpace(refPt.Value) : null, SolidMesh, SolidSnapOnPlaneOnly);
+		var snappedWorld = _osnapService.GetSnappedPoint(Sketch, worldPoint, refPt != null ? ActiveWorkPlane.ToWorldSpace(refPt.Value) : null, SolidMesh, SolidSnapOnPlaneOnly, SolidSnapOnPlaneOnly ? PlaneReferences : null);
 		var localSnapped = ActiveWorkPlane.ToLocalSpace(snappedWorld);
 		localSnapped = new Point3D(localSnapped.X, localSnapped.Y, 0.0);
 
@@ -1746,7 +1796,7 @@ public class CadViewModel : INotifyPropertyChanged
 	{
 		SyncToolPlane();
 		var refPt = CurrentTool?.GetReferencePoint();
-		var snappedWorld = _osnapService.GetSnappedPoint(Sketch, worldPoint, refPt != null ? ActiveWorkPlane.ToWorldSpace(refPt.Value) : null, SolidMesh, SolidSnapOnPlaneOnly);
+		var snappedWorld = _osnapService.GetSnappedPoint(Sketch, worldPoint, refPt != null ? ActiveWorkPlane.ToWorldSpace(refPt.Value) : null, SolidMesh, SolidSnapOnPlaneOnly, SolidSnapOnPlaneOnly ? PlaneReferences : null);
 		var localSnapped = ActiveWorkPlane.ToLocalSpace(snappedWorld);
 		CurrentSnappedPoint = localSnapped;
 		ApplyHitTolerance();
