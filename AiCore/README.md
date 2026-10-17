@@ -72,6 +72,26 @@ IReadOnlyList<string> modelos = await client.ListModelsAsync(local);
 LlmResult resposta = await client.SendConversationAsync(messages, local);
 ```
 
+### Ferramentas (function calling)
+
+O cliente só transporta as ferramentas, sem executar nada. Ele manda as `tools` na requisição
+e devolve as chamadas pedidas em `LlmResult.ToolCalls`. Quem executa é você: devolva cada resultado
+numa mensagem `role = "tool"` com o `ToolCallId` da chamada e reenvie a conversa.
+
+```csharp
+var tools = new[] { new ToolDefinition("get_view", "Vista em texto.", schema) };
+var r = await client.SendConversationAsync(messages, options, tools: tools);
+if (r.FinishReason == "tool_calls")
+{
+    messages.Add(new ChatMessage { Role = "assistant", Content = r.Content, ReasoningContent = r.ReasoningContent, ToolCalls = r.ToolCalls });
+    foreach (var call in r.ToolCalls)
+        messages.Add(new ChatMessage { Role = "tool", ToolCallId = call.Id, Content = Execute(call) });
+}
+```
+
+Com `tools` na DeepSeek, o `reasoning_content` de todos os turnos anteriores é reenviado,
+porque sem ele a API responde 400. O cliente cuida disso.
+
 ## Protocolos
 
 Implemente `IAiProtocol<TContext, TResult>` para cada tarefa da IA

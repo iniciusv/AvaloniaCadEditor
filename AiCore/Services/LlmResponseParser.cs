@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text.Json;
+using AiCore.Models;
 
 namespace AiCore.Services
 {
@@ -42,10 +43,48 @@ namespace AiCore.Services
                 Content = content,
                 ReasoningContent = reasoning,
                 FinishReason = ReadString(choice, "finish_reason"),
+                ToolCalls = ReadToolCalls(message),
                 RawBody = responseBody,
                 PromptTokens = promptTokens,
                 CompletionTokens = completionTokens
             };
+        }
+
+        /// <summary>
+        /// <c>message.tool_calls[]</c>. Tolerante: <c>arguments</c> pode vir como texto JSON (OpenAI,
+        /// DeepSeek, LM Studio) ou como objeto; sem <c>id</c>, um é gerado pela posição.
+        /// </summary>
+        private static IReadOnlyList<ToolCall> ReadToolCalls(JsonElement message)
+        {
+            if (!message.TryGetProperty("tool_calls", out var calls) || calls.ValueKind != JsonValueKind.Array)
+                return Array.Empty<ToolCall>();
+
+            var result = new List<ToolCall>();
+            int index = 0;
+            foreach (var call in calls.EnumerateArray())
+            {
+                if (!call.TryGetProperty("function", out var function) || function.ValueKind != JsonValueKind.Object)
+                    continue;
+
+                string name = ReadString(function, "name");
+                string arguments = "{}";
+                if (function.TryGetProperty("arguments", out var args))
+                {
+                    arguments = args.ValueKind switch
+                    {
+                        JsonValueKind.String => args.GetString() ?? "{}",
+                        JsonValueKind.Object or JsonValueKind.Array => args.GetRawText(),
+                        _ => "{}"
+                    };
+                }
+
+                string id = ReadString(call, "id");
+                if (id.Length == 0) id = $"call_{index}";
+                result.Add(new ToolCall(id, name, arguments));
+                index++;
+            }
+
+            return result;
         }
 
         /// <summary>Ids de <c>GET /v1/models</c> (<c>{ "data": [ { "id": ... } ] }</c>).</summary>
