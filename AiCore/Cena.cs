@@ -47,14 +47,21 @@ const double ladoExtrusoraY = 1; // extrusora em +Y
 const double ladoMotorY = -1; // motor (e bloco da correia) em -Y
 var rotacaoExtrusoraZ = ladoExtrusoraY > 0 ? 180.0 : 0.0;
 var rotacaoMotorZ = ladoMotorY > 0 ? 0.0 : 180.0;
+// --- Conexão bloco → suporte do hotend ---
+// O suporte do hotend fica afastado do bloco de fixação pela espessura da conexão (em Y, para o lado
+// da extrusora) e desnivelado para baixo; hotend e suporte acompanham as duas medidas.
+var conexaoBlocoSuporteHotendPeca = new ConexaoBlocoSuporteHotend(Largura: blocoFixacaoPeca.Largura, Espessura: 8, Desnivel: 20, AlturaBloco: blocoFixacaoPeca.Altura, AlturaSuporte: suporteHotendPeca.Altura);
 // --- Hotend V6, pendurado sob o carrinho X ---
 var alturaHotend = hotendPeca.AlturaBico + hotendPeca.AlturaBloco + hotendPeca.AlturaPescoco + hotendPeca.AlturaHeatsink;
-var hotend = Add(hotendPeca, at: Placement.At(0, ladoExtrusoraY * 23, alturaTopoCarrinhosY - alturaHotend + 10, rotationZDegrees: rotacaoExtrusoraZ), name: "hotend_v6");
+var hotend = Add(hotendPeca, at: Placement.At(0, ladoExtrusoraY * (23 + conexaoBlocoSuporteHotendPeca.Espessura), alturaTopoCarrinhosY - alturaHotend + 10 - conexaoBlocoSuporteHotendPeca.Desnivel, rotationZDegrees: rotacaoExtrusoraZ), name: "hotend_v6");
 // --- Bloco impresso para fixação ao carrinho MGN9C ---
 // Simétrico em Y (alojamentos de porca frontal e traseiro), então não muda com a inversão.
 var blocoFixacao = Add(blocoFixacaoPeca, at: Placement.At(0, 0, alturaTopoCarrinhosY + carrinhoXPeca.Altura), name: "bloco_fixacao_mgn9", color: "#00CC6A");
 // --- Suporte impresso do Hotend V6 ---
-var suporteHotend = Add(suporteHotendPeca, at: Placement.At(0, ladoExtrusoraY * blocoFixacaoPeca.Comprimento / 2, alturaTopoCarrinhosY + carrinhoXPeca.Altura, rotationZDegrees: rotacaoExtrusoraZ), name: "suporte_hotend_v6", color: "#00CC6A");
+var suporteHotend = Add(suporteHotendPeca, at: Placement.At(0, ladoExtrusoraY * (blocoFixacaoPeca.Comprimento / 2 + conexaoBlocoSuporteHotendPeca.Espessura), alturaTopoCarrinhosY + carrinhoXPeca.Altura - conexaoBlocoSuporteHotendPeca.Desnivel, rotationZDegrees: rotacaoExtrusoraZ), name: "suporte_hotend_v6", color: "#00CC6A");
+// A conexão encosta na face do bloco do lado da extrusora, com a base rente à do suporte; girada
+// como o suporte, o −Y local (para o suporte) aponta para o lado da extrusora.
+var conexaoBlocoSuporteHotend = Add(conexaoBlocoSuporteHotendPeca, at: Placement.At(0, ladoExtrusoraY * blocoFixacaoPeca.Comprimento / 2, alturaTopoCarrinhosY + carrinhoXPeca.Altura - conexaoBlocoSuporteHotendPeca.Desnivel, rotationZDegrees: rotacaoExtrusoraZ), name: "conexao_bloco_suporte_hotend", color: "#00CC6A");
 // --- Extrusões de alumínio 2020: estrutura de apoio dos trilhos ---
 // Extrusões sob os trilhos Y: 400 mm, crescendo só para +Y a partir da ponta -Y (que continua
 // onde estava, junto ao carrinho Z e ao tubo travessa). Os trilhos ficam na metade -Y delas.
@@ -166,23 +173,34 @@ var furoMotor2Mundo = suporteMotorNema17.ToWorld(furoMotor2Local);
 var rotacaoEspacadorMotor2Z = 315.0;
 var deslocamentoEspacadorMotor2 = Placement.RotationZ(rotacaoEspacadorMotor2Z).ApplyVector(new Vector3D(cilindroEspacadorMotor.Part.DeslocamentoFuro, 0, 0));
 var cilindroEspacadorMotor2 = Add(cilindroEspacadorMotor.Part, at: Placement.At(furoMotor2Mundo.X - deslocamentoEspacadorMotor2.X, furoMotor2Mundo.Y - deslocamentoEspacadorMotor2.Y, zTopoSuporteMotor, rotationZDegrees: rotacaoEspacadorMotor2Z), name: "cilindro_espacador_motor_2", color: "#00CC6A");
-// --- Polia GT2 de 24 dentes do eixo X: 10 mm, sem cubo (correia de 6 mm) ---
-// No eixo do motor, folgaPoliaSuporteMotor acima do topo do suporte, na mesma faixa de altura dos
-// dois espaçadores que desviam a correia.
-const double folgaPoliaSuporteMotor = 1;
-var poliaXPeca = new PoliaGt2(Dentes: 24, Altura: 10);
-var poliaX = Add(poliaXPeca, at: Placement.At(xMotorNema17, yMotorSuporte, zTopoSuporteMotor + folgaPoliaSuporteMotor), name: "polia_gt2_x");
-// --- Rolamentos da correia do eixo X ---
-// A correia de 6 mm corre centrada na faixa dentada da polia; os rolamentos que a desviam ficam
-// nessa mesma altura, montados de dois jeitos:
-//  - nas placas de suporte A e B, no furo porca_inferior_2: arruela do topo da placa até dois
-//    F623ZZ costas com costas (flanges para fora, 8 mm), centrados na correia. O M3 desce por eles e
-//    pela placa até a porca alojada na face inferior;
-//  - nos dois espaçadores do suporte do motor: um F686ZZ sobre o corpo Ø5,9 do espaçador, com a
-//    flange logo abaixo da correia, apoiado numa arruela no topo do suporte. Como o furo do
-//    espaçador é excêntrico, girá-lo pelo sextavado desloca o rolamento e tensiona a correia.
+// --- Bloco de pressao da correia (belt), fixado na lateral do bloco_fixacao_mgn9 ---
+// Acompanha o lado do motor: a correia vem da polia e o rebaixo inferior do bloco existe
+// justamente para passar livre do bloco_conexao_motor_2020. A peça já traz o rebaixo cilíndrico
+// do topo (furo_vertical) para alojar a cabeça dos parafusos M3 dos dois furos verticais.
+var blocoFixacaoBeltPeca = new BlocoFixacaoBelt();
+var blocoFixacaoBelt = Add(blocoFixacaoBeltPeca, at: Placement.At(0, 0, alturaTopoCarrinhosY + carrinhoXPeca.Altura, rotationZDegrees: rotacaoMotorZ), name: "bloco_fixacao_belt", color: "#00CC6A");
+// --- Altura da correia do eixo X ---
+// A correia de 6 mm corre apoiada no fundo do vão da garra do bloco_fixacao_belt: é o carrinho que
+// fixa essa altura, e a polia e os rolamentos se alinham a ela.
 const double larguraCorreiaX = 6;
-var zCentroCorreiaX = poliaX.ToWorld(new Point3D(0, 0, poliaXPeca.AlturaCubo + poliaXPeca.EspessuraFlange + poliaXPeca.LarguraDentes / 2)).Z;
+var zFundoVaoGarraBelt = blocoFixacaoBelt.ToWorld(new Point3D(0, 0, blocoFixacaoBeltPeca.AlturaCorpo - blocoFixacaoBeltPeca.AlturaCorreia)).Z;
+var zCentroCorreiaX = zFundoVaoGarraBelt + larguraCorreiaX / 2;
+// --- Polia GT2 de 24 dentes do eixo X: 10 mm, sem cubo (correia de 6 mm) ---
+// No eixo do motor, com a faixa dentada centrada na correia (fica 4 mm acima do topo do suporte),
+// na mesma faixa de altura dos dois espaçadores que desviam a correia.
+var poliaXPeca = new PoliaGt2(Dentes: 24, Altura: 10);
+var zBasePoliaX = zCentroCorreiaX - (poliaXPeca.AlturaCubo + poliaXPeca.EspessuraFlange + poliaXPeca.LarguraDentes / 2);
+var poliaX = Add(poliaXPeca, at: Placement.At(xMotorNema17, yMotorSuporte, zBasePoliaX), name: "polia_gt2_x");
+// --- Rolamentos da correia do eixo X ---
+// Os rolamentos que desviam a correia ficam centrados nela, sempre aos pares costas com costas
+// (flanges para fora), para a correia de 6 mm correr entre as duas flanges:
+//  - nas placas de suporte A e B, no furo porca_inferior_2: arruela do topo da placa até dois
+//    F623ZZ (8 mm, 6 mm entre flanges). O M3 desce por eles e pela placa até a porca alojada na
+//    face inferior;
+//  - nos dois espaçadores do suporte do motor: dois F686ZZ (10 mm, 7,8 mm entre flanges) sobre o
+//    corpo Ø5,9 do espaçador, apoiados numa arruela no topo do suporte — um só deixava 3,9 mm
+//    acima da flange. Como o furo do espaçador é excêntrico, girá-lo pelo sextavado desloca os
+//    rolamentos e tensiona a correia.
 var rolamentoF623Peca = Rolamento.F623ZZ;
 var zBaseRolamentosPlaca = zCentroCorreiaX - rolamentoF623Peca.Largura;
 // porca_inferior_2 fica em (−4,5·sx, 10) local da placa; z = 5,5 é o topo dela.
@@ -197,20 +215,53 @@ var rolamentoPlacaBInferior = Add(rolamentoF623Peca, at: Placement.At(topoPorcaI
 var rolamentoPlacaBSuperior = Add(rolamentoF623Peca with { FlangeNoTopo = true }, at: Placement.At(topoPorcaInferior2PlacaB.X, topoPorcaInferior2PlacaB.Y, zBaseRolamentosPlaca + rolamentoF623Peca.Largura), name: "rolamento_f623_placa_b_superior");
 // Rolamento do espaçador: coaxial com o CORPO do espaçador (a origem dele), não com o furo.
 var rolamentoF686Peca = Rolamento.F686ZZ;
-var zBaseRolamentoEspacador = zCentroCorreiaX - larguraCorreiaX / 2 - rolamentoF686Peca.EspessuraFlange;
-var arruelaRolamentoEspacadorPeca = new ArruelaEspacadora(Altura: zBaseRolamentoEspacador - zTopoSuporteMotor, DiametroFuro: cilindroEspacadorMotor.Part.DiametroExterno + 0.3, DiametroExterno: 10, DiametroColar: 7.5);
+var zBaseRolamentosEspacador = zCentroCorreiaX - rolamentoF686Peca.Largura;
+var arruelaRolamentoEspacadorPeca = new ArruelaEspacadora(Altura: zBaseRolamentosEspacador - zTopoSuporteMotor, DiametroFuro: cilindroEspacadorMotor.Part.DiametroExterno + 0.3, DiametroExterno: 10, DiametroColar: 7.5);
 var centroEspacadorMotor1 = cilindroEspacadorMotor.ToWorld(Point3D.Origin);
 var centroEspacadorMotor2 = cilindroEspacadorMotor2.ToWorld(Point3D.Origin);
 var arruelaRolamentoEspacador1 = Add(arruelaRolamentoEspacadorPeca, at: Placement.At(centroEspacadorMotor1), name: "arruela_rolamento_espacador_1", color: "#00CC6A");
 var arruelaRolamentoEspacador2 = Add(arruelaRolamentoEspacadorPeca, at: Placement.At(centroEspacadorMotor2), name: "arruela_rolamento_espacador_2", color: "#00CC6A");
-var rolamentoEspacador1 = Add(rolamentoF686Peca, at: Placement.At(centroEspacadorMotor1.X, centroEspacadorMotor1.Y, zBaseRolamentoEspacador), name: "rolamento_f686_espacador_1");
-var rolamentoEspacador2 = Add(rolamentoF686Peca, at: Placement.At(centroEspacadorMotor2.X, centroEspacadorMotor2.Y, zBaseRolamentoEspacador), name: "rolamento_f686_espacador_2");
-// --- Bloco de pressao da correia (belt), fixado na lateral do bloco_fixacao_mgn9 ---
-// Acompanha o lado do motor: a correia vem da polia e o rebaixo inferior do bloco existe
-// justamente para passar livre do bloco_conexao_motor_2020. A peça já traz o rebaixo cilíndrico
-// do topo (furo_vertical) para alojar a cabeça dos parafusos M3 dos dois furos verticais.
-var blocoFixacaoBeltPeca = new BlocoFixacaoBelt();
-var blocoFixacaoBelt = Add(blocoFixacaoBeltPeca, at: Placement.At(0, 0, alturaTopoCarrinhosY + carrinhoXPeca.Altura, rotationZDegrees: rotacaoMotorZ), name: "bloco_fixacao_belt", color: "#00CC6A");
+var rolamentoEspacador1Inferior = Add(rolamentoF686Peca, at: Placement.At(centroEspacadorMotor1.X, centroEspacadorMotor1.Y, zBaseRolamentosEspacador), name: "rolamento_f686_espacador_1_inferior");
+var rolamentoEspacador1Superior = Add(rolamentoF686Peca with { FlangeNoTopo = true }, at: Placement.At(centroEspacadorMotor1.X, centroEspacadorMotor1.Y, zBaseRolamentosEspacador + rolamentoF686Peca.Largura), name: "rolamento_f686_espacador_1_superior");
+var rolamentoEspacador2Inferior = Add(rolamentoF686Peca, at: Placement.At(centroEspacadorMotor2.X, centroEspacadorMotor2.Y, zBaseRolamentosEspacador), name: "rolamento_f686_espacador_2_inferior");
+var rolamentoEspacador2Superior = Add(rolamentoF686Peca with { FlangeNoTopo = true }, at: Placement.At(centroEspacadorMotor2.X, centroEspacadorMotor2.Y, zBaseRolamentosEspacador + rolamentoF686Peca.Largura), name: "rolamento_f686_espacador_2_superior");
+// --- Correia GT2 do eixo X ---
+// Tira lisa (sem os dentes) varrida pela linha de centro da correia, no plano zCentroCorreiaX, de
+// uma ponta presa na garra do bloco_fixacao_belt até a outra:
+//   garra (−X) → rolamentos da placa A → espaçador 2 → polia → espaçador 1 → rolamentos da placa B → garra (+X)
+// Espaçadores e polia formam um ômega: a correia abraça a polia pelos dentes e passa pelas costas
+// nos rolamentos dos espaçadores. Em cada garra a correia entra pelo canal encostada na parede, dá
+// a volta no parafuso, contorna o nariz e a ponta volta pelo canal como segunda camada. A espessura
+// de 1,2 mm faz as duas camadas caberem no canal de 2,45 mm.
+// Os sentidos das voltas (vistos de +Z) e o lado da garra de cada ponta valem para o motor em −Y
+// (garra girada 180°: a metade +X local dela fica do lado da placa A).
+const double espessuraCorreiaX = 1.2;
+var garraBelt = blocoFixacaoBeltPeca.Garra;
+Point3D NoPlanoCorreiaX(Point3D p) => new Point3D(p.X, p.Y, zCentroCorreiaX);
+Point3D NaGarraBelt(double x, double y) => NoPlanoCorreiaX(blocoFixacaoBelt.ToWorld(blocoFixacaoBeltPeca.PosicaoGarra.Apply(new Point3D(x, y, 0))));
+// Raios da linha de centro: o de cada peça mais meia espessura da correia.
+var raioCorreiaNarizGarra = garraBelt.RaioNariz + espessuraCorreiaX / 2;
+var raioCorreiaParafusoGarra = garraBelt.RaioParafuso + espessuraCorreiaX / 2;
+var raioCorreiaF623 = rolamentoF623Peca.DiametroExterno / 2 + espessuraCorreiaX / 2;
+var raioCorreiaF686 = rolamentoF686Peca.DiametroExterno / 2 + espessuraCorreiaX / 2;
+var raioCorreiaPoliaX = poliaXPeca.DiametroExterno / 2 + espessuraCorreiaX / 2;
+// Pontas na boca do canal, na camada de cima (encostada no teto do canal, tangente ao nariz).
+var pontaCorreiaXA = NaGarraBelt(garraBelt.Comprimento / 2, garraBelt.NarizY - raioCorreiaNarizGarra);
+var pontaCorreiaXB = NaGarraBelt(-garraBelt.Comprimento / 2, garraBelt.NarizY - raioCorreiaNarizGarra);
+var caminhoCorreiaX = SweepPath.AroundCircles(pontaCorreiaXA, new[]
+{
+    new SweepWrap(NaGarraBelt(-garraBelt.NarizX, garraBelt.NarizY), raioCorreiaNarizGarra, Clockwise: true),
+    new SweepWrap(NaGarraBelt(garraBelt.DistanciaParafuso, garraBelt.ParafusoY), raioCorreiaParafusoGarra, Clockwise: false),
+    new SweepWrap(NoPlanoCorreiaX(topoPorcaInferior2PlacaA), raioCorreiaF623, Clockwise: false),
+    new SweepWrap(NoPlanoCorreiaX(centroEspacadorMotor2), raioCorreiaF686, Clockwise: true),
+    new SweepWrap(NoPlanoCorreiaX(poliaX.ToWorld(Point3D.Origin)), raioCorreiaPoliaX, Clockwise: false),
+    new SweepWrap(NoPlanoCorreiaX(centroEspacadorMotor1), raioCorreiaF686, Clockwise: true),
+    new SweepWrap(NoPlanoCorreiaX(topoPorcaInferior2PlacaB), raioCorreiaF623, Clockwise: false),
+    new SweepWrap(NaGarraBelt(-garraBelt.DistanciaParafuso, garraBelt.ParafusoY), raioCorreiaParafusoGarra, Clockwise: false),
+    new SweepWrap(NaGarraBelt(garraBelt.NarizX, garraBelt.NarizY), raioCorreiaNarizGarra, Clockwise: true),
+}, pontaCorreiaXB, Vector3D.UnitZ);
+var correiaGt2X = new SweepFeature(SweepSection.Rectangle(espessuraCorreiaX, larguraCorreiaX), caminhoCorreiaX, upReference: Vector3D.UnitZ) { Name = "correia_gt2_x", Color = "#303030" };
+AddFeature(correiaGt2X);
 // --- Chapa de 20 x 10 mm (arestas chanfradas) assentada no topo do bloco_fixacao_belt ---
 // Reproduz, na mesma posição, os dois furos verticais de 3,2 mm do bloco (furo_vertical_3_2 e
 // o seu espelhado, distantes 11 mm). As posições são obtidas convertendo as coordenadas locais
