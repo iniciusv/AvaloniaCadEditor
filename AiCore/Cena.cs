@@ -195,3 +195,20 @@ var blocoFicacaoBeltVaoCorreia = Add(blocoFicacaoBeltVaoCorreiaPeca, at: Placeme
 var tuboTravessaPeca = new TuboRetangular(Comprimento: cantoExtrusaoYB.X - cantoExtrusaoYA.X, Largura: 50, Altura: 30);
 var yPontaExtrusoesY = Math.Min(cantoExtrusaoYA.Y, cantoExtrusaoYB.Y);
 var tuboTravessa = Add(tuboTravessaPeca, at: Placement.At(cantoExtrusaoYA.X, yPontaExtrusoesY + tuboTravessaPeca.Largura, 0, rotationZDegrees: -90), name: "tubo_travessa");
+// --- Motores NEMA17 do eixo Y (movem carrinhoYA e carrinhoYB), deitados sobre o tubo travessa ---
+// Vistos de frente (plano XZ), cada motor fica com a face do eixo voltada para fora, para o trilho Z
+// do seu lado; a polia vai no eixo, no vão entre a ponta do tubo e o trilho Z, e a correia corre em Y.
+// A ponta do eixo para folgaEixoMotorYTrilhoZ antes da face interna do trilho Z.
+// Girar 90° em Y leva o eixo do motor (Z local) para X do mundo: −90° aponta para −X (lado A),
+// +90° para +X (lado B). O X local vai para ±Z do mundo, então o corpo ocupa ±Lado/2 em Z em torno
+// da origem: ela fica Lado/2 acima do topo do tubo para o motor apoiar nele.
+const double folgaEixoMotorYTrilhoZ = 1;
+var zTopoTuboTravessa = tuboTravessa.ToWorld(new Point3D(0, 0, tuboTravessaPeca.Altura)).Z;
+var yCentroTuboTravessa = tuboTravessa.ToWorld(new Point3D(tuboTravessaPeca.Largura / 2, 0, 0)).Y;
+var xFaceInternaTrilhoZA = trilhoZA.ToWorld(new Point3D(0, 0, trilhoZPeca.Altura)).X;
+var xFaceInternaTrilhoZB = trilhoZB.ToWorld(new Point3D(0, 0, trilhoZPeca.Altura)).X;
+// Da base traseira do motor (origem local) até a ponta do eixo.
+var alcanceEixoMotorY = motorNema17Peca.Comprimento + motorNema17Peca.AlturaBoss + motorNema17Peca.ComprimentoEixo;
+var zMotorY = zTopoTuboTravessa + motorNema17Peca.Lado / 2;
+var motorYA = Add(motorNema17Peca, at: Placement.Rotation(Vector3D.UnitY, -90).Then(Placement.At(xFaceInternaTrilhoZA + folgaEixoMotorYTrilhoZ + alcanceEixoMotorY, yCentroTuboTravessa, zMotorY)), name: "motor_nema17_y_a");
+var motorYB = Add(motorNema17Peca, at: Placement.Rotation(Vector3D.UnitY, 90).Then(Placement.At(xFaceInternaTrilhoZB - folgaEixoMotorYTrilhoZ - alcanceEixoMotorY, yCentroTuboTravessa, zMotorY)), name: "motor_nema17_y_b");
