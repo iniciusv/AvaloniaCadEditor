@@ -87,6 +87,48 @@ public class LlmClientRequestBodyTests
     }
 
     [Fact]
+    public void BuildRequestBody_ComThinkingNone_NaoEnviaThinkingMesmoNaDeepSeek()
+    {
+        var body = LlmClient.BuildRequestBody(
+            "deepseek-v4-pro", DeepSeekUrl, new List<object>(), 0.3, 8192, enableThinking: true, ThinkingControl.None);
+
+        JsonSerializer.Serialize(body, LlmClient.SerializerOptions).Should().NotContain("thinking");
+    }
+
+    [Fact]
+    public void BuildRequestBody_ComThinkingDeepSeekToggle_EnviaThinkingEmQualquerDestino()
+    {
+        var body = LlmClient.BuildRequestBody(
+            "qwen3", "http://localhost:11434/v1", new List<object>(), 0.3, 8192, enableThinking: false, ThinkingControl.DeepSeekToggle);
+
+        JsonSerializer.Serialize(body, LlmClient.SerializerOptions)
+            .Should().Contain("\"thinking\":{\"type\":\"disabled\"}");
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(-1)]
+    public void BuildRequestBody_ComMaxTokensZero_OmiteMaxTokens(int maxTokens)
+    {
+        var body = LlmClient.BuildRequestBody(
+            "qwen3", "http://localhost:11434/v1", new List<object>(), 0.3, maxTokens, enableThinking: false);
+
+        JsonSerializer.Serialize(body, LlmClient.SerializerOptions).Should().NotContain("max_tokens");
+    }
+
+    [Theory]
+    [InlineData("https://api.deepseek.com/", "https://api.deepseek.com/v1/chat/completions")]
+    [InlineData("https://api.deepseek.com", "https://api.deepseek.com/v1/chat/completions")]
+    [InlineData("http://localhost:11434/v1", "http://localhost:11434/v1/chat/completions")]
+    [InlineData("http://localhost:1234/v1/", "http://localhost:1234/v1/chat/completions")]
+    [InlineData("http://localhost:8080", "http://localhost:8080/v1/chat/completions")]
+    [InlineData("", "https://api.deepseek.com/v1/chat/completions")]
+    public void BuildEndpoint_AceitaUrlBaseComOuSemV1(string baseUrl, string expected)
+    {
+        LlmClient.BuildEndpoint(baseUrl, "chat/completions").Should().Be(expected);
+    }
+
+    [Fact]
     public void BuildRequestBody_PreservaModeloMensagensETemperatura()
     {
         string json = BuildJson("deepseek-flash", enableThinking: false);

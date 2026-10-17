@@ -12,8 +12,9 @@ JsonOperator para ser copiado para outros projetos.
 |---|---|
 | `Abstractions\IAiProtocol.cs` | Contrato `IAiProtocol<TContext, TResult>` + `ProtocolParseResult<TResult>` |
 | `Models\ChatMessage.cs` | Modelo de mensagem (POCO puro, sem UI/Mvvm) |
-| `Models\LlmOptions.cs` | Configuração da chamada (ApiKey, BaseUrl, Model, Temperature, etc.) |
-| `Services\LlmClient.cs` | Cliente HTTP compatível com OpenAI (`/v1/chat/completions`) |
+| `Models\LlmOptions.cs` | Configuração da chamada (ApiKey, BaseUrl, Model, Temperature, MaxTokens, Thinking, RequestTimeout) |
+| `Services\LlmClient.cs` | Cliente HTTP compatível com OpenAI (`/v1/chat/completions`, `/v1/models`) |
+| `Services\LlmResponseParser.cs` | Leitura tolerante da resposta: `reasoning_content`, `reasoning` ou `<think>` no conteúdo |
 
 ## Como usar
 
@@ -47,6 +48,28 @@ Console.WriteLine(result.Content);           // texto da resposta
 Console.WriteLine(result.ReasoningContent);  // raciocínio (se houver)
 Console.WriteLine(result.PromptTokens);      // tokens de entrada
 Console.WriteLine(result.CompletionTokens);  // tokens de saída
+```
+
+### Servidor local (Ollama, LM Studio, llama.cpp)
+
+Qualquer servidor OpenAI-compatível serve. Sem chave, a requisição vai sem `Authorization`; com
+`MaxTokens = 0`, vale o limite do servidor; e `ThinkingControl.None` não manda o campo `thinking`,
+que é da DeepSeek.
+
+```csharp
+var local = new LlmOptions
+{
+    BaseUrl = "http://localhost:11434/v1",   // LM Studio: 1234, llama.cpp: 8080
+    Model = "qwen3:8b",
+    ApiKey = "",
+    ApiKeyRequired = false,
+    MaxTokens = 0,
+    Thinking = ThinkingControl.None,
+    RequestTimeout = TimeSpan.FromMinutes(30)
+};
+
+IReadOnlyList<string> modelos = await client.ListModelsAsync(local);
+LlmResult resposta = await client.SendConversationAsync(messages, local);
 ```
 
 ## Protocolos

@@ -18,6 +18,10 @@ namespace AiCore.Services
     {
         public string Content { get; set; } = string.Empty;
         public string ReasoningContent { get; set; } = string.Empty;
+
+        /// <summary><c>finish_reason</c> da primeira escolha ("stop", "length", ...). Vazio se o servidor não informar.</summary>
+        public string FinishReason { get; set; } = string.Empty;
+
         public string RawBody { get; set; } = string.Empty;
         public int PromptTokens { get; set; }
         public int CompletionTokens { get; set; }
@@ -25,18 +29,27 @@ namespace AiCore.Services
 
     /// <summary>
     /// Cliente HTTP genérico para APIs de chat compatíveis com o formato OpenAI
-    /// (endpoint POST /v1/chat/completions). Sem dependências externas (apenas BCL).
+    /// (endpoint POST /v1/chat/completions): DeepSeek, Ollama, LM Studio, llama.cpp etc.
+    /// Sem dependências externas (apenas BCL).
     /// </summary>
     public class LlmClient
     {
-        private static readonly HttpClient _httpClient = new HttpClient();
+        private const string DefaultBaseUrl = "https://api.deepseek.com/";
+
+        // Sem timeout global: cada requisição usa o LlmOptions.RequestTimeout.
+        private static readonly HttpClient SharedHttpClient = new HttpClient { Timeout = Timeout.InfiniteTimeSpan };
+
+        private readonly HttpClient _httpClient;
 
         public LlmClient()
         {
-            if (_httpClient.Timeout < TimeSpan.FromMinutes(15))
-            {
-                _httpClient.Timeout = TimeSpan.FromMinutes(15);
-            }
+            _httpClient = SharedHttpClient;
+        }
+
+        /// <summary>Usa um handler próprio (testes, proxies).</summary>
+        public LlmClient(HttpMessageHandler handler)
+        {
+            _httpClient = new HttpClient(handler) { Timeout = Timeout.InfiniteTimeSpan };
         }
 
         /// <summary>Opções de serialização do corpo da requisição.</summary>
@@ -78,6 +91,7 @@ namespace AiCore.Services
         /// Monta o corpo da requisição de chat. O campo <c>thinking</c> é sempre declarado
         /// explicitamente (<c>enabled</c>/<c>disabled</c>) nos destinos DeepSeek: omiti-lo não
         /// desliga o raciocínio, pois o thinking mode é ligado por padrão no servidor.
+        /// Com <paramref name="maxTokens"/> &lt;= 0 o campo <c>max_tokens</c> é omitido.
         /// </summary>
         public static object BuildRequestBody(
             string modelName,
@@ -85,29 +99,49 @@ namespace AiCore.Services
             List<object> apiMessages,
             double temperature,
             int maxTokens,
-            bool enableThinking)
+            bool enableThinking,
+            ThinkingControl thinking = ThinkingControl.Auto)
         {
-            if (!SupportsThinkingToggle(modelName, baseUrl))
+            var body = new Dictionary<string, object>
             {
-                return new
-                {
-                    model = modelName,
-                    messages = apiMessages,
-                    temperature = temperature,
-                    max_tokens = maxTokens,
-                    stream = false
-                };
+                ["model"] = modelName,
+                ["messages"] = apiMessages
+            };
+
+            bool sendThinking = thinking switch
+            {
+                ThinkingControl.DeepSeekToggle => true,
+                ThinkingControl.None => false,
+                _ => SupportsThinkingToggle(modelName, baseUrl)
+            };
+            if (sendThinking)
+            {
+                body["thinking"] = new { type = enableThinking ? "enabled" : "disabled" };
             }
 
-            return new
+            body["temperature"] = temperature;
+            if (maxTokens > 0)
             {
-                model = modelName,
-                messages = apiMessages,
-                thinking = new { type = enableThinking ? "enabled" : "disabled" },
-                temperature = temperature,
-                max_tokens = maxTokens,
-                stream = false
-            };
+                body["max_tokens"] = maxTokens;
+            }
+
+            body["stream"] = false;
+            return body;
+        }
+
+        /// <summary>
+        /// URL completa de um caminho da API (<c>chat/completions</c>, <c>models</c>) a partir da
+        /// URL base, com ou sem o <c>/v1</c> no fim. Ex: <c>http://localhost:11434/v1</c> e
+        /// <c>http://localhost:11434/</c> dão o mesmo endpoint.
+        /// </summary>
+        public static string BuildEndpoint(string baseUrl, string path)
+        {
+            if (string.IsNullOrWhiteSpace(baseUrl)) baseUrl = DefaultBaseUrl;
+            if (!baseUrl.EndsWith("/")) baseUrl += "/";
+
+            string endpoint = baseUrl + "v1/" + path;
+            if (endpoint.Contains("/v1/v1/")) endpoint = endpoint.Replace("/v1/v1/", "/v1/");
+            return endpoint;
         }
 
         /// <summary>
@@ -128,71 +162,84 @@ namespace AiCore.Services
                 throw new ArgumentNullException(nameof(options));
             }
 
-            if (string.IsNullOrWhiteSpace(options.ApiKey))
+            if (options.ApiKeyRequired && string.IsNullOrWhiteSpace(options.ApiKey))
             {
                 throw new InvalidOperationException("Chave de API não configurada.");
             }
 
-            string baseUrl = options.BaseUrl;
-            if (string.IsNullOrWhiteSpace(baseUrl)) baseUrl = "https://api.deepseek.com/";
-            if (!baseUrl.EndsWith("/")) baseUrl += "/";
-
-            string endpoint = baseUrl + "v1/chat/completions";
-            if (endpoint.Contains("/v1/v1/")) endpoint = endpoint.Replace("/v1/v1/", "/v1/");
-
-            List<object> apiMessages = BuildApiMessages(messages);
-
+            string baseUrl = string.IsNullOrWhiteSpace(options.BaseUrl) ? DefaultBaseUrl : options.BaseUrl;
             string modelName = options.Model ?? "deepseek-v4-pro";
-            double temp = temperature ?? options.Temperature;
-            int maxTokens = options.MaxTokens > 0 ? options.MaxTokens : 384000;
 
             object requestBody = BuildRequestBody(
-                modelName, baseUrl, apiMessages, temp, maxTokens, options.EnableThinkingMode);
+                modelName,
+                baseUrl,
+                BuildApiMessages(messages),
+                temperature ?? options.Temperature,
+                options.MaxTokens,
+                options.EnableThinkingMode,
+                options.Thinking);
 
             string jsonContent = JsonSerializer.Serialize(requestBody, SerializerOptions);
 
-            using var request = new HttpRequestMessage(HttpMethod.Post, endpoint);
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiKey);
+            using var request = new HttpRequestMessage(HttpMethod.Post, BuildEndpoint(baseUrl, "chat/completions"));
+            Authorize(request, options);
             request.Content = new StringContent(jsonContent, Encoding.UTF8, "application/json");
 
-            var response = await _httpClient.SendAsync(request, cancellationToken);
-            string responseBody = await response.Content.ReadAsStringAsync();
+            string responseBody = await SendAsync(request, options.RequestTimeout, cancellationToken);
+            return LlmResponseParser.Parse(responseBody);
+        }
 
-            if (!response.IsSuccessStatusCode)
+        /// <summary>
+        /// Lista os modelos do servidor (<c>GET /v1/models</c>). Útil para servidores locais,
+        /// onde o id do modelo depende do que está instalado.
+        /// </summary>
+        public async Task<IReadOnlyList<string>> ListModelsAsync(LlmOptions options, CancellationToken cancellationToken = default)
+        {
+            if (options == null)
             {
-                throw new HttpRequestException($"Erro na API da IA ({(int)response.StatusCode}): {responseBody}");
+                throw new ArgumentNullException(nameof(options));
             }
 
-            using var doc = JsonDocument.Parse(responseBody);
-            var choice = doc.RootElement.GetProperty("choices")[0];
-            var message = choice.GetProperty("message");
+            using var request = new HttpRequestMessage(HttpMethod.Get, BuildEndpoint(options.BaseUrl, "models"));
+            Authorize(request, options);
 
-            string content = message.TryGetProperty("content", out var contentProp)
-                ? contentProp.GetString() ?? ""
-                : "";
+            string responseBody = await SendAsync(request, options.RequestTimeout, cancellationToken);
+            return LlmResponseParser.ParseModelIds(responseBody);
+        }
 
-            string reasoningContent = message.TryGetProperty("reasoning_content", out var rcProp)
-                ? rcProp.GetString() ?? ""
-                : "";
-
-            int promptTokens = 0;
-            int completionTokens = 0;
-            if (doc.RootElement.TryGetProperty("usage", out var usageProp))
+        private static void Authorize(HttpRequestMessage request, LlmOptions options)
+        {
+            if (!string.IsNullOrWhiteSpace(options.ApiKey))
             {
-                if (usageProp.TryGetProperty("prompt_tokens", out var ptProp))
-                    promptTokens = ptProp.GetInt32();
-                if (usageProp.TryGetProperty("completion_tokens", out var ctProp))
-                    completionTokens = ctProp.GetInt32();
+                request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiKey);
+            }
+        }
+
+        private async Task<string> SendAsync(HttpRequestMessage request, TimeSpan timeout, CancellationToken cancellationToken)
+        {
+            using var timeoutSource = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            if (timeout > TimeSpan.Zero && timeout != Timeout.InfiniteTimeSpan)
+            {
+                timeoutSource.CancelAfter(timeout);
             }
 
-            return new LlmResult
+            try
             {
-                Content = content,
-                ReasoningContent = reasoningContent,
-                RawBody = responseBody,
-                PromptTokens = promptTokens,
-                CompletionTokens = completionTokens
-            };
+                using var response = await _httpClient.SendAsync(request, timeoutSource.Token);
+                string responseBody = await response.Content.ReadAsStringAsync(timeoutSource.Token);
+
+                if (!response.IsSuccessStatusCode)
+                {
+                    throw new HttpRequestException(
+                        $"Erro na API da IA ({(int)response.StatusCode}): {responseBody}", null, response.StatusCode);
+                }
+
+                return responseBody;
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
+            {
+                throw new TimeoutException($"A API da IA não respondeu em {timeout.TotalSeconds:0} s ({request.RequestUri}).");
+            }
         }
     }
 }
