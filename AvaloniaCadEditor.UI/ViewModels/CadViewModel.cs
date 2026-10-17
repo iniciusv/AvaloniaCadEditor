@@ -18,7 +18,7 @@ namespace AvaloniaCadEditor.UI.ViewModels;
 
 public enum EditorMode { Part, SketchEdit }
 
-public class CadViewModel : INotifyPropertyChanged
+public partial class CadViewModel : INotifyPropertyChanged
 {
 	private readonly IGeometryEngine _geometryEngine;
 	private readonly IOSnapService _osnapService;
@@ -35,8 +35,10 @@ public class CadViewModel : INotifyPropertyChanged
 	public EditorMode CurrentMode
 	{
 		get => _currentMode;
-		set { _currentMode = value; OnPropertyChanged(); }
+		set { _currentMode = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsSketchEditing)); }
 	}
+
+	public bool IsSketchEditing => CurrentMode == EditorMode.SketchEdit;
 
 	public Sketch Sketch { get; } = new Sketch();
 
@@ -935,6 +937,7 @@ public class CadViewModel : INotifyPropertyChanged
 	private readonly IStlService _stlService;
 	private readonly IFilePickerService _filePickerService;
 	private readonly IShapeReconstructionService _reconstructionService;
+	private readonly ISketchProjectionService _projections;
 
 	public CadViewModel(
 		IGeometryEngine geometryEngine,
@@ -949,7 +952,8 @@ public class CadViewModel : INotifyPropertyChanged
 		IStlService? stlService = null,
 		IFilePickerService? filePickerService = null,
 		IShapeReconstructionService? reconstructionService = null,
-		IPlanarTopologyService? planarTopologyService = null)
+		IPlanarTopologyService? planarTopologyService = null,
+		ISketchProjectionService? projectionService = null)
 	{
 		_geometryEngine = geometryEngine;
 		_osnapService = osnapService;
@@ -965,6 +969,7 @@ public class CadViewModel : INotifyPropertyChanged
 		_filePickerService = filePickerService!;
 		_reconstructionService = reconstructionService!;
 		_planarTopologyService = planarTopologyService ?? new AvaloniaCadEditor.Domain.Services.PlanarTopologyService(_geometryEngine);
+		_projections = projectionService ?? new SketchProjectionService(MeshManager, new AvaloniaCadEditor.Infrastructure.Geometry.ClipperPolygonUnion());
 
 		ModelTree = new ModelTreeViewModel(_selectionService);
 		ModelTree.WorkPlaneDoubleClicked += (wpf) =>
@@ -1480,7 +1485,7 @@ public class CadViewModel : INotifyPropertyChanged
 		}
 
 		SolidMesh = MeshManager.BuildCompositeMesh(Sketch, previewFeature);
-		_planeReferences = null;
+		InvalidatePlaneReferences();
 		ReportBuildProblems();
 
 		// The scene changed: the last guide analysis (if any) is now out of date. It is not
@@ -1549,6 +1554,8 @@ public class CadViewModel : INotifyPropertyChanged
 	public void ExitSketchMode()
 	{
 		CurrentMode = EditorMode.Part;
+		// Chanfros/fillets suprimidos são só uma ajuda para desenhar: fora do esboço o modelo volta inteiro.
+		IsFilletSuppressed = false;
 		// O EnterSketchMode troca o tipo de seleção para Edges; sem desfazer isso, sair do esboço
 		// deixava o editor marcando arestas — e o retângulo de seleção, que despacha pelo tipo
 		// (ver BoxSelector), continuava pegando linhas em vez de sólidos.
@@ -1589,73 +1596,8 @@ public class CadViewModel : INotifyPropertyChanged
 		}
 	}
 
-	private readonly Dictionary<Guid, (TriangleMesh Mesh, WorkPlane Plane, List<PlaneReference> References)> _planeReferenceCache = new();
-	private IReadOnlyList<PlaneReference>? _planeReferences;
-	private WorkPlane? _planeReferencesPlane;
-
-	/// <summary>
-	/// Geometria de referência do plano de trabalho no esboço: os contornos das faces que estão no plano e o
-	/// corte dos sólidos que o atravessam (<see cref="PlaneSection"/>). Só sólidos visíveis — o H e o olho da
-	/// árvore limpam o excesso — e sem o preview da extrusão. É calculada por feature (sólidos sobrepostos
-	/// não misturam laços) e guardada junto da malha e do plano: o arrasto da extrusão chama
-	/// <see cref="RefreshSolidMesh"/> a cada passo, mas a malha das outras features é a mesma instância.
-	/// </summary>
-	public IReadOnlyList<PlaneReference> PlaneReferences
-	{
-		get
-		{
-			if (CurrentMode != EditorMode.SketchEdit) return Array.Empty<PlaneReference>();
-			if (_planeReferences != null && Equals(_planeReferencesPlane, ActiveWorkPlane)) return _planeReferences;
-
-			_planeReferencesPlane = ActiveWorkPlane;
-			_planeReferences = BuildPlaneReferences(ActiveWorkPlane);
-			return _planeReferences;
-		}
-	}
-
 	private Point3D? _cursorLocal;
 
-	/// <summary>
-	/// As referências do plano que valem a pena mostrar agora: só enquanto uma ferramenta de desenho está
-	/// ativa, e só as que passam a menos da tolerância de snap do cursor. Todas desenhadas o tempo todo
-	/// poluíam a tela; o snap continua usando <see cref="PlaneReferences"/> inteiro.
-	/// </summary>
-	public IReadOnlyList<PlaneReference> NearbyPlaneReferences
-	{
-		get
-		{
-			bool drawing = _currentTool is DrawLineCommand or DrawCircleCommand or DrawPolygonCommand;
-			if (!drawing || _cursorLocal is not { } cursor) return Array.Empty<PlaneReference>();
-
-			double tolerance = _osnapService.Settings.SnapTolerance;
-			return PlaneReferences.Where(r => r.DistanceTo(cursor) <= tolerance).ToList();
-		}
-	}
-
-	private List<PlaneReference> BuildPlaneReferences(WorkPlane plane)
-	{
-		var result = new List<PlaneReference>();
-		var alive = new HashSet<Guid>();
-		foreach (var feature in Sketch.Features)
-		{
-			if (!feature.IsVisible || feature is WorkPlaneFeature) continue;
-			var mesh = MeshManager.GetFeatureMesh(Sketch, feature.Id, null);
-			if (mesh == null || mesh.TriangleCount == 0) continue;
-
-			alive.Add(feature.Id);
-			if (!_planeReferenceCache.TryGetValue(feature.Id, out var cached)
-				|| !ReferenceEquals(cached.Mesh, mesh) || !Equals(cached.Plane, plane))
-			{
-				cached = (mesh, plane, PlaneSection.Compute(mesh, plane));
-				_planeReferenceCache[feature.Id] = cached;
-			}
-			result.AddRange(cached.References);
-		}
-
-		foreach (var stale in _planeReferenceCache.Keys.Where(id => !alive.Contains(id)).ToList())
-			_planeReferenceCache.Remove(stale);
-		return result;
-	}
 
 	/// <summary>
 	/// Desenhando (modo de esboço), o snap no sólido fica no plano de trabalho: só o contorno da face em

@@ -7,8 +7,8 @@ using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
 using AvaloniaCadEditor.Domain.Entities;
 using AvaloniaCadEditor.UI.Controls.Input;
+using AvaloniaCadEditor.UI.Controls.Input.ContextMenus;
 using AvaloniaCadEditor.UI.Controls.Rendering;
-using AvaloniaCadEditor.UI.Resources;
 using AvaloniaCadEditor.UI.ViewModels;
 using Silk.NET.OpenGL;
 
@@ -102,7 +102,8 @@ public class SilkViewportControl : OpenGlControlBase
             e.PropertyName == nameof(CadViewModel.Profiles) || 
             e.PropertyName == nameof(CadViewModel.HoveredProfile) ||
             e.PropertyName == nameof(CadViewModel.HoveredFeatureId) ||
-            e.PropertyName == nameof(CadViewModel.IsWireframe))
+            e.PropertyName == nameof(CadViewModel.IsWireframe) ||
+            e.PropertyName == nameof(CadViewModel.ProjectedPlaneReferences))
         {
             RequestNextFrameRendering();
         }
@@ -220,41 +221,27 @@ public class SilkViewportControl : OpenGlControlBase
     }
 
     /// <summary>
-    /// Menu do botão direito sobre a seleção: espelhar (ou copiar espelhado) pelo centro da seleção em
-    /// X/Y/Z, ou escolher o plano com o mouse (<see cref="AvaloniaCadEditor.Application.Commands.MirrorTool"/>). Sem seleção,
-    /// ou com outra ferramenta em andamento, não abre nada — o clique direito continua sendo só órbita.
+    /// Menu do botão direito: no esboço, projetar a face/sólido sob o cursor e desligar chanfros/fillets
+    /// (<see cref="SketchContextMenuBuilder"/>); com seleção, espelhar (<see cref="MirrorContextMenuBuilder"/>).
+    /// Sem nada a oferecer o menu não abre — o clique direito continua sendo só órbita.
     /// </summary>
-    private void OpenContextMenu()
+    private void OpenContextMenu(Point position)
     {
-        if (ViewModel is not { CanMirrorSelection: true } vm) return;
+        if (ViewModel is not { } vm) return;
 
-        MenuItem Item(string header, System.Action action) => new MenuItem
-        {
-            Header = header,
-            Command = new RelayCommand(() => { action(); RequestNextFrameRendering(); })
-        };
+        var items = new List<Control>();
+        if (vm.CurrentMode == EditorMode.SketchEdit)
+            items.AddRange(SketchContextMenuBuilder.Build(vm, vm.RaycastForProjection(RayAt(position)), RequestNextFrameRendering));
 
-        MenuItem MirrorSubmenu(string header, bool copy) => new MenuItem
-        {
-            Header = header,
-            ItemsSource = new Control[]
-            {
-                Item(Strings.MirrorInX, () => vm.MirrorSelectionAtCenter(AvaloniaCadEditor.Domain.ValueObjects.Vector3D.UnitX, copy)),
-                Item(Strings.MirrorInY, () => vm.MirrorSelectionAtCenter(AvaloniaCadEditor.Domain.ValueObjects.Vector3D.UnitY, copy)),
-                Item(Strings.MirrorInZ, () => vm.MirrorSelectionAtCenter(AvaloniaCadEditor.Domain.ValueObjects.Vector3D.UnitZ, copy)),
-                new Separator(),
-                Item(Strings.MirrorPickPlane, () => vm.StartMirrorTool(copy)),
-            }
-        };
+        var mirror = MirrorContextMenuBuilder.Build(vm, RequestNextFrameRendering);
+        if (items.Count > 0 && mirror.Count > 0) items.Add(new Separator());
+        items.AddRange(mirror);
 
-        var menu = new ContextMenu
-        {
-            ItemsSource = new Control[]
-            {
-                MirrorSubmenu(Strings.MirrorMenu, copy: false),
-                MirrorSubmenu(Strings.MirrorCopyMenu, copy: true),
-            }
-        };
-        menu.Open(this);
+        if (items.Count == 0) return;
+        new ContextMenu { ItemsSource = items }.Open(this);
     }
+
+    private AvaloniaCadEditor.Domain.ValueObjects.Ray RayAt(Point position) => _camera.ScreenPointToRay(
+        new Vector2((float)position.X, (float)position.Y),
+        new Vector2((float)Bounds.Width, (float)Bounds.Height));
 }

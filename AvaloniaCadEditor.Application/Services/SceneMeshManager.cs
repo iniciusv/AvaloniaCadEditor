@@ -13,7 +13,11 @@ public class SceneMeshManager : ISceneMeshManager
 {
     private readonly IGeometryKernel _geometryKernel;
     private readonly ITessellationSettingsProvider _settingsProvider;
-    private readonly Dictionary<Guid, TriangleMesh> _featureMeshCache = new();
+    private readonly Dictionary<Guid, TriangleMesh> _meshCache = new();
+    private readonly Dictionary<Guid, TriangleMesh> _filletsSuppressedMeshCache = new();
+
+    /// <summary>O cache da versão da cena que está valendo (com ou sem chanfros/fillets).</summary>
+    private Dictionary<Guid, TriangleMesh> ActiveMeshCache => SuppressFillets ? _filletsSuppressedMeshCache : _meshCache;
 
     public SceneMeshManager(IGeometryKernel geometryKernel, ITessellationSettingsProvider settingsProvider)
     {
@@ -21,16 +25,28 @@ public class SceneMeshManager : ISceneMeshManager
         _settingsProvider = settingsProvider;
     }
 
+    public bool SuppressFillets
+    {
+        get => _geometryKernel.SuppressFillets;
+        set => _geometryKernel.SuppressFillets = value;
+    }
+
     public void ClearCache()
     {
-        _featureMeshCache.Clear();
+        ClearMeshCaches();
         _geometryKernel.InvalidateAll();
     }
 
     public void ResetForNewScene()
     {
-        _featureMeshCache.Clear();
+        ClearMeshCaches();
         _geometryKernel.BeginSceneRebuild();
+    }
+
+    private void ClearMeshCaches()
+    {
+        _meshCache.Clear();
+        _filletsSuppressedMeshCache.Clear();
     }
 
     public TriangleMesh GetFeatureMesh(Sketch sketch, Guid featureId, IFeature? previewFeature, bool forceRebuild = false)
@@ -38,10 +54,10 @@ public class SceneMeshManager : ISceneMeshManager
         if (forceRebuild)
         {
             _geometryKernel.InvalidateShape(featureId);
-            _featureMeshCache.Remove(featureId);
+            ActiveMeshCache.Remove(featureId);
         }
 
-        if (!forceRebuild && _featureMeshCache.TryGetValue(featureId, out var mesh))
+        if (!forceRebuild && ActiveMeshCache.TryGetValue(featureId, out var mesh))
         {
             return mesh;
         }
@@ -74,14 +90,15 @@ public class SceneMeshManager : ISceneMeshManager
         mesh = _geometryKernel.BuildSolidMesh(new[] { feature }, _settingsProvider.GetSettings());
         if (mesh != null && !forceRebuild)
         {
-            _featureMeshCache[featureId] = mesh;
+            ActiveMeshCache[featureId] = mesh;
         }
         return mesh ?? TriangleMesh.Empty;
     }
 
     public void InvalidateFeatureAndDependents(Sketch sketch, Guid featureId)
     {
-        _featureMeshCache.Remove(featureId);
+        _meshCache.Remove(featureId);
+        _filletsSuppressedMeshCache.Remove(featureId);
         _geometryKernel.InvalidateShape(featureId);
 
         foreach (var feature in sketch.Features)
@@ -101,12 +118,12 @@ public class SceneMeshManager : ISceneMeshManager
 
     private TriangleMesh? GetOrBuildMesh(IFeature feature)
     {
-        if (!_featureMeshCache.TryGetValue(feature.Id, out var mesh))
+        if (!ActiveMeshCache.TryGetValue(feature.Id, out var mesh))
         {
             mesh = _geometryKernel.BuildSolidMesh(new[] { feature }, _settingsProvider.GetSettings());
             if (mesh != null)
             {
-                _featureMeshCache[feature.Id] = mesh;
+                ActiveMeshCache[feature.Id] = mesh;
             }
         }
         return mesh;
@@ -153,7 +170,7 @@ public class SceneMeshManager : ISceneMeshManager
             var hit = ray.IntersectMesh(mesh);
             if (hit.HasValue)
             {
-                yield return new RaycastHit(hit.Value.Distance, hit.Value.Point, hit.Value.Normal, feature.Id);
+                yield return new RaycastHit(hit.Value.Distance, hit.Value.Point, hit.Value.Normal, feature.Id, hit.Value.TriangleIndex);
             }
         }
     }
@@ -169,10 +186,10 @@ public class SceneMeshManager : ISceneMeshManager
             currentIds.Add(previewFeature.Id);
         }
 
-        var keysToRemove = _featureMeshCache.Keys.Where(k => !currentIds.Contains(k)).ToList();
+        var keysToRemove = ActiveMeshCache.Keys.Where(k => !currentIds.Contains(k)).ToList();
         foreach (var key in keysToRemove)
         {
-            _featureMeshCache.Remove(key);
+            ActiveMeshCache.Remove(key);
         }
 
         var featuresToRender = new List<IFeature>(sketch.Features.Where(f => f.IsVisible));
@@ -184,12 +201,12 @@ public class SceneMeshManager : ISceneMeshManager
         var meshes = new List<TriangleMesh>(featuresToRender.Count);
         foreach (var f in featuresToRender)
         {
-            if (!_featureMeshCache.TryGetValue(f.Id, out var mesh))
+            if (!ActiveMeshCache.TryGetValue(f.Id, out var mesh))
             {
                 mesh = _geometryKernel.BuildSolidMesh(new[] { f }, _settingsProvider.GetSettings());
                 if (mesh != null)
                 {
-                    _featureMeshCache[f.Id] = mesh;
+                    ActiveMeshCache[f.Id] = mesh;
                 }
             }
 

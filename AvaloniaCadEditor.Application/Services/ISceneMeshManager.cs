@@ -40,4 +40,10 @@ public interface ISceneMeshManager
     /// geometria idêntica da execução anterior. Para descartar tudo (ex.: mudou a tesselação), use <see cref="ClearCache"/>.
     /// </summary>
     void ResetForNewScene();
+
+    /// <summary>
+    /// Supressão temporária de chanfros e fillets (<see cref="IGeometryKernel.SuppressFillets"/>). As malhas
+    /// das duas versões ficam em cache separado: alternar não refaz nada que já foi construído.
+    /// </summary>
+    bool SuppressFillets { get; set; }
 }

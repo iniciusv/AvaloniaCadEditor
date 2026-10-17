@@ -3,13 +3,14 @@ using System.Collections.Generic;
 namespace AvaloniaCadEditor.Domain.ValueObjects;
 
 /// <summary>
-/// De onde veio uma referência do plano de trabalho: o contorno de uma face que está no plano, ou o
-/// corte de um sólido que atravessa o plano.
+/// De onde veio uma referência do plano de trabalho: o contorno de uma face que está no plano, o
+/// corte de um sólido que atravessa o plano, ou a projeção de uma face/sólido que o usuário escolheu.
 /// </summary>
 public enum PlaneReferenceKind
 {
     Coplanar,
-    Section
+    Section,
+    Projected
 }
 
 /// <summary>

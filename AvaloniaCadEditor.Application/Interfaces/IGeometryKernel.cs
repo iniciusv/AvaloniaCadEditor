@@ -14,6 +14,13 @@ public interface IGeometryKernel
     void InvalidateAll();
 
     /// <summary>
+    /// Com <c>true</c>, todo <see cref="FilletFeature"/> (arredondamento ou chanfro) devolve o sólido base,
+    /// inclusive dentro de booleanas e de peças — para marcar as quinas vivas do base no esboço. É estado de
+    /// sessão, nunca do modelo: o CadScript não muda. Padrão: o kernel não sabe suprimir e ignora.
+    /// </summary>
+    bool SuppressFillets { get => false; set { } }
+
+    /// <summary>
     /// Chamado quando a cena é reexecutada (features novas, com Ids novos). Descarta o que é
     /// indexado por Id, mas pode manter malhas indexadas pela geometria (<see cref="FeatureFingerprint"/>)
     /// para reaproveitá-las. Padrão: o mesmo que <see cref="InvalidateAll"/>.

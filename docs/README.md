@@ -40,6 +40,7 @@ a IA ou em `~/.claude/plans/`, onde se perdem.
 | Data | Plano | Status |
 |---|---|---|
 | 2026-10-16 | [Ferramentas para a IA (tool calling) no chat de CadScript](planos/2026-10-16-ia-ferramentas-tool-calling.md) | Proposto |
+| 2026-10-17 | [Projetar face/volume como referência do esboço (+ desligar chanfros/fillets)](planos/2026-10-17-projetar-referencias-esboco.md) | Em andamento |
 
 ### Histórico (planos do modo de planejamento do Claude Code)
 

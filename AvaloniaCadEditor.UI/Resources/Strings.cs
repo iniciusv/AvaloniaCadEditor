@@ -108,4 +108,15 @@ public static class Strings
     public static string MirrorInY => ResourceManager.GetString("MirrorInY") ?? "In Y (through selection center)";
     public static string MirrorInZ => ResourceManager.GetString("MirrorInZ") ?? "In Z (through selection center)";
     public static string MirrorPickPlane => ResourceManager.GetString("MirrorPickPlane") ?? "Pick plane...";
+    public static string ProjectMenu => ResourceManager.GetString("ProjectMenu") ?? "Project";
+    public static string ProjectFace => ResourceManager.GetString("ProjectFace") ?? "Face";
+    public static string ProjectBody => ResourceManager.GetString("ProjectBody") ?? "Body";
+    public static string RemoveProjectedFace => ResourceManager.GetString("RemoveProjectedFace") ?? "Remove projected face";
+    public static string RemoveProjectedBody => ResourceManager.GetString("RemoveProjectedBody") ?? "Remove projected body";
+    public static string ClearProjections => ResourceManager.GetString("ClearProjections") ?? "Clear projections on this plane";
+    public static string ProjectAllEdges => ResourceManager.GetString("ProjectAllEdges") ?? "Projection: all edges";
+    public static string ProjectAllEdgesTip => ResourceManager.GetString("ProjectAllEdgesTip") ?? "Projected bodies show every edge and silhouette (hidden ones too) instead of just the outline";
+    public static string SuppressFilletsTemporarily => ResourceManager.GetString("SuppressFilletsTemporarily") ?? "Hide fillets and chamfers (temporary)";
+    public static string FilletsSuppressedStatus => ResourceManager.GetString("FilletsSuppressedStatus") ?? "Fillets and chamfers hidden while sketching: the base solid corners can be snapped";
+    public static string FilletsRestoredStatus => ResourceManager.GetString("FilletsRestoredStatus") ?? "Fillets and chamfers restored";
 }

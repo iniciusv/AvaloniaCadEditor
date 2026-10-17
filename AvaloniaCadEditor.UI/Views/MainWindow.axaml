@@ -160,6 +160,7 @@
                     <Button Content="{x:Static res:Strings.OffsetTool}" Command="{Binding SelectOffsetToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     <Button Content="{x:Static res:Strings.MoveTool}" Command="{Binding SelectMoveToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     <Button Content="{x:Static res:Strings.RotateTool}" Command="{Binding SelectRotateToolCommand}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
+                    <ToggleButton Content="{x:Static res:Strings.ProjectAllEdges}" ToolTip.Tip="{x:Static res:Strings.ProjectAllEdgesTip}" IsChecked="{Binding IsVolumeProjectionAllEdges}" IsVisible="{Binding IsSketchEditing}" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
 
                     <Button Content="{x:Static res:Strings.ExitSketch}" Command="{Binding ExitWorkPlaneCommand}" IsVisible="{Binding IsInCustomWorkPlane}" Background="#E74C3C" Foreground="White" FontWeight="Bold" Margin="0,4" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"/>
                     

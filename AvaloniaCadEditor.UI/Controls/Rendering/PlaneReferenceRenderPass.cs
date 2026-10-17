@@ -1,14 +1,20 @@
 using System.Collections.Generic;
+using System.Linq;
 using AvaloniaCadEditor.Domain.ValueObjects;
 using Silk.NET.OpenGL;
 
 namespace AvaloniaCadEditor.UI.Controls.Rendering;
 
 /// <summary>
-/// Desenha a geometria de referência do plano de trabalho perto do cursor
-/// (<c>CadViewModel.NearbyPlaneReferences</c>): em ciano o contorno das faces que estão no plano e em
-/// magenta o corte dos sólidos que o atravessam. Só acende o que o snap pode pegar enquanto se desenha —
-/// todas as referências o tempo todo poluíam a tela. Cores tênues, e as linhas do esboço vêm depois, por cima. Depth test
+/// Desenha a geometria de referência do plano de trabalho:
+/// <list type="bullet">
+/// <item>perto do cursor (<c>CadViewModel.NearbyPlaneReferences</c>), em ciano o contorno das faces que estão no
+/// plano e em magenta o corte dos sólidos que o atravessam. Só acende o que o snap pode pegar enquanto se
+/// desenha — todas as referências de corte o tempo todo poluíam a tela;</item>
+/// <item>sempre, em âmbar, as faces e sólidos que o usuário projetou (<c>CadViewModel.ProjectedPlaneReferences</c>):
+/// foram escolhidos de propósito.</item>
+/// </list>
+/// Cores tênues, e as linhas do esboço vêm depois, por cima. Depth test
 /// desligado como no <see cref="ToolGuideRenderPass"/>: o corte fica dentro do sólido, e com depth ligado
 /// a própria casca o esconderia.
 /// </summary>
@@ -16,6 +22,7 @@ public sealed class PlaneReferenceRenderPass : IRenderPass
 {
     private static readonly (float R, float G, float B) CoplanarColor = (0.35f, 0.75f, 0.85f);
     private static readonly (float R, float G, float B) SectionColor = (0.85f, 0.45f, 0.75f);
+    private static readonly (float R, float G, float B) ProjectedColor = (0.95f, 0.65f, 0.2f);
 
     private uint _vao;
     private uint _vbo;
@@ -42,7 +49,7 @@ public sealed class PlaneReferenceRenderPass : IRenderPass
         var vm = context.ViewModel;
         if (vm == null || vm.CurrentMode != AvaloniaCadEditor.UI.ViewModels.EditorMode.SketchEdit) return;
 
-        var references = vm.NearbyPlaneReferences;
+        var references = vm.NearbyPlaneReferences.Concat(vm.ProjectedPlaneReferences).ToList();
         if (references.Count == 0) return;
 
         var plane = vm.ActiveWorkPlane;
@@ -57,7 +64,7 @@ public sealed class PlaneReferenceRenderPass : IRenderPass
 
         foreach (var reference in references)
         {
-            var color = reference.Kind == PlaneReferenceKind.Coplanar ? CoplanarColor : SectionColor;
+            var color = ColorOf(reference.Kind);
             var pts = reference.Points;
             int segments = reference.Closed ? pts.Count : pts.Count - 1;
             for (int i = 0; i < segments; i++)
@@ -92,6 +99,13 @@ public sealed class PlaneReferenceRenderPass : IRenderPass
 
         gl.Enable(EnableCap.DepthTest);
     }
+
+    private static (float R, float G, float B) ColorOf(PlaneReferenceKind kind) => kind switch
+    {
+        PlaneReferenceKind.Coplanar => CoplanarColor,
+        PlaneReferenceKind.Projected => ProjectedColor,
+        _ => SectionColor,
+    };
 
     public void Dispose(GL gl)
     {

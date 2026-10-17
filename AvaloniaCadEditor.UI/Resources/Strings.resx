@@ -99,4 +99,15 @@
   <data name="MirrorInY" xml:space="preserve"><value>In Y (through selection center)</value></data>
   <data name="MirrorInZ" xml:space="preserve"><value>In Z (through selection center)</value></data>
   <data name="MirrorPickPlane" xml:space="preserve"><value>Pick plane...</value></data>
+  <data name="ProjectMenu" xml:space="preserve"><value>Project</value></data>
+  <data name="ProjectFace" xml:space="preserve"><value>Face</value></data>
+  <data name="ProjectBody" xml:space="preserve"><value>Body</value></data>
+  <data name="RemoveProjectedFace" xml:space="preserve"><value>Remove projected face</value></data>
+  <data name="RemoveProjectedBody" xml:space="preserve"><value>Remove projected body</value></data>
+  <data name="ClearProjections" xml:space="preserve"><value>Clear projections on this plane</value></data>
+  <data name="ProjectAllEdges" xml:space="preserve"><value>Projection: all edges</value></data>
+  <data name="ProjectAllEdgesTip" xml:space="preserve"><value>Projected bodies show every edge and silhouette (hidden ones too) instead of just the outline</value></data>
+  <data name="SuppressFilletsTemporarily" xml:space="preserve"><value>Hide fillets and chamfers (temporary)</value></data>
+  <data name="FilletsSuppressedStatus" xml:space="preserve"><value>Fillets and chamfers hidden while sketching: the base solid corners can be snapped</value></data>
+  <data name="FilletsRestoredStatus" xml:space="preserve"><value>Fillets and chamfers restored</value></data>
 </root>

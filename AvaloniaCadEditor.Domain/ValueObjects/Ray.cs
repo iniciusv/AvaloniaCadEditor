@@ -103,7 +103,7 @@ public readonly struct Ray
                     Vector3 normalVec = Vector3.Normalize(Vector3.Cross(edge1, edge2));
                     Vector3D normal = new Vector3D(normalVec.X, normalVec.Y, normalVec.Z);
 
-                    bestHit = new RaycastHit(t, point, normal);
+                    bestHit = new RaycastHit(t, point, normal, triangleIndex: i / 3);
                 }
             }
         }

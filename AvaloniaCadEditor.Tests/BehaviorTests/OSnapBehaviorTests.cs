@@ -82,7 +82,7 @@ public class OSnapBehaviorTests
     {
         var sketch = new Sketch();
         var osnap = new OSnapService(new Mock<IGeometryEngine>().Object);
-        var cilindro = AvaloniaCadEditor.Tests.Features.PlaneSectionTests.Cylinder(30, 30, 8, -10, 0);
+        var cilindro = AvaloniaCadEditor.Tests.Features.TestMeshes.Cylinder(30, 30, 8, -10, 0);
 
         var snapped = osnap.GetSnappedPoint(sketch, new Point3D(31, 29, 0), null, cilindro, solidSnapOnPlaneOnly: true);
 
@@ -95,7 +95,7 @@ public class OSnapBehaviorTests
     {
         var sketch = new Sketch();
         var osnap = new OSnapService(new Mock<IGeometryEngine>().Object);
-        var caixa = AvaloniaCadEditor.Tests.Features.PlaneSectionTests.Box(0, 0, 40, 40, -5, 5);
+        var caixa = AvaloniaCadEditor.Tests.Features.TestMeshes.Box(0, 0, 40, 40, -5, 5);
 
         var snapped = osnap.GetSnappedPoint(sketch, new Point3D(19, 1, 0), null, caixa, solidSnapOnPlaneOnly: true);
 
