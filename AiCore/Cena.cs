@@ -66,6 +66,46 @@ var folgaComprimentoY = (extrusaoSobTrilhoYPeca.Comprimento - trilhoYPeca.Compri
 var extrusaoSobTrilhoYA = Add(extrusaoSobTrilhoYPeca, at: Placement.At(trilhoYAX + trilhoYPeca.Largura / 2 - extrusaoSobTrilhoYPeca.Largura / 2, trilhoYAY - folgaComprimentoY, -extrusaoSobTrilhoYPeca.Altura), name: "extrusao_2020_sob_trilho_y_a");
 var extrusaoSobTrilhoYB = Add(extrusaoSobTrilhoYPeca, at: Placement.At(trilhoYBX + trilhoYPeca.Largura / 2 - extrusaoSobTrilhoYPeca.Largura / 2, trilhoYBY - folgaComprimentoY, -extrusaoSobTrilhoYPeca.Altura), name: "extrusao_2020_sob_trilho_y_b");
 var extrusaoSobTrilhoX = Add(extrusaoSobTrilhoXPeca with { Comprimento = 208 }, at: Placement.At(-extrusaoSobTrilhoXPeca.Comprimento / 2 - 11, extrusaoSobTrilhoXPeca.Largura / 2, alturaTopoCarrinhosY - extrusaoSobTrilhoXPeca.Altura, rotationZDegrees: -90), name: "extrusao_2020_sob_trilho_x");
+// --- Eixo Z: 2x trilho HGR15 vertical, cada um com o seu carrinho HGH15 na ponta -Y de uma extrusão Y ---
+// Os carrinhos são a parte móvel: levam o gantry inteiro (extrusões, trilhos Y e tudo o que está
+// neles) para cima e para baixo; os trilhos ficam presos na estrutura da máquina. Cada carrinho fica
+// na lateral externa (em X) da sua extrusão, alinhado à ponta -Y dela, com o topo (face de fixação)
+// voltado para o perfil e o trilho para fora.
+// As peças que prendem carrinho e extrusão ainda são modeladas fora do software; a espessura delas
+// entra em espessuraFixacaoCarrinhoZ (0 = carrinho encostado direto no perfil, até elas virem para cá).
+var trilhoZPeca = new TrilhoHgr15(Comprimento: 300);
+var carrinhoZPeca = new CarrinhoHgh15();
+const double espessuraFixacaoCarrinhoZ = 0;
+// Ponta de cima do carrinho 10 mm abaixo da base das extrusões Y; a posição dele no trilho é a
+// altura do gantry.
+const double folgaCarrinhoZAbaixoExtrusao = 10;
+var zBaseExtrusoesY = -extrusaoSobTrilhoYPeca.Altura;
+var zCentroCarrinhoZ = zBaseExtrusoesY - folgaCarrinhoZAbaixoExtrusao - carrinhoZPeca.Comprimento / 2;
+var cantoExtrusaoYA = extrusaoSobTrilhoYA.ToWorld(new Point3D(0, 0, 0));
+var cantoExtrusaoYB = extrusaoSobTrilhoYB.ToWorld(new Point3D(extrusaoSobTrilhoYPeca.Largura, 0, 0));
+// Carrinho deitado na lateral: o comprimento (Y local) vira Z do mundo e o topo (Z local) aponta
+// para a extrusão — +X do mundo no lado A (giro de +90° em Z), −X no lado B (giro de −90°). A
+// largura (X local) vai da ponta -Y do perfil para +Y nos dois lados.
+var deitarCarrinhoZ = Placement.Rotation(Vector3D.UnitX, 90);
+var carrinhoZA = Add(carrinhoZPeca, at: deitarCarrinhoZ.Then(Placement.At(cantoExtrusaoYA.X - espessuraFixacaoCarrinhoZ - carrinhoZPeca.Altura, cantoExtrusaoYA.Y, zCentroCarrinhoZ - carrinhoZPeca.Comprimento / 2, rotationZDegrees: 90)), name: "carrinho_hgh15_z_a");
+var carrinhoZB = Add(carrinhoZPeca, at: deitarCarrinhoZ.Then(Placement.At(cantoExtrusaoYB.X + espessuraFixacaoCarrinhoZ + carrinhoZPeca.Altura, cantoExtrusaoYB.Y + carrinhoZPeca.Largura, zCentroCarrinhoZ - carrinhoZPeca.Comprimento / 2, rotationZDegrees: -90)), name: "carrinho_hgh15_z_b");
+// Trilho no canal do carrinho e centrado nele (meio do curso): a origem do trilho é o ponto local
+// (RecuoTrilho, meio do carrinho − meio do trilho, 0) do carrinho, com a mesma orientação.
+var origemTrilhoNoCarrinhoZ = new Point3D(carrinhoZPeca.RecuoTrilho, (carrinhoZPeca.Comprimento - trilhoZPeca.Comprimento) / 2, 0);
+var trilhoZA = Add(trilhoZPeca, at: deitarCarrinhoZ.Then(Placement.At(carrinhoZA.ToWorld(origemTrilhoNoCarrinhoZ), rotationZDegrees: 90)), name: "trilho_hgr15_z_a");
+var trilhoZB = Add(trilhoZPeca, at: deitarCarrinhoZ.Then(Placement.At(carrinhoZB.ToWorld(origemTrilhoNoCarrinhoZ), rotationZDegrees: -90)), name: "trilho_hgr15_z_b");
+// --- Extrusões 2020 verticais (400 mm) onde cada trilho Z é parafusado ---
+// A base do trilho encosta numa face do perfil, do lado de fora em X; o perfil fica centrado no
+// trilho em Y e em Z. Deitar o perfil (giro de 90° em X) leva o comprimento (Y local) para Z do
+// mundo, o X local continua X e o Z local vai para −Y — daí o +Largura/2 em Y. A seção é simétrica,
+// então os dois lados usam o mesmo giro.
+var extrusaoTrilhoZPeca = new Extrusao2020(Comprimento: 400);
+var centroBaseTrilhoZ = new Point3D(trilhoZPeca.Largura / 2, trilhoZPeca.Comprimento / 2, 0);
+var centroBaseTrilhoZA = trilhoZA.ToWorld(centroBaseTrilhoZ);
+var centroBaseTrilhoZB = trilhoZB.ToWorld(centroBaseTrilhoZ);
+var deitarExtrusaoTrilhoZ = Placement.Rotation(Vector3D.UnitX, 90);
+var extrusaoTrilhoZA = Add(extrusaoTrilhoZPeca, at: deitarExtrusaoTrilhoZ.Then(Placement.At(centroBaseTrilhoZA.X - extrusaoTrilhoZPeca.Largura, centroBaseTrilhoZA.Y + extrusaoTrilhoZPeca.Altura / 2, centroBaseTrilhoZA.Z - extrusaoTrilhoZPeca.Comprimento / 2)), name: "extrusao_2020_trilho_z_a");
+var extrusaoTrilhoZB = Add(extrusaoTrilhoZPeca, at: deitarExtrusaoTrilhoZ.Then(Placement.At(centroBaseTrilhoZB.X, centroBaseTrilhoZB.Y + extrusaoTrilhoZPeca.Altura / 2, centroBaseTrilhoZB.Z - extrusaoTrilhoZPeca.Comprimento / 2)), name: "extrusao_2020_trilho_z_b");
 // --- Cantoneira impressa que amarra a placa do carrinho Y ao perfil 2020 transversal ---
 // Origem na interseção de três planos da montagem: face interna da placa A (a placa é girada
 // 180°, logo sua face local x = -16 vira +16), face lateral -Y do perfil (é para esse lado que
@@ -147,16 +187,11 @@ var xFaceExternaPlacaA = placaSuporteYA.ToWorld(new Point3D(16 * sxPlacaSuporteY
 var yFixacaoX6PlacaA = placaSuporteYA.ToWorld(new Point3D(16 * sxPlacaSuporteYA, 2, 0)).Y;
 var zBlocoFicacaoBeltVaoCorreia = topoPlacaSuporteYA.Z - blocoFicacaoBeltVaoCorreiaPeca.Altura;
 var blocoFicacaoBeltVaoCorreia = Add(blocoFicacaoBeltVaoCorreiaPeca, at: Placement.At(xFaceExternaPlacaA, yFixacaoX6PlacaA, zBlocoFicacaoBeltVaoCorreia, rotationZDegrees: 90), name: "bloco_ficacao_belt_vao_correia", color: "#00CC6A");
-var prism_748a_verts = new[]
-{
-    new Point3D(20, 0, 0),
-    new Point3D(-244.7764, -0.44722, 0),
-    new Point3D(-244.7764, 49.55278, 0),
-    new Point3D(20, 49.55278, 0)
-};
-var prism_748a_plane = new WorkPlane(new Point3D(112.5, -162.5, 0), new Vector3D(0, 0, 1), new Vector3D(1, 0, 0));
-var prism_748a = new PrismFeature(prism_748a_verts, height: 30, plane: prism_748a_plane)
-{
-    Name = "prism_748a"
-};
-AddFeature(prism_748a);
+// --- Tubo retangular 50 x 30 (parede 2, quinas R2) apoiado sobre as pontas -Y das extrusões Y ---
+// Vai da face externa da extrusão A à da extrusão B. Em Y parte da ponta mais recuada das duas (a
+// da A; a da B fica 0,45 mm à frente) e avança 50 mm para +Y. Comprimento do tubo no Y local:
+// girado −90° em Z, o Y local aponta para +X do mundo e o X local para −Y, por isso a origem fica
+// no canto +Y.
+var tuboTravessaPeca = new TuboRetangular(Comprimento: cantoExtrusaoYB.X - cantoExtrusaoYA.X, Largura: 50, Altura: 30);
+var yPontaExtrusoesY = Math.Min(cantoExtrusaoYA.Y, cantoExtrusaoYB.Y);
+var tuboTravessa = Add(tuboTravessaPeca, at: Placement.At(cantoExtrusaoYA.X, yPontaExtrusoesY + tuboTravessaPeca.Largura, 0, rotationZDegrees: -90), name: "tubo_travessa");
