@@ -398,7 +398,12 @@ public static class RelationAnalyzer
 
             var paired = pairs.SelectMany(p => new[] { p.A, p.B }).ToHashSet();
             var onPlane = facts.Where(f => !paired.Contains(f) && Math.Abs(Mid(f) - center) <= opts.AlignTolerance).ToList();
-            bool isGlobal = bodyCentered && facts.All(f => paired.Contains(f) || onPlane.Contains(f));
+            // Um componente simétrico em si (a GarraCorreia: metade + espelho) se espelha DENTRO da
+            // própria unidade. Esses pares não contam como pares de unidades, mas também não quebram a
+            // simetria da peça: os membros deles estão espelhados no plano.
+            var selfMirrored = run.Select(c => c.Pair).Where(p => units.Of(p.A) == units.Of(p.B))
+                .SelectMany(p => new[] { p.A, p.B }).ToHashSet();
+            bool isGlobal = bodyCentered && facts.All(f => paired.Contains(f) || onPlane.Contains(f) || selfMirrored.Contains(f));
 
             yield return new SymmetryPlane(axis, center, pairs, onPlane, isGlobal) { UnitPairs = unitPairs };
         }

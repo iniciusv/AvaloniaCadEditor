@@ -1,9 +1,13 @@
 /// <summary>
-/// Bloco de pressão da correia (belt), fixado na lateral do bloco_fixacao_mgn9.
-/// Modela apenas a metade esquerda (X de BaseCorpoX até BaseCorpoX + LarguraCorpoX) e a espelha em X.
-/// Furo de pressão da correia usa o mesmo padrão de <see cref="FuroPorca"/> da <see cref="PlacaSuporteCarrinhoY"/>:
-/// furo de passagem e alojamento hexagonal da porca M3 saem das mesmas variáveis (sempre coaxiais).
-/// Origem local = base do bloco_fixacao_mgn9 (local = mundo - (0, 0, 26)).
+/// Bloco de fixação da correia (belt) do eixo X, preso na lateral do bloco_fixacao_mgn9.
+/// A parte de cima é uma <see cref="GarraCorreia"/>: a correia entra pelas duas pontas, dá a volta
+/// no parafuso vertical de cada lado e volta pelo mesmo canal estreito, espremida em duas camadas
+/// — por isso não há mais parafuso de pressão. A garra ocupa o mesmo envelope do bloco (41 x 14,5 em
+/// planta), então a peça não cresce em Y, para não encostar na correia que passa pelos rolamentos
+/// dos espaçadores do motor.
+/// Por baixo da garra fica só a faixa frontal (encostada no bloco_fixacao_mgn9): atrás dela o
+/// rebaixo inferior deixa o bloco_conexao_motor_2020 passar, e nas pontas o rebaixo frontal.
+/// Origem local = base do bloco_fixacao_mgn9; o plano de simetria é x = BaseCorpoX + LarguraCorpoX.
 /// </summary>
 public sealed record BlocoFixacaoBelt(
     double LarguraCorpoX = 20.5,
@@ -13,151 +17,73 @@ public sealed record BlocoFixacaoBelt(
     double ComprimentoRebaixoInferior = 10.0,
     double MargemRebaixoInferior = 2.0,
     double ProfundidadeRebaixoFrontal = 4.5,
-    double AlturaRebaixoFrontal = 5.0,
     double LarguraRebaixoFrontal = 6.0,
     double BaseCorpoX = -20.615334,
     double BaseCorpoY = 10.5,
-    double LarguraVaoX = 17.0,
-    double ComprimentoVaoY = 6.0,
-    double AlturaVao = 8.0,
-    double BaseVaoX = -22.61533,
-    double BaseVaoY = 15.75,
-    double BaseVaoZ = 9.0,
-    double RaioFuroVertical = 3.0,
-    double FuroVerticalX = -5.61533,
-    double FuroVerticalY = 18.75,
-    double FuroVerticalZ = 9.0,
-    double AlturaFuroVertical = 8.0,
+    double AlturaCorreia = 8.0,
     double RaioFuroVertical3_2 = 1.6,
     double RaioEscareadoFuroVertical = 3.0,
     double FuroLateralX = -10.0,
-    double FuroLateralZ = 5.0,
     double RaioFuroRebaixo = 3.6,
     double ComprimentoFuroRebaixo = 12.0,
     double RaioFuroPassante = 1.7,
-    double ComprimentoFuroPassante = 20.0,
-    double FuroPressaoX = -16.11533,
-    double FuroPressaoZ = 13.0,
-    double PosicaoPorcaTraseiraY = 15.375,
-    double EspessuraPorca = 3.0) : Part
+    double ComprimentoFuroPassante = 20.0) : Part
 {
+    /// <summary>Base da garra: o topo do rebaixo inferior, que é também a altura dos furos laterais.</summary>
+    public double ZBaseGarra => AlturaRebaixoInferior + MargemRebaixoInferior;
+
+    /// <summary>Garra do topo, com o mesmo envelope do bloco e o parafuso de M3 dos furos verticais.</summary>
+    public GarraCorreia Garra => new GarraCorreia(
+        Comprimento: 2 * LarguraCorpoX,
+        Largura: ComprimentoCorpoY,
+        Altura: AlturaCorpo - ZBaseGarra,
+        AlturaCorreia: AlturaCorreia,
+        RaioParafuso: RaioFuroVertical3_2);
+
+    /// <summary>Eixo do parafuso da garra do lado −X (o do lado +X é o espelho dele).</summary>
+    public double FuroVerticalX => BaseCorpoX + LarguraCorpoX - Garra.DistanciaParafuso;
+    public double FuroVerticalY => BaseCorpoY + Garra.ParafusoY;
+
     protected override IFeature Build()
     {
         var yFundo = BaseCorpoY + ComprimentoCorpoY;
-
-        // Plano de espelhamento: face interna/direita do corpo (local X = BaseCorpoX + LarguraCorpoX).
         var xm = BaseCorpoX + LarguraCorpoX;
+        var zGarra = ZBaseGarra;
 
-        // Escareado de 90° (o raio decresce 1 mm por mm de altura) na PORÇÃO INFERIOR do furo,
-        // com o vértice do cone apontando para cima: a base do cone fica na face inferior do corpo
-        // (lado largo) e estreita subindo até o diâmetro do furo passante. Estende-se um pouco
-        // abaixo da face para garantir um corte limpo.
-        var profundidadeEscareado = RaioEscareadoFuroVertical - RaioFuroVertical3_2;
+        var garra_correia = Garra.Instance("garra_correia", at: Placement.At(xm, BaseCorpoY, zGarra));
+
+        // Faixa frontal sob a garra (até onde começa o rebaixo inferior), sem as pontas do rebaixo
+        // frontal: um bloco só, simétrico em torno de xm e já recortado, sem booleana. Sobe 1 mm
+        // para dentro da base maciça da garra (o canal só começa em y = YParede), para a união ter
+        // volume em comum em vez de só encostar.
+        var yFimFaixa = yFundo - ComprimentoRebaixoInferior - MargemRebaixoInferior;
+        var xInicioFaixa = BaseCorpoX + LarguraRebaixoFrontal;
+        var faixa_frontal = new BoxFeature(new Point3D(xInicioFaixa, BaseCorpoY, 0), 2 * (xm - xInicioFaixa), yFimFaixa - BaseCorpoY, zGarra + 1.0) { Name = "faixa_frontal" };
+        var corpo = BooleanFeature.CreateUnion("corpo", garra_correia, faixa_frontal);
+
+        // Escareado de 90° (o raio cai 1 mm por mm de altura) na boca de baixo do furo do parafuso da
+        // garra, para a cabeça do M3 que entra por baixo. Começa 1 mm abaixo da base da garra, já no
+        // vão do rebaixo inferior.
         const double margemEscareadoAbaixo = 1.0;
-        var zBaseEscareado = 5;
-        var alturaEscareado = profundidadeEscareado + margemEscareadoAbaixo;
-
-        // ---- Furo de pressão da correia: furo + porca numa ÚNICA <FuroPorca> (padrão da
-        //      PlacaSuporteCarrinhoY). O furo de passagem e o alojamento hexagonal saem das MESMAS
-        //      variáveis, então ficam sempre coaxiais. O canal de inserção da porca abre no topo
-        //      (EixoHexagono = +Z, que é o default do FuroPorca para furos horizontais);
-        //      ComprimentoCanal = alturaTopoPorca extrapola 1 mm o topo do corpo, p/ corte limpo.
-        var alturaTopoPorca = AlturaCorpo - FuroPressaoZ + 1.0;              // 5 mm
-        var entradaPorcaY = yFundo + 1.0;                                   // 1 mm fora da face traseira
-        var fundoPorcaY = PosicaoPorcaTraseiraY + EspessuraPorca / 2.0;     // face de entrada do alojamento
-        var profundidadePorca = entradaPorcaY - fundoPorcaY;
-        const double folgaAntesPorca = 10.0;                                // furo p/ fora da face traseira
-        const double folgaDepoisPorca = 9.0;                                // furo p/ fora da face frontal
-
-        // ==================== METADE ESQUERDA (como modelada) ====================
-
-        var corpo = new BoxFeature(
-            new Point3D(BaseCorpoX, BaseCorpoY, 0),
-            LarguraCorpoX,
-            ComprimentoCorpoY,
-            AlturaCorpo)
-        {
-            Name = "corpo"
-        };
-
-        // Rebaixo na parte inferior traseira para evitar conflito com o bloco_conexao_motor_2020,
-        // restrito à região de sobreposição (com margem de segurança).
-        var rebaixo_inferior = new BoxFeature(new Point3D(BaseCorpoX, yFundo - ComprimentoRebaixoInferior - MargemRebaixoInferior, 0.0), LarguraCorpoX, ComprimentoRebaixoInferior + MargemRebaixoInferior, AlturaRebaixoInferior + MargemRebaixoInferior) { Name = "rebaixo_inferior", IsTransientTool = true };
-
-        // Vazio da base frontal, restrito à PONTA: nasce na face de extremidade X = BaseCorpoX e
-        // avança LarguraRebaixoFrontal para dentro do corpo, aberto na face Y = BaseCorpoY.
-        var rebaixo_frontal = new BoxFeature(new Point3D(BaseCorpoX, BaseCorpoY, 0.0), LarguraRebaixoFrontal, ProfundidadeRebaixoFrontal, AlturaRebaixoFrontal) { Name = "rebaixo_frontal", IsTransientTool = true };
-
-        var vao_correia = new BoxFeature(new Point3D(BaseVaoX, BaseVaoY, BaseVaoZ), LarguraVaoX, ComprimentoVaoY, AlturaVao) { Name = "vao_correia", IsTransientTool = true };
-        // Rebaixo CILÍNDRICO no topo (alojamento da cabeça do parafuso M3 inserido por cima).
-        var furo_vertical = new CylinderFeature(new Point3D(FuroVerticalX, FuroVerticalY, FuroVerticalZ), Vector3D.UnitZ, RaioFuroVertical, AlturaFuroVertical) { Name = "furo_vertical", IsTransientTool = true };
-        // Furo vertical passante de 3,2 mm, atravessando toda a peça.
-        var furo_vertical_3_2 = new CylinderFeature(new Point3D(FuroVerticalX, FuroVerticalY, -1.0), Vector3D.UnitZ, RaioFuroVertical3_2, AlturaCorpo + 2.0) { Name = "furo_vertical_3_2", IsTransientTool = true };
-        // Rebaixo cônico (escareado) na PORÇÃO INFERIOR do furo, com o vértice para cima, para
-        // alojar a cabeça do parafuso M3 inserido por baixo.
+        var raioEscareadoNaBase = RaioEscareadoFuroVertical + margemEscareadoAbaixo;
         var rebaixo_conico = new ConeFeature(
-            globalBaseCenter: new Point3D(FuroVerticalX, FuroVerticalY, zBaseEscareado),
+            globalBaseCenter: new Point3D(FuroVerticalX, FuroVerticalY, zGarra - margemEscareadoAbaixo),
             globalDirection: Vector3D.UnitZ,
-            bottomRadius: RaioEscareadoFuroVertical + margemEscareadoAbaixo,
+            bottomRadius: raioEscareadoNaBase + margemEscareadoAbaixo,
             topRadius: RaioFuroVertical3_2,
-            height: alturaEscareado) { Name = "rebaixo_conico", IsTransientTool = true };
-        var rebaixo_fixacao = new CylinderFeature(new Point3D(FuroLateralX, yFundo, FuroLateralZ), new Vector3D(0, -1, 0), RaioFuroRebaixo, ComprimentoFuroRebaixo) { Name = "rebaixo_fixacao", IsTransientTool = true };
-        var furo_fixacao = new CylinderFeature(new Point3D(FuroLateralX, yFundo, FuroLateralZ), new Vector3D(0, -1, 0), RaioFuroPassante, ComprimentoFuroPassante) { Name = "furo_fixacao", IsTransientTool = true }.Transformed(Placement.Translate(new Vector3D(0, 0, 0)));
+            height: raioEscareadoNaBase + margemEscareadoAbaixo - RaioFuroVertical3_2) { Name = "rebaixo_conico", IsTransientTool = true };
+        var rebaixo_conico_espelhado = rebaixo_conico.Transformed(Placement.MirrorX(atX: xm), name: "rebaixo_conico_espelhado");
 
-        // Furo de pressão da correia + alojamento hexagonal da porca M3, construído por uma única
-        // FuroPorca (subtrai furo e alojamento juntos). O furo entra pela face traseira (Y = yFundo)
-        // e a porca é inserida pelo canal aberto no topo.
-        var porca_pressao_correia = new FuroPorca(
-            new Point3D(FuroPressaoX, entradaPorcaY, FuroPressaoZ),
-            new Vector3D(0, -1, 0),
-            profundidadePorca,
-            ComprimentoCanal: alturaTopoPorca,
-            FolgaAntes: folgaAntesPorca,
-            FolgaDepois: folgaDepoisPorca).Instance("porca_pressao_correia");
+        // Parafusos de fixação no bloco_fixacao_mgn9: entram pela face de trás (1 mm fora dela) no
+        // sentido −Y, com rebaixo para a cabeça, na altura da base da garra.
+        var rebaixo_fixacao = new CylinderFeature(new Point3D(FuroLateralX, yFundo + 1.0, zGarra), new Vector3D(0, -1, 0), RaioFuroRebaixo, ComprimentoFuroRebaixo + 1.0) { Name = "rebaixo_fixacao", IsTransientTool = true };
+        var furo_fixacao = new CylinderFeature(new Point3D(FuroLateralX, yFundo + 1.0, zGarra), new Vector3D(0, -1, 0), RaioFuroPassante, ComprimentoFuroPassante + 1.0) { Name = "furo_fixacao", IsTransientTool = true };
+        var rebaixo_fixacao_espelhado = rebaixo_fixacao.Transformed(Placement.MirrorX(atX: xm), name: "rebaixo_fixacao_espelhado");
+        var furo_fixacao_espelhado = furo_fixacao.Transformed(Placement.MirrorX(atX: xm), name: "furo_fixacao_espelhado");
 
-        // Incorporado da cena (Cena.cs): coordenadas convertidas para o referencial local da peça.
-        var prism_f62c_verts = new[]
-        {
-            new Point3D(26, 3.25, 0),
-            new Point3D(26, 6.25, 0),
-            new Point3D(30.3, 6.25, 0),
-            new Point3D(30.3, 7.55, 0),
-            new Point3D(41, 7.55, 0),
-            new Point3D(41, 3.25, 0)
-        };
-        var prism_f62c_plane = new WorkPlane(new Point3D(20.38467, 25, 9), new Vector3D(0, 0, 1), new Vector3D(-1, 0, 0));
-        var prism_f62c = new PrismFeature(prism_f62c_verts, height: 8, plane: prism_f62c_plane)
-        {
-            Name = "prism_f62c"
-        };
-        var cylinder_821a = new CylinderFeature(globalBaseCenter: new Point3D(-9.91533, 18.75, 9), globalDirection: new Vector3D(0, 0, 1), radius: 1.3, height: 8)
-        {
-            Name = "cylinder_821a"
-        };
-        var cylinder_54d2 = new CylinderFeature(globalBaseCenter: new Point3D(-5.61533, 18.75, 9), globalDirection: new Vector3D(0, 0, 1), radius: 3, height: 8)
-        {
-            Name = "cylinder_54d2"
-        };
-        var boolOp_7b90 = new BooleanFeature(name: "boolOp_7b90", operation: BooleanOperationType.Union, baseFeature: prism_f62c, toolFeatures: new IFeature[] { cylinder_821a });
-        var boolOp_16db = new BooleanFeature(name: "boolOp_16db", operation: BooleanOperationType.Subtract, baseFeature: boolOp_7b90, toolFeatures: new IFeature[] { cylinder_54d2 });
-
-        var bloco_fixacao_belt_metade = BooleanFeature.CreateDifference(
-            "bloco_fixacao_belt_metade",
-            corpo,
-            rebaixo_inferior,
-            rebaixo_frontal,
-            vao_correia,
-            furo_vertical,
-            furo_vertical_3_2,
-            rebaixo_conico,
-            rebaixo_fixacao,
-            furo_fixacao,
-            porca_pressao_correia);
-        var bloco_fixacao_belt_metade_com_extra = BooleanFeature.CreateUnion("bloco_fixacao_belt_metade_com_extra", bloco_fixacao_belt_metade, boolOp_16db);
-
-        // ==================== METADE ESPELHADA EM X ====================
-        var bloco_fixacao_belt_espelhado = bloco_fixacao_belt_metade_com_extra.Transformed(Placement.MirrorX(atX: xm), name: "bloco_fixacao_belt_espelhado");
-
-        return BooleanFeature.CreateUnion("bloco_fixacao_belt", bloco_fixacao_belt_metade_com_extra, bloco_fixacao_belt_espelhado);
+        return BooleanFeature.CreateDifference("bloco_fixacao_belt", corpo,
+            rebaixo_conico, rebaixo_conico_espelhado,
+            rebaixo_fixacao, rebaixo_fixacao_espelhado,
+            furo_fixacao, furo_fixacao_espelhado);
     }
 }
