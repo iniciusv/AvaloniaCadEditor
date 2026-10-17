@@ -8,6 +8,8 @@ mora, quais invariantes não podem ser quebradas e onde intervir para cada tipo 
 > fonte única consumida pelo system prompt, pelo `.cad/api.md` e pelo `AGENTS.md` gerado
 > dentro de cada pasta de cena. Se você está editando uma **cena**, leia o `AGENTS.md` dela,
 > não este arquivo. Se você está editando o **app**, é aqui.
+>
+> Índice de toda a documentação, planos de implementação e referências externas: [`docs/README.md`](docs/README.md).
 
 ---
 
