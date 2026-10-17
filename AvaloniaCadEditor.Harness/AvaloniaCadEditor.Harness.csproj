@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Harness de ferramentas da IA: contrato e registro de ferramentas, laço de agente, papéis
+    (Editor/Inspetor), vista em texto (HLR em CPU) e protocolo de ferramenta em texto.
+    Tudo que só existe por causa do harness mora aqui, para não poluir o código da ferramenta CAD.
+    Dependência num só sentido: o Harness conhece Application/Drafting/Analysis/Domain/AiCore,
+    nenhum deles conhece o Harness (garantido por ArchitectureTests). Kernel e avaliador entram
+    pelas portas do Application — o Harness não referencia Infrastructure nem UI.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AiCore\AiCore.csproj" />
+    <ProjectReference Include="..\AvaloniaCadEditor.Analysis\AvaloniaCadEditor.Analysis.csproj" />
+    <ProjectReference Include="..\AvaloniaCadEditor.Application\AvaloniaCadEditor.Application.csproj" />
+    <ProjectReference Include="..\AvaloniaCadEditor.Domain\AvaloniaCadEditor.Domain.csproj" />
+    <ProjectReference Include="..\AvaloniaCadEditor.Drafting\AvaloniaCadEditor.Drafting.csproj" />
+  </ItemGroup>
+
+</Project>
