@@ -7,8 +7,9 @@ using AvaloniaCadEditor.Domain.Settings;
 namespace AvaloniaCadEditor.Infrastructure.Settings;
 
 /// <summary>
-/// Persiste a configuração da IA (chave de API, modelo, URL base) em
+/// Persiste a configuração da IA (perfis de endpoint, perfil ativo, opções do chat) em
 /// %AppData%/AvaloniaCadEditor/ai_settings.json, para que sobreviva entre execuções do app.
+/// Arquivos de esquemas antigos são convertidos na leitura (<see cref="AiSettingsMigration"/>).
 /// </summary>
 public class JsonAiSettingsProvider : IAiSettingsProvider
 {
@@ -35,7 +36,7 @@ public class JsonAiSettingsProvider : IAiSettingsProvider
                 var json = File.ReadAllText(_filePath);
                 var settings = JsonSerializer.Deserialize<AiSettings>(json);
                 if (settings != null)
-                    return settings;
+                    return AiSettingsMigration.Upgrade(settings);
             }
             catch (Exception ex)
             {
@@ -43,7 +44,7 @@ public class JsonAiSettingsProvider : IAiSettingsProvider
             }
         }
 
-        return new AiSettings();
+        return AiSettingsMigration.Upgrade(new AiSettings());
     }
 
     public void SaveSettings(AiSettings settings)

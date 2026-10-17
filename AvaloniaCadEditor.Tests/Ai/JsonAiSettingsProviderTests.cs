@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Linq;
 using AvaloniaCadEditor.Domain.Settings;
 using AvaloniaCadEditor.Infrastructure.Settings;
 using FluentAssertions;
@@ -8,81 +9,81 @@ using Xunit;
 namespace AvaloniaCadEditor.Tests.Ai;
 
 /// <summary>
-/// Testa o provider real (mesmo caminho usado em produção, %AppData%/AvaloniaCadEditor/ai_settings.json),
-/// preservando/restaurando o conteúdo original do arquivo do usuário ao redor do teste.
+/// Testa o provider real numa pasta temporária (o construtor aceita a pasta justamente para não
+/// tocar no %AppData%/AvaloniaCadEditor/ai_settings.json do usuário).
 /// </summary>
-public class JsonAiSettingsProviderTests
+public class JsonAiSettingsProviderTests : IDisposable
 {
-    private static string FilePath()
+    private readonly string _folder = Path.Combine(Path.GetTempPath(), "ai-settings-" + Guid.NewGuid().ToString("N"));
+
+    private string FilePath => Path.Combine(_folder, "ai_settings.json");
+
+    public void Dispose()
     {
-        var appData = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        return Path.Combine(appData, "AvaloniaCadEditor", "ai_settings.json");
+        if (Directory.Exists(_folder)) Directory.Delete(_folder, recursive: true);
     }
 
     [Fact]
-    public void SaveSettings_DepoisGetSettings_RoundTripPreservaValores()
+    public void SaveSettings_DepoisGetSettings_RoundTripPreservaPerfis()
     {
-        string path = FilePath();
-        string? original = File.Exists(path) ? File.ReadAllText(path) : null;
-        try
-        {
-            var provider = new JsonAiSettingsProvider();
-            var settings = new AiSettings { ApiKey = "test-key-123", Model = "deepseek-test", BaseUrl = "https://example.test/" };
+        var provider = new JsonAiSettingsProvider(_folder);
+        var settings = AiSettingsMigration.Upgrade(new AiSettings());
+        settings.Profiles[0].ApiKey = "test-key-123";
+        var local = AiEndpointProfile.Local("ollama", "Ollama");
+        local.Model = "qwen3:8b";
+        settings.Profiles.Add(local);
+        settings.ActiveProfileId = "ollama";
 
-            provider.SaveSettings(settings);
-            var loaded = provider.GetSettings();
+        provider.SaveSettings(settings);
+        var loaded = provider.GetSettings();
 
-            loaded.ApiKey.Should().Be("test-key-123");
-            loaded.Model.Should().Be("deepseek-test");
-            loaded.BaseUrl.Should().Be("https://example.test/");
-        }
-        finally
-        {
-            if (original != null) File.WriteAllText(path, original);
-            else if (File.Exists(path)) File.Delete(path);
-        }
+        loaded.Profiles.Select(p => p.Id).Should().Equal("deepseek", "ollama");
+        loaded.Profiles[0].ApiKey.Should().Be("test-key-123");
+        loaded.GetActiveProfile()!.Model.Should().Be("qwen3:8b");
+        loaded.GetActiveProfile()!.IsLocal.Should().BeTrue();
+    }
+
+    [Fact]
+    public void ArquivoDoEsquemaAntigo_ViraPerfilDeepSeek()
+    {
+        Directory.CreateDirectory(_folder);
+        File.WriteAllText(FilePath,
+            "{ \"ApiKey\": \"k\", \"Model\": \"deepseek-flash\", \"BaseUrl\": \"https://example.test/\", \"EnableReasoning\": true }");
+
+        var loaded = new JsonAiSettingsProvider(_folder).GetSettings();
+
+        loaded.SchemaVersion.Should().Be(AiSettings.CurrentSchemaVersion);
+        loaded.ActiveProfileId.Should().Be("deepseek");
+        var deepSeek = loaded.GetActiveProfile()!;
+        deepSeek.ApiKey.Should().Be("k");
+        deepSeek.Model.Should().Be("deepseek-flash");
+        deepSeek.BaseUrl.Should().Be("https://example.test/");
+        loaded.EnableReasoning.Should().BeTrue();
+        loaded.ApiKey.Should().BeEmpty("os campos legados são zerados depois de migrados");
     }
 
     [Fact]
     public void PromptProfile_RoundTrip_EArquivoAntigoSemOCampo_FicaVazio()
     {
-        string folder = Path.Combine(Path.GetTempPath(), "ai-settings-" + Guid.NewGuid().ToString("N"));
-        try
-        {
-            var provider = new JsonAiSettingsProvider(folder);
+        var provider = new JsonAiSettingsProvider(_folder);
 
-            provider.SaveSettings(new AiSettings { PromptProfile = "enxuto" });
-            provider.GetSettings().PromptProfile.Should().Be("enxuto");
+        provider.SaveSettings(new AiSettings { PromptProfile = "enxuto" });
+        provider.GetSettings().PromptProfile.Should().Be("enxuto");
 
-            // Arquivo gravado antes do campo existir: cai no vazio (= perfil padrão).
-            File.WriteAllText(Path.Combine(folder, "ai_settings.json"), "{ \"ApiKey\": \"k\" }");
-            provider.GetSettings().PromptProfile.Should().BeEmpty();
-        }
-        finally
-        {
-            if (Directory.Exists(folder)) Directory.Delete(folder, recursive: true);
-        }
+        // Arquivo gravado antes do campo existir: cai no vazio (= perfil padrão).
+        File.WriteAllText(FilePath, "{ \"ApiKey\": \"k\" }");
+        provider.GetSettings().PromptProfile.Should().BeEmpty();
     }
 
     [Fact]
-    public void GetSettings_QuandoArquivoNaoExiste_RetornaSettingsVazias()
+    public void GetSettings_QuandoArquivoNaoExiste_RetornaSoOPerfilDeepSeekVazio()
     {
-        string path = FilePath();
-        string? original = File.Exists(path) ? File.ReadAllText(path) : null;
-        try
-        {
-            if (File.Exists(path)) File.Delete(path);
+        var settings = new JsonAiSettingsProvider(_folder).GetSettings();
 
-            var provider = new JsonAiSettingsProvider();
-            var settings = provider.GetSettings();
-
-            settings.ApiKey.Should().BeEmpty();
-            settings.Model.Should().BeEmpty();
-            settings.BaseUrl.Should().BeEmpty();
-        }
-        finally
-        {
-            if (original != null) File.WriteAllText(path, original);
-        }
+        settings.Profiles.Should().ContainSingle();
+        var deepSeek = settings.GetActiveProfile()!;
+        deepSeek.Id.Should().Be("deepseek");
+        deepSeek.ApiKey.Should().BeEmpty();
+        deepSeek.ApiKeyEnvVar.Should().Be("DEEPSEEK_API_KEY");
     }
 }

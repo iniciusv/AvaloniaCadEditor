@@ -5,6 +5,7 @@
              xmlns:vm="clr-namespace:AvaloniaCadEditor.UI.ViewModels"
              xmlns:controls="clr-namespace:AvaloniaCadEditor.UI.Controls"
              xmlns:prompts="clr-namespace:AvaloniaCadEditor.Application.Ai.Prompts;assembly=AvaloniaCadEditor.Application"
+             xmlns:settings="clr-namespace:AvaloniaCadEditor.Domain.Settings;assembly=AvaloniaCadEditor.Domain"
              xmlns:AvaloniaEdit="https://github.com/avaloniaui/avaloniaedit"
              mc:Ignorable="d" d:DesignWidth="360" d:DesignHeight="640"
              x:Class="AvaloniaCadEditor.UI.Views.AiChatView"
@@ -50,7 +51,7 @@
                             ToolTip.Tip="Gravar a conversa (contexto exato de cada round) para testá-la com outros perfis de prompt"
                             FontSize="12" Padding="6,2" Margin="0,0,4,0" />
                     <Button Grid.Column="3" Content="⚙" Command="{Binding ToggleSettingsCommand}"
-                            ToolTip.Tip="AI settings (API key, model, prompt profile, base URL)"
+                            ToolTip.Tip="AI settings (endpoint profiles, model, prompt profile)"
                             FontSize="12" Padding="6,2" Margin="0,0,4,0" />
                     <Button Grid.Column="4" Content="New chat" Command="{Binding NewConversationCommand}" FontSize="10" Padding="6,2" />
                     <SelectableTextBlock Grid.Row="1" Grid.ColumnSpan="5" Text="{Binding RecordingStatus}"
@@ -59,27 +60,62 @@
                 </Grid>
             </Border>
 
-            <!-- Settings panel (chave de API, modelo, URL base — persistidos entre execuções) -->
+            <!-- Settings panel (perfis de endpoint, prompt e opções do chat — persistidos entre execuções) -->
             <Border Grid.Row="1" Background="#232323" BorderBrush="#333333" BorderThickness="0,0,0,1"
                     Padding="10" IsVisible="{Binding IsSettingsOpen}">
                 <StackPanel Spacing="6">
-                    <TextBlock Text="DeepSeek API settings" FontWeight="Bold" Foreground="#DDDDDD" FontSize="11" />
+                    <TextBlock Text="AI endpoint settings" FontWeight="Bold" Foreground="#DDDDDD" FontSize="11" />
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Perfil" Foreground="#999999" FontSize="10" />
+                        <Grid ColumnDefinitions="*,Auto,Auto">
+                            <ComboBox Grid.Column="0" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
+                                      HorizontalAlignment="Stretch" FontSize="11">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="settings:AiEndpointProfile">
+                                        <TextBlock Text="{Binding DisplayName}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <Button Grid.Column="1" Content="+ Local" Command="{Binding AddLocalProfileCommand}"
+                                    ToolTip.Tip="Novo perfil para um servidor local OpenAI-compatível (Ollama, LM Studio, llama.cpp)"
+                                    FontSize="10" Padding="6,2" Margin="4,0,0,0" />
+                            <Button Grid.Column="2" Content="✕" Command="{Binding RemoveProfileCommand}"
+                                    ToolTip.Tip="Remover este perfil" FontSize="10" Padding="6,2" Margin="4,0,0,0" />
+                        </Grid>
+                    </StackPanel>
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Nome" Foreground="#999999" FontSize="10" />
+                        <TextBox Text="{Binding ProfileNameInput}" FontSize="11" />
+                    </StackPanel>
+
+                    <CheckBox IsChecked="{Binding IsLocalInput}" FontSize="11" Foreground="#DDDDDD"
+                              Content="Servidor local (chave opcional)"
+                              ToolTip.Tip="Ollama, LM Studio, llama.cpp: sem chave de API e sem o campo 'thinking' da DeepSeek. Requisições podem demorar mais (timeout de 30 min)." />
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Base URL" Foreground="#999999" FontSize="10" />
+                        <TextBox Text="{Binding BaseUrlInput}" Watermark="https://api.deepseek.com/ · http://localhost:11434/v1 (Ollama) · :1234 (LM Studio) · :8080 (llama.cpp)" FontSize="11" />
+                    </StackPanel>
 
                     <StackPanel Spacing="2">
                         <TextBlock Text="API key" Foreground="#999999" FontSize="10" />
-                        <TextBox Text="{Binding ApiKeyInput}" PasswordChar="•" Watermark="sk-..." FontSize="11" />
+                        <TextBox Text="{Binding ApiKeyInput}" PasswordChar="•" Watermark="sk-... (vazio = variável de ambiente; local = sem chave)" FontSize="11" />
                     </StackPanel>
 
                     <StackPanel Spacing="2">
                         <TextBlock Text="Model" Foreground="#999999" FontSize="10" />
-                        <ComboBox ItemsSource="{Binding ModelOptions}" SelectedItem="{Binding SelectedModelOption}"
-                                  HorizontalAlignment="Stretch" FontSize="11">
-                            <ComboBox.ItemTemplate>
-                                <DataTemplate x:DataType="vm:AiModelOption">
-                                    <TextBlock Text="{Binding DisplayName}" />
-                                </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                        </ComboBox>
+                        <Grid ColumnDefinitions="*,Auto">
+                            <AutoCompleteBox Grid.Column="0" Text="{Binding ModelInput, Mode=TwoWay}" ItemsSource="{Binding ModelSuggestions}"
+                                             FilterMode="Contains" MinimumPrefixLength="0" Watermark="deepseek-v4-pro · qwen3:8b ..."
+                                             FontSize="11" />
+                            <Button Grid.Column="1" Content="↻" Command="{Binding RefreshModelsCommand}"
+                                    ToolTip.Tip="Listar os modelos do servidor (GET /v1/models)"
+                                    FontSize="11" Padding="6,2" Margin="4,0,0,0" />
+                        </Grid>
+                        <TextBlock Text="{Binding ModelsStatus}" IsVisible="{Binding ModelsStatus, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                   Foreground="#888888" FontSize="9" TextWrapping="Wrap" />
                     </StackPanel>
 
                     <StackPanel Spacing="2">
@@ -92,11 +128,6 @@
                                 </DataTemplate>
                             </ComboBox.ItemTemplate>
                         </ComboBox>
-                    </StackPanel>
-
-                    <StackPanel Spacing="2">
-                        <TextBlock Text="Base URL" Foreground="#999999" FontSize="10" />
-                        <TextBox Text="{Binding BaseUrlInput}" Watermark="https://api.deepseek.com/ (default)" FontSize="11" />
                     </StackPanel>
 
                     <CheckBox IsChecked="{Binding EnableReasoningInput}" FontSize="11" Foreground="#DDDDDD"

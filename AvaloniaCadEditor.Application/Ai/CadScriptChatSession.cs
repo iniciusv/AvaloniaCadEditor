@@ -294,36 +294,14 @@ public class CadScriptChatSession
     }
 
     /// <summary>
-    /// Carrega as opções da IA a partir da configuração persistida pela UI
-    /// (<see cref="IAiSettingsProvider"/>), usando as variáveis de ambiente DEEPSEEK_API_KEY /
-    /// DEEPSEEK_BASE_URL / DEEPSEEK_MODEL como fallback para cada campo deixado em branco.
+    /// Carrega as opções da IA a partir do perfil de endpoint ativo da configuração persistida
+    /// pela UI (<see cref="IAiSettingsProvider"/>). Campos em branco caem nas variáveis de
+    /// ambiente (ver <see cref="AiEndpointOptions.Resolve"/>).
     /// </summary>
     public static (LlmOptions? Options, string? Error) LoadOptions(IAiSettingsProvider settingsProvider)
     {
-        var settings = settingsProvider.GetSettings();
-
-        string? apiKey = !string.IsNullOrWhiteSpace(settings.ApiKey)
-            ? settings.ApiKey
-            : Environment.GetEnvironmentVariable("DEEPSEEK_API_KEY");
-
-        if (string.IsNullOrWhiteSpace(apiKey))
-        {
-            return (null, "No DeepSeek API key configured. Set it in the AI chat panel (⚙ Settings) or via the DEEPSEEK_API_KEY environment variable.");
-        }
-
-        var options = new LlmOptions { ApiKey = apiKey, EnableThinkingMode = settings.EnableReasoning };
-
-        string? baseUrl = !string.IsNullOrWhiteSpace(settings.BaseUrl)
-            ? settings.BaseUrl
-            : Environment.GetEnvironmentVariable("DEEPSEEK_BASE_URL");
-        if (!string.IsNullOrWhiteSpace(baseUrl)) options.BaseUrl = baseUrl;
-
-        string? model = !string.IsNullOrWhiteSpace(settings.Model)
-            ? settings.Model
-            : Environment.GetEnvironmentVariable("DEEPSEEK_MODEL");
-        if (!string.IsNullOrWhiteSpace(model)) options.Model = model;
-
-        return (options, null);
+        var settings = AiSettingsMigration.Upgrade(settingsProvider.GetSettings());
+        return AiEndpointOptions.Resolve(settings.GetActiveProfile()!, settings.EnableReasoning);
     }
 
     /// <summary>

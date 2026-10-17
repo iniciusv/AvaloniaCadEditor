@@ -17,11 +17,11 @@ using AvaloniaCadEditor.Domain.Settings;
 namespace AvaloniaCadEditor.UI.ViewModels;
 
 /// <summary>
-/// ViewModel do painel de chat multi-round com a IA (DeepSeek) usado para gerar/editar
+/// ViewModel do painel de chat multi-round com a IA usado para gerar/editar
 /// o CadScript da cena. Cada resposta com código válido pode ser aplicada como o script
 /// vigente através de <see cref="AiChatMessageItem.ApplyCommand"/>.
-/// A chave/modelo/URL da IA são editáveis pela própria UI (<see cref="ApiKeyInput"/> etc.)
-/// e persistidos entre execuções via <see cref="IAiSettingsProvider"/>.
+/// Os endpoints (DeepSeek ou servidores locais OpenAI-compatíveis) são perfis editáveis pela
+/// própria UI (<see cref="Profiles"/>) e persistidos entre execuções via <see cref="IAiSettingsProvider"/>.
 /// Com um projeto aberto, a IA recebe só os arquivos relevantes para a seleção atual
 /// (<see cref="ContextFiles"/>, calculados por <see cref="IAiContextBuilder"/>) e pode alterar vários deles.
 /// </summary>
@@ -102,55 +102,78 @@ public class AiChatViewModel : INotifyPropertyChanged
         set { _isSettingsOpen = value; OnPropertyChanged(); }
     }
 
-    private string _apiKeyInput = string.Empty;
-    public string ApiKeyInput
-    {
-        get => _apiKeyInput;
-        set { _apiKeyInput = value; OnPropertyChanged(); }
-    }
+    /// <summary>
+    /// Modelos DeepSeek atualmente disponíveis (ids exatos do campo "model" da API), sugeridos
+    /// para perfis não locais. Fonte: https://api-docs.deepseek.com/quick_start/pricing — V4.1 Flash e V4 Pro.
+    /// </summary>
+    private static readonly string[] DeepSeekModels = { "deepseek-v4-pro", "deepseek-flash" };
 
     /// <summary>
-    /// Modelos DeepSeek atualmente disponíveis (ids exatos do campo "model" da API).
-    /// Fonte: https://api-docs.deepseek.com/quick_start/pricing — V4.1 Flash e V4 Pro.
+    /// Cópia de trabalho dos perfis de endpoint (DeepSeek, servidores locais): o painel edita
+    /// estes objetos e só o Save grava. Reabrir o painel descarta edições não salvas.
     /// </summary>
-    public IReadOnlyList<AiModelOption> ModelOptions { get; } = new[]
-    {
-        new AiModelOption("DeepSeek V4 Pro", "deepseek-v4-pro"),
-        new AiModelOption("DeepSeek V4.1 Flash", "deepseek-flash")
-    };
+    public ObservableCollection<AiEndpointProfile> Profiles { get; } = new();
 
-    private string _modelInput = string.Empty;
-    public string ModelInput
+    private AiEndpointProfile? _selectedProfile;
+    /// <summary>Perfil em edição no painel; ao salvar, vira o perfil ativo do chat.</summary>
+    public AiEndpointProfile? SelectedProfile
     {
-        get => _modelInput;
-        private set { _modelInput = value; OnPropertyChanged(); }
-    }
-
-    private AiModelOption _selectedModelOption;
-    public AiModelOption SelectedModelOption
-    {
-        get => _selectedModelOption;
+        get => _selectedProfile;
         set
         {
-            _selectedModelOption = value;
-            ModelInput = value.ModelId;
+            _selectedProfile = value;
             OnPropertyChanged();
+            OnPropertyChanged(nameof(ProfileNameInput));
+            OnPropertyChanged(nameof(ApiKeyInput));
+            OnPropertyChanged(nameof(BaseUrlInput));
+            OnPropertyChanged(nameof(ModelInput));
+            OnPropertyChanged(nameof(IsLocalInput));
+            ModelsStatus = null;
+            ResetModelSuggestions();
+            (RemoveProfileCommand as RelayCommand)?.RaiseCanExecuteChanged();
         }
     }
 
-    private static AiModelOption ResolveModelOption(IReadOnlyList<AiModelOption> options, string? modelId)
+    public string ProfileNameInput
     {
-        if (string.IsNullOrWhiteSpace(modelId)) return options[0];
+        get => _selectedProfile?.DisplayName ?? string.Empty;
+        set { if (_selectedProfile == null) return; _selectedProfile.DisplayName = value; OnPropertyChanged(); }
+    }
 
-        // "deepseek-v4-flash" é o nome legado (ainda aceito pela API, porém descontinuado);
-        // hoje ele é servido pelo mesmo modelo do id atual "deepseek-flash".
-        if (modelId.Equals("deepseek-v4-flash", StringComparison.OrdinalIgnoreCase))
+    public string ApiKeyInput
+    {
+        get => _selectedProfile?.ApiKey ?? string.Empty;
+        set { if (_selectedProfile == null) return; _selectedProfile.ApiKey = value; OnPropertyChanged(); }
+    }
+
+    public string ModelInput
+    {
+        get => _selectedProfile?.Model ?? string.Empty;
+        set { if (_selectedProfile == null) return; _selectedProfile.Model = value ?? string.Empty; OnPropertyChanged(); }
+    }
+
+    /// <summary>Servidor local: chave opcional e sem o campo <c>thinking</c> da DeepSeek.</summary>
+    public bool IsLocalInput
+    {
+        get => _selectedProfile?.IsLocal ?? false;
+        set
         {
-            return options.First(o => o.ModelId == "deepseek-flash");
+            if (_selectedProfile == null) return;
+            _selectedProfile.IsLocal = value;
+            OnPropertyChanged();
+            ResetModelSuggestions();
         }
+    }
 
-        return options.FirstOrDefault(o => o.ModelId.Equals(modelId, StringComparison.OrdinalIgnoreCase))
-            ?? options[0];
+    /// <summary>Sugestões do campo de modelo: os ids da DeepSeek ou os listados pelo servidor (↻).</summary>
+    public ObservableCollection<string> ModelSuggestions { get; } = new();
+
+    private string? _modelsStatus;
+    /// <summary>Resultado da última consulta de modelos ao servidor do perfil.</summary>
+    public string? ModelsStatus
+    {
+        get => _modelsStatus;
+        private set { _modelsStatus = value; OnPropertyChanged(); }
     }
 
     /// <summary>As versões de pré-prompt (system prompt) que podem ser escolhidas.</summary>
@@ -164,11 +187,10 @@ public class AiChatViewModel : INotifyPropertyChanged
         set { _selectedPromptProfile = value; OnPropertyChanged(); }
     }
 
-    private string _baseUrlInput = string.Empty;
     public string BaseUrlInput
     {
-        get => _baseUrlInput;
-        set { _baseUrlInput = value; OnPropertyChanged(); }
+        get => _selectedProfile?.BaseUrl ?? string.Empty;
+        set { if (_selectedProfile == null) return; _selectedProfile.BaseUrl = value; OnPropertyChanged(); }
     }
 
     private bool _keepHistoryInput = true;
@@ -217,6 +239,9 @@ public class AiChatViewModel : INotifyPropertyChanged
     public ICommand ToggleSettingsCommand { get; }
     public ICommand SaveSettingsCommand { get; }
     public ICommand SaveConversationCommand { get; }
+    public ICommand AddLocalProfileCommand { get; }
+    public ICommand RemoveProfileCommand { get; }
+    public ICommand RefreshModelsCommand { get; }
 
     public AiChatViewModel(
         CadViewModel cadViewModel,
@@ -231,15 +256,11 @@ public class AiChatViewModel : INotifyPropertyChanged
         _settingsProvider = settingsProvider;
         _contextBuilder = contextBuilder ?? new AiContextBuilder();
 
-        var settings = _settingsProvider.GetSettings();
-        _apiKeyInput = settings.ApiKey;
-        _selectedModelOption = ResolveModelOption(ModelOptions, settings.Model);
-        _modelInput = _selectedModelOption.ModelId;
-        _baseUrlInput = settings.BaseUrl;
-        _keepHistoryInput = settings.KeepConversationHistory;
-        _enableReasoningInput = settings.EnableReasoning;
-        _selectedPromptProfile = CadScriptPromptProfiles.Find(settings.PromptProfile);
+        AddLocalProfileCommand = new RelayCommand(AddLocalProfile);
+        RemoveProfileCommand = new RelayCommand(RemoveSelectedProfile, () => Profiles.Count > 1 && SelectedProfile != null);
+        RefreshModelsCommand = new RelayCommand(async () => await RefreshModelsAsync(), () => SelectedProfile != null);
 
+        LoadSettingsInputs();
         InitializeSession();
 
         SendCommand = new RelayCommand(async () => await SendAsync(), () => IsAvailable && !IsBusy && !string.IsNullOrWhiteSpace(InputText));
@@ -253,7 +274,11 @@ public class AiChatViewModel : INotifyPropertyChanged
             _contextAdjustments.Reset();
             RefreshContextFiles();
         }, () => IsAvailable && !IsBusy);
-        ToggleSettingsCommand = new RelayCommand(() => IsSettingsOpen = !IsSettingsOpen);
+        ToggleSettingsCommand = new RelayCommand(() =>
+        {
+            if (!IsSettingsOpen) LoadSettingsInputs();
+            IsSettingsOpen = !IsSettingsOpen;
+        });
         SaveSettingsCommand = new RelayCommand(SaveSettings);
         SaveConversationCommand = new RelayCommand(SaveConversation, () => _recorder.Count > 0 && !IsBusy);
 
@@ -413,6 +438,7 @@ public class AiChatViewModel : INotifyPropertyChanged
         {
             var settings = _settingsProvider.GetSettings();
             var profile = CadScriptPromptProfiles.Find(settings.PromptProfile);
+            var endpoint = AiSettingsMigration.Upgrade(settings).GetActiveProfile();
 
             // O system prompt é fixado quando a sessão começa: trocar de perfil exige uma sessão nova.
             if (_session == null || _protocol?.Profile.Id != profile.Id)
@@ -426,7 +452,7 @@ public class AiChatViewModel : INotifyPropertyChanged
             }
             _session.KeepHistory = settings.KeepConversationHistory;
             _sessionModelId = options.Model ?? string.Empty;
-            ModelName = $"{ResolveModelOption(ModelOptions, options.Model).DisplayName} · {profile.Id}";
+            ModelName = $"{endpoint} · {options.Model} · {profile.Id}";
             ConfigError = null;
         }
         else
@@ -441,14 +467,73 @@ public class AiChatViewModel : INotifyPropertyChanged
         RaiseCommandsCanExecuteChanged();
     }
 
-    /// <summary>Salva a chave/modelo/URL digitados no painel de configurações e reinicia a conversa com eles.</summary>
+    /// <summary>Preenche o painel com as settings gravadas (descarta edições não salvas).</summary>
+    private void LoadSettingsInputs()
+    {
+        var settings = AiSettingsMigration.Upgrade(_settingsProvider.GetSettings());
+
+        Profiles.Clear();
+        foreach (var profile in settings.Profiles) Profiles.Add(profile.Clone());
+        var active = settings.GetActiveProfile();
+        SelectedProfile = Profiles.FirstOrDefault(p => p.Id == active?.Id) ?? Profiles.FirstOrDefault();
+
+        KeepHistoryInput = settings.KeepConversationHistory;
+        EnableReasoningInput = settings.EnableReasoning;
+        SelectedPromptProfile = CadScriptPromptProfiles.Find(settings.PromptProfile);
+    }
+
+    private void ResetModelSuggestions()
+    {
+        ModelSuggestions.Clear();
+        if (_selectedProfile is { IsLocal: false })
+            foreach (var model in DeepSeekModels) ModelSuggestions.Add(model);
+    }
+
+    private void AddLocalProfile()
+    {
+        var profile = AiEndpointProfile.Local(AiEndpointProfile.NewId(Profiles, "Local"), "Local");
+        Profiles.Add(profile);
+        SelectedProfile = profile;
+    }
+
+    private void RemoveSelectedProfile()
+    {
+        if (SelectedProfile == null || Profiles.Count <= 1) return;
+        int index = Profiles.IndexOf(SelectedProfile);
+        Profiles.Remove(SelectedProfile);
+        SelectedProfile = Profiles[Math.Min(index, Profiles.Count - 1)];
+    }
+
+    /// <summary>Pergunta ao servidor do perfil quais modelos ele tem (<c>GET /v1/models</c>).</summary>
+    private async Task RefreshModelsAsync()
+    {
+        var profile = SelectedProfile;
+        if (profile == null) return;
+
+        ModelsStatus = "Consultando o servidor…";
+        try
+        {
+            var models = await AiEndpointOptions.ListModelsAsync(profile);
+            if (!ReferenceEquals(profile, SelectedProfile)) return;
+
+            ModelSuggestions.Clear();
+            foreach (var model in models) ModelSuggestions.Add(model);
+            ModelsStatus = models.Count == 0 ? "O servidor não listou nenhum modelo." : $"{models.Count} modelo(s) no servidor.";
+        }
+        catch (Exception ex)
+        {
+            if (ReferenceEquals(profile, SelectedProfile)) ModelsStatus = $"Falha ao listar modelos: {ex.Message}";
+        }
+    }
+
+    /// <summary>Salva os perfis e opções do painel de configurações e reinicia a conversa com o perfil selecionado.</summary>
     private void SaveSettings()
     {
         var settings = new AiSettings
         {
-            ApiKey = ApiKeyInput.Trim(),
-            Model = ModelInput.Trim(),
-            BaseUrl = BaseUrlInput.Trim(),
+            SchemaVersion = AiSettings.CurrentSchemaVersion,
+            Profiles = Profiles.Select(p => Trimmed(p.Clone())).ToList(),
+            ActiveProfileId = SelectedProfile?.Id ?? string.Empty,
             KeepConversationHistory = KeepHistoryInput,
             EnableReasoning = EnableReasoningInput,
             PromptProfile = SelectedPromptProfile.Id
@@ -463,6 +548,15 @@ public class AiChatViewModel : INotifyPropertyChanged
         _nextTurnId = 0;
         InitializeSession();
         IsSettingsOpen = false;
+    }
+
+    private static AiEndpointProfile Trimmed(AiEndpointProfile profile)
+    {
+        profile.DisplayName = profile.DisplayName.Trim();
+        profile.ApiKey = profile.ApiKey.Trim();
+        profile.BaseUrl = profile.BaseUrl.Trim();
+        profile.Model = profile.Model.Trim();
+        return profile;
     }
 
     private void RaiseCommandsCanExecuteChanged()
