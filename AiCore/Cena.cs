@@ -147,3 +147,16 @@ var xFaceExternaPlacaA = placaSuporteYA.ToWorld(new Point3D(16 * sxPlacaSuporteY
 var yFixacaoX6PlacaA = placaSuporteYA.ToWorld(new Point3D(16 * sxPlacaSuporteYA, 2, 0)).Y;
 var zBlocoFicacaoBeltVaoCorreia = topoPlacaSuporteYA.Z - blocoFicacaoBeltVaoCorreiaPeca.Altura;
 var blocoFicacaoBeltVaoCorreia = Add(blocoFicacaoBeltVaoCorreiaPeca, at: Placement.At(xFaceExternaPlacaA, yFixacaoX6PlacaA, zBlocoFicacaoBeltVaoCorreia, rotationZDegrees: 90), name: "bloco_ficacao_belt_vao_correia", color: "#00CC6A");
+var prism_748a_verts = new[]
+{
+    new Point3D(20, 0, 0),
+    new Point3D(-244.7764, -0.44722, 0),
+    new Point3D(-244.7764, 49.55278, 0),
+    new Point3D(20, 49.55278, 0)
+};
+var prism_748a_plane = new WorkPlane(new Point3D(112.5, -162.5, 0), new Vector3D(0, 0, 1), new Vector3D(1, 0, 0));
+var prism_748a = new PrismFeature(prism_748a_verts, height: 30, plane: prism_748a_plane)
+{
+    Name = "prism_748a"
+};
+AddFeature(prism_748a);
