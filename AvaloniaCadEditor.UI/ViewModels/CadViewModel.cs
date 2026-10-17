@@ -1613,6 +1613,25 @@ public class CadViewModel : INotifyPropertyChanged
 		}
 	}
 
+	private Point3D? _cursorLocal;
+
+	/// <summary>
+	/// As referências do plano que valem a pena mostrar agora: só enquanto uma ferramenta de desenho está
+	/// ativa, e só as que passam a menos da tolerância de snap do cursor. Todas desenhadas o tempo todo
+	/// poluíam a tela; o snap continua usando <see cref="PlaneReferences"/> inteiro.
+	/// </summary>
+	public IReadOnlyList<PlaneReference> NearbyPlaneReferences
+	{
+		get
+		{
+			bool drawing = _currentTool is DrawLineCommand or DrawCircleCommand or DrawPolygonCommand;
+			if (!drawing || _cursorLocal is not { } cursor) return Array.Empty<PlaneReference>();
+
+			double tolerance = _osnapService.Settings.SnapTolerance;
+			return PlaneReferences.Where(r => r.DistanceTo(cursor) <= tolerance).ToList();
+		}
+	}
+
 	private List<PlaneReference> BuildPlaneReferences(WorkPlane plane)
 	{
 		var result = new List<PlaneReference>();
@@ -1798,6 +1817,7 @@ public class CadViewModel : INotifyPropertyChanged
 		var refPt = CurrentTool?.GetReferencePoint();
 		var snappedWorld = _osnapService.GetSnappedPoint(Sketch, worldPoint, refPt != null ? ActiveWorkPlane.ToWorldSpace(refPt.Value) : null, SolidMesh, SolidSnapOnPlaneOnly, SolidSnapOnPlaneOnly ? PlaneReferences : null);
 		var localSnapped = ActiveWorkPlane.ToLocalSpace(snappedWorld);
+		_cursorLocal = ActiveWorkPlane.ToLocalSpace(worldPoint);
 		CurrentSnappedPoint = localSnapped;
 		ApplyHitTolerance();
 		if (CurrentTool is RotateTool rotateTool) rotateTool.WorldUnitsPerPixel = WorldUnitsPerPixel;

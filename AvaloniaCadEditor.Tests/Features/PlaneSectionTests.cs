@@ -124,6 +124,18 @@ public class PlaneSectionTests
     }
 
     [Fact]
+    public void DistanciaAteAReferencia_ContaOTrechoDeFechamentoDoLaco()
+    {
+        var quadrado = new PlaneReference(PlaneReferenceKind.Coplanar,
+            new[] { new Point3D(0, 0), new Point3D(10, 0), new Point3D(10, 10), new Point3D(0, 10) }, Closed: true);
+        var aberto = quadrado with { Closed = false };
+
+        quadrado.DistanceTo(new Point3D(-2, 5)).Should().BeApproximately(2, 1e-9, "o lado x = 0 fecha o laço");
+        aberto.DistanceTo(new Point3D(-2, 5)).Should().BeApproximately(Math.Sqrt(4 + 25), 1e-9);
+        quadrado.DistanceTo(new Point3D(5, 3)).Should().BeApproximately(3, 1e-9);
+    }
+
+    [Fact]
     public void PlanoInclinadoNaOrigem_CortaEmCoordenadasLocaisDoPlano()
     {
         // Plano YZ deslocado para x = 5: X local = Y global, Y local = Z global.

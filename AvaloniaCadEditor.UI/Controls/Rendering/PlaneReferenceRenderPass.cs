@@ -5,9 +5,10 @@ using Silk.NET.OpenGL;
 namespace AvaloniaCadEditor.UI.Controls.Rendering;
 
 /// <summary>
-/// Desenha a geometria de referência do plano de trabalho no esboço (<c>CadViewModel.PlaneReferences</c>):
-/// em ciano o contorno das faces que estão no plano e em magenta o corte dos sólidos que o atravessam.
-/// Cores tênues, para não competirem com as linhas do esboço, que vêm depois e ficam por cima. Depth test
+/// Desenha a geometria de referência do plano de trabalho perto do cursor
+/// (<c>CadViewModel.NearbyPlaneReferences</c>): em ciano o contorno das faces que estão no plano e em
+/// magenta o corte dos sólidos que o atravessam. Só acende o que o snap pode pegar enquanto se desenha —
+/// todas as referências o tempo todo poluíam a tela. Cores tênues, e as linhas do esboço vêm depois, por cima. Depth test
 /// desligado como no <see cref="ToolGuideRenderPass"/>: o corte fica dentro do sólido, e com depth ligado
 /// a própria casca o esconderia.
 /// </summary>
@@ -41,7 +42,7 @@ public sealed class PlaneReferenceRenderPass : IRenderPass
         var vm = context.ViewModel;
         if (vm == null || vm.CurrentMode != AvaloniaCadEditor.UI.ViewModels.EditorMode.SketchEdit) return;
 
-        var references = vm.PlaneReferences;
+        var references = vm.NearbyPlaneReferences;
         if (references.Count == 0) return;
 
         var plane = vm.ActiveWorkPlane;
