@@ -68,5 +68,19 @@ internal static class TestMeshes
         return new TriangleMesh(rotated, new float[p.Length], mesh.Indices);
     }
 
+    /// <summary>Gira +90° em X, (x, y, z) → (x, -z, y): o eixo Z vai para -Y, e (cx, cy) do plano XY vira (x cx, z cy).</summary>
+    public static TriangleMesh ZToMinusY(TriangleMesh mesh)
+    {
+        var p = mesh.Positions;
+        var rotated = new float[p.Length];
+        for (int i = 0; i < p.Length; i += 3)
+        {
+            rotated[i] = p[i];
+            rotated[i + 1] = -p[i + 2];
+            rotated[i + 2] = p[i + 1];
+        }
+        return new TriangleMesh(rotated, new float[p.Length], mesh.Indices);
+    }
+
     public static TriangleMesh Combine(params TriangleMesh[] meshes) => TriangleMesh.Combine(meshes, includeFeatureNormals: false);
 }
