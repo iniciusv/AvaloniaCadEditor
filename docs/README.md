@@ -22,6 +22,7 @@ a IA ou em `~/.claude/plans/`, onde se perdem.
 | Documento | Usado por |
 |---|---|
 | [referencias/deepseek-api.md](referencias/deepseek-api.md): tool calls, modo estrito, thinking mode e regras de `reasoning_content` | [IA com ferramentas](planos/2026-10-16-ia-ferramentas-tool-calling.md) |
+| [referencias/servidores-locais-openai.md](referencias/servidores-locais-openai.md): Ollama, LM Studio e llama.cpp: chave, tools, campo de reasoning, contexto, `/v1/models` | [IA com ferramentas](planos/2026-10-16-ia-ferramentas-tool-calling.md) |
 
 ## Planos
 
@@ -39,7 +40,7 @@ a IA ou em `~/.claude/plans/`, onde se perdem.
 
 | Data | Plano | Status |
 |---|---|---|
-| 2026-10-16 | [Ferramentas para a IA (tool calling) no chat de CadScript](planos/2026-10-16-ia-ferramentas-tool-calling.md) | Proposto |
+| 2026-10-16 | [Harness de ferramentas para a IA: tool calling, perfis de endpoint (DeepSeek + local) e vista em texto](planos/2026-10-16-ia-ferramentas-tool-calling.md) | Proposto (revisado 2026-10-17) |
 | 2026-10-17 | [Projetar face/volume como referência do esboço (+ desligar chanfros/fillets)](planos/2026-10-17-projetar-referencias-esboco.md) | Em andamento |
 
 ### Histórico (planos do modo de planejamento do Claude Code)
