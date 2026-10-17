@@ -56,15 +56,16 @@ var blocoFixacao = Add(blocoFixacaoPeca, at: Placement.At(0, 0, alturaTopoCarrin
 // --- Suporte impresso do Hotend V6 ---
 var suporteHotend = Add(suporteHotendPeca, at: Placement.At(0, ladoExtrusoraY * blocoFixacaoPeca.Comprimento / 2, alturaTopoCarrinhosY + carrinhoXPeca.Altura, rotationZDegrees: rotacaoExtrusoraZ), name: "suporte_hotend_v6", color: "#00CC6A");
 // --- Extrusões de alumínio 2020: estrutura de apoio dos trilhos ---
-// Mais longas que os trilhos Y (300 mm) — os trilhos ficam centralizados nelas.
-var extrusaoSobTrilhoYPeca = new Extrusao2020(Comprimento: 300);
+// Extrusões sob os trilhos Y: 400 mm, crescendo só para +Y a partir da ponta -Y (que continua
+// onde estava, junto ao carrinho Z e ao tubo travessa). Os trilhos ficam na metade -Y delas.
+var extrusaoSobTrilhoYPeca = new Extrusao2020(Comprimento: 400);
 // Comprimento suficiente só até encostar nos carrinhos Y, sem avançar sobre eles.
 var extrusaoSobTrilhoXPeca = new Extrusao2020(Comprimento: espacamentoTrilhosY - carrinhoYPeca.Largura);
-// Centrada sob o trilho Y correspondente: mesmo X central (largura diferente); em Y, centralizada
-// no meio do comprimento do trilho (que é menor que o da extrusão), só descendo em Z.
-var folgaComprimentoY = (extrusaoSobTrilhoYPeca.Comprimento - trilhoYPeca.Comprimento) / 2;
-var extrusaoSobTrilhoYA = Add(extrusaoSobTrilhoYPeca, at: Placement.At(trilhoYAX + trilhoYPeca.Largura / 2 - extrusaoSobTrilhoYPeca.Largura / 2, trilhoYAY - folgaComprimentoY, -extrusaoSobTrilhoYPeca.Altura), name: "extrusao_2020_sob_trilho_y_a");
-var extrusaoSobTrilhoYB = Add(extrusaoSobTrilhoYPeca, at: Placement.At(trilhoYBX + trilhoYPeca.Largura / 2 - extrusaoSobTrilhoYPeca.Largura / 2, trilhoYBY - folgaComprimentoY, -extrusaoSobTrilhoYPeca.Altura), name: "extrusao_2020_sob_trilho_y_b");
+// Centradas sob o trilho Y correspondente em X (larguras diferentes); em Y, a ponta -Y fica um
+// pouco antes do início do trilho e o comprimento total cresce apenas para +Y.
+const double folgaExtrusaoYAntesDoTrilho = 50;
+var extrusaoSobTrilhoYA = Add(extrusaoSobTrilhoYPeca, at: Placement.At(trilhoYAX + trilhoYPeca.Largura / 2 - extrusaoSobTrilhoYPeca.Largura / 2, trilhoYAY - folgaExtrusaoYAntesDoTrilho, -extrusaoSobTrilhoYPeca.Altura), name: "extrusao_2020_sob_trilho_y_a");
+var extrusaoSobTrilhoYB = Add(extrusaoSobTrilhoYPeca, at: Placement.At(trilhoYBX + trilhoYPeca.Largura / 2 - extrusaoSobTrilhoYPeca.Largura / 2, trilhoYBY - folgaExtrusaoYAntesDoTrilho, -extrusaoSobTrilhoYPeca.Altura), name: "extrusao_2020_sob_trilho_y_b");
 var extrusaoSobTrilhoX = Add(extrusaoSobTrilhoXPeca with { Comprimento = 208 }, at: Placement.At(-extrusaoSobTrilhoXPeca.Comprimento / 2 - 11, extrusaoSobTrilhoXPeca.Largura / 2, alturaTopoCarrinhosY - extrusaoSobTrilhoXPeca.Altura, rotationZDegrees: -90), name: "extrusao_2020_sob_trilho_x");
 // --- Eixo Z: 2x trilho HGR15 vertical, cada um com o seu carrinho HGH15 na ponta -Y de uma extrusão Y ---
 // Os carrinhos são a parte móvel: levam o gantry inteiro (extrusões, trilhos Y e tudo o que está
@@ -155,6 +156,55 @@ var rotacaoEspacadorMotorZ = 225.0;
 var deslocamentoEspacadorMotor = Placement.RotationZ(rotacaoEspacadorMotorZ).ApplyVector(new Vector3D(cilindroEspacadorMotorPeca.DeslocamentoFuro, 0, 0));
 var zTopoSuporteMotor = zSuporteMotor + suporteMotorNema17Peca.Espessura;
 var cilindroEspacadorMotor = Add(cilindroEspacadorMotorPeca with { DiametroExterno = 5.9 }, at: Placement.At(furoMotor1Mundo.X - deslocamentoEspacadorMotor.X, furoMotor1Mundo.Y - deslocamentoEspacadorMotor.Y, zTopoSuporteMotor, rotationZDegrees: rotacaoEspacadorMotorZ), name: "cilindro_espacador_motor", color: "#00CC6A");
+// --- Segundo espaçador, no furo_motor_2: a imagem do primeiro pelo plano X do motor ---
+// Os dois ficam nos furos do lado do trilho X e desviam os dois ramos da correia que saem da polia
+// para os rolamentos presos no porca_inferior_2 das placas de suporte A e B. O furo_motor_2 é o
+// canto +X/−Y local do suporte, que com o giro de 180° cai em −X/+Y do mundo; por isso o corpo
+// cresce para +X/−Y em relação ao furo (giro de 315°), espelhando os 225° do primeiro.
+var furoMotor2Local = new Point3D(suporteMotorNema17Peca.PassoFurosMotor / 2, -suporteMotorNema17Peca.PassoFurosMotor / 2, 0);
+var furoMotor2Mundo = suporteMotorNema17.ToWorld(furoMotor2Local);
+var rotacaoEspacadorMotor2Z = 315.0;
+var deslocamentoEspacadorMotor2 = Placement.RotationZ(rotacaoEspacadorMotor2Z).ApplyVector(new Vector3D(cilindroEspacadorMotor.Part.DeslocamentoFuro, 0, 0));
+var cilindroEspacadorMotor2 = Add(cilindroEspacadorMotor.Part, at: Placement.At(furoMotor2Mundo.X - deslocamentoEspacadorMotor2.X, furoMotor2Mundo.Y - deslocamentoEspacadorMotor2.Y, zTopoSuporteMotor, rotationZDegrees: rotacaoEspacadorMotor2Z), name: "cilindro_espacador_motor_2", color: "#00CC6A");
+// --- Polia GT2 de 24 dentes do eixo X: 10 mm, sem cubo (correia de 6 mm) ---
+// No eixo do motor, folgaPoliaSuporteMotor acima do topo do suporte, na mesma faixa de altura dos
+// dois espaçadores que desviam a correia.
+const double folgaPoliaSuporteMotor = 1;
+var poliaXPeca = new PoliaGt2(Dentes: 24, Altura: 10);
+var poliaX = Add(poliaXPeca, at: Placement.At(xMotorNema17, yMotorSuporte, zTopoSuporteMotor + folgaPoliaSuporteMotor), name: "polia_gt2_x");
+// --- Rolamentos da correia do eixo X ---
+// A correia de 6 mm corre centrada na faixa dentada da polia; os rolamentos que a desviam ficam
+// nessa mesma altura, montados de dois jeitos:
+//  - nas placas de suporte A e B, no furo porca_inferior_2: arruela do topo da placa até dois
+//    F623ZZ costas com costas (flanges para fora, 8 mm), centrados na correia. O M3 desce por eles e
+//    pela placa até a porca alojada na face inferior;
+//  - nos dois espaçadores do suporte do motor: um F686ZZ sobre o corpo Ø5,9 do espaçador, com a
+//    flange logo abaixo da correia, apoiado numa arruela no topo do suporte. Como o furo do
+//    espaçador é excêntrico, girá-lo pelo sextavado desloca o rolamento e tensiona a correia.
+const double larguraCorreiaX = 6;
+var zCentroCorreiaX = poliaX.ToWorld(new Point3D(0, 0, poliaXPeca.AlturaCubo + poliaXPeca.EspessuraFlange + poliaXPeca.LarguraDentes / 2)).Z;
+var rolamentoF623Peca = Rolamento.F623ZZ;
+var zBaseRolamentosPlaca = zCentroCorreiaX - rolamentoF623Peca.Largura;
+// porca_inferior_2 fica em (−4,5·sx, 10) local da placa; z = 5,5 é o topo dela.
+var topoPorcaInferior2PlacaA = placaSuporteYA.ToWorld(new Point3D(-4.5 * (placaSuporteYA.Part.EspelhadoNoEixoY ? -1.0 : 1.0), 10, 5.5));
+var topoPorcaInferior2PlacaB = placaSuporteYB.ToWorld(new Point3D(-4.5 * (placaSuporteYB.Part.EspelhadoNoEixoY ? -1.0 : 1.0), 10, 5.5));
+var arruelaRolamentoPlacaPeca = new ArruelaEspacadora(Altura: zBaseRolamentosPlaca - topoPorcaInferior2PlacaA.Z);
+var arruelaRolamentoPlacaA = Add(arruelaRolamentoPlacaPeca, at: Placement.At(topoPorcaInferior2PlacaA), name: "arruela_rolamento_placa_a", color: "#00CC6A");
+var arruelaRolamentoPlacaB = Add(arruelaRolamentoPlacaPeca, at: Placement.At(topoPorcaInferior2PlacaB), name: "arruela_rolamento_placa_b", color: "#00CC6A");
+var rolamentoPlacaAInferior = Add(rolamentoF623Peca, at: Placement.At(topoPorcaInferior2PlacaA.X, topoPorcaInferior2PlacaA.Y, zBaseRolamentosPlaca), name: "rolamento_f623_placa_a_inferior");
+var rolamentoPlacaASuperior = Add(rolamentoF623Peca with { FlangeNoTopo = true }, at: Placement.At(topoPorcaInferior2PlacaA.X, topoPorcaInferior2PlacaA.Y, zBaseRolamentosPlaca + rolamentoF623Peca.Largura), name: "rolamento_f623_placa_a_superior");
+var rolamentoPlacaBInferior = Add(rolamentoF623Peca, at: Placement.At(topoPorcaInferior2PlacaB.X, topoPorcaInferior2PlacaB.Y, zBaseRolamentosPlaca), name: "rolamento_f623_placa_b_inferior");
+var rolamentoPlacaBSuperior = Add(rolamentoF623Peca with { FlangeNoTopo = true }, at: Placement.At(topoPorcaInferior2PlacaB.X, topoPorcaInferior2PlacaB.Y, zBaseRolamentosPlaca + rolamentoF623Peca.Largura), name: "rolamento_f623_placa_b_superior");
+// Rolamento do espaçador: coaxial com o CORPO do espaçador (a origem dele), não com o furo.
+var rolamentoF686Peca = Rolamento.F686ZZ;
+var zBaseRolamentoEspacador = zCentroCorreiaX - larguraCorreiaX / 2 - rolamentoF686Peca.EspessuraFlange;
+var arruelaRolamentoEspacadorPeca = new ArruelaEspacadora(Altura: zBaseRolamentoEspacador - zTopoSuporteMotor, DiametroFuro: cilindroEspacadorMotor.Part.DiametroExterno + 0.3, DiametroExterno: 10, DiametroColar: 7.5);
+var centroEspacadorMotor1 = cilindroEspacadorMotor.ToWorld(Point3D.Origin);
+var centroEspacadorMotor2 = cilindroEspacadorMotor2.ToWorld(Point3D.Origin);
+var arruelaRolamentoEspacador1 = Add(arruelaRolamentoEspacadorPeca, at: Placement.At(centroEspacadorMotor1), name: "arruela_rolamento_espacador_1", color: "#00CC6A");
+var arruelaRolamentoEspacador2 = Add(arruelaRolamentoEspacadorPeca, at: Placement.At(centroEspacadorMotor2), name: "arruela_rolamento_espacador_2", color: "#00CC6A");
+var rolamentoEspacador1 = Add(rolamentoF686Peca, at: Placement.At(centroEspacadorMotor1.X, centroEspacadorMotor1.Y, zBaseRolamentoEspacador), name: "rolamento_f686_espacador_1");
+var rolamentoEspacador2 = Add(rolamentoF686Peca, at: Placement.At(centroEspacadorMotor2.X, centroEspacadorMotor2.Y, zBaseRolamentoEspacador), name: "rolamento_f686_espacador_2");
 // --- Bloco de pressao da correia (belt), fixado na lateral do bloco_fixacao_mgn9 ---
 // Acompanha o lado do motor: a correia vem da polia e o rebaixo inferior do bloco existe
 // justamente para passar livre do bloco_conexao_motor_2020. A peça já traz o rebaixo cilíndrico
@@ -212,3 +262,11 @@ var alcanceEixoMotorY = motorNema17Peca.Comprimento + motorNema17Peca.AlturaBoss
 var zMotorY = zTopoTuboTravessa + motorNema17Peca.Lado / 2;
 var motorYA = Add(motorNema17Peca, at: Placement.Rotation(Vector3D.UnitY, -90).Then(Placement.At(xFaceInternaTrilhoZA + folgaEixoMotorYTrilhoZ + alcanceEixoMotorY, yCentroTuboTravessa, zMotorY)), name: "motor_nema17_y_a");
 var motorYB = Add(motorNema17Peca, at: Placement.Rotation(Vector3D.UnitY, 90).Then(Placement.At(xFaceInternaTrilhoZB - folgaEixoMotorYTrilhoZ - alcanceEixoMotorY, yCentroTuboTravessa, zMotorY)), name: "motor_nema17_y_b");
+// --- Polias GT2 de 24 dentes do eixo Y: 20 mm, com cubo de 7 mm voltado para o motor (correia de 10 mm) ---
+// No eixo de cada motor, folgaPoliaBossMotorY além do boss; giradas como o motor, o +Z da polia
+// aponta para fora junto com o eixo.
+const double folgaPoliaBossMotorY = 1;
+var poliaYPeca = new PoliaGt2(Dentes: 24, Altura: 20, AlturaCubo: 7);
+var basePoliaYNoMotor = new Point3D(0, 0, motorNema17Peca.Comprimento + motorNema17Peca.AlturaBoss + folgaPoliaBossMotorY);
+var poliaYA = Add(poliaYPeca, at: Placement.Rotation(Vector3D.UnitY, -90).Then(Placement.At(motorYA.ToWorld(basePoliaYNoMotor))), name: "polia_gt2_y_a");
+var poliaYB = Add(poliaYPeca, at: Placement.Rotation(Vector3D.UnitY, 90).Then(Placement.At(motorYB.ToWorld(basePoliaYNoMotor))), name: "polia_gt2_y_b");
