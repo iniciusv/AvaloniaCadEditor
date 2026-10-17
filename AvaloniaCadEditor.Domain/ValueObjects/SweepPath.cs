@@ -39,6 +39,13 @@ public readonly struct SweepSegment
 }
 
 /// <summary>
+/// Um círculo contornado por <see cref="SweepPath.AroundCircles"/>: o centro, o raio da LINHA DE
+/// CENTRO do que é varrido (para uma correia, o raio da polia mais meia espessura da correia) e o
+/// sentido da volta, visto da ponta da normal do plano.
+/// </summary>
+public readonly record struct SweepWrap(Point3D Center, double Radius, bool Clockwise);
+
+/// <summary>
 /// O caminho de uma varredura, já resolvido em trechos de reta e arco — as duas únicas formas que o
 /// kernel sabe construir exatamente (<c>Extrude</c> e <c>Revolve</c>), e as duas que casam face com
 /// face sem vão.
@@ -58,7 +65,10 @@ public sealed class SweepPath
     /// <summary>Abaixo disto dois pontos são o mesmo ponto e dois rumos são o mesmo rumo.</summary>
     public const double Tolerance = 1e-9;
 
-    /// <summary>A polilinha de entrada, ou o ponto inicial quando o caminho veio de um arco só.</summary>
+    /// <summary>
+    /// A polilinha de entrada, ou o ponto inicial quando o caminho veio de um arco só. Num caminho
+    /// de <see cref="AroundCircles"/>: o início, os centros dos círculos e o fim.
+    /// </summary>
     public IReadOnlyList<Point3D> Points { get; }
 
     /// <summary>Raio aplicado aos cantos; 0 quando o caminho não veio de uma polilinha.</summary>
@@ -202,6 +212,114 @@ public sealed class SweepPath
         // Defesa: uma volta inteira fecha por construção (a torção sai na ordem de 1e-14°), mas a
         // conferência é a mesma que a geometria vai usar e não custa nada.
         return path.ClosureError() is { } erro ? Invalid(fallback, 0, erro) : path;
+    }
+
+    /// <summary>
+    /// Caminho que sai de <paramref name="start"/>, contorna cada círculo de
+    /// <paramref name="wraps"/> no sentido pedido e chega em <paramref name="end"/>: uma correia
+    /// passando por polias e rolamentos, um cabo enrolado em pinos.
+    /// <para>
+    /// Cada trecho reto é a reta tangente aos dois vizinhos que respeita os dois sentidos — a
+    /// tangente externa quando eles giram para o mesmo lado, a cruzada quando giram para lados
+    /// opostos — e cada círculo vira um arco do ponto onde a reta chega até onde a próxima sai.
+    /// Diferente de <see cref="FromPolyline"/>, cada círculo tem o seu raio.
+    /// </para>
+    /// <para>
+    /// É plano: início, centros e fim precisam estar no plano que passa por
+    /// <paramref name="start"/> com a <paramref name="normal"/>, e é dela que os sentidos são
+    /// vistos. Um arco cujos pontos de chegada e saída coincidem é descartado — uma volta inteira
+    /// não se distingue de volta nenhuma.
+    /// </para>
+    /// </summary>
+    public static SweepPath AroundCircles(Point3D start, IEnumerable<SweepWrap> wraps, Point3D end, Vector3D normal)
+    {
+        var circles = new List<SweepWrap>(wraps ?? Array.Empty<SweepWrap>());
+        var points = new List<Point3D>(circles.Count + 2) { start };
+        foreach (var circle in circles) points.Add(circle.Center);
+        points.Add(end);
+
+        // Normalize() devolve o vetor nulo abaixo de 1e-6: confere DEPOIS, como em Arc.
+        var n = normal.Normalize();
+        if (n.Length < Tolerance) return Invalid(points, 0, "A normal do plano do caminho não pode ser nula.");
+        if (circles.Count == 0)
+            return Invalid(points, 0, "Contornar círculos pede pelo menos um círculo; para uma reta só, use FromPolyline.");
+
+        for (int i = 0; i < circles.Count; i++)
+        {
+            if (circles[i].Radius <= Tolerance)
+                return Invalid(points, 0, $"O raio do círculo {i} precisa ser positivo (recebido {Fmt(circles[i].Radius)}).");
+        }
+
+        foreach (var p in points)
+        {
+            double fora = (p - start).DotProduct(n);
+            if (Math.Abs(fora) > 1e-6)
+                return Invalid(points, 0, $"O ponto {Fmt(p)} está a {Fmt(fora)} do plano do caminho: o contorno de círculos é plano.");
+        }
+
+        // Nós da cadeia: o início, os círculos e o fim. As pontas são círculos de raio zero, então
+        // ponto→círculo e círculo→círculo saem da mesma conta. Raio com sinal: + anti-horário, − horário.
+        int count = points.Count;
+        double SignedRadius(int k) =>
+            k == 0 || k == count - 1 ? 0 : (circles[k - 1].Clockwise ? -1 : 1) * circles[k - 1].Radius;
+        string NodeName(int k) => k == 0 ? "o início" : k == count - 1 ? "o fim" : $"o círculo {k - 1}";
+
+        // Tangente de cada par de vizinhos. Com m a normal à ESQUERDA do rumo, o centro de cada nó
+        // fica em ponto + r·m (r com sinal); daí D·m = r₂ − r₁, que dá m, e o rumo é m girado −90°.
+        var leaves = new Point3D[count - 1];
+        var arrives = new Point3D[count - 1];
+        for (int i = 0; i < count - 1; i++)
+        {
+            var d = points[i + 1] - points[i];
+            double length = d.Length;
+            double k = SignedRadius(i + 1) - SignedRadius(i);
+
+            if (length < Tolerance || Math.Abs(k) > length + 1e-9)
+            {
+                return Invalid(points, 0,
+                    $"Não passa reta tangente de {NodeName(i)} {Fmt(points[i])} para {NodeName(i + 1)} {Fmt(points[i + 1])} " +
+                    "com esses sentidos: um está dentro do outro, ou eles se sobrepõem demais para a reta cruzar entre os dois.");
+            }
+
+            var u = d * (1.0 / length);
+            var uPerp = n.CrossProduct(u);
+            double a = k / length;
+            double b = Math.Sqrt(Math.Max(0, 1 - a * a));
+            var m = u * a + uPerp * b;
+
+            leaves[i] = points[i] - m * SignedRadius(i);
+            arrives[i] = points[i + 1] - m * SignedRadius(i + 1);
+        }
+
+        var segments = new List<SweepSegment>();
+        var cursor = start;
+
+        for (int c = 1; c < count - 1; c++)
+        {
+            var arcStart = arrives[c - 1];
+            var arcEnd = leaves[c];
+
+            var toArc = arcStart - cursor;
+            if (toArc.Length > Tolerance) segments.Add(SweepSegment.Line(toArc));
+
+            var center = points[c];
+            var axis = circles[c - 1].Clockwise ? n * -1 : n;
+            var from = arcStart - center;
+            var to = arcEnd - center;
+            double angle = Math.Atan2(axis.DotProduct(from.CrossProduct(to)), from.DotProduct(to));
+            if (angle < 0) angle += 2.0 * Math.PI;
+
+            if (angle > 1e-9 && angle < 2.0 * Math.PI - 1e-9)
+                segments.Add(SweepSegment.Arc(center, axis, angle));
+
+            cursor = arcEnd;
+        }
+
+        var tail = end - cursor;
+        if (tail.Length > Tolerance) segments.Add(SweepSegment.Line(tail));
+
+        if (segments.Count == 0) return Invalid(points, 0, "O caminho não tem comprimento.");
+        return new SweepPath(points, 0, start, false, segments, null);
     }
 
     /// <summary>

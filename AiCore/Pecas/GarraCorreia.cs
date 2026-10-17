@@ -37,6 +37,13 @@ public sealed record GarraCorreia(
     /// <summary>Face do canal do lado da face de apoio: entre y = 0 e ela a garra é parede maciça.</summary>
     public double YParede => ParafusoY - RaioAlojamento;
 
+    /// <summary>Face do canal do lado do nariz: a outra camada da correia encosta nela.</summary>
+    public double YTetoCanal => YParede + LarguraCanal;
+
+    /// <summary>Centro do nariz da garra do lado −X: tangente ao teto do canal, a FolgaNariz do parafuso.</summary>
+    public double NarizY => YTetoCanal + RaioNariz;
+    public double NarizX => -DistanciaParafuso - Math.Sqrt(Math.Pow(RaioParafuso + FolgaNariz + RaioNariz, 2) - Math.Pow(NarizY - ParafusoY, 2));
+
     protected override IFeature Build()
     {
         var metadeX = Comprimento / 2.0;
@@ -48,11 +55,10 @@ public sealed record GarraCorreia(
 
         // Parede de entrada tangente ao alojamento: o fio de entrada vai reto até enrolar no parafuso.
         var yParede = YParede;
-        var yTetoCanal = yParede + LarguraCanal;
+        var yTetoCanal = YTetoCanal;
         // Nariz tangente ao teto do canal, a FolgaNariz da superfície do parafuso.
-        var yNariz = yTetoCanal + RaioNariz;
-        var dyNariz = yNariz - ParafusoY;
-        var xNariz = xParafuso - Math.Sqrt(Math.Pow(RaioParafuso + FolgaNariz + RaioNariz, 2) - dyNariz * dyNariz);
+        var yNariz = NarizY;
+        var xNariz = NarizX;
 
         var corpo = new BoxFeature(new Point3D(-metadeX, 0, 0), metadeX, Largura, Altura) { Name = "corpo" };
 

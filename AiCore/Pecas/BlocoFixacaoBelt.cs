@@ -40,6 +40,9 @@ public sealed record BlocoFixacaoBelt(
         AlturaCorreia: AlturaCorreia,
         RaioParafuso: RaioFuroVertical3_2);
 
+    /// <summary>Onde a garra fica no bloco: origem dela no plano de simetria, na face frontal e no topo do rebaixo.</summary>
+    public Placement PosicaoGarra => Placement.At(BaseCorpoX + LarguraCorpoX, BaseCorpoY, ZBaseGarra);
+
     /// <summary>Eixo do parafuso da garra do lado −X (o do lado +X é o espelho dele).</summary>
     public double FuroVerticalX => BaseCorpoX + LarguraCorpoX - Garra.DistanciaParafuso;
     public double FuroVerticalY => BaseCorpoY + Garra.ParafusoY;
@@ -50,7 +53,7 @@ public sealed record BlocoFixacaoBelt(
         var xm = BaseCorpoX + LarguraCorpoX;
         var zGarra = ZBaseGarra;
 
-        var garra_correia = Garra.Instance("garra_correia", at: Placement.At(xm, BaseCorpoY, zGarra));
+        var garra_correia = Garra.Instance("garra_correia", at: PosicaoGarra);
 
         // Faixa frontal sob a garra (até onde começa o rebaixo inferior), sem as pontas do rebaixo
         // frontal: um bloco só, simétrico em torno de xm e já recortado, sem booleana. Sobe 1 mm

@@ -226,6 +226,7 @@ Propriedades comuns a TODAS as features (herdadas de FeatureBase):
 ### SweepPath
   static SweepPath SweepPath.Arc(Point3D start, Vector3D startTangent, Vector3D bendDirection, double bendRadius, double angleDegrees)
   static SweepPath SweepPath.FullCircle(Point3D center, Vector3D axis, double radius)
+  static SweepPath SweepPath.AroundCircles(Point3D start, IEnumerable<SweepWrap> wraps, Point3D end, Vector3D normal)
   static double SweepPath.MaxCornerRadius(IEnumerable<Point3D> points, bool closed = false)
   static SweepPath SweepPath.FromPolyline(IEnumerable<Point3D> points, double cornerRadius, bool closed = false)
   IReadOnlyList<Point3D> Points { get; }
@@ -236,6 +237,17 @@ Propriedades comuns a TODAS as features (herdadas de FeatureBase):
   string Error { get; }
   Vector3D StartTangent { get; }
   IReadOnlyList<WorkPlane> Stations(WorkPlane startPlane)
+
+### SweepWrap
+  new SweepWrap(Point3D Center, double Radius, bool Clockwise)
+  Point3D Center { get; set; }
+  double Radius { get; set; }
+  bool Clockwise { get; set; }
+  string ToString()
+  int GetHashCode()
+  bool Equals(Object obj)
+  bool Equals(SweepWrap other)
+  void Deconstruct(Point3D& Center, Double& Radius, Boolean& Clockwise)
 
 enum FaceType { Top, Bottom, Front, Back, Left, Right }
 enum EdgeType { TopFront, TopBack, TopLeft, TopRight, BottomFront, BottomBack, BottomLeft, BottomRight, FrontLeft, FrontRight, BackLeft, BackRight }
