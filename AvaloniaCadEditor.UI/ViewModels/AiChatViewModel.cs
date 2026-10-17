@@ -31,7 +31,7 @@ public class AiChatViewModel : INotifyPropertyChanged
     private readonly SceneScriptViewModel _scriptEditor;
     private readonly ISceneEvaluator _evaluator;
     private readonly IAiSettingsProvider _settingsProvider;
-    private CadScriptChatSession? _session;
+    private ICadScriptChatSession? _session;
     private CadScriptProtocol? _protocol;
     private CancellationTokenSource? _cts;
 

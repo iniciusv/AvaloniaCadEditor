@@ -7,7 +7,8 @@ namespace AvaloniaCadEditor.Domain.Mesh;
 
 /// <summary>
 /// Transforma segmentos soltos (ou laços prontos) em coordenadas locais de um plano nas
-/// <see cref="PlaneReference"/> do esboço. Serve ao <see cref="PlaneSection"/> e ao <see cref="PlaneProjection"/>.
+/// <see cref="PlaneReference"/> do esboço. Serve ao <see cref="PlaneSection"/>, ao <see cref="PlaneProjection"/>
+/// e a quem mais projetar arestas num plano (a vista em texto do harness de IA).
 /// <list type="bullet">
 /// <item>As pontas são soldadas pela posição, porque a malha do OCCT não é soldada.</item>
 /// <item>Os vértices colineares saem: a diagonal da tesselação e os T-junctions cortam uma aresta reta em
@@ -15,7 +16,7 @@ namespace AvaloniaCadEditor.Domain.Mesh;
 /// <item>Os laços circulares ganham centro e raio.</item>
 /// </list>
 /// </summary>
-internal static class ReferencePolylines
+public static class ReferencePolylines
 {
     private const double WeldScale = 1e4;            // pontas a menos de ~1e-4 viram o mesmo nó
     private const double CollinearSine = 1e-4;       // giro abaixo disso (~0,006°) é colinear

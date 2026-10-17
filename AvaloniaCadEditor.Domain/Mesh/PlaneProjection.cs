@@ -15,9 +15,6 @@ namespace AvaloniaCadEditor.Domain.Mesh;
 /// </summary>
 public static class PlaneProjection
 {
-    /// <summary>Abaixo disto, um triângulo é visto de lado (a normal é perpendicular à do plano).</summary>
-    private const double EdgeOnDot = 1e-6;
-
     /// <param name="region">Triângulos da face (<see cref="MeshFaces.Region"/>); <c>null</c> projeta a malha toda.</param>
     public static List<PlaneReference> Edges(MeshEdgeGraph graph, IReadOnlySet<int>? region, WorkPlane plane)
     {
@@ -25,7 +22,7 @@ public static class PlaneProjection
         var segments = new List<(Point3D, Point3D)>();
         foreach (var edge in graph.Edges)
         {
-            if (IsVisibleLine(graph, edge, region, axis))
+            if (MeshEdgeClassifier.Classify(graph, edge, region, axis) != null)
                 segments.Add((Project(plane, graph.Vertex(edge.A)), Project(plane, graph.Vertex(edge.B))));
         }
         return ReferencePolylines.Build(PlaneReferenceKind.Projected, segments);
@@ -41,35 +38,12 @@ public static class PlaneProjection
         var triangles = new List<IReadOnlyList<Point3D>>();
         for (int t = 0; t < graph.TriangleCount; t++)
         {
-            if (graph.Normal(t).DotProduct(axis) <= EdgeOnDot) continue;
+            if (graph.Normal(t).DotProduct(axis) <= MeshEdgeClassifier.EdgeOnDot) continue;
             var (a, b, c) = graph.Triangle(t);
             triangles.Add(new[] { Project(plane, a), Project(plane, b), Project(plane, c) });
         }
         if (triangles.Count == 0) return new List<PlaneReference>();
         return ReferencePolylines.FromLoops(PlaneReferenceKind.Projected, union.Union(triangles));
-    }
-
-    /// <summary>
-    /// Uma aresta aparece na projeção quando é borda da face, quina, ou silhueta: os dois triângulos dela
-    /// olham para lados diferentes do plano (ou um deles é visto de lado).
-    /// </summary>
-    private static bool IsVisibleLine(MeshEdgeGraph graph, MeshEdgeGraph.Edge edge, IReadOnlySet<int>? region, Vector3D axis)
-    {
-        int inside = 0;
-        foreach (int t in edge.Triangles)
-            if (region == null || region.Contains(t)) inside++;
-
-        if (inside == 0) return false;
-        if (inside < edge.Triangles.Count) return true;   // borda da face escolhida
-        if (!graph.IsSmooth(edge)) return true;           // quina (ou borda da malha)
-
-        return Facing(graph, edge.Triangles[0], axis) != Facing(graph, edge.Triangles[1], axis);
-    }
-
-    private static int Facing(MeshEdgeGraph graph, int triangle, Vector3D axis)
-    {
-        double d = graph.Normal(triangle).DotProduct(axis);
-        return d > EdgeOnDot ? 1 : d < -EdgeOnDot ? -1 : 0;
     }
 
     private static Point3D Project(WorkPlane plane, Point3D world)

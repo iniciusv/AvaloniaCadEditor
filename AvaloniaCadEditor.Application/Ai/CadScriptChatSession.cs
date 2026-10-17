@@ -41,7 +41,7 @@ public class CadScriptTurnResult
 /// Quando o código retornado não compila/executa, reenvia o erro à IA automaticamente
 /// (até <see cref="MaxAttempts"/> tentativas no total) antes de reportar falha.
 /// </summary>
-public class CadScriptChatSession
+public class CadScriptChatSession : ICadScriptChatSession
 {
     /// <summary>1 tentativa inicial + até 2 correções automáticas.</summary>
     public const int MaxAttempts = 3;
@@ -50,7 +50,7 @@ public class CadScriptChatSession
 
     private LlmOptions _options;
     private readonly IAiProtocol<CadScriptContext, CadScriptChanges> _protocol;
-    private readonly ISceneEvaluator _evaluator;
+    private readonly WorkingCopyEvaluator _workingCopy;
     private readonly SendDelegate _send;
     private readonly List<ChatMessage> _history = new();
 
@@ -75,7 +75,7 @@ public class CadScriptChatSession
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _protocol = protocol ?? throw new ArgumentNullException(nameof(protocol));
-        _evaluator = evaluator ?? throw new ArgumentNullException(nameof(evaluator));
+        _workingCopy = new WorkingCopyEvaluator(evaluator ?? throw new ArgumentNullException(nameof(evaluator)));
         _send = send ?? DefaultSend;
         ResetHistory();
     }
@@ -160,16 +160,9 @@ public class CadScriptChatSession
             SceneEvaluationResult? evalResult = null;
             if (error == null)
             {
-                error = changes
-                    .Select(c => (c.FilePath, Result: CadScriptValidator.Validate(c.Text, context.KindOf(c.FilePath))))
-                    .Where(v => !v.Result.IsValid)
-                    .Select(v => context.IsMultiFile ? $"{v.FilePath}: {v.Result.Error}" : v.Result.Error)
-                    .FirstOrDefault();
-            }
-            if (error == null)
-            {
-                evalResult = await EvaluateAsync(changes, context);
-                if (!evalResult.Success) error = evalResult.ErrorMessage ?? "Erro desconhecido ao executar o script.";
+                var check = await _workingCopy.CheckAsync(changes, context);
+                error = check.Error;
+                evalResult = check.Evaluation;
             }
 
             if (error == null)
@@ -202,7 +195,7 @@ public class CadScriptChatSession
                 };
             }
 
-            var fixContext = WithProposedChanges(context, changes) with { ErrorFeedback = error };
+            var fixContext = WorkingCopyEvaluator.WithProposedChanges(context, changes) with { ErrorFeedback = error };
             _history.Add(new ChatMessage
             {
                 Role = "user",
@@ -215,82 +208,6 @@ public class CadScriptChatSession
         }
 
         throw new InvalidOperationException("Loop de tentativas do CadScriptChatSession terminou sem retornar um resultado.");
-    }
-
-    /// <summary>O contexto com as alterações propostas sobrepostas (para o round de correção).</summary>
-    private static CadScriptContext WithProposedChanges(CadScriptContext context, IReadOnlyList<ScriptDocument> changes)
-    {
-        if (!context.IsMultiFile)
-        {
-            return context with { CurrentCode = changes.Count > 0 ? changes[0].Text : context.CurrentCode };
-        }
-
-        return context with
-        {
-            Scope = context.Scope! with { Documents = Overlay(context.Scope!.Documents, changes) },
-            ProjectDocuments = context.ProjectDocuments == null ? null : Overlay(context.ProjectDocuments, changes)
-        };
-    }
-
-    /// <summary><paramref name="documents"/> com o texto de <paramref name="changes"/> no lugar (e arquivos novos no fim).</summary>
-    private static IReadOnlyList<ScriptDocument> Overlay(IReadOnlyList<ScriptDocument> documents, IReadOnlyList<ScriptDocument> changes)
-    {
-        var result = documents
-            .Select(d => changes.FirstOrDefault(c => string.Equals(c.FilePath, d.FilePath, StringComparison.OrdinalIgnoreCase)) ?? d)
-            .ToList();
-        result.AddRange(changes.Where(c => !documents.Any(d => string.Equals(d.FilePath, c.FilePath, StringComparison.OrdinalIgnoreCase))));
-        return result;
-    }
-
-    /// <summary>
-    /// Avalia as alterações propostas no contexto certo. No modo multi-arquivo, a cena inteira
-    /// (<see cref="CadScriptContext.ProjectDocuments"/>, com o arquivo de entrada real) é avaliada com as
-    /// alterações sobrepostas. No modo de arquivo único, um script é avaliado sozinho (ou com os demais
-    /// arquivos do projeto); um arquivo de peça não tem statements próprios para executar, então ganha um
-    /// arquivo de entrada sintético que só instancia a peça (<c>Add(new Peca(...))</c>), forçando o
-    /// <c>Build()</c> a rodar.
-    /// </summary>
-    private Task<SceneEvaluationResult> EvaluateAsync(IReadOnlyList<ScriptDocument> changes, CadScriptContext context)
-    {
-        if (context.IsMultiFile)
-        {
-            var project = context.ProjectDocuments ?? context.Scope!.Documents;
-            return _evaluator.EvaluateAsync(Overlay(project, changes));
-        }
-
-        string code = changes[0].Text;
-        string fileName = context.FileName ?? ScriptDocument.DefaultSceneFile;
-        var others = context.ProjectDocuments ?? Array.Empty<ScriptDocument>();
-
-        if (context.Kind != CadFileKind.PartFile)
-        {
-            if (others.Count == 0) return _evaluator.EvaluateAsync(code);
-
-            var docs = new List<ScriptDocument> { new(fileName, code) };
-            docs.AddRange(others.Where(d => !string.Equals(d.FilePath, fileName, StringComparison.OrdinalIgnoreCase)));
-            return _evaluator.EvaluateAsync(docs);
-        }
-
-        var partDoc = new ScriptDocument(fileName, code);
-        var types = PartSourceEditor.FindPartTypes(new[] { partDoc });
-        if (types.Count != 1)
-        {
-            return Task.FromResult(new SceneEvaluationResult(Array.Empty<IFeature>(), false, types.Count == 0
-                ? "O arquivo não declara nenhum record que herda de Part."
-                : $"O arquivo declara {types.Count} peças; deveria declarar exatamente uma."));
-        }
-
-        var partDocs = new List<ScriptDocument> { partDoc };
-        partDocs.AddRange(others.Where(d => !string.Equals(d.FilePath, fileName, StringComparison.OrdinalIgnoreCase)));
-
-        string entryFile = "__CadScriptPartCheck.cs";
-        while (partDocs.Any(d => string.Equals(d.FilePath, entryFile, StringComparison.OrdinalIgnoreCase)))
-        {
-            entryFile = "_" + entryFile;
-        }
-        partDocs.Add(new ScriptDocument(entryFile, PartSourceEditor.BuildAddStatement(types[0])));
-
-        return _evaluator.EvaluateAsync(partDocs);
     }
 
     /// <summary>
