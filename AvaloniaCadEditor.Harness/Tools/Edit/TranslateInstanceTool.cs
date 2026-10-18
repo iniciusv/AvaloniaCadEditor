@@ -11,7 +11,8 @@ public sealed class TranslateInstanceTool : ICadTool
 
     public string Description =>
         "Move uma instância de peça (ou feature de topo) somando (dx, dy, dz) mm ao posicionamento dela no código, " +
-        "como arrastar na tela. Responde com a caixa nova. Use em vez de reescrever o arquivo.";
+        "como arrastar na tela. Não gira: se a peça tem de acompanhar outra girada, use rotate_instance antes. " +
+        "Responde com a caixa nova. Use em vez de reescrever o arquivo.";
 
     public bool IsReadOnly => false;
 

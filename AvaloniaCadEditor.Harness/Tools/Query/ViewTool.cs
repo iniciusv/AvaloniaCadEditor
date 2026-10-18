@@ -22,9 +22,9 @@ public sealed class ViewTool : ICadTool
 
     public string Description =>
         "Vista ortográfica em arame do alvo, isolado, em texto: as linhas visíveis e ocultas (tracejadas) com " +
-        "coordenadas 2D da folha (U para a direita, V para cima, em mm), círculos com Ø e centro (com o nome do furo " +
-        "quando ele é um sólido do código) e a origem do código na folha. Use para conferir onde as coisas estão " +
-        "antes de editar e depois, para verificar o resultado.";
+        "coordenadas 2D da folha (U para a direita, V para cima, em mm) e os círculos com Ø, centro e o nome do furo. " +
+        "Cada furo traz o eixo também em coordenadas do MUNDO e do CÓDIGO da peça, de 'entrada' (face voltada para " +
+        "quem olha) a 'fundo' — use essas, sem converter da folha. Use para achar furos e conferir o resultado.";
 
     public bool IsReadOnly => true;
 
