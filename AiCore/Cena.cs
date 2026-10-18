@@ -92,7 +92,7 @@ var conexaoBlocoSuporteHotend = Add(conexaoBlocoSuporteHotendPeca, at: Placement
 var extrusaoSobTrilhoXPeca = new Extrusao2020(Comprimento: espacamentoTrilhosY - carrinhoYPeca.Largura);
 // Centradas sob o trilho Y correspondente em X (larguras diferentes); em Y, a ponta -Y fica um
 // pouco antes do início do trilho e o comprimento total cresce apenas para +Y.
-const double folgaExtrusaoYAntesDoTrilho = 50;
+const double folgaExtrusaoYAntesDoTrilho = 100;
 var extrusaoSobTrilhoYA = Add(extrusaoSobTrilhoYPeca, at: Placement.At(trilhoYAX + trilhoYPeca.Largura / 2 - extrusaoSobTrilhoYPeca.Largura / 2, trilhoYAY - folgaExtrusaoYAntesDoTrilho, zBaseTrilhosY - extrusaoSobTrilhoYPeca.Altura), name: "extrusao_2020_sob_trilho_y_a");
 var extrusaoSobTrilhoYB = Add(extrusaoSobTrilhoYPeca, at: Placement.At(trilhoYBX + trilhoYPeca.Largura / 2 - extrusaoSobTrilhoYPeca.Largura / 2, trilhoYBY - folgaExtrusaoYAntesDoTrilho, zBaseTrilhosY - extrusaoSobTrilhoYPeca.Altura), name: "extrusao_2020_sob_trilho_y_b");
 var extrusaoSobTrilhoX = Add(extrusaoSobTrilhoXPeca with { Comprimento = 208 }, at: Placement.At(-extrusaoSobTrilhoXPeca.Comprimento / 2 - 11, extrusaoSobTrilhoXPeca.Largura / 2, alturaTopoCarrinhosY - extrusaoSobTrilhoXPeca.Altura, rotationZDegrees: -90), name: "extrusao_2020_sob_trilho_x");
@@ -137,12 +137,14 @@ var deitarExtrusaoTrilhoZ = Placement.Rotation(Vector3D.UnitX, 90);
 // (cujo trilho fica 0,45 mm mais para −Y) acaba 0,45 mm mais alta. O X do pivô não importa num giro em X.
 var pivoExtrusoesDeitadas = new Point3D(centroBaseTrilhoZB.X + extrusaoTrilhoZPeca.Largura, centroBaseTrilhoZB.Y - extrusaoTrilhoZPeca.Altura / 2, centroBaseTrilhoZB.Z - extrusaoTrilhoZPeca.Comprimento / 2);
 var extrusaoTrilhoZA = Add(extrusaoTrilhoZPeca, at: deitarExtrusaoTrilhoZ.Then(Placement.At(centroBaseTrilhoZA.X - extrusaoTrilhoZPeca.Largura, centroBaseTrilhoZA.Y + extrusaoTrilhoZPeca.Altura / 2, centroBaseTrilhoZA.Z - extrusaoTrilhoZPeca.Comprimento / 2)), name: "extrusao_2020_trilho_z_a");
-var extrusao_2020_trilho_z_a_copia1 = Add(extrusaoTrilhoZPeca, at: deitarExtrusaoTrilhoZ.Then(Placement.At(centroBaseTrilhoZA.X - extrusaoTrilhoZPeca.Largura, centroBaseTrilhoZA.Y + extrusaoTrilhoZPeca.Altura / 2, centroBaseTrilhoZA.Z - extrusaoTrilhoZPeca.Comprimento / 2)).Then(Placement.RotationAbout(pivoExtrusoesDeitadas, Vector3D.UnitX, -90)).Then(Placement.Translate(new Vector3D(0, -60, 0))), name: "extrusao_2020_trilho_z_a_copia1");
+var extrusao_2020_trilho_z_a_copia1 = Add(extrusaoTrilhoZPeca, at: deitarExtrusaoTrilhoZ.Then(Placement.At(centroBaseTrilhoZA.X - extrusaoTrilhoZPeca.Largura, centroBaseTrilhoZA.Y + extrusaoTrilhoZPeca.Altura / 2, centroBaseTrilhoZA.Z - extrusaoTrilhoZPeca.Comprimento / 2)).Then(Placement.RotationAbout(pivoExtrusoesDeitadas, Vector3D.UnitX, -90)).Then(Placement.Translate(new Vector3D(0, -40, 0))), name: "extrusao_2020_trilho_z_a_copia1");
 var extrusaoTrilhoZB = Add(extrusaoTrilhoZPeca, at: deitarExtrusaoTrilhoZ.Then(Placement.At(centroBaseTrilhoZB.X, centroBaseTrilhoZB.Y + extrusaoTrilhoZPeca.Altura / 2, centroBaseTrilhoZB.Z - extrusaoTrilhoZPeca.Comprimento / 2)), name: "extrusao_2020_trilho_z_b");
-var extrusao_2020_trilho_z_b_copia1 = Add(extrusaoTrilhoZPeca, at: deitarExtrusaoTrilhoZ.Then(Placement.At(centroBaseTrilhoZB.X, centroBaseTrilhoZB.Y + extrusaoTrilhoZPeca.Altura / 2, centroBaseTrilhoZB.Z - extrusaoTrilhoZPeca.Comprimento / 2)).Then(Placement.RotationAbout(pivoExtrusoesDeitadas, Vector3D.UnitX, -90)).Then(Placement.Translate(new Vector3D(0, -60, 0))), name: "extrusao_2020_trilho_z_b_copia1");
-// --- Segundo par de verticais, recuoVerticaisTraseiras para trás (−Y, para longe da mesa) ---
-// Cópias das verticais A e B, só deslocadas em Y, na mesma altura. Não levam trilho.
-const double recuoVerticaisTraseiras = 60;
+var extrusao_2020_trilho_z_b_copia1 = Add(extrusaoTrilhoZPeca, at: deitarExtrusaoTrilhoZ.Then(Placement.At(centroBaseTrilhoZB.X, centroBaseTrilhoZB.Y + extrusaoTrilhoZPeca.Altura / 2, centroBaseTrilhoZB.Z - extrusaoTrilhoZPeca.Comprimento / 2)).Then(Placement.RotationAbout(pivoExtrusoesDeitadas, Vector3D.UnitX, -90)).Then(Placement.Translate(new Vector3D(0, -40, 0))), name: "extrusao_2020_trilho_z_b_copia1");
+// --- Segundo par de verticais, para trás (−Y, para longe da mesa) ---
+// Cópias das verticais A e B, só deslocadas em Y, na mesma altura, com vaoVerticaisTraseiras de vão livre
+// entre as faces (o deslocamento soma a espessura do perfil em Y). Não levam trilho.
+const double vaoVerticaisTraseiras = 20;
+var recuoVerticaisTraseiras = vaoVerticaisTraseiras + extrusaoTrilhoZPeca.Altura;
 var extrusao_2020_trilho_z_a_traseira = Add(extrusaoTrilhoZPeca, at: extrusaoTrilhoZA.Placement.Then(Placement.Translate(new Vector3D(0, -recuoVerticaisTraseiras, 0))), name: "extrusao_2020_trilho_z_a_traseira");
 var extrusao_2020_trilho_z_b_traseira = Add(extrusaoTrilhoZPeca, at: extrusaoTrilhoZB.Placement.Then(Placement.Translate(new Vector3D(0, -recuoVerticaisTraseiras, 0))), name: "extrusao_2020_trilho_z_b_traseira");
 // --- Terceiro par de verticais, na outra ponta (+Y) das deitadas ---
