@@ -11,7 +11,10 @@ namespace AvaloniaCadEditor.Harness.Views;
 /// <param name="CodeOrigin">O (0, 0, 0) do código no referencial da vista, quando se sabe.</param>
 /// <param name="FrameToWorld">Referencial da vista → mundo. Com ele, cada círculo traz o eixo no mundo:
 /// converter da folha para o mundo (espelho, rotação e deslocamento da instância) é onde o modelo mais erra.</param>
-public sealed record WireframeHeader(string Name, string? PartType, bool FrameIsWorld, Point3D? CodeOrigin, Placement? FrameToWorld = null);
+/// <param name="WorldToCode">Mundo → coordenadas locais do código da peça (as do <c>Build()</c>). Com ele, cada
+/// círculo traz também essas coordenadas já calculadas, em vez da conta "folha − origem".</param>
+public sealed record WireframeHeader(string Name, string? PartType, bool FrameIsWorld, Point3D? CodeOrigin,
+    Placement? FrameToWorld = null, Placement? WorldToCode = null);
 
 /// <summary>
 /// Texto da vista em arame para a LLM: o que a tela mostraria em ortográfica, como linhas com
@@ -41,7 +44,7 @@ public static class WireframeReport
 
         var entries = result.Lines
             .Where(l => includeHidden || l.Visible)
-            .Select(l => Describe(l, knownCircles, basis, result.Bounds, header.FrameToWorld))
+            .Select(l => Describe(l, knownCircles, basis, result.Bounds, header.FrameToWorld, header.WorldToCode))
             .OrderBy(e => e.Visible ? 0 : 1)
             .ThenByDescending(e => Math.Round(e.Length, 3))
             .ThenBy(e => e.Body, StringComparer.Ordinal)
@@ -129,6 +132,11 @@ public static class WireframeReport
             sb.AppendLine("# mundo: cada círculo traz o eixo dele em coordenadas do MUNDO (as de Add/AddFeature na cena), " +
                 "da face mais próxima (W máx) à mais distante (W mín) da peça");
         }
+        if (header.FrameToWorld != null && header.WorldToCode != null)
+        {
+            sb.AppendLine("# código: e o mesmo eixo nas coordenadas LOCAIS do código da peça (as do Build(), " +
+                "já com o espelho que o código aplicar) — use estas dentro da peça ou com instancia.ToWorld(new Point3D(...))");
+        }
     }
 
     private static void AppendEntries(StringBuilder sb, List<Entry> entries, string linePrefix, string circlePrefix)
@@ -141,7 +149,8 @@ public static class WireframeReport
         }
     }
 
-    private static Entry Describe(ViewLine line, IReadOnlyList<ViewCircle> knownCircles, ProjectionBasis basis, ViewBounds bounds, Placement? frameToWorld)
+    private static Entry Describe(ViewLine line, IReadOnlyList<ViewCircle> knownCircles, ProjectionBasis basis, ViewBounds bounds,
+        Placement? frameToWorld, Placement? worldToCode)
     {
         var shape = line.Shape;
         if (shape.IsCircle)
@@ -162,6 +171,8 @@ public static class WireframeReport
                 var near = frameToWorld.Apply(basis.Unproject(sheetCenter, bounds.MaxW));
                 var far = frameToWorld.Apply(basis.Unproject(sheetCenter, bounds.MinW));
                 body += $" · mundo {P3(near)} → {P3(far)}";
+                if (worldToCode != null)
+                    body += $" · código {P3(worldToCode.Apply(near))} → {P3(worldToCode.Apply(far))}";
             }
             return new Entry(line.Visible, 2 * Math.PI * r, true, body);
         }

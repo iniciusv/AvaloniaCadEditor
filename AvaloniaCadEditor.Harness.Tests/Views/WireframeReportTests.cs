@@ -49,6 +49,20 @@ public class WireframeReportTests
     }
 
     [Fact]
+    public void ComMundoECodigo_CadaCirculoTrazTambemAsCoordenadasDoCodigo()
+    {
+        // A peça está 100 mm adiante em X; o código dela começa 2 mm antes do canto da caixa em X.
+        var frameToWorld = Placement.Translate(new Vector3D(100, 0, 0));
+        var header = Header with { FrameToWorld = frameToWorld, WorldToCode = Placement.Translate(new Vector3D(-98, 0, 0)) };
+
+        string text = WireframeReport.Format(HiddenLineProjector.Project(CylinderFacingFront, Front), Front, header,
+            new[] { new ViewCircle("furo_a", PrimitiveRole.Void, new P2(4, 4), 2.5) });
+
+        text.Should().Contain("# código: e o mesmo eixo nas coordenadas LOCAIS do código da peça");
+        text.Should().Contain("[furo_a] · mundo (104, -6, 4) → (104, 0, 4) · código (6, -6, 4) → (6, 0, 4)");
+    }
+
+    [Fact]
     public void SemReferencialDoMundo_NaoInventaCoordenadas()
     {
         Report(CylinderFacingFront).Should().NotContain("mundo");
