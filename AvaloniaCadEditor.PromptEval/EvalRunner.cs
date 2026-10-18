@@ -7,6 +7,7 @@ using AvaloniaCadEditor.Application.Ai.Recording;
 using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Harness;
 using AvaloniaCadEditor.Harness.Agents;
+using AvaloniaCadEditor.Harness.Skills;
 using AvaloniaCadEditor.Infrastructure.OpenCascade;
 
 namespace AvaloniaCadEditor.PromptEval;
@@ -32,15 +33,23 @@ internal sealed record RunOutcome(
     string Endpoint = EvalTarget.EnvironmentEndpoint,
     bool Tools = false,
     int ToolSteps = 0,
-    int InspectorTokens = 0)
+    int InspectorTokens = 0,
+    string Skills = "")
 {
     public bool ChecksPassed => Checks.All(c => c.Passed);
 
     /// <summary>Modelo, endpoint e modo, como coluna do relatório (ex.: "qwen3:8b@ollama +tools").</summary>
-    public string Variant => Model + (Endpoint == EvalTarget.EnvironmentEndpoint ? "" : "@" + Endpoint) + (Tools ? " +tools" : "");
+    public string Variant => Model + (Endpoint == EvalTarget.EnvironmentEndpoint ? "" : "@" + Endpoint) + (Tools ? " +tools" : "") +
+        (Skills.Length > 0 ? " +" + Skills : "");
 
     /// <summary>Válido (compila e executa) e cumpre todas as verificações do caso.</summary>
     public bool Passed => IsValid && Error == null && ChecksPassed;
+
+    /// <summary>
+    /// Entendeu o pedido e a cena: válido e sem erro de conceito. Pode ter errado um ajuste (uma cota
+    /// fina), que se corrige com um número. Sem checks de ajuste no caso, é o mesmo que <see cref="Passed"/>.
+    /// </summary>
+    public bool Understood => IsValid && Error == null && Checks.Where(c => c.Level == CheckLevel.Conceito).All(c => c.Passed);
 }
 
 /// <summary>
@@ -58,10 +67,12 @@ internal sealed class EvalRunner
     private readonly bool _dryRun;
     private readonly int _parallel;
     private readonly string? _dumpDirectory;
+    private readonly IReadOnlyList<string> _skills;
 
     public EvalRunner(IReadOnlyList<EvalTarget> targets, IReadOnlyList<bool> toolModes, EvalTarget? inspector,
-        ISceneEvaluator evaluator, bool dryRun, int parallel, string? dumpDirectory = null)
+        ISceneEvaluator evaluator, bool dryRun, int parallel, string? dumpDirectory = null, IReadOnlyList<string>? skills = null)
     {
+        _skills = skills ?? Array.Empty<string>();
         _targets = targets;
         _toolModes = toolModes;
         _inspector = inspector;
@@ -102,7 +113,7 @@ internal sealed class EvalRunner
                 {
                     outcomes.Add(outcome);
                     done++;
-                    string status = outcome.Passed ? "ok" : outcome.IsValid ? "checks" : "falhou";
+                    string status = outcome.Passed ? "ok" : outcome.Understood ? "entendeu (errou ajuste)" : outcome.IsValid ? "checks" : "falhou";
                     Console.WriteLine($"[{done}/{jobs.Count}] {job.evalCase.Name}#{job.Index + 1} {job.profile.Id} {outcome.Variant} r{job.rep}: {status} ({outcome.Attempts} tent., {outcome.ToolSteps} ferr., {outcome.Seconds:F0}s)");
                 }
             }
@@ -120,7 +131,12 @@ internal sealed class EvalRunner
             .ToList();
     }
 
-    private ICadScriptChatSession CreateSession(CadScriptProtocol protocol, EvalTarget target, bool tools, RecordedRound round)
+    /// <summary>As skills de uma execução com ferramentas: as do caso e as do <c>--skills</c>, na ordem do registro.</summary>
+    private IReadOnlyList<HarnessSkill> SkillsFor(EvalCase evalCase, bool tools) =>
+        tools ? SkillRegistry.Default().Resolve((evalCase.Skills ?? Array.Empty<string>()).Concat(_skills)) : Array.Empty<HarnessSkill>();
+
+    private ICadScriptChatSession CreateSession(CadScriptProtocol protocol, EvalTarget target, bool tools, RecordedRound round,
+        IReadOnlyList<HarnessSkill> skills)
     {
         if (!tools)
         {
@@ -137,7 +153,7 @@ internal sealed class EvalRunner
         var inspector = _inspector == null ? null
             : new InspectorAgent(_inspector.Options, _inspector.Limits, _inspector.Endpoint, toolSend);
         return new HarnessChatSession(target.Options, protocol, _evaluator, new OpenCascadeGeometryKernel(), target.Limits,
-            send: toolSend, inspector: inspector) { KeepHistory = false };
+            send: toolSend, inspector: inspector, skills: skills) { KeepHistory = false };
     }
 
     private async Task<RunOutcome> RunOneAsync(EvalCase evalCase, RecordedRound round, int index, ICadScriptPromptProfile profile,
@@ -145,7 +161,10 @@ internal sealed class EvalRunner
     {
         var protocol = new CadScriptProtocol(profile);
         string model = target.Options.Model;
-        var session = CreateSession(protocol, target, tools, round);
+        var skills = SkillsFor(evalCase, tools);
+        // Só as do --skills entram no rótulo: as do caso fazem parte dele (e o relatório por caso não se divide).
+        string skillLabel = tools ? string.Join(",", SkillRegistry.Default().Resolve(_skills).Select(s => s.Id)) : "";
+        var session = CreateSession(protocol, target, tools, round, skills);
 
         int systemPromptChars = session.History[0].Content.Length;
         var stopwatch = Stopwatch.StartNew();
@@ -167,7 +186,7 @@ internal sealed class EvalRunner
                 metrics, checks,
                 result.ChatText, result.Changes,
                 target.Endpoint, tools, harness?.LastTurnSteps.Count ?? 0,
-                inspection == null ? 0 : inspection.PromptTokens + inspection.CompletionTokens);
+                inspection == null ? 0 : inspection.PromptTokens + inspection.CompletionTokens, skillLabel);
             if (_dumpDirectory != null) PromptDump.Write(_dumpDirectory, outcome, session.History, tools);
             return outcome;
         }
@@ -179,7 +198,7 @@ internal sealed class EvalRunner
                 IsValid: false, Attempts: 0, Error: $"{ex.GetType().Name}: {ex.Message}",
                 0, 0, stopwatch.Elapsed.TotalSeconds, systemPromptChars,
                 Metrics: null, Checks: Array.Empty<CheckResult>(), ChatText: string.Empty, Changes: Array.Empty<ScriptDocument>(),
-                Endpoint: target.Endpoint, Tools: tools);
+                Endpoint: target.Endpoint, Tools: tools, Skills: skillLabel);
         }
     }
 }

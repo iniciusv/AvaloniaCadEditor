@@ -1,0 +1,49 @@
+{
+  // Pedido real, escrito como o usuário escreveria, sobre a cena de referência inteira (impressora 3D).
+  // files/ é uma CÓPIA CONGELADA de AiCore/Cena.cs + AiCore/Pecas em 2026-10-18 (com as extrusões
+  // *_copia1 deitadas no chão): o AiCore muda sempre, e o caso não pode mudar junto. Não atualize a
+  // cópia sem conferir de novo as cotas abaixo.
+  //
+  // Seleção = o contexto que o usuário passaria: as duas extrusões mais baixas, um NEMA17, o tubo e os
+  // trilhos Z. Geometria (mundo, da list_targets):
+  // - fixo: extrusao_2020_trilho_z_a/b (verticais, z -260,7..139,3) e *_copia1 (deitadas em Y no chão,
+  //   z -280,7..-260,7; a do lado A está 0,45 mm acima, -280,253);
+  // - móvel (gantry, preso a carrinho_hgh15_z_a/b, z -91,4..-30): tubo_travessa (X -132,3..132,5,
+  //   Y -162,9..-112,9, z 0..30), extrusões Y (z -20..0), trilhos Y, X e tudo o que está neles.
+  // "O chão na altura do início das extrusões na parte mais baixa" = base das *_copia1, z = -280,7
+  // (confirmado pelo autor do pedido; o topo delas, -260,7, onde começam as verticais, é a leitura errada).
+  // NEMA17 em pé (origem no centro da base, 40 + 2 de boss + 24 de eixo) → caixa z -280,7..-214,7.
+  // Erros típicos: base em z = -20 (extrusões Y, que se movem), em 0 ou 30 (no tubo, que se move),
+  // ou em -260,7 (topo das deitadas).
+  "description": "Pedido real: motor NEMA do eixo Z no chão, com fuso até uma porca no tubo_travessa (cena de referência congelada).",
+  "instruction": "Preciso colocar um motor nema para mover o gantry fazendo o eixo Z. Ele vai ser voltado para cima com um parafuso ligado ao eixo que liga a uma porca no tuboTravessa movendo todo o gantry que está preso aos carrinhos carrinhoZA e carrinhoZB. A base do motor, o chão fica na altura do inicio das extrusões de aluminio na parte mais baixa. A instância do motor se chama motor_nema17_z.",
+  "select": [
+    "extrusao_2020_trilho_z_a_copia1",
+    "extrusao_2020_trilho_z_b_copia1",
+    "motor_nema17_y_a",
+    "tubo_travessa",
+    "trilho_hgr15_z_a",
+    "trilho_hgr15_z_b"
+  ],
+  // Dois níveis. Conceito (entendeu o pedido e a cena): o motor existe, em pé (42,3 × 42,3 × 66) e com
+  // o eixo sob o tubo_travessa (caixa em X -153,5..153,7, Y -184,1..-91,8), entre o chão e a face de baixo
+  // do tubo (z -280,7..0), ou seja, na estrutura fixa e não no gantry. Ajuste (corrige-se com um número):
+  // a base exatamente no chão, z -280,7. Motor em -260,7 = "entendeu, errou só ajuste"; em -20 ou em
+  // cima do tubo (z 30) = não entendeu.
+  "checks": {
+    "onlyChangeFiles": ["Cena.cs", "Pecas/*.cs"],
+    "solidWithin": [
+      {
+        "name": "motor_nema17_z",
+        "meaning": "em pé, com o eixo sob o tubo_travessa, entre o chão e o tubo",
+        "min": [-153.5, -184.1, -280.7],
+        "max": [153.7, -91.8, 0],
+        "size": [42.3, 42.3, 66],
+        "tolerance": 0.5
+      }
+    ],
+    "solidBounds": [
+      { "name": "motor_nema17_z", "min": [null, null, -280.7], "max": [null, null, -214.7], "tolerance": 0.5, "level": "ajuste" }
+    ]
+  }
+}

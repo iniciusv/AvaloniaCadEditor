@@ -21,6 +21,7 @@ internal sealed class SolidBoundsSpec
     public double?[] Min { get; set; } = Array.Empty<double?>();
     public double?[] Max { get; set; } = Array.Empty<double?>();
     public double Tolerance { get; set; } = 0.1;
+    public CheckLevel Level { get; set; } = CheckLevel.Conceito;
 }
 
 /// <summary>
@@ -35,6 +36,28 @@ internal sealed class SolidPointsSpec
     public string Name { get; set; } = string.Empty;
     public List<double[]> Inside { get; set; } = new();
     public List<double[]> Outside { get; set; } = new();
+    public CheckLevel Level { get; set; } = CheckLevel.Conceito;
+}
+
+/// <summary>
+/// A caixa de um sólido tem de caber numa região do mundo e, se <c>size</c> vier, ter esse tamanho:
+/// <c>"solidWithin": [{ "name": "motor", "min": [x, y, z], "max": [x, y, z], "size": [42.3, 42.3, 66] }]</c>.
+/// <c>null</c> = lado ou eixo livre. Confere o entendimento sem impor a cota exata: "em pé, sob o tubo,
+/// entre o chão e o tubo" aceita qualquer altura nesse vão. A cota exata fica num <see cref="SolidBoundsSpec"/>
+/// de nível <c>ajuste</c>.
+/// </summary>
+internal sealed class SolidWithinSpec
+{
+    public string Name { get; set; } = string.Empty;
+    public double?[] Min { get; set; } = { null, null, null };
+    public double?[] Max { get; set; } = { null, null, null };
+    public double?[]? Size { get; set; }
+    public double Tolerance { get; set; } = 0.5;
+
+    /// <summary>Uma frase do que a região significa, para o relatório (ex.: "em pé, sob o tubo").</summary>
+    public string? Meaning { get; set; }
+
+    public CheckLevel Level { get; set; } = CheckLevel.Conceito;
 }
 
 /// <summary>
@@ -54,10 +77,13 @@ internal static class GeometryChecks
     {
         var bounds = checks.SolidBounds ?? new();
         var points = checks.SolidPoints ?? new();
-        if (bounds.Count == 0 && points.Count == 0) return Array.Empty<CheckResult>();
+        var within = checks.SolidWithin ?? new();
+        if (bounds.Count == 0 && points.Count == 0 && within.Count == 0) return Array.Empty<CheckResult>();
 
-        var titles = bounds.Select(Title).Concat(points.Select(Title)).ToList();
-        if (!result.IsValid) return titles.Select(t => new CheckResult(t, false, "a resposta não é válida")).ToList();
+        var titles = bounds.Select(b => (Title: Title(b), b.Level))
+            .Concat(points.Select(p => (Title: Title(p), p.Level)))
+            .Concat(within.Select(w => (Title: Title(w), w.Level))).ToList();
+        if (!result.IsValid) return titles.Select(t => new CheckResult(t.Title, false, "a resposta não é válida", t.Level)).ToList();
 
         var context = recorded.ToContext();
         var changes = result.Changes.Count == 0 && !context.IsMultiFile
@@ -65,7 +91,7 @@ internal static class GeometryChecks
             : result.Changes;
 
         var scene = await new WorkingCopyEvaluator(evaluator).EvaluateAsync(changes, context);
-        if (!scene.Success) return titles.Select(t => new CheckResult(t, false, scene.ErrorMessage)).ToList();
+        if (!scene.Success) return titles.Select(t => new CheckResult(t.Title, false, scene.ErrorMessage, t.Level)).ToList();
 
         var kernel = new OpenCascadeGeometryKernel();
         var meshes = new Dictionary<string, TriangleMesh?>();
@@ -81,12 +107,17 @@ internal static class GeometryChecks
         foreach (var spec in bounds)
         {
             var mesh = MeshOf(spec.Name);
-            results.Add(mesh == null ? new CheckResult(Title(spec), false, Missing(spec.Name)) : Check(spec, mesh));
+            results.Add(mesh == null ? new CheckResult(Title(spec), false, Missing(spec.Name), spec.Level) : Check(spec, mesh));
         }
         foreach (var spec in points)
         {
             var mesh = MeshOf(spec.Name);
-            results.Add(mesh == null ? new CheckResult(Title(spec), false, Missing(spec.Name)) : Check(spec, mesh));
+            results.Add(mesh == null ? new CheckResult(Title(spec), false, Missing(spec.Name), spec.Level) : Check(spec, mesh));
+        }
+        foreach (var spec in within)
+        {
+            var mesh = MeshOf(spec.Name);
+            results.Add(mesh == null ? new CheckResult(Title(spec), false, Missing(spec.Name), spec.Level) : Check(spec, mesh));
         }
         return results;
     }
@@ -94,10 +125,45 @@ internal static class GeometryChecks
     private static CheckResult Check(SolidBoundsSpec spec, TriangleMesh mesh)
     {
         if (spec.Min.Length != 3 || spec.Max.Length != 3)
-            return new CheckResult(Title(spec), false, "min e max precisam de 3 coordenadas (null = não conferir)");
+            return new CheckResult(Title(spec), false, "min e max precisam de 3 coordenadas (null = não conferir)", spec.Level);
 
+        if (BoxOf(mesh) is not { } box) return new CheckResult(Title(spec), false, "o sólido não tem malha", spec.Level);
+        var (min, max) = box;
+
+        bool Near(double? expected, double? actual) => expected == null || Math.Abs(actual!.Value - expected.Value) <= spec.Tolerance;
+        bool ok = Enumerable.Range(0, 3).All(a => Near(spec.Min[a], min[a]) && Near(spec.Max[a], max[a]));
+        return new CheckResult(Title(spec), ok, $"caixa {Box(min, max)}", spec.Level);
+    }
+
+    private static CheckResult Check(SolidWithinSpec spec, TriangleMesh mesh)
+    {
+        if (spec.Min.Length != 3 || spec.Max.Length != 3 || spec.Size is { Length: not 3 })
+            return new CheckResult(Title(spec), false, "min, max e size precisam de 3 coordenadas (null = livre)", spec.Level);
+
+        if (BoxOf(mesh) is not { } box) return new CheckResult(Title(spec), false, "o sólido não tem malha", spec.Level);
+        var (min, max) = box;
+
+        var wrong = new List<string>();
+        string[] axes = { "x", "y", "z" };
+        for (int a = 0; a < 3; a++)
+        {
+            double lo = min[a]!.Value, hi = max[a]!.Value;
+            if (spec.Min[a] is double minAllowed && lo < minAllowed - spec.Tolerance)
+                wrong.Add(FormattableString.Invariant($"{axes[a]} mín {lo:0.###} < {minAllowed:0.###}"));
+            if (spec.Max[a] is double maxAllowed && hi > maxAllowed + spec.Tolerance)
+                wrong.Add(FormattableString.Invariant($"{axes[a]} máx {hi:0.###} > {maxAllowed:0.###}"));
+            if (spec.Size?[a] is double size && Math.Abs(hi - lo - size) > spec.Tolerance)
+                wrong.Add(FormattableString.Invariant($"tamanho em {axes[a]} {hi - lo:0.###} ≠ {size:0.###}"));
+        }
+        string detail = $"caixa {Box(min, max)}";
+        return new CheckResult(Title(spec), wrong.Count == 0, wrong.Count == 0 ? detail : $"{detail}: {string.Join("; ", wrong)}", spec.Level);
+    }
+
+    /// <summary>A caixa da malha no mundo, ou null sem malha.</summary>
+    private static (double?[] Min, double?[] Max)? BoxOf(TriangleMesh mesh)
+    {
         var positions = mesh.Positions;
-        if (positions.Length < 3) return new CheckResult(Title(spec), false, "o sólido não tem malha");
+        if (positions.Length < 3) return null;
 
         var min = new double?[] { double.MaxValue, double.MaxValue, double.MaxValue };
         var max = new double?[] { double.MinValue, double.MinValue, double.MinValue };
@@ -109,10 +175,7 @@ internal static class GeometryChecks
                 max[axis] = Math.Max(max[axis]!.Value, positions[i + axis]);
             }
         }
-
-        bool Near(double? expected, double? actual) => expected == null || Math.Abs(actual!.Value - expected.Value) <= spec.Tolerance;
-        bool ok = Enumerable.Range(0, 3).All(a => Near(spec.Min[a], min[a]) && Near(spec.Max[a], max[a]));
-        return new CheckResult(Title(spec), ok, $"caixa {Box(min, max)}");
+        return (min, max);
     }
 
     private static CheckResult Check(SolidPointsSpec spec, TriangleMesh mesh)
@@ -123,7 +186,7 @@ internal static class GeometryChecks
 
         int total = spec.Inside.Count + spec.Outside.Count;
         return new CheckResult(Title(spec), wrong.Count == 0,
-            wrong.Count == 0 ? $"{total} pontos ok" : $"{wrong.Count}/{total} errados: {string.Join("; ", wrong)}");
+            wrong.Count == 0 ? $"{total} pontos ok" : $"{wrong.Count}/{total} errados: {string.Join("; ", wrong)}", spec.Level);
     }
 
     /// <summary>Ponto dentro do sólido: paridade das interseções de um raio com a malha (maioria de 3 raios).</summary>
@@ -166,6 +229,9 @@ internal static class GeometryChecks
     }
 
     private static string Title(SolidBoundsSpec s) => $"{s.Name} em {Box(s.Min, s.Max)} ±{s.Tolerance:0.###}";
+
+    private static string Title(SolidWithinSpec s) =>
+        $"{s.Name} {s.Meaning ?? "na região"}: dentro de {Box(s.Min, s.Max)}" + (s.Size is { Length: 3 } size ? $", tamanho {P(size)}" : "");
 
     private static string Title(SolidPointsSpec s) => $"{s.Name}: {s.Inside.Count} pontos no material, {s.Outside.Count} vazios";
 

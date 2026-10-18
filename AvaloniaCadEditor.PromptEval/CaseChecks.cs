@@ -5,7 +5,18 @@ using AvaloniaCadEditor.Application.Scenes;
 
 namespace AvaloniaCadEditor.PromptEval;
 
-internal sealed record CheckResult(string Name, bool Passed, string? Detail = null);
+/// <summary>
+/// O peso de um check. Um erro de <see cref="Conceito"/> mostra que o modelo não entendeu o pedido ou a
+/// cena (apoiou o motor numa peça que se move, não criou a peça). Um erro de <see cref="Ajuste"/> é uma
+/// cota fina com a montagem certa, que se corrige com um número.
+/// </summary>
+internal enum CheckLevel
+{
+    Conceito,
+    Ajuste
+}
+
+internal sealed record CheckResult(string Name, bool Passed, string? Detail = null, CheckLevel Level = CheckLevel.Conceito);
 
 /// <summary>
 /// Verificações opcionais de um caso, lidas do <c>case.json</c> da fixture ou do <c>*.checks.json</c> ao
@@ -32,6 +43,9 @@ internal sealed class CaseChecks
     public List<string>? MustMatch { get; set; }
     public List<string>? MustNotMatch { get; set; }
 
+    /// <summary>Regex no texto da resposta (ex.: as perguntas citam a cota certa).</summary>
+    public List<string>? ChatMustMatch { get; set; }
+
     /// <summary>Regex → número mínimo de ocorrências (ex.: { "new CylinderFeature": 4 }).</summary>
     public Dictionary<string, int>? MinOccurrences { get; set; }
 
@@ -40,6 +54,9 @@ internal sealed class CaseChecks
 
     /// <summary>Pontos que devem estar dentro ou fora do material de um sólido (ver <see cref="GeometryChecks"/>).</summary>
     public List<SolidPointsSpec>? SolidPoints { get; set; }
+
+    /// <summary>Região onde a caixa de um sólido tem de caber, e o tamanho dela (ver <see cref="GeometryChecks"/>).</summary>
+    public List<SolidWithinSpec>? SolidWithin { get; set; }
 
     public IReadOnlyList<CheckResult> Evaluate(CadScriptTurnResult result, RecordedContext context, CodeMetrics metrics)
     {
@@ -93,6 +110,11 @@ internal sealed class CaseChecks
         {
             var match = Regex.Match(code, pattern);
             checks.Add(new($"não contém /{pattern}/", !match.Success, match.Success ? match.Value : null));
+        }
+
+        foreach (string pattern in ChatMustMatch ?? new())
+        {
+            checks.Add(new($"resposta contém /{pattern}/", Regex.IsMatch(result.ChatText ?? string.Empty, pattern)));
         }
 
         foreach (var (pattern, minCount) in MinOccurrences ?? new())

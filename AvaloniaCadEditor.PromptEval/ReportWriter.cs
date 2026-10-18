@@ -10,7 +10,8 @@ internal static class ReportWriter
 {
     private static readonly JsonSerializerOptions JsonlOptions = new()
     {
-        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping
+        Encoder = JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        Converters = { new System.Text.Json.Serialization.JsonStringEnumConverter() }
     };
 
     public static string Write(string outputRoot, IReadOnlyList<RunOutcome> outcomes, IReadOnlyList<EvalCase> cases, EvalOptions options)
@@ -31,13 +32,14 @@ internal static class ReportWriter
         sb.AppendLine($"# Avaliação de pré-prompts — {DateTime.Now:yyyy-MM-dd HH:mm}");
         sb.AppendLine();
         sb.AppendLine($"{cases.Count} caso(s), {options.Repeat} repetição(ões){(options.DryRun ? ", **dry-run** (respostas gravadas, sem IA)" : "")}{(options.Reasoning ? ", reasoning ligado" : "")}.");
-        sb.AppendLine("\"Passou\" = compilou, executou e cumpriu todas as verificações do caso.");
+        sb.AppendLine("\"Passou\" = compilou, executou e cumpriu todas as verificações do caso. " +
+            "\"Entendeu\" = válido e sem erro de conceito: pode ter errado só um ajuste (uma cota fina, que se corrige com um número).");
         sb.AppendLine();
 
         sb.AppendLine("## Resumo por perfil × variante (modelo@endpoint; +tools = com ferramentas)");
         sb.AppendLine();
-        sb.AppendLine("| Perfil | Variante | Execuções | Passou | Válido | 1ª tentativa | Tentativas | Tokens prompt | Tokens resposta | Ferramentas | Tokens Inspetor | Tempo (s) | Parâm./peça (máx) | Linhas | System prompt (chars) |");
-        sb.AppendLine("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
+        sb.AppendLine("| Perfil | Variante | Execuções | Passou | Entendeu | Válido | 1ª tentativa | Tentativas | Tokens prompt | Tokens resposta | Ferramentas | Tokens Inspetor | Tempo (s) | Parâm./peça (máx) | Linhas | System prompt (chars) |");
+        sb.AppendLine("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
         foreach (var group in outcomes.GroupBy(o => (o.Profile, o.Variant)))
         {
             var runs = group.ToList();
@@ -45,6 +47,7 @@ internal static class ReportWriter
             sb.AppendLine(string.Join(" | ",
                 "", group.Key.Profile, group.Key.Variant, runs.Count.ToString(CultureInfo.InvariantCulture),
                 Percent(runs, r => r.Passed),
+                Percent(runs, r => r.Understood),
                 Percent(runs, r => r.IsValid),
                 Percent(runs, r => r.IsValid && r.Attempts == 1),
                 Average(runs.Where(r => r.Attempts > 0), r => r.Attempts, "F2"),
@@ -61,7 +64,7 @@ internal static class ReportWriter
         sb.AppendLine();
 
         var columns = outcomes.Select(o => (o.Profile, o.Variant)).Distinct().ToList();
-        sb.AppendLine("## Por caso (execuções que passaram / total)");
+        sb.AppendLine("## Por caso (execuções que passaram / total; \"entendeu\" quando difere)");
         sb.AppendLine();
         sb.AppendLine("| Caso | " + string.Join(" | ", columns.Select(c => $"{c.Profile} · {c.Variant}")) + " |");
         sb.AppendLine("|---|" + string.Concat(columns.Select(_ => "---:|")));
@@ -73,7 +76,9 @@ internal static class ReportWriter
             {
                 var runs = caseRound.Where(o => o.Profile == c.Profile && o.Variant == c.Variant).ToList();
                 int passed = runs.Count(r => r.Passed);
-                return $"{(passed == runs.Count ? "✓" : passed == 0 ? "✗" : "~")} {passed}/{runs.Count}";
+                int understood = runs.Count(r => r.Understood);
+                string extra = understood != passed ? $" · entendeu {understood}/{runs.Count}" : "";
+                return $"{(passed == runs.Count ? "✓" : passed == 0 ? "✗" : "~")} {passed}/{runs.Count}{extra}";
             });
             sb.AppendLine($"| {label} | {string.Join(" | ", cells)} |");
         }
@@ -88,8 +93,10 @@ internal static class ReportWriter
             {
                 string why = f.Error != null
                     ? Truncate(f.Error)
-                    : string.Join("; ", f.Checks.Where(c => !c.Passed).Select(c => c.Detail is { Length: > 0 } ? $"{c.Name} ({Truncate(c.Detail)})" : c.Name));
-                sb.AppendLine($"- **{f.Case}#{f.Round}** · {f.Profile} · {f.Variant} · r{f.Repetition}: {why}");
+                    : string.Join("; ", f.Checks.Where(c => !c.Passed).OrderBy(c => c.Level).Select(c =>
+                        (c.Level == CheckLevel.Ajuste ? "[ajuste] " : "") + (c.Detail is { Length: > 0 } ? $"{c.Name} ({Truncate(c.Detail)})" : c.Name)));
+                string verdict = f.Understood ? "entendeu, errou só ajuste — " : "";
+                sb.AppendLine($"- **{f.Case}#{f.Round}** · {f.Profile} · {f.Variant} · r{f.Repetition}: {verdict}{why}");
             }
             sb.AppendLine();
         }

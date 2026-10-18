@@ -69,7 +69,7 @@ if (cases.Count == 0)
 Console.WriteLine($"{cases.Count} caso(s) × {options.Profiles.Count} perfil(is) × {targets.Count} destino(s) × {options.ToolModes.Count} modo(s) × {options.Repeat} repetição(ões)" +
     (inspector != null ? $" · Inspetor: {inspector.Options.Model}@{inspector.Endpoint}" : ""));
 
-var runner = new EvalRunner(targets, options.ToolModes, inspector, evaluator, options.DryRun, options.Parallel, options.DumpDirectory);
+var runner = new EvalRunner(targets, options.ToolModes, inspector, evaluator, options.DryRun, options.Parallel, options.DumpDirectory, options.Skills);
 var outcomes = await runner.RunAsync(cases, options.Profiles, options.Repeat);
 
 string report = ReportWriter.Write(options.OutputDirectory, outcomes, cases, options);

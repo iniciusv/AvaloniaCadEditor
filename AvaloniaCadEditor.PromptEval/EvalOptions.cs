@@ -1,5 +1,6 @@
 using AvaloniaCadEditor.Application.Ai.Prompts;
 using AvaloniaCadEditor.Application.Ai.Recording;
+using AvaloniaCadEditor.Harness.Skills;
 
 namespace AvaloniaCadEditor.PromptEval;
 
@@ -18,6 +19,8 @@ internal sealed class EvalOptions
                                             o modelo vem de --models. Raciocínio desligado, salvo com --reasoning
           --tools off|on|both               chat de sempre, com ferramentas (harness) ou os dois (padrão: off)
           --inspector ollama                perfil do Inspetor (só com ferramentas; pré-inspeção ligada)
+          --skills questionar,revisar       skills do harness ligadas em todos os casos (só com ferramentas),
+                                            somadas às do case.json
           --repeat N                        repetições de cada combinação (padrão: 1)
           --cases texto                     só casos cujo nome contém o texto
           --cases-dir pasta                 pasta extra de casos (pode repetir)
@@ -49,6 +52,7 @@ internal sealed class EvalOptions
     /// <summary>false = chat de sempre; true = com ferramentas (harness).</summary>
     public List<bool> ToolModes { get; } = new() { false };
     public string? InspectorEndpoint { get; private set; }
+    public List<string> Skills { get; } = new();
     public bool ShowHelp { get; private set; }
 
     public IReadOnlyList<ICadScriptPromptProfile> Profiles =>
@@ -81,6 +85,14 @@ internal sealed class EvalOptions
                 case "--endpoints": options.Endpoints.AddRange(List()); break;
                 case "--local": options.LocalUrl = Next(); break;
                 case "--inspector": options.InspectorEndpoint = Next(); break;
+                case "--skills":
+                    foreach (string id in List())
+                    {
+                        if (SkillRegistry.Default().Find(id) == null)
+                            throw new ArgumentException($"Skill desconhecida: {id}. Existentes: {string.Join(", ", SkillRegistry.Default().All.Select(s => s.Id))}");
+                        options.Skills.Add(id);
+                    }
+                    break;
                 case "--tools":
                     var modes = Next() switch
                     {

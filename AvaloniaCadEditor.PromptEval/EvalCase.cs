@@ -7,4 +7,6 @@ namespace AvaloniaCadEditor.PromptEval;
 /// verificações que a resposta deve cumprir. Cada round é reexecutado de forma independente.
 /// </summary>
 /// <param name="Source">"fixture" ou "gravado".</param>
-internal sealed record EvalCase(string Name, string Source, string? Description, AiConversationRecord Record, CaseChecks Checks);
+/// <param name="Skills">Skills do harness ligadas neste caso (só valem com ferramentas).</param>
+internal sealed record EvalCase(string Name, string Source, string? Description, AiConversationRecord Record, CaseChecks Checks,
+    IReadOnlyList<string>? Skills = null);
