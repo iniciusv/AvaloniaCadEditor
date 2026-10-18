@@ -6,6 +6,7 @@ using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Harness.Agents;
 using AvaloniaCadEditor.Harness.Inspection;
 using AvaloniaCadEditor.Harness.Tools;
+using AvaloniaCadEditor.Harness.Tools.Query;
 
 namespace AvaloniaCadEditor.Harness;
 
@@ -26,6 +27,7 @@ public sealed class HarnessChatSession : ICadScriptChatSession
     private readonly ToolRegistry _tools;
     private readonly AgentLoop _loop;
     private readonly TurnHistory _history = new();
+    private readonly InspectorAgent? _inspector;
     private LlmOptions _options;
 
     public HarnessChatSession(
@@ -35,13 +37,18 @@ public sealed class HarnessChatSession : ICadScriptChatSession
         IGeometryKernel kernel,
         AgentLimits? limits = null,
         ToolRegistry? tools = null,
-        ToolSendDelegate? send = null)
+        ToolSendDelegate? send = null,
+        InspectorAgent? inspector = null,
+        bool preInspection = true)
     {
         _options = options ?? throw new ArgumentNullException(nameof(options));
         _protocol = protocol ?? throw new ArgumentNullException(nameof(protocol));
         _workingCopy = new WorkingCopyEvaluator(evaluator ?? throw new ArgumentNullException(nameof(evaluator)));
         _inspection = new SceneInspectionService(kernel ?? throw new ArgumentNullException(nameof(kernel)));
         _tools = tools ?? ToolRegistry.Default();
+        _inspector = inspector;
+        PreInspection = preInspection;
+        if (inspector != null) _tools = new ToolRegistry(_tools.All.Append(new InspectTool(inspector)));
         _loop = new AgentLoop(send);
         Limits = limits ?? AgentLimits.Remote;
         ResetHistory();
@@ -59,6 +66,15 @@ public sealed class HarnessChatSession : ICadScriptChatSession
     /// <summary>Como as ferramentas estão indo ao modelo (cai para texto se o servidor recusar tools).</summary>
     public ToolMode Mode => _loop.Mode;
 
+    /// <summary>Rodar o Inspetor antes de cada pedido (só vale com Inspetor).</summary>
+    public bool PreInspection { get; set; }
+
+    /// <summary>O Inspetor configurado, se houver.</summary>
+    public InspectorAgent? Inspector => _inspector;
+
+    /// <summary>O relatório da pré-inspeção do último turno.</summary>
+    public InspectorReport? LastPreInspection { get; private set; }
+
     public void NewConversation() => ResetHistory();
 
     public void UpdateOptions(LlmOptions options)
@@ -75,10 +91,18 @@ public sealed class HarnessChatSession : ICadScriptChatSession
     {
         if (!KeepHistory) ResetHistory();
 
-        _history.BeginTurn();
-        _history.Messages.Add(new ChatMessage { Role = "user", Content = _protocol.BuildUserMessage(context, instruction) });
-
         var toolContext = new CadToolContext(context, _workingCopy, _inspection);
+        string request = _protocol.BuildUserMessage(context, instruction);
+
+        LastPreInspection = null;
+        if (_inspector != null && PreInspection)
+        {
+            LastPreInspection = await _inspector.InspectAsync(request, toolContext, cancellationToken);
+            request += $"\n\n### NOTAS GEOMÉTRICAS (do Inspetor, {_inspector.ProfileName})\n{LastPreInspection.Summary}";
+        }
+
+        _history.BeginTurn();
+        _history.Messages.Add(new ChatMessage { Role = "user", Content = request });
         var steps = new List<AgentStep>();
         int promptTokens = 0, completionTokens = 0;
 

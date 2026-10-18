@@ -17,58 +17,7 @@ namespace AvaloniaCadEditor.Harness.Tests.Agents;
 /// </summary>
 public class HarnessChatSessionTests
 {
-    private const string Scene = "var placa_1 = Add(new Placa(), at: Placement.At(10, 0, 0), name: \"placa_1\");\n";
-
-    private const string PlacaFile =
-        "public sealed record Placa(double Largura = 50) : Part\n" +
-        "{\n" +
-        "    protected override IFeature Build() => new BoxFeature(Point3D.Origin, Largura, 30, 5) { Name = \"placa\" };\n" +
-        "}\n";
-
-    private static readonly CadScriptContext Context = BuildContext();
-
-    private static CadScriptContext BuildContext()
-    {
-        var all = new[] { new ScriptDocument("Cena.cs", Scene), new ScriptDocument("Pecas/Placa.cs", PlacaFile) };
-        return new CadScriptContext(
-            Scene,
-            Kind: CadFileKind.SceneEntry,
-            FileName: "Cena.cs",
-            ProjectDocuments: all,
-            Scope: new MultiFileScope(
-                all,
-                new Dictionary<string, CadFileKind>(StringComparer.OrdinalIgnoreCase)
-                {
-                    ["Cena.cs"] = CadFileKind.SceneEntry,
-                    ["Pecas/Placa.cs"] = CadFileKind.PartFile
-                },
-                Array.Empty<string>()));
-    }
-
-    private sealed class ScriptedModel
-    {
-        private readonly Queue<Func<IReadOnlyList<ChatMessage>, IReadOnlyList<ToolDefinition>, LlmResult>> _replies = new();
-
-        public List<(int Messages, int Tools)> Calls { get; } = new();
-
-        public ScriptedModel Then(Func<IReadOnlyList<ChatMessage>, IReadOnlyList<ToolDefinition>, LlmResult> reply)
-        {
-            _replies.Enqueue(reply);
-            return this;
-        }
-
-        public ScriptedModel ThenCall(string tool, string args = "{}") =>
-            Then((_, _) => new LlmResult { FinishReason = "tool_calls", ToolCalls = new[] { new ToolCall($"c{_replies.Count}", tool, args) } });
-
-        public ScriptedModel ThenSay(string text) => Then((_, _) => new LlmResult { Content = text, FinishReason = "stop" });
-
-        public Task<LlmResult> Send(IReadOnlyList<ChatMessage> messages, LlmOptions options, IReadOnlyList<ToolDefinition> tools, CancellationToken ct)
-        {
-            Calls.Add((messages.Count, tools.Count));
-            if (_replies.Count == 0) throw new InvalidOperationException("O roteiro acabou.");
-            return Task.FromResult(_replies.Dequeue()(messages, tools));
-        }
-    }
+    private static readonly CadScriptContext Context = TestProject.Context;
 
     private static HarnessChatSession Session(ScriptedModel model, AgentLimits? limits = null) =>
         new(new LlmOptions { ApiKey = "fake" }, new CadScriptProtocol(), new RoslynSceneEvaluator(), new OpenCascadeGeometryKernel(),

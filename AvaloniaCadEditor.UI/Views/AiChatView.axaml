@@ -130,6 +130,29 @@
                         </ComboBox>
                     </StackPanel>
 
+                    <!-- Harness: ferramentas e Inspetor (harness_settings.json) -->
+                    <Border IsVisible="{Binding HasHarness}" BorderBrush="#333333" BorderThickness="0,1,0,0" Padding="0,6,0,0">
+                        <StackPanel Spacing="4">
+                            <CheckBox IsChecked="{Binding Harness.Enabled}" FontSize="11" Foreground="#DDDDDD"
+                                      Content="Ferramentas (vista em texto, cotas, mover/girar)"
+                                      ToolTip.Tip="A IA consulta a geometria (vistas em arame e cotas em texto) e edita por ferramentas, numa cópia dos arquivos. Desligado: o chat de sempre (arquivo completo + correção automática)." />
+                            <CheckBox IsChecked="{Binding Harness.UseInspector}" IsEnabled="{Binding Harness.Enabled}" FontSize="11" Foreground="#DDDDDD"
+                                      Content="Inspetor (outro perfil, ex.: modelo local)"
+                                      ToolTip.Tip="Um segundo modelo só lê a geometria e resume os fatos para o Editor. Com um modelo local, as consultas pesadas ficam de graça." />
+                            <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding Harness.InspectorProfile}"
+                                      IsEnabled="{Binding Harness.UseInspector}" HorizontalAlignment="Stretch" FontSize="11">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="settings:AiEndpointProfile">
+                                        <TextBlock Text="{Binding DisplayName}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <CheckBox IsChecked="{Binding Harness.PreInspection}" IsEnabled="{Binding Harness.UseInspector}" FontSize="11" Foreground="#DDDDDD"
+                                      Content="Inspecionar antes de cada pedido"
+                                      ToolTip.Tip="Ligado: o Inspetor roda antes e o resumo vai junto com o pedido ('Notas geométricas'). Desligado: o Editor chama o Inspetor só quando quiser (ferramenta inspect)." />
+                        </StackPanel>
+                    </Border>
+
                     <CheckBox IsChecked="{Binding EnableReasoningInput}" FontSize="11" Foreground="#DDDDDD"
                               Content="Reasoning (thinking mode)"
                               ToolTip.Tip="Deixa o modelo 'pensar' antes de responder — melhor em pedidos complexos, porém mais lento e caro. Só vale para modelos compatíveis (deepseek-v4)." />

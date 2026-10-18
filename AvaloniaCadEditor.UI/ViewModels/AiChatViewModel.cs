@@ -13,6 +13,7 @@ using AvaloniaCadEditor.Application.Ai.Prompts;
 using AvaloniaCadEditor.Application.Ai.Recording;
 using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Domain.Settings;
+using AvaloniaCadEditor.UI.ViewModels.Harness;
 
 namespace AvaloniaCadEditor.UI.ViewModels;
 
@@ -243,13 +244,20 @@ public class AiChatViewModel : INotifyPropertyChanged
     public ICommand RemoveProfileCommand { get; }
     public ICommand RefreshModelsCommand { get; }
 
+    /// <summary>Ferramentas e Inspetor (harness); null quando o composition root não liga o harness.</summary>
+    public HarnessSettingsViewModel? Harness { get; }
+
+    public bool HasHarness => Harness != null;
+
     public AiChatViewModel(
         CadViewModel cadViewModel,
         SceneScriptViewModel scriptEditor,
         ISceneEvaluator evaluator,
         IAiSettingsProvider settingsProvider,
-        IAiContextBuilder? contextBuilder = null)
+        IAiContextBuilder? contextBuilder = null,
+        HarnessSettingsViewModel? harness = null)
     {
+        Harness = harness;
         _cadViewModel = cadViewModel;
         _scriptEditor = scriptEditor;
         _evaluator = evaluator;
@@ -441,10 +449,12 @@ public class AiChatViewModel : INotifyPropertyChanged
             var endpoint = AiSettingsMigration.Upgrade(settings).GetActiveProfile();
 
             // O system prompt é fixado quando a sessão começa: trocar de perfil exige uma sessão nova.
-            if (_session == null || _protocol?.Profile.Id != profile.Id)
+            // Com harness, a sessão é sempre nova: o tipo dela (com ou sem ferramentas) e os papéis
+            // vêm do harness_settings.json, que pode ter mudado no Save.
+            if (_session == null || _protocol?.Profile.Id != profile.Id || Harness != null)
             {
                 _protocol = new CadScriptProtocol(profile);
-                _session = new CadScriptChatSession(options, _protocol, _evaluator);
+                _session = Harness?.CreateSession(options, _protocol) ?? new CadScriptChatSession(options, _protocol, _evaluator);
             }
             else
             {
@@ -452,7 +462,8 @@ public class AiChatViewModel : INotifyPropertyChanged
             }
             _session.KeepHistory = settings.KeepConversationHistory;
             _sessionModelId = options.Model ?? string.Empty;
-            ModelName = $"{endpoint} · {options.Model} · {profile.Id}";
+            string tools = Harness?.SessionLabel is { Length: > 0 } label ? $" · {label}" : "";
+            ModelName = $"{endpoint} · {options.Model} · {profile.Id}{tools}";
             ConfigError = null;
         }
         else
@@ -480,6 +491,7 @@ public class AiChatViewModel : INotifyPropertyChanged
         KeepHistoryInput = settings.KeepConversationHistory;
         EnableReasoningInput = settings.EnableReasoning;
         SelectedPromptProfile = CadScriptPromptProfiles.Find(settings.PromptProfile);
+        Harness?.Load(Profiles);
     }
 
     private void ResetModelSuggestions()
@@ -539,6 +551,7 @@ public class AiChatViewModel : INotifyPropertyChanged
             PromptProfile = SelectedPromptProfile.Id
         };
         _settingsProvider.SaveSettings(settings);
+        Harness?.Save();
 
         // Trocar de modo (ex.: multi-round ↔ stateless) reinicia a conversa para manter Messages e o
         // histórico da API em sincronia.
