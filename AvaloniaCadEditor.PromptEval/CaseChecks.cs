@@ -35,6 +35,9 @@ internal sealed class CaseChecks
     /// <summary>Regex → número mínimo de ocorrências (ex.: { "new CylinderFeature": 4 }).</summary>
     public Dictionary<string, int>? MinOccurrences { get; set; }
 
+    /// <summary>Onde certos sólidos devem ficar na cena executada (ver <see cref="GeometryChecks"/>).</summary>
+    public List<SolidBoundsSpec>? SolidBounds { get; set; }
+
     public IReadOnlyList<CheckResult> Evaluate(CadScriptTurnResult result, RecordedContext context, CodeMetrics metrics)
     {
         var checks = new List<CheckResult>();

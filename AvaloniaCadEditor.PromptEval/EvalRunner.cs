@@ -155,11 +155,14 @@ internal sealed class EvalRunner
             var metrics = CodeMetrics.From(result, round.Context);
             var harness = session as HarnessChatSession;
             var inspection = harness?.LastPreInspection;
+            var checks = evalCase.Checks.Evaluate(result, round.Context, metrics)
+                .Concat(await GeometryChecks.EvaluateAsync(evalCase.Checks, result, round.Context, _evaluator))
+                .ToList();
             return new RunOutcome(
                 evalCase.Name, index + 1, profile.Id, model, rep,
                 result.IsValid, result.Attempts, result.Error,
                 result.PromptTokens, result.CompletionTokens, stopwatch.Elapsed.TotalSeconds, systemPromptChars,
-                metrics, evalCase.Checks.Evaluate(result, round.Context, metrics),
+                metrics, checks,
                 result.ChatText, result.Changes,
                 target.Endpoint, tools, harness?.LastTurnSteps.Count ?? 0,
                 inspection == null ? 0 : inspection.PromptTokens + inspection.CompletionTokens);

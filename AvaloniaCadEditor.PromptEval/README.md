@@ -52,3 +52,15 @@ dotnet run --project AvaloniaCadEditor.PromptEval -- --endpoints deepseek --tool
 `expectNoCode`, `expectNewFiles` e `onlyChangeFiles` (globs), `mustNotRedeclare` (peças),
 `maxPartParameters`, `minFeatures`, `maxFeatures`, `mustMatch` e `mustNotMatch` (regex no código
 devolvido), `minOccurrences` (`{ "regex": n }`). "Passou" = compilou, executou e cumpriu todos.
+
+`solidBounds` é geométrico: executa a cena com as alterações e confere a caixa de um sólido no mundo,
+pelo nome do sólido ou da variável. Serve para pedidos cuja resposta certa é uma posição:
+
+```json
+"solidBounds": [{ "name": "pino_furo_2", "min": [146, 9.5, 47.5], "max": [149, 12.5, 57.5], "tolerance": 0.1 }]
+```
+
+Antes de gravar um `solidBounds`, confira a posição esperada executando a cena: monte uma cópia do
+caso com a resposta certa já em `files/` e rode com `--dry-run --cases-dir <cópia>`. O caso
+`pino-no-furo` foi conferido assim: a posição esperada é a do furo, e os erros típicos (esquecer o
+espelho ou a rotação da instância) caem fora da tolerância.

@@ -1,0 +1,15 @@
+{
+  // Posição que o código não diz direto: placa_b é a PlacaFuros espelhada (X → −X), girada 180° em Z
+  // e deslocada por variáveis. O furo_2 dela fica no mundo em (147,5; 11), topo da placa em z = 47,5.
+  // Erros típicos: esquecer o espelho → (122,5; 11); esquecer a rotação → (122,5; 29);
+  // somar só o deslocamento → (147,5; 29); pegar a placa_a → (72,5; 29).
+  // Mede se o modelo consegue achar uma posição na cena (com ferramentas: get_view/get_dimensions).
+  "description": "Posição derivada (espelho + rotação + deslocamento): pino no furo_2 da placa_b.",
+  "instruction": "Adicione na Cena.cs um pino cilíndrico de Ø3 mm e 10 mm de altura, em pé (eixo Z), centrado no furo_2 da placa_b e apoiado na face de cima dela. Chame o sólido de pino_furo_2.",
+  "checks": {
+    "onlyChangeFiles": ["Cena.cs"],
+    "solidBounds": [
+      { "name": "pino_furo_2", "min": [146, 9.5, 47.5], "max": [149, 12.5, 57.5], "tolerance": 0.1 }
+    ]
+  }
+}
