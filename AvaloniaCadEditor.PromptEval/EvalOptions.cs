@@ -25,6 +25,8 @@ internal sealed class EvalOptions
           --parallel N                      chamadas simultâneas (padrão: 4)
           --reasoning                       liga o thinking mode
           --out pasta                       onde gravar o relatório (padrão: eval-results)
+          --dump pasta                      grava a conversa de cada rodada como foi para o modelo
+                                            (system prompt, pedido, ferramentas, chamadas e resultados)
           --dry-run                         não chama a IA: reaproveita a resposta gravada no caso
 
         Sem --endpoints, a chave vem de DEEPSEEK_API_KEY (e DEEPSEEK_BASE_URL, se houver).
@@ -40,6 +42,7 @@ internal sealed class EvalOptions
     public bool Reasoning { get; private set; }
     public string OutputDirectory { get; private set; } = "eval-results";
     public bool DryRun { get; private set; }
+    public string? DumpDirectory { get; private set; }
     public List<string> Endpoints { get; } = new();
     public string? LocalUrl { get; private set; }
 
@@ -74,6 +77,7 @@ internal sealed class EvalOptions
                 case "--reasoning": options.Reasoning = true; break;
                 case "--out": options.OutputDirectory = Next(); break;
                 case "--dry-run": options.DryRun = true; break;
+                case "--dump": options.DumpDirectory = Next(); break;
                 case "--endpoints": options.Endpoints.AddRange(List()); break;
                 case "--local": options.LocalUrl = Next(); break;
                 case "--inspector": options.InspectorEndpoint = Next(); break;

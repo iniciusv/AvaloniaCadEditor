@@ -57,9 +57,10 @@ internal sealed class EvalRunner
     private readonly ISceneEvaluator _evaluator;
     private readonly bool _dryRun;
     private readonly int _parallel;
+    private readonly string? _dumpDirectory;
 
     public EvalRunner(IReadOnlyList<EvalTarget> targets, IReadOnlyList<bool> toolModes, EvalTarget? inspector,
-        ISceneEvaluator evaluator, bool dryRun, int parallel)
+        ISceneEvaluator evaluator, bool dryRun, int parallel, string? dumpDirectory = null)
     {
         _targets = targets;
         _toolModes = toolModes;
@@ -67,6 +68,7 @@ internal sealed class EvalRunner
         _evaluator = evaluator;
         _dryRun = dryRun;
         _parallel = parallel;
+        _dumpDirectory = dumpDirectory;
     }
 
     public async Task<List<RunOutcome>> RunAsync(IReadOnlyList<EvalCase> cases, IReadOnlyList<ICadScriptPromptProfile> profiles, int repeat)
@@ -158,7 +160,7 @@ internal sealed class EvalRunner
             var checks = evalCase.Checks.Evaluate(result, round.Context, metrics)
                 .Concat(await GeometryChecks.EvaluateAsync(evalCase.Checks, result, round.Context, _evaluator))
                 .ToList();
-            return new RunOutcome(
+            var outcome = new RunOutcome(
                 evalCase.Name, index + 1, profile.Id, model, rep,
                 result.IsValid, result.Attempts, result.Error,
                 result.PromptTokens, result.CompletionTokens, stopwatch.Elapsed.TotalSeconds, systemPromptChars,
@@ -166,6 +168,8 @@ internal sealed class EvalRunner
                 result.ChatText, result.Changes,
                 target.Endpoint, tools, harness?.LastTurnSteps.Count ?? 0,
                 inspection == null ? 0 : inspection.PromptTokens + inspection.CompletionTokens);
+            if (_dumpDirectory != null) PromptDump.Write(_dumpDirectory, outcome, session.History, tools);
+            return outcome;
         }
         catch (Exception ex)
         {
