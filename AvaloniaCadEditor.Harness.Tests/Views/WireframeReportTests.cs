@@ -45,7 +45,8 @@ public class WireframeReportTests
             new[] { new ViewCircle("furo_a", PrimitiveRole.Void, new P2(4, 4), 2.5) });
 
         text.Should().Contain("# mundo: cada círculo traz o eixo dele em coordenadas do MUNDO");
-        text.Should().Contain("[furo_a] · mundo (104, -6, 4) → (104, 0, 4)", "da face mais próxima (y = -6, olhando de -Y) à mais distante");
+        text.Should().Contain("entrada = na face da peça voltada para quem olha (a face da frente, W máx)");
+        text.Should().Contain("[furo_a] · mundo: entrada (104, -6, 4) → fundo (104, 0, 4)", "da face mais próxima (y = -6, olhando de -Y) à mais distante");
     }
 
     [Fact]
@@ -59,7 +60,7 @@ public class WireframeReportTests
             new[] { new ViewCircle("furo_a", PrimitiveRole.Void, new P2(4, 4), 2.5) });
 
         text.Should().Contain("# código: e o mesmo eixo nas coordenadas LOCAIS do código da peça");
-        text.Should().Contain("[furo_a] · mundo (104, -6, 4) → (104, 0, 4) · código (6, -6, 4) → (6, 0, 4)");
+        text.Should().Contain("[furo_a] · mundo: entrada (104, -6, 4) → fundo (104, 0, 4) · código: entrada (6, -6, 4) → fundo (6, 0, 4)");
     }
 
     [Fact]

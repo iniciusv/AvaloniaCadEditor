@@ -39,7 +39,7 @@ public class PinFixtureViewTests(ITestOutputHelper output)
         string text = service.DescribeView(target, StandardView.Top);
         output.WriteLine(text);
 
-        text.Should().Contain("[furo_2] · mundo (147.5, 11, 47.5) → (147.5, 11, 42.5) · código (-12.5, 9, 5) → (-12.5, 9, 0)");
-        text.Should().Contain("[furo_1] · mundo (122.5, 27.5, 47.5) → (122.5, 27.5, 42.5) · código (12.5, -7.5, 5) → (12.5, -7.5, 0)");
+        text.Should().Contain("[furo_2] · mundo: entrada (147.5, 11, 47.5) → fundo (147.5, 11, 42.5) · código: entrada (-12.5, 9, 5) → fundo (-12.5, 9, 0)");
+        text.Should().Contain("[furo_1] · mundo: entrada (122.5, 27.5, 47.5) → fundo (122.5, 27.5, 42.5) · código: entrada (12.5, -7.5, 5) → fundo (12.5, -7.5, 0)");
     }
 }

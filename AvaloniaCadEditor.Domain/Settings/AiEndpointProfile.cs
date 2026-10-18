@@ -47,10 +47,11 @@ public class AiEndpointProfile
     };
 
     /// <summary>
-    /// Limite de resposta dos perfis locais novos: um modelo local pode "pensar" sem parar (o Gemma 4 12B
-    /// gerou ~21 mil tokens em 15 min num pedido de posição); com limite, o erro volta em minutos.
+    /// Limite de resposta dos perfis locais novos: um modelo local pode entrar em loop (o Gemma 4 12B gerou
+    /// ~21 mil tokens em 15 min num pedido de posição). Uma resposta normal tem 500–1100 tokens; 4096 a
+    /// ~25 tokens/s corta em menos de 3 min — antes do corte interno de ~5 min do LM Studio ("terminated").
     /// </summary>
-    public const int DefaultLocalMaxTokens = 8192;
+    public const int DefaultLocalMaxTokens = 4096;
 
     /// <summary>Perfil local com os padrões do Ollama; modelos locais grandes podem demorar, daí o timeout longo.</summary>
     public static AiEndpointProfile Local(string id, string displayName) => new()

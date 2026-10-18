@@ -129,8 +129,9 @@ public static class WireframeReport
         }
         if (header.FrameToWorld != null)
         {
-            sb.AppendLine("# mundo: cada círculo traz o eixo dele em coordenadas do MUNDO (as de Add/AddFeature na cena), " +
-                "da face mais próxima (W máx) à mais distante (W mín) da peça");
+            sb.AppendLine("# mundo: cada círculo traz o eixo dele em coordenadas do MUNDO (as de Add/AddFeature na cena): " +
+                $"entrada = na face da peça voltada para quem olha ({FacingFace(basis)}, W máx); fundo = na face oposta (W mín). " +
+                "Algo apoiado sobre essa face começa na entrada");
         }
         if (header.FrameToWorld != null && header.WorldToCode != null)
         {
@@ -170,9 +171,9 @@ public static class WireframeReport
             {
                 var near = frameToWorld.Apply(basis.Unproject(sheetCenter, bounds.MaxW));
                 var far = frameToWorld.Apply(basis.Unproject(sheetCenter, bounds.MinW));
-                body += $" · mundo {P3(near)} → {P3(far)}";
+                body += $" · mundo: entrada {P3(near)} → fundo {P3(far)}";
                 if (worldToCode != null)
-                    body += $" · código {P3(worldToCode.Apply(near))} → {P3(worldToCode.Apply(far))}";
+                    body += $" · código: entrada {P3(worldToCode.Apply(near))} → fundo {P3(worldToCode.Apply(far))}";
             }
             return new Entry(line.Visible, 2 * Math.PI * r, true, body);
         }
@@ -197,4 +198,16 @@ public static class WireframeReport
     private static string P(Point3D p) => $"({N(p.X)}, {N(p.Y)})";
 
     private static string P3(Point3D p) => $"({N(p.X)}, {N(p.Y)}, {N(p.Z)})";
+
+    /// <summary>A face voltada para quem olha, em palavras ("a face de cima" na vista Top).</summary>
+    private static string FacingFace(ProjectionBasis basis) => basis.View switch
+    {
+        Domain.Entities.StandardView.Top => "a face de cima",
+        Domain.Entities.StandardView.Bottom => "a face de baixo",
+        Domain.Entities.StandardView.Front => "a face da frente",
+        Domain.Entities.StandardView.Back => "a face de trás",
+        Domain.Entities.StandardView.Right => "a face direita",
+        Domain.Entities.StandardView.Left => "a face esquerda",
+        _ => "a face mais próxima"
+    };
 }
