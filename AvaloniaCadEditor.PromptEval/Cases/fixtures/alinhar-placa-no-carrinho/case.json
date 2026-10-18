@@ -1,0 +1,24 @@
+{
+  // Alinhar furos de fixação de duas peças. Os 4 furos M3 do topo do carrinho ficam no mundo em
+  // (±12,5; ±12,5), topo em z = 16. A placa tem 3 furos na mesma malha de 25 mm e o 4º canto recortado:
+  // montada, a base dela encosta no topo (z = 16) e os 4 eixos ficam vazios (3 furos + o recorte).
+  // "Sem sobrar pros lados" = a largura da placa (32) dentro da do carrinho: X -16..16, o que exclui a
+  // placa girada 90° (que também alinharia 3 furos). Os pontos "inside" são material com a placa a 0° e
+  // a 180° (as duas montagens valem); foram escolhidos por sondagem, fora dos canais e alojamentos de
+  // porca. Erros típicos: deslocar meia malha (12,5 mm), deixar flutuando, girar 90°.
+  "description": "Alinhar furos: parafusar a placa de suporte nos M3 do topo do carrinho.",
+  "instruction": "Parafusa a placa_suporte em cima do carrinho_y, usando os furos M3 do topo dele, sem sobrar pros lados. O canto recortado da placa fica em cima do furo que sobra.",
+  "checks": {
+    "onlyChangeFiles": ["Cena.cs"],
+    "solidBounds": [
+      { "name": "placa_suporte", "min": [-16, null, 16], "max": [16, null, null], "tolerance": 0.1 }
+    ],
+    "solidPoints": [
+      {
+        "name": "placa_suporte",
+        "outside": [[12.5, 12.5, 21.5], [-12.5, 12.5, 21.5], [12.5, -12.5, 21.5], [-12.5, -12.5, 21.5]],
+        "inside": [[-8, 8, 21.5], [8, -8, 21.5], [-12, 8, 21.5], [12, -8, 21.5]]
+      }
+    ]
+  }
+}

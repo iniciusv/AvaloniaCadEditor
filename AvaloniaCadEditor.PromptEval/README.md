@@ -45,6 +45,17 @@ dotnet run --project AvaloniaCadEditor.PromptEval -- --endpoints deepseek --tool
   `entryFile`, `activeFile`, `select` (sólidos selecionados, pelo nome), `pin` (arquivos fixados no
   contexto) e `checks`. Os pares `*-sem-ref` / `*-com-ref` fazem o mesmo pedido sem e com peças de
   referência na cena.
+- **Geométricos** — pedidos cuja resposta certa é uma posição ou um encaixe, conferidos executando a
+  cena (`solidBounds`/`solidPoints`). As peças vêm copiadas da cena de referência (`AiCore/Pecas`), e os
+  pedidos são escritos como uma pessoa falaria, sem cotas mastigadas:
+
+  | Caso | Mede |
+  |---|---|
+  | `pino-no-furo` | achar a posição de um furo numa peça espelhada, girada e deslocada |
+  | `posicionar-carrinho-no-trilho` | montar uma peça em outra pela convenção dela (girada, centrada) |
+  | `alinhar-placa-no-carrinho` | alinhar os furos de fixação de duas peças existentes |
+  | `placa-base-carrinho` | peça nova com furação que bate com os M3 de outra |
+  | `chapa-frontal-nema17` | peça nova com furação do motor e folga para o ressalto |
 - **Gravado** — o JSON salvo pelo botão 💾 do chat (`%AppData%/AvaloniaCadEditor/ai-cases`; use `--saved`
   para incluí-los ou copie para `Cases/recorded/`). Verificações opcionais em `<nome>.checks.json` ao lado.
 
@@ -61,7 +72,18 @@ pelo nome do sólido ou da variável. Serve para pedidos cuja resposta certa é 
 "solidBounds": [{ "name": "pino_furo_2", "min": [146, 9.5, 47.5], "max": [149, 12.5, 57.5], "tolerance": 0.1 }]
 ```
 
-Antes de gravar um `solidBounds`, confira a posição esperada executando a cena: monte uma cópia do
+`null` numa coordenada de `min`/`max` = não conferir aquele lado (ex.: `"min": [null, null, 16]` só
+exige a base em z = 16).
+
+`solidPoints` confere encaixe sem impor uma solução: pontos do mundo que têm de estar no material do
+sólido (`inside`) ou vazios (`outside`), como o eixo de um furo de fixação ou a folga de um ressalto.
+Aceita qualquer resposta que encaixe (outra rotação, outra espessura):
+
+```json
+"solidPoints": [{ "name": "chapa_motor", "outside": [[65.5, -14.5, 41.5]], "inside": [[50, -11, 41.5]] }]
+```
+
+Antes de gravar um `solidBounds` ou `solidPoints`, confira a posição esperada executando a cena: monte uma cópia do
 caso com a resposta certa já em `files/` e rode com `--dry-run --cases-dir <cópia>`. O caso
 `pino-no-furo` foi conferido assim: a posição esperada é a do furo, e os erros típicos (esquecer o
 espelho ou a rotação da instância) caem fora da tolerância.

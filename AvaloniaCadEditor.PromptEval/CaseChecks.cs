@@ -38,6 +38,9 @@ internal sealed class CaseChecks
     /// <summary>Onde certos sólidos devem ficar na cena executada (ver <see cref="GeometryChecks"/>).</summary>
     public List<SolidBoundsSpec>? SolidBounds { get; set; }
 
+    /// <summary>Pontos que devem estar dentro ou fora do material de um sólido (ver <see cref="GeometryChecks"/>).</summary>
+    public List<SolidPointsSpec>? SolidPoints { get; set; }
+
     public IReadOnlyList<CheckResult> Evaluate(CadScriptTurnResult result, RecordedContext context, CodeMetrics metrics)
     {
         var checks = new List<CheckResult>();

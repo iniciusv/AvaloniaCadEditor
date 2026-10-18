@@ -1,0 +1,15 @@
+{
+  // Posicionar uma peça em outra pela convenção dela: o CarrinhoMgn15H tem a origem na base do
+  // trilho e abraça o trilho até a altura dele, então "montado" = mesma base (z = 20), girado como
+  // o trilho (-90°, comprimento em X), centrado na largura do trilho (Y 45..60 → centro 52,5) e no
+  // meio do comprimento (X -100..100 → centro 0). Caixa esperada: X -29,4..29,4, Y 36,5..68,5, Z 20..36.
+  // Erros típicos: não girar (caixa 32 em X), alinhar pelo canto em vez do centro, apoiar em cima do trilho (z 30).
+  "description": "Posicionar: montar o carrinho no trilho girado, centrado e no meio do curso.",
+  "instruction": "O carrinho_x tá solto na origem. Monta ele no trilho_x, no meio do trilho.",
+  "checks": {
+    "onlyChangeFiles": ["Cena.cs"],
+    "solidBounds": [
+      { "name": "carrinho_x", "min": [-29.4, 36.5, 20], "max": [29.4, 68.5, 36], "tolerance": 0.5 }
+    ]
+  }
+}
