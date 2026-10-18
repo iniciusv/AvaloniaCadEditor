@@ -4,6 +4,7 @@ using AvaloniaCadEditor.Application.Ai;
 using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Harness.Agents;
 using AvaloniaCadEditor.Harness.Roles;
+using AvaloniaCadEditor.Harness.Skills;
 
 namespace AvaloniaCadEditor.Harness;
 
@@ -30,6 +31,9 @@ public sealed class HarnessSessionFactory
         _kernelFactory = kernelFactory ?? throw new ArgumentNullException(nameof(kernelFactory));
         _send = send;
     }
+
+    /// <summary>As skills que a interface oferece para ligar e desligar.</summary>
+    public SkillRegistry Skills { get; } = SkillRegistry.Default();
 
     /// <summary>Como a última sessão criada ficou (para o rótulo do chat), inclusive avisos.</summary>
     public string Description { get; private set; } = string.Empty;
@@ -58,10 +62,13 @@ public sealed class HarnessSessionFactory
         if (inspectorRole != null)
             inspector = new InspectorAgent(inspectorRole.Options, inspectorRole.Limits, inspectorRole.Profile.ToString(), _send);
 
+        var skills = Skills.Resolve(harness.Skills);
+
         Description = "ferramentas" + (inspector != null ? $" · Inspetor: {inspector.ProfileName}" : "") +
+            (skills.Count > 0 ? " · skills: " + string.Join(", ", skills.Select(s => s.Id)) : "") +
             (warnings.Count > 0 ? " · ⚠ " + string.Join(" ", warnings) : "");
 
         return new HarnessChatSession(options, protocol, _evaluator, _kernelFactory(), limits, send: _send,
-            inspector: inspector, preInspection: harness.PreInspection);
+            inspector: inspector, preInspection: harness.PreInspection, skills: skills, skillRegistry: Skills);
     }
 }

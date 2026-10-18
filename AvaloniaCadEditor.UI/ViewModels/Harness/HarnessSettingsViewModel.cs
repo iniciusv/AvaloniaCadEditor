@@ -24,7 +24,11 @@ public sealed class HarnessSettingsViewModel : INotifyPropertyChanged
     {
         _store = store;
         _factory = factory;
+        Skills = factory.Skills.All.Select(s => new SkillToggleViewModel(s)).ToList();
     }
+
+    /// <summary>As skills que se ligam e desligam (questionar antes de editar, conferir o resultado...).</summary>
+    public IReadOnlyList<SkillToggleViewModel> Skills { get; }
 
     private bool _enabled;
     /// <summary>Chat com ferramentas (vista em texto, cotas, mover/girar, editar trechos).</summary>
@@ -68,6 +72,7 @@ public sealed class HarnessSettingsViewModel : INotifyPropertyChanged
         string? inspectorId = settings.ProfileFor(AgentRole.Inspector);
         InspectorProfile = profiles.FirstOrDefault(p => p.Id == inspectorId);
         UseInspector = InspectorProfile != null;
+        foreach (var skill in Skills) skill.IsEnabled = settings.IsSkillEnabled(skill.Id);
     }
 
     public void Save()
@@ -76,6 +81,7 @@ public sealed class HarnessSettingsViewModel : INotifyPropertyChanged
         settings.Enabled = Enabled;
         settings.PreInspection = PreInspection;
         settings.SetProfile(AgentRole.Inspector, UseInspector ? InspectorProfile?.Id : null);
+        foreach (var skill in Skills) settings.SetSkill(skill.Id, skill.IsEnabled);
         _store.Save(settings);
     }
 

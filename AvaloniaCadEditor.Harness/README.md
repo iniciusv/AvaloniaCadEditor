@@ -44,6 +44,26 @@ Nos projetos do app só entram dois tipos de mudança, e cada uma vai em um comm
 | `Inspection/` | Avaliação da cópia de trabalho com cache, resolução de alvo, malha e referencial |
 | `Views/` | Base de projeção (vistas padrão e Iso), HLR em CPU e texto da vista |
 | `Protocol/` | Fallback ```` ```tool ```` para servidores sem tool calling e a detecção do suporte |
+| `Skills/` | Skills: modos de trabalho do Editor que se ligam e desligam (`questionar`, `revisar`) |
+
+## Skills
+
+Uma skill é um pacote de instruções que muda como o Editor conduz o turno, sem ferramenta e sem
+código. As que vêm com o app estão em `SkillRegistry.Default()`:
+
+| Id | O que faz |
+|---|---|
+| `questionar` | Confere o pedido contra a geometria antes de editar. Se faltar uma decisão que a cena não responde, não altera nada e responde só com as perguntas, cada uma com uma sugestão. |
+| `revisar` | Depois de editar, compara as caixas e os eixos das peças novas ou movidas com o pedido e mostra uma seção **Conferência** na resposta. |
+
+Há duas formas de usar uma skill:
+- **Ligada** no painel do chat (`harness_settings.json`, campo `Skills`): as instruções vão no system
+  prompt e valem para a conversa toda.
+- **Num pedido só:** comece a mensagem com `/id`, por exemplo `/questionar põe um motor no eixo Z`. O
+  comando sai do texto, e as instruções vão junto com aquele pedido.
+
+O rastro do turno (seção "Ferramentas" do balão) mostra as skills que valeram. Para comparar com e sem
+skill, use o PromptEval: `skills` no `case.json` ou `--skills`.
 
 ## Boas práticas
 

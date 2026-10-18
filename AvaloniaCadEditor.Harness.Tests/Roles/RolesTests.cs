@@ -131,4 +131,37 @@ public class RolesTests : IDisposable
         harness.PreInspection.Should().BeTrue();
         factory.Description.Should().Be("ferramentas · Inspetor: Ollama");
     }
+
+    [Fact]
+    public void Store_GuardaAsSkillsLigadas()
+    {
+        var store = new JsonHarnessSettingsStore(_folder);
+        var settings = new HarnessSettings { Enabled = true };
+        settings.SetSkill("questionar", true);
+        settings.SetSkill("revisar", true);
+        settings.SetSkill("revisar", false);
+
+        store.Save(settings);
+        var loaded = store.Load();
+
+        loaded.Skills.Should().Equal("questionar");
+        loaded.IsSkillEnabled("QUESTIONAR").Should().BeTrue();
+        loaded.IsSkillEnabled("revisar").Should().BeFalse();
+    }
+
+    [Fact]
+    public void Factory_ComSkillLigada_PoeNaSessaoEIgnoraIdQueNaoExisteMais()
+    {
+        var store = new JsonHarnessSettingsStore(_folder);
+        var settings = new HarnessSettings { Enabled = true, Skills = { "questionar", "skill-removida" } };
+        store.Save(settings);
+        var factory = new HarnessSessionFactory(new FixedAppSettings(App()), store, new RoslynSceneEvaluator(), () => new OpenCascadeGeometryKernel());
+
+        var session = factory.Create(new LlmOptions { ApiKey = "k" }, new CadScriptProtocol());
+
+        var harness = session.Should().BeOfType<HarnessChatSession>().Subject;
+        harness.ActiveSkills.Select(s => s.Id).Should().Equal("questionar");
+        harness.History[0].Content.Should().Contain("### SKILL: questionar");
+        factory.Description.Should().Be("ferramentas · skills: questionar");
+    }
 }

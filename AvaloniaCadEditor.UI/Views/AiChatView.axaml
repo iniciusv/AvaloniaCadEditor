@@ -6,6 +6,7 @@
              xmlns:controls="clr-namespace:AvaloniaCadEditor.UI.Controls"
              xmlns:prompts="clr-namespace:AvaloniaCadEditor.Application.Ai.Prompts;assembly=AvaloniaCadEditor.Application"
              xmlns:settings="clr-namespace:AvaloniaCadEditor.Domain.Settings;assembly=AvaloniaCadEditor.Domain"
+             xmlns:harness="clr-namespace:AvaloniaCadEditor.UI.ViewModels.Harness"
              xmlns:AvaloniaEdit="https://github.com/avaloniaui/avaloniaedit"
              mc:Ignorable="d" d:DesignWidth="360" d:DesignHeight="640"
              x:Class="AvaloniaCadEditor.UI.Views.AiChatView"
@@ -150,6 +151,15 @@
                             <CheckBox IsChecked="{Binding Harness.PreInspection}" IsEnabled="{Binding Harness.UseInspector}" FontSize="11" Foreground="#DDDDDD"
                                       Content="Inspecionar antes de cada pedido"
                                       ToolTip.Tip="Ligado: o Inspetor roda antes e o resumo vai junto com o pedido ('Notas geométricas'). Desligado: o Editor chama o Inspetor só quando quiser (ferramenta inspect)." />
+                            <TextBlock Text="Skills (desligada: /nome no começo do pedido usa só uma vez)" Foreground="#999999" FontSize="10" Margin="0,4,0,0" />
+                            <ItemsControl ItemsSource="{Binding Harness.Skills}" IsEnabled="{Binding Harness.Enabled}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="harness:SkillToggleViewModel">
+                                        <CheckBox IsChecked="{Binding IsEnabled}" Content="{Binding Title}" ToolTip.Tip="{Binding ToolTip}"
+                                                  FontSize="11" Foreground="#DDDDDD" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
                     </Border>
 

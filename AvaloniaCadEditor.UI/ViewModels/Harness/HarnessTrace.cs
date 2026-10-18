@@ -20,6 +20,8 @@ public static class HarnessTrace
         if (session is not HarnessChatSession harness) return Array.Empty<string>();
 
         var lines = new List<string>();
+        if (harness.LastTurnSkills.Count > 0)
+            lines.Add("skills: " + string.Join(", ", harness.LastTurnSkills.Select(s => s.Id)));
         if (harness.LastPreInspection is { } inspection)
         {
             lines.Add($"Inspetor ({harness.Inspector?.ProfileName}): {inspection.Steps.Count} consulta(s){(inspection.HitLimit ? " · limite atingido" : "")}");

@@ -18,6 +18,17 @@ public class HarnessSettings
     /// <summary>Rodar o Inspetor antes de cada pedido e mandar o resumo ao Editor ("Notas geométricas").</summary>
     public bool PreInspection { get; set; } = true;
 
+    /// <summary>Ids das skills ligadas (<see cref="Skills.SkillRegistry"/>); vão no system prompt de toda a conversa.</summary>
+    public List<string> Skills { get; set; } = new();
+
+    public bool IsSkillEnabled(string id) => Skills.Contains(id, StringComparer.OrdinalIgnoreCase);
+
+    public void SetSkill(string id, bool enabled)
+    {
+        Skills.RemoveAll(s => s.Equals(id, StringComparison.OrdinalIgnoreCase));
+        if (enabled) Skills.Add(id);
+    }
+
     public string? ProfileFor(AgentRole role) =>
         RoleProfiles.TryGetValue(role.ToString(), out var id) && !string.IsNullOrWhiteSpace(id) ? id : null;
 
