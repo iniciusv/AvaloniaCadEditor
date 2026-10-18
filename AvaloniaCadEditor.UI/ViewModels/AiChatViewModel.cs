@@ -617,6 +617,7 @@ public class AiChatViewModel : INotifyPropertyChanged
             var item = new AiChatMessageItem(isUser: false, text: result.ChatText, code: code, reasoning: result.Reasoning)
             {
                 TurnId = turnId,
+                ToolSteps = HarnessTrace.Describe(_session),
                 DeleteCommand = new RelayCommand(() => DeleteTurn(turnId), () => !IsBusy)
             };
             if (code != null)

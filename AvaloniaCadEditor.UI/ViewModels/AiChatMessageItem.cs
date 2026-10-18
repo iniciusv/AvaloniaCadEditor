@@ -20,6 +20,13 @@ public class AiChatMessageItem : INotifyPropertyChanged
     public bool HasCode => !string.IsNullOrWhiteSpace(Code);
     public bool HasReasoning => !string.IsNullOrWhiteSpace(Reasoning);
 
+    /// <summary>As chamadas de ferramenta do turno, uma por linha (vazio no chat sem ferramentas).</summary>
+    public IReadOnlyList<string> ToolSteps { get; init; } = Array.Empty<string>();
+
+    public bool HasToolSteps => ToolSteps.Count > 0;
+
+    public string ToolStepsHeader => $"Ferramentas ({ToolSteps.Count})";
+
     /// <summary>Turno (par pergunta/resposta) a que este balão pertence; usado pela deleção.</summary>
     public int TurnId { get; init; }
 
@@ -96,6 +103,11 @@ public class AiChatMessageItem : INotifyPropertyChanged
         if (HasReasoning)
         {
             sb.AppendLine().AppendLine("[Reasoning]").AppendLine(Reasoning);
+        }
+        if (HasToolSteps)
+        {
+            sb.AppendLine().AppendLine("[Ferramentas]");
+            foreach (var step in ToolSteps) sb.AppendLine(step);
         }
         if (HasCode)
         {
