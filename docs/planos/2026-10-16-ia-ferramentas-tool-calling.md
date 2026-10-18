@@ -2,10 +2,10 @@
 
 | | |
 |---|---|
-| **Status** | Proposto (revisado em 2026-10-17), ainda não iniciado |
+| **Status** | Implementado (v1) em 2026-10-17; falta a medição com modelos reais (etapa 9) e o teste no app |
 | **Data** | 2026-10-16, revisão em 2026-10-17 |
-| **Branch de origem** | `feature/varredura-por-caminho` (só análise, sem código) |
-| **Referências externas** | [DeepSeek: tool calls e thinking mode](../referencias/deepseek-api.md) · [Servidores locais OpenAI-compatíveis](../referencias/servidores-locais-openai.md) (a preencher na etapa 0) |
+| **Branch** | `feature/harness-ia` (criada de `feature/varredura-por-caminho`) |
+| **Referências externas** | [DeepSeek: tool calls e thinking mode](../referencias/deepseek-api.md) · [Servidores locais OpenAI-compatíveis](../referencias/servidores-locais-openai.md) |
 
 ## Objetivo
 
@@ -391,25 +391,25 @@ Veja [referencias/deepseek-api.md](../referencias/deepseek-api.md#modo-estrito-b
 
 ## Etapas (checklist)
 
-- [ ] **0. Referência e esqueleto.**
+- [x] **0. Referência e esqueleto.**
   - Preencher [referencias/servidores-locais-openai.md](../referencias/servidores-locais-openai.md).
   - Criar `AvaloniaCadEditor.Harness` e `AvaloniaCadEditor.Harness.Tests` no `.slnx`, com o README.
   - Escrever o **teste de arquitetura**: Application, Domain, Drafting e AiCore não referenciam o
     Harness, e Application não referencia Drafting.
-- [ ] **1. Cliente genérico (AiCore), ainda sem tools.** Novos campos de `LlmOptions`, chave
+- [x] **1. Cliente genérico (AiCore), ainda sem tools.** Novos campos de `LlmOptions`, chave
   opcional, `max_tokens` omitível, `Thinking` explícito, timeout, handler injetável,
   `ListModelsAsync` e o parse de `reasoning`/`<think>`.
   *Testes:* ampliar `LlmClientRequestBodyTests` e criar `LlmClientHttpTests` com um handler falso
   (sem `Authorization`, parse dos dois campos de reasoning).
-- [ ] **2. Perfis de endpoint no app.** `AiEndpointProfile`, a migração, o
+- [x] **2. Perfis de endpoint no app.** `AiEndpointProfile`, a migração, o
   `JsonAiSettingsProvider` e a UI de perfis (modelo livre preenchido por `/v1/models`, sem
   sobrescrever o id). Essa etapa já entrega um **modelo local no chat de hoje**.
   *Testes:* migração v1→v2 numa pasta temporária; os testes atuais do chat continuam verdes.
-- [ ] **3. Refatorações preparatórias**, sem mudança de comportamento: interface
+- [x] **3. Refatorações preparatórias**, sem mudança de comportamento: interface
   `ICadScriptChatSession`, `WorkingCopyEvaluator`, `ReferencePolylines` público e
   `MeshEdgeClassifier`.
   *Testes:* os testes atuais de chat e projeção continuam verdes.
-- [ ] **4. `Harness/Views`: `ProjectionBasis` e `HiddenLineProjector`.**
+- [x] **4. `Harness/Views`: `ProjectionBasis` e `HiddenLineProjector`.**
   *Testes sintéticos:*
   - caixa na Frente: 4 visíveis e 0 ocultas;
   - furo passante em Y: círculo visível;
@@ -418,34 +418,56 @@ Veja [referencias/deepseek-api.md](../referencias/deepseek-api.md#modo-estrito-b
   - cilindro deitado: 2 silhuetas;
   - as 6 bases batem com `ViewBasis.For` e a Iso bate com `CameraState.GetViewMatrix`;
   - uma malha acima do orçamento é recusada.
-- [ ] **5. `Harness/Inspection` e `WireframeReport`.**
+- [x] **5. `Harness/Inspection` e `WireframeReport`.**
   *Testes sem GUI* no padrão de `PlacaSuporteDrawingTests`:
   - a vista Frente da placa lista os furos com o Ø exato e o nome do fato;
   - o texto respeita o `max_chars`;
   - a saída é determinística;
   - `get_dimensions` é igual ao `DraftingReport.Format`;
   - um alvo inexistente devolve a lista de alvos.
-- [ ] **6. Tool calling no cliente (AiCore).** `tools`, `tool_calls`, `finish_reason`,
+- [x] **6. Tool calling no cliente (AiCore).** `tools`, `tool_calls`, `finish_reason`,
   `ChatMessage.ToolCalls`/`ToolCallId` e o reenvio do `reasoning_content` com tools.
   *Testes:* corpo da requisição com `tools`; `arguments` como string e como objeto; id gerado.
-- [ ] **7. `Harness/Tools`, `AgentLoop` e `HarnessChatSession`, com as ferramentas v1.**
+- [x] **7. `Harness/Tools`, `AgentLoop` e `HarnessChatSession`, com as ferramentas v1.**
   *Testes* com um `SendDelegate` roteirizado (uma sequência de `tool_calls`):
   - a edição sai num único `Changes`;
   - `DeleteTurn` limpa as mensagens de tool;
   - o limite de passos encerra o laço;
   - um 400 que cita "tools" degrada para `Text`;
   - o bloco ```` ```tool ```` é executado.
-- [ ] **8. Papéis e Inspetor.** `harness_settings.json`, pré-inspeção e `inspect(question)`.
+- [x] **8. Papéis e Inspetor.** `harness_settings.json`, pré-inspeção e `inspect(question)`.
   *Testes:* o Inspetor recebe o `LlmOptions` do perfil dele e não vê as ferramentas de edição.
-- [ ] **9. Medição no [PromptEval](../../AvaloniaCadEditor.PromptEval/README.md).** O PromptEval
+- [x] **9. Medição no [PromptEval](../../AvaloniaCadEditor.PromptEval/README.md).** O PromptEval
   passa a referenciar o Harness e ganha `--endpoints`, `perfil:modelo`, `--tools` e `--inspector`.
   Comparar acerto, tokens, latência e custo em três cenários: só DeepSeek, só local, e DeepSeek com
-  Inspetor local.
-- [ ] **10. UI do chat.** As chamadas de ferramenta aparecem de forma recolhível, com o papel e o
+  Inspetor local. *A ferramenta está pronta e validada em dry-run; a comparação com modelos reais
+  ainda não foi rodada.*
+- [x] **10. UI do chat.** As chamadas de ferramenta aparecem de forma recolhível, com o papel e o
   perfil. O trace sai do `HarnessChatSession` num tipo próprio do Harness, e a UI só o exibe.
 
 Os testes rodam com `--artifacts-path` no scratchpad quando o app está aberto, e nenhum deles abre a
 GUI sem permissão.
+
+## Como ficou a implementação (desvios do plano)
+
+- **Teste de arquitetura.** Ele lê os `ProjectReference` dos `.csproj` em vez de
+  `GetReferencedAssemblies`, porque assim pega também referências declaradas e não usadas.
+- **Inspetor.** Ele tem um `harness_settings.json` próprio. O app conhece só os perfis de endpoint e
+  o perfil ativo.
+- **Nome da instância para linha do código.** Saiu pelo `FeatureOrigin` (arquivo e linha de cada
+  feature avaliada). `RoslynCodeNavigator` e `SceneSyntaxIndex` não foram necessários. Quando o
+  `PartSourceEditor` não muda o código, a ferramenta responde com erro e sugere `replace_in_file`.
+- **Protocolo `Text`.** Também liga quando o modelo escreve a chamada no texto mesmo tendo tools
+  nativas, como no fallback do LM Studio.
+- **Contexto de teste.** Os testes do laço usam um projeto multi-arquivo (`Cena.cs` + `Pecas/`),
+  porque as regras do CadScript proíbem `record` no script.
+- **Dicas de parâmetro.** `get_dimensions` não traz as dicas ("RaioFuroPassante"), como previsto.
+- **Ainda não feito:**
+  - compactação dos resultados antigos de ferramenta em modelos locais;
+  - aviso de contexto cheio pelo `usage`;
+  - modo estrito;
+  - oclusão pelos outros sólidos da cena;
+  - Revisor.
 
 ## Perguntas em aberto
 

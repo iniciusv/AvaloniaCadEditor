@@ -40,7 +40,7 @@ a IA ou em `~/.claude/plans/`, onde se perdem.
 
 | Data | Plano | Status |
 |---|---|---|
-| 2026-10-16 | [Harness de ferramentas para a IA: tool calling, perfis de endpoint (DeepSeek + local) e vista em texto](planos/2026-10-16-ia-ferramentas-tool-calling.md) | Proposto (revisado 2026-10-17) |
+| 2026-10-16 | [Harness de ferramentas para a IA: tool calling, perfis de endpoint (DeepSeek + local) e vista em texto](planos/2026-10-16-ia-ferramentas-tool-calling.md) | Implementado (v1), falta medir com modelos reais |
 | 2026-10-17 | [Projetar face/volume como referência do esboço (+ desligar chanfros/fillets)](planos/2026-10-17-projetar-referencias-esboco.md) | Em andamento |
 
 ### Histórico (planos do modo de planejamento do Claude Code)
