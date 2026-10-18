@@ -129,6 +129,20 @@ public class LlmClientRequestBodyTests
     }
 
     [Fact]
+    public void BuildRequestBody_ReasoningEffort_SoVaiQuandoDefinido()
+    {
+        var messages = new List<object> { new { role = "user", content = "oi" } };
+
+        string with = JsonSerializer.Serialize(LlmClient.BuildRequestBody("gemma", "http://localhost:1234/v1", messages, 0.3, 0, false,
+            ThinkingControl.None, reasoningEffort: "none"), LlmClient.SerializerOptions);
+        string without = JsonSerializer.Serialize(LlmClient.BuildRequestBody("gemma", "http://localhost:1234/v1", messages, 0.3, 0, false,
+            ThinkingControl.None), LlmClient.SerializerOptions);
+
+        with.Should().Contain("\"reasoning_effort\":\"none\"").And.NotContain("thinking");
+        without.Should().NotContain("reasoning_effort");
+    }
+
+    [Fact]
     public void BuildRequestBody_PreservaModeloMensagensETemperatura()
     {
         string json = BuildJson("deepseek-flash", enableThinking: false);

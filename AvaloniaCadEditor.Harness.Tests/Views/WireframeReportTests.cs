@@ -36,6 +36,25 @@ public class WireframeReportTests
     }
 
     [Fact]
+    public void ComReferencialDoMundo_CadaCirculoTrazOEixoNoMundo()
+    {
+        // Cilindro de eixo -Y (y de 0 a -6), centro x = 4, z = 4; a peça está 100 mm adiante em X no mundo.
+        var header = Header with { FrameToWorld = Placement.Translate(new Vector3D(100, 0, 0)) };
+
+        string text = WireframeReport.Format(HiddenLineProjector.Project(CylinderFacingFront, Front), Front, header,
+            new[] { new ViewCircle("furo_a", PrimitiveRole.Void, new P2(4, 4), 2.5) });
+
+        text.Should().Contain("# mundo: cada círculo traz o eixo dele em coordenadas do MUNDO");
+        text.Should().Contain("[furo_a] · mundo (104, -6, 4) → (104, 0, 4)", "da face mais próxima (y = -6, olhando de -Y) à mais distante");
+    }
+
+    [Fact]
+    public void SemReferencialDoMundo_NaoInventaCoordenadas()
+    {
+        Report(CylinderFacingFront).Should().NotContain("mundo");
+    }
+
+    [Fact]
     public void CirculoCasadoComFuroExato_UsaODiametroEONomeDoFuro()
     {
         var exact = new ViewCircle("furo_a", PrimitiveRole.Void, new P2(4, 4), 2.5);

@@ -33,7 +33,9 @@ public static class AiEndpointOptions
             ApiKeyRequired = !profile.IsLocal,
             EnableThinkingMode = enableReasoning,
             Thinking = profile.IsLocal ? ThinkingControl.None : ThinkingControl.Auto,
-            MaxTokens = Math.Max(0, profile.MaxTokens)
+            MaxTokens = Math.Max(0, profile.MaxTokens),
+            // Servidores locais não têm o toggle "thinking" da DeepSeek: o padrão OpenAI é reasoning_effort.
+            ReasoningEffort = profile.IsLocal && !enableReasoning ? "none" : string.Empty
         };
         if (profile.TimeoutSeconds > 0) options.RequestTimeout = TimeSpan.FromSeconds(profile.TimeoutSeconds);
 

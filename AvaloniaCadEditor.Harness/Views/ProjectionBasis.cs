@@ -49,6 +49,10 @@ public sealed class ProjectionBasis
     /// <summary>Profundidade na direção de quem olha (maior = mais perto da câmera).</summary>
     public double Depth(Point3D point) => (point - Point3D.Origin).DotProduct(W);
 
+    /// <summary>Volta um ponto da folha para o referencial, na profundidade dada (inverso de <see cref="Project"/> + <see cref="Depth"/>).</summary>
+    public Point3D Unproject(P2 point, double depth) =>
+        Point3D.Origin + U * point.U + V * point.V + W * depth;
+
     private static Vector3D Clean(Vector3 v) => Clean(new Vector3D(v.X, v.Y, v.Z));
 
     private static Vector3D Clean(Vector3D v)

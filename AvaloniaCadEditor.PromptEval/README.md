@@ -7,6 +7,7 @@ cada round vem pronto do caso.
 ```
 dotnet run --project AvaloniaCadEditor.PromptEval -- --profiles atual,enxuto,simples --models deepseek-flash,deepseek-v4-pro --repeat 3
 dotnet run --project AvaloniaCadEditor.PromptEval -- --dry-run      # sem IA: valida casos e pipeline
+dotnet run --project AvaloniaCadEditor.PromptEval -- --local http://localhost:1234/v1 --models google/gemma-4-12b-qat --tools both --cases pino-no-furo
 dotnet run --project AvaloniaCadEditor.PromptEval -- --help
 ```
 

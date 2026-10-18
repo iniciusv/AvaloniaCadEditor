@@ -9,7 +9,9 @@ namespace AvaloniaCadEditor.Harness.Views;
 /// <summary>De quem é a vista e como voltar dela ao código.</summary>
 /// <param name="FrameIsWorld">A peça não tem referencial próprio: as coordenadas são as do mundo.</param>
 /// <param name="CodeOrigin">O (0, 0, 0) do código no referencial da vista, quando se sabe.</param>
-public sealed record WireframeHeader(string Name, string? PartType, bool FrameIsWorld, Point3D? CodeOrigin);
+/// <param name="FrameToWorld">Referencial da vista → mundo. Com ele, cada círculo traz o eixo no mundo:
+/// converter da folha para o mundo (espelho, rotação e deslocamento da instância) é onde o modelo mais erra.</param>
+public sealed record WireframeHeader(string Name, string? PartType, bool FrameIsWorld, Point3D? CodeOrigin, Placement? FrameToWorld = null);
 
 /// <summary>
 /// Texto da vista em arame para a LLM: o que a tela mostraria em ortográfica, como linhas com
@@ -39,7 +41,7 @@ public static class WireframeReport
 
         var entries = result.Lines
             .Where(l => includeHidden || l.Visible)
-            .Select(l => Describe(l, knownCircles))
+            .Select(l => Describe(l, knownCircles, basis, result.Bounds, header.FrameToWorld))
             .OrderBy(e => e.Visible ? 0 : 1)
             .ThenByDescending(e => Math.Round(e.Length, 3))
             .ThenBy(e => e.Body, StringComparer.Ordinal)
@@ -122,6 +124,11 @@ public static class WireframeReport
             var o = basis.Project(origin);
             sb.AppendLine($"# origem do código (0, 0, 0) na folha: U {N(o.U)}, V {N(o.V)} — coordenada no código = folha − origem");
         }
+        if (header.FrameToWorld != null)
+        {
+            sb.AppendLine("# mundo: cada círculo traz o eixo dele em coordenadas do MUNDO (as de Add/AddFeature na cena), " +
+                "da face mais próxima (W máx) à mais distante (W mín) da peça");
+        }
     }
 
     private static void AppendEntries(StringBuilder sb, List<Entry> entries, string linePrefix, string circlePrefix)
@@ -134,7 +141,7 @@ public static class WireframeReport
         }
     }
 
-    private static Entry Describe(ViewLine line, IReadOnlyList<ViewCircle> knownCircles)
+    private static Entry Describe(ViewLine line, IReadOnlyList<ViewCircle> knownCircles, ProjectionBasis basis, ViewBounds bounds, Placement? frameToWorld)
     {
         var shape = line.Shape;
         if (shape.IsCircle)
@@ -146,9 +153,16 @@ public static class WireframeReport
                 .OrderBy(c => c.Center.DistanceTo(center))
                 .FirstOrDefault();
 
+            var sheetCenter = known?.Center ?? center;
             string body = known != null
                 ? $"Ø{N(2 * known.Radius)} centro ({N(known.Center.U)}, {N(known.Center.V)}) [{known.SourceName}]"
                 : $"Ø{N(2 * r)} centro ({N(center.U)}, {N(center.V)}) (ajustado na malha)";
+            if (frameToWorld != null)
+            {
+                var near = frameToWorld.Apply(basis.Unproject(sheetCenter, bounds.MaxW));
+                var far = frameToWorld.Apply(basis.Unproject(sheetCenter, bounds.MinW));
+                body += $" · mundo {P3(near)} → {P3(far)}";
+            }
             return new Entry(line.Visible, 2 * Math.PI * r, true, body);
         }
 
@@ -170,4 +184,6 @@ public static class WireframeReport
     }
 
     private static string P(Point3D p) => $"({N(p.X)}, {N(p.Y)})";
+
+    private static string P3(Point3D p) => $"({N(p.X)}, {N(p.Y)}, {N(p.Z)})";
 }

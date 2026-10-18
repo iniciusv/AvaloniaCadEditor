@@ -52,6 +52,13 @@ namespace AiCore.Models
         /// <summary>Quando o campo <c>thinking</c> vai na requisição. Ver <see cref="ThinkingControl"/>.</summary>
         public ThinkingControl Thinking { get; set; } = ThinkingControl.Auto;
 
+        /// <summary>
+        /// <c>reasoning_effort</c> do padrão OpenAI ("none", "low", "medium", "high"). Vazio = não envia.
+        /// Em servidores locais, "none" desliga o raciocínio (o LM Studio respeita; o Gemma 4 12B foi
+        /// de 171 para 4 tokens numa conta simples) — bem mais rápido quando o pensamento não ajuda.
+        /// </summary>
+        public string ReasoningEffort { get; set; } = string.Empty;
+
         /// <summary>Tempo máximo de uma requisição. Modelos locais grandes podem precisar de mais.</summary>
         public TimeSpan RequestTimeout { get; set; } = TimeSpan.FromMinutes(15);
     }

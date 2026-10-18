@@ -93,7 +93,7 @@ public sealed class SceneInspectionService
         var basis = ProjectionBasis.For(view);
         var lines = HiddenLineProjector.Project(target.FrameMesh, basis, options.HiddenLines);
         var circles = Sheet(target, view)?.Entities.OfType<ViewCircle>().ToList() ?? new List<ViewCircle>();
-        var header = new WireframeHeader(target.Feature.Name, target.PartType, target.FrameIsWorld, target.CodeOrigin);
+        var header = new WireframeHeader(target.Feature.Name, target.PartType, target.FrameIsWorld, target.CodeOrigin, target.Frame.FrameToWorld);
 
         string text = WireframeReport.Format(lines, basis, header, circles, options.IncludeHidden, options.MaxChars);
         _views[key] = text;

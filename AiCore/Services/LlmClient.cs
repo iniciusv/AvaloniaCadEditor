@@ -161,7 +161,8 @@ namespace AiCore.Services
             int maxTokens,
             bool enableThinking,
             ThinkingControl thinking = ThinkingControl.Auto,
-            IReadOnlyList<ToolDefinition>? tools = null)
+            IReadOnlyList<ToolDefinition>? tools = null,
+            string? reasoningEffort = null)
         {
             var body = new Dictionary<string, object>
             {
@@ -177,6 +178,11 @@ namespace AiCore.Services
             if (SendsThinking(modelName, baseUrl, thinking))
             {
                 body["thinking"] = new { type = enableThinking ? "enabled" : "disabled" };
+            }
+
+            if (!string.IsNullOrWhiteSpace(reasoningEffort))
+            {
+                body["reasoning_effort"] = reasoningEffort;
             }
 
             body["temperature"] = temperature;
@@ -243,7 +249,8 @@ namespace AiCore.Services
                 options.MaxTokens,
                 options.EnableThinkingMode,
                 options.Thinking,
-                tools);
+                tools,
+                options.ReasoningEffort);
 
             string jsonContent = JsonSerializer.Serialize(requestBody, SerializerOptions);
 

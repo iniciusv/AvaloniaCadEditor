@@ -14,6 +14,8 @@ internal sealed class EvalOptions
           --models deepseek-flash,...       modelos (padrão: DEEPSEEK_MODEL ou o modelo do perfil);
                                             perfil:modelo escolhe o endpoint (ex.: ollama:qwen3:8b)
           --endpoints deepseek,ollama       perfis de endpoint do ai_settings.json (padrão: DEEPSEEK_* do ambiente)
+          --local http://localhost:1234/v1  servidor local avulso (LM Studio, Ollama, llama.cpp), sem perfil gravado;
+                                            o modelo vem de --models. Raciocínio desligado, salvo com --reasoning
           --tools off|on|both               chat de sempre, com ferramentas (harness) ou os dois (padrão: off)
           --inspector ollama                perfil do Inspetor (só com ferramentas; pré-inspeção ligada)
           --repeat N                        repetições de cada combinação (padrão: 1)
@@ -39,6 +41,7 @@ internal sealed class EvalOptions
     public string OutputDirectory { get; private set; } = "eval-results";
     public bool DryRun { get; private set; }
     public List<string> Endpoints { get; } = new();
+    public string? LocalUrl { get; private set; }
 
     /// <summary>false = chat de sempre; true = com ferramentas (harness).</summary>
     public List<bool> ToolModes { get; } = new() { false };
@@ -72,6 +75,7 @@ internal sealed class EvalOptions
                 case "--out": options.OutputDirectory = Next(); break;
                 case "--dry-run": options.DryRun = true; break;
                 case "--endpoints": options.Endpoints.AddRange(List()); break;
+                case "--local": options.LocalUrl = Next(); break;
                 case "--inspector": options.InspectorEndpoint = Next(); break;
                 case "--tools":
                     var modes = Next() switch

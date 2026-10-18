@@ -27,7 +27,7 @@ if (options.ShowHelp)
 }
 
 LlmOptions baseOptions;
-if (options.DryRun || options.Endpoints.Count > 0)
+if (options.DryRun || options.Endpoints.Count > 0 || options.LocalUrl != null)
 {
     // Com --endpoints, chave e URL vêm de cada perfil; o ambiente não é obrigatório.
     baseOptions = CadScriptChatSession.LoadOptionsFromEnvironment().Options ?? new LlmOptions { ApiKey = "dry-run" };

@@ -21,10 +21,32 @@ public class AiEndpointOptionsTests
         options!.ApiKey.Should().BeEmpty();
         options.ApiKeyRequired.Should().BeFalse();
         options.Thinking.Should().Be(ThinkingControl.None);
-        options.MaxTokens.Should().Be(0);
+        options.MaxTokens.Should().Be(AiEndpointProfile.DefaultLocalMaxTokens, "um modelo local pode pensar sem parar");
+        options.ReasoningEffort.Should().BeEmpty("com o raciocínio ligado nas settings, não desliga");
         options.BaseUrl.Should().Be("http://localhost:11434/v1");
         options.Model.Should().Be("qwen3:8b");
         options.RequestTimeout.Should().Be(TimeSpan.FromSeconds(1800));
+    }
+
+    [Fact]
+    public void PerfilLocal_ComRaciocinioDesligado_PedeReasoningEffortNone()
+    {
+        var profile = AiEndpointProfile.Local("lmstudio", "LM Studio");
+        profile.Model = "google/gemma-4-12b-qat";
+
+        AiEndpointOptions.Resolve(profile, enableReasoning: false).Options!.ReasoningEffort.Should().Be("none");
+    }
+
+    [Fact]
+    public void PerfilDeepSeek_NuncaUsaReasoningEffort_UsaOThinking()
+    {
+        var profile = AiEndpointProfile.DeepSeek();
+        profile.ApiKey = "k";
+
+        var options = AiEndpointOptions.Resolve(profile, enableReasoning: false).Options!;
+
+        options.ReasoningEffort.Should().BeEmpty();
+        options.EnableThinkingMode.Should().BeFalse();
     }
 
     [Fact]

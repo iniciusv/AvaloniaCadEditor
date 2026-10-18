@@ -12,25 +12,45 @@ internal sealed record EvalTarget(string Endpoint, bool IsLocal, LlmOptions Opti
 }
 
 /// <summary>
-/// Monta os destinos a partir de <c>--endpoints</c> e <c>--models</c>. Sem <c>--endpoints</c> (e sem
+/// Monta os destinos a partir de <c>--endpoints</c>, <c>--local</c> e <c>--models</c>. Sem eles (e sem
 /// <c>perfil:modelo</c>), vale o de antes: DEEPSEEK_* do ambiente, um destino por modelo.
 /// </summary>
 internal static class EvalTargets
 {
+    /// <summary>Id do perfil avulso criado por <c>--local</c>.</summary>
+    public const string LocalEndpoint = "local";
+
+    /// <summary>Os perfis do ai_settings.json e, com <c>--local</c>, um perfil local avulso (que não é gravado).</summary>
+    private static AiSettings LoadProfiles(EvalOptions options, Func<AiSettings> loadSettings)
+    {
+        var settings = AiSettingsMigration.Upgrade(loadSettings());
+        if (options.LocalUrl != null)
+        {
+            settings.Profiles.RemoveAll(p => string.Equals(p.Id, LocalEndpoint, StringComparison.OrdinalIgnoreCase));
+            var local = AiEndpointProfile.Local(LocalEndpoint, "Local (--local)");
+            local.BaseUrl = options.LocalUrl;
+            settings.Profiles.Add(local);
+        }
+        return settings;
+    }
+
     /// <remarks>
     /// "perfil:modelo" só vale quando o prefixo é o id de um perfil existente: "qwen3:8b" (tag do
     /// Ollama) continua sendo um modelo.
     /// </remarks>
     public static (List<EvalTarget>? Targets, string? Error) Build(EvalOptions options, LlmOptions environment, Func<AiSettings> loadSettings)
     {
-        bool needsSettings = options.Endpoints.Count > 0 || options.Models.Any(m => m.Contains(':'));
-        var settings = needsSettings ? AiSettingsMigration.Upgrade(loadSettings()) : null;
+        bool needsSettings = options.Endpoints.Count > 0 || options.LocalUrl != null || options.Models.Any(m => m.Contains(':'));
+        var settings = needsSettings ? LoadProfiles(options, loadSettings) : null;
         bool IsQualified(string model) =>
             settings != null && model.Contains(':') &&
             settings.Profiles.Any(p => string.Equals(p.Id, model.Split(':', 2)[0], StringComparison.OrdinalIgnoreCase));
 
         var qualified = options.Models.Where(IsQualified).ToList();
-        var endpoints = options.Endpoints.Concat(qualified.Select(m => m.Split(':', 2)[0])).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var endpoints = options.Endpoints
+            .Concat(options.LocalUrl != null ? new[] { LocalEndpoint } : Array.Empty<string>())
+            .Concat(qualified.Select(m => m.Split(':', 2)[0]))
+            .Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 
         if (endpoints.Count == 0)
         {
@@ -50,7 +70,8 @@ internal static class EvalTargets
                 .Select(m => m.Split(':', 2)[1])
                 .Concat(plainModels)
                 .ToList();
-            if (models.Count == 0) models.Add(profile.Model);
+            if (models.Count == 0 && profile.Model.Length > 0) models.Add(profile.Model);
+            if (models.Count == 0) return (null, $"{id}: diga o modelo com --models (os do servidor: GET {profile.BaseUrl}/models).");
 
             foreach (string model in models)
             {
@@ -69,7 +90,7 @@ internal static class EvalTargets
     {
         if (options.InspectorEndpoint == null) return (null, null);
 
-        var settings = AiSettingsMigration.Upgrade(loadSettings());
+        var settings = LoadProfiles(options, loadSettings);
         var profile = settings.Profiles.FirstOrDefault(p => string.Equals(p.Id, options.InspectorEndpoint, StringComparison.OrdinalIgnoreCase));
         if (profile == null) return (null, $"Perfil do Inspetor desconhecido: {options.InspectorEndpoint}.");
 
@@ -89,6 +110,7 @@ internal static class EvalTargets
         MaxTokens = source.MaxTokens,
         EnableThinkingMode = source.EnableThinkingMode,
         Thinking = source.Thinking,
+        ReasoningEffort = source.ReasoningEffort,
         RequestTimeout = source.RequestTimeout
     };
 }

@@ -58,6 +58,7 @@ public class SceneInspectionServiceTests(ITestOutputHelper output)
         text.Should().StartWith($"# Vista Top — {Placa} (PlacaSuporteCarrinhoY)");
         text.Should().Contain("referencial da peça");
         text.Should().Contain("[furo_fixacao_carrinho_2]");
+        text.Should().MatchRegex(@"\[furo_fixacao_carrinho_2\] · mundo \([-\d.]+, [-\d.]+, [-\d.]+\) → ", "o furo traz o eixo no mundo");
         text.Should().Contain("[furo_fixacao_carrinho_3]");
         text.Should().MatchRegex(@"C\d+ Ø[\d.]+ centro \([\d.]+, 36\.5\) \[furo_fixacao_carrinho_2\]",
             "o eixo comum dos furos 2 e 3 fica em V = 36,5 (ver PlacaSuporteDrawingTests)");
