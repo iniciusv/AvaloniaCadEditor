@@ -8,7 +8,9 @@ a IA ou em `~/.claude/plans/`, onde se perdem.
 
 | Documento | Para quê |
 |---|---|
-| [ARCHITECTURE.md](../ARCHITECTURE.md) | Mapa do código para quem vai **alterar o app**: onde cada coisa mora, invariantes, onde intervir |
+| [CLAUDE.md](../CLAUDE.md) | Entrada carregada em toda sessão do Claude Code na raiz: como achar onde mexer e importação do ARCHITECTURE.md |
+| [ARCHITECTURE.md](../ARCHITECTURE.md) | Mapa do código para quem vai **alterar o app**: onde cada coisa mora, invariantes, onde intervir. Travado por `ArchitectureDocTests` (caminhos citados existem, todo projeto da `.slnx` está na §2) |
+| [AvaloniaCadEditor.Harness/README.md](../AvaloniaCadEditor.Harness/README.md) | Harness de ferramentas da IA: dependências, regra de promoção (YAGNI), organização e boas práticas |
 | [GEOMETRY_KERNEL_HISTORY.md](../GEOMETRY_KERNEL_HISTORY.md) | Histórico e decisões da escolha do wrapper do OpenCASCADE (OCCT) |
 | [AiCore/README.md](../AiCore/README.md) | Núcleo de comunicação com a LLM (`LlmClient`, `IAiProtocol`), sem dependências externas |
 | [AvaloniaCadEditor.PromptEval/README.md](../AvaloniaCadEditor.PromptEval/README.md) | Avaliação de perfis de prompt e modelos (DeepSeek) com a mesma `CadScriptChatSession` do app |
