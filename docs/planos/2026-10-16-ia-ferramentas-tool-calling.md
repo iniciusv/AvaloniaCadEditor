@@ -469,10 +469,62 @@ GUI sem permissão.
   - oclusão pelos outros sólidos da cena;
   - Revisor.
 
+## Medições (2026-10-17 e 18)
+
+Modelos: DeepSeek V4.1 Flash (`deepseek-flash`) e Gemma 4 12B QAT, local no LM Studio (Vulkan, RX 9060
+XT 16 GB, contexto de 40.704 tokens, ~25–33 tokens/s). Perfil de prompt `atual`. Os casos geométricos
+são conferidos executando a cena (`solidBounds`/`solidPoints`, no PromptEval).
+
+### `pino-no-furo` (posição numa peça espelhada, girada 180° e deslocada), 4 repetições
+
+| Variante | Passou | Tempo por rodada | Tokens de prompt |
+|---|---|---|---|
+| Flash sem ferramentas | 0/4 | 5–6 s | ~19 mil |
+| **Flash com ferramentas** | **4/4** | 7–8 s | ~48 mil |
+| Gemma sem ferramentas | 0/4 | 18–47 s | ~16 mil |
+| **Gemma com ferramentas** | **3/4** | 28–75 s | ~69 mil |
+
+Sem ferramentas, os dois erram: não conseguem compor espelho, rotação e translação lendo só o código.
+O Gemma chegou a 3/4 depois de quatro ajustes no harness, cada um vindo de uma falha observada:
+
+1. **Coordenadas do mundo em cada furo** da vista. Antes, o modelo tinha de converter folha → mundo.
+2. **Coordenadas do código da peça** em cada furo, pela inversa exata do posicionamento. Antes, havia
+   só a conta "folha − origem", que o modelo não fazia.
+3. **Rótulos `entrada` e `fundo`** nas pontas do eixo. Antes, o modelo apoiava o pino no fundo do furo
+   ou somava de novo a espessura.
+4. **Raciocínio desligado** em perfis locais (`reasoning_effort: "none"`) e **limite de 4096 tokens de
+   resposta**. Antes, o Gemma "pensava" 15 min sem responder ou entrava em loop até o LM Studio derrubar
+   a requisição (por volta de 5 min).
+
+Evolução do Gemma com ferramentas no mesmo caso: 0/4 com 3 rodadas travadas → 1/4 → 1/4 → **3/4, sem
+nenhuma travada**.
+
+### Casos geométricos novos, DeepSeek Flash, 2 repetições
+
+O Gemma não foi medido nestes casos: a bateria foi interrompida e fica para depois.
+
+| Caso | Sem ferramentas | Com ferramentas | Tempo com ferramentas |
+|---|---|---|---|
+| `placa-base-carrinho` (peça nova, furos nos M3) | 0/2 | **2/2** | 13–14 s, 7 chamadas |
+| `chapa-frontal-nema17` (peça nova, furos + folga) | 0/2 | **2/2** | 15–16 s, 7 chamadas |
+| `posicionar-carrinho-no-trilho` | 0/2 | 0/2 | 13–16 s, 10–11 chamadas |
+| `alinhar-placa-no-carrinho` | 0/2 | 0/2 | 29–30 s, 15 chamadas |
+
+- **Peça nova com furação de encaixe:** com ferramentas o modelo acerta sempre; sem elas, nunca. Nos
+  dois casos, os furos sem ferramentas saíram fora dos M3.
+- **Posicionar e alinhar peças existentes:** falharam até com ferramentas, e pelo mesmo motivo: a
+  **convenção da origem local** de cada peça. O CarrinhoMgn15H tem a origem na base do trilho, porque
+  "abraça" o trilho, e o modelo o apoiou em cima (z 30 em vez de 20). A PlacaSuporteCarrinhoY tem a
+  origem na meia-espessura, e o modelo a pôs com a base em z 10,5 em vez de 16. O XY também saiu
+  deslocado nos dois.
+- **Próximo passo sugerido:** uma ferramenta, ou um trecho do `get_bounding_box`, que diga onde a
+  origem do código fica dentro da caixa da peça ("origem do código a 5,5 mm acima da base"). Hoje esse
+  dado só existe no referencial da peça, e é justamente a conta que o modelo erra.
+
 ## Perguntas em aberto
 
-- **Coordenadas do texto.** Folha (como no `DraftingReport`, com a linha "código (0,0,0) = folha
-  (…)") ou direto no sistema do código? A proposta é a folha, para ficar coerente com as cotas.
+- **Coordenadas do texto.** *Resolvida pela medição:* a vista mostra as três — folha (coerente com as
+  cotas), mundo e código da peça. Só a folha não bastou: os modelos erravam a conversão.
   Medir no PromptEval se o modelo erra a conversão.
 - **Oclusão pelos outros sólidos da cena** (montagens): entra na v2?
 - **Arcos.** Um círculo que fica parte visível e parte oculto sai como polilinhas. Vale ajustar arcos
