@@ -4,13 +4,16 @@
 /// padrões, 2 − 2 = 0: quina interna viva).
 /// Origem local (0, 0, 0) no canto inferior da seção; X = largura, Y = comprimento (eixo do tubo),
 /// Z = altura — mesma convenção da Extrusao2020. As pontas são abertas.
+/// DiametroFuroPassante maior que 0 abre um furo vertical (em Z) pelas duas paredes, no centro da seção e no
+/// meio do comprimento, ou seja, no ponto local (Largura / 2, Comprimento / 2); 0 = sem furo.
 /// </summary>
 public sealed record TuboRetangular(
     double Comprimento = 200,
     double Largura = 50,
     double Altura = 30,
     double Espessura = 2,
-    double RaioQuina = 2) : Part
+    double RaioQuina = 2,
+    double DiametroFuroPassante = 0) : Part
 {
     protected override IFeature Build()
     {
@@ -37,6 +40,13 @@ public sealed record TuboRetangular(
             vaoFinal = vao_arredondado;
         }
 
-        return BooleanFeature.CreateDifference("tubo_retangular", envelope_arredondado, vaoFinal);
+        if (DiametroFuroPassante <= 0.001)
+        {
+            return BooleanFeature.CreateDifference("tubo_retangular", envelope_arredondado, vaoFinal);
+        }
+
+        // Passa 1 mm além das duas faces, para abri-las sem faces coincidentes.
+        var furo_passante = new CylinderFeature(new Point3D(Largura / 2, Comprimento / 2, -1), Vector3D.UnitZ, DiametroFuroPassante / 2, Altura + 2) { Name = "furo_passante", IsTransientTool = true };
+        return BooleanFeature.CreateDifference("tubo_retangular", envelope_arredondado, vaoFinal, furo_passante);
     }
 }

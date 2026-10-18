@@ -295,7 +295,10 @@ var blocoFicacaoBeltVaoCorreia = Add(blocoFicacaoBeltVaoCorreiaPeca, at: Placeme
 // da A; a da B fica 0,45 mm à frente) e avança 50 mm para +Y. Comprimento do tubo no Y local:
 // girado −90° em Z, o Y local aponta para +X do mundo e o X local para −Y, por isso a origem fica
 // no canto +Y.
-var tuboTravessaPeca = new TuboRetangular(Comprimento: cantoExtrusaoYB.X - cantoExtrusaoYA.X, Largura: 50, Altura: 30);
+// O furo passante no meio do tubo é a passagem do fuso do eixo Z (fim do arquivo): Ø8 do fuso + 1 mm
+// de folga de cada lado.
+const double diametroPassagemFusoZ = 10;
+var tuboTravessaPeca = new TuboRetangular(Comprimento: cantoExtrusaoYB.X - cantoExtrusaoYA.X, Largura: 50, Altura: 30, DiametroFuroPassante: diametroPassagemFusoZ);
 var yPontaExtrusoesY = Math.Min(cantoExtrusaoYA.Y, cantoExtrusaoYB.Y);
 var tuboTravessa = Add(tuboTravessaPeca, at: Placement.At(cantoExtrusaoYA.X, yPontaExtrusoesY + tuboTravessaPeca.Largura, 0, rotationZDegrees: -90), name: "tubo_travessa");
 // --- Motores NEMA17 do eixo Y (movem carrinhoYA e carrinhoYB), deitados sobre o tubo travessa ---
@@ -323,3 +326,32 @@ var poliaYPeca = new PoliaGt2(Dentes: 24, Altura: 20, AlturaCubo: 7);
 var basePoliaYNoMotor = new Point3D(0, 0, motorNema17Peca.Comprimento + motorNema17Peca.AlturaBoss + folgaPoliaBossMotorY);
 var poliaYA = Add(poliaYPeca, at: Placement.Rotation(Vector3D.UnitY, -90).Then(Placement.At(motorYA.ToWorld(basePoliaYNoMotor))), name: "polia_gt2_y_a");
 var poliaYB = Add(poliaYPeca, at: Placement.Rotation(Vector3D.UnitY, 90).Then(Placement.At(motorYB.ToWorld(basePoliaYNoMotor))), name: "polia_gt2_y_b");
+// --- Eixo Z: motor NEMA17 no chão, fuso T8 e porca presa no tubo travessa ---
+// O motor fica na estrutura fixa, em pé (eixo em +Z), com a base no chão: a face de baixo das extrusões
+// deitadas (extrusao_2020_trilho_z_*_copia1), uma altura de perfil abaixo da ponta de baixo das
+// verticais (a deitada do lado A está 0,45 mm acima da do B; vale a do B). Em X e Y o eixo fica sob o
+// furo passante do meio do tubo travessa. O acoplamento liga o eixo do motor ao fuso; a porca,
+// parafusada na face de baixo do tubo, leva o gantry (preso aos carrinhos Z) quando o fuso gira.
+var zPontaBaixoExtrusoesZ = extrusaoTrilhoZA.ToWorld(new Point3D(0, 0, 0)).Z;
+var zChao = zPontaBaixoExtrusoesZ - extrusaoTrilhoZPeca.Altura;
+var eixoFusoZ = tuboTravessa.ToWorld(new Point3D(tuboTravessaPeca.Largura / 2, tuboTravessaPeca.Comprimento / 2, 0));
+var motorZ = Add(motorNema17Peca, at: Placement.At(eixoFusoZ.X, eixoFusoZ.Y, zChao), name: "motor_nema17_z");
+// O eixo do motor entra insercaoEixoAcoplamentoZ no furo de baixo do acoplamento (que tem metade
+// do comprimento, 12,5 mm): a ponta do eixo para 0,5 mm antes do fuso.
+const double insercaoEixoAcoplamentoZ = 12;
+var acoplamentoZPeca = new AcoplamentoFlexivel();
+var zPontaEixoMotorZ = motorZ.ToWorld(new Point3D(0, 0, motorNema17Peca.Comprimento + motorNema17Peca.AlturaBoss + motorNema17Peca.ComprimentoEixo)).Z;
+var zBaseAcoplamentoZ = zPontaEixoMotorZ - insercaoEixoAcoplamentoZ;
+var acoplamentoZ = Add(acoplamentoZPeca, at: Placement.At(eixoFusoZ.X, eixoFusoZ.Y, zBaseAcoplamentoZ), name: "acoplamento_z");
+// O fuso começa no meio do acoplamento e vai até folgaFusoAcimaPorcaZ acima da porca com o gantry no
+// topo do curso. O carrinho Z está no meio do trilho, então o curso para cada lado é a sobra do trilho
+// dividida por dois; no fundo do curso o fuso atravessa o tubo pelo furo passante.
+const double folgaFusoAcimaPorcaZ = 10;
+var cursoGantryZ = (trilhoZPeca.Comprimento - carrinhoZPeca.Comprimento) / 2;
+var zBaseTuboTravessa = tuboTravessa.ToWorld(new Point3D(0, 0, 0)).Z;
+var zBaseFusoZ = zBaseAcoplamentoZ + acoplamentoZPeca.Comprimento / 2;
+var zTopoFusoZ = zBaseTuboTravessa + cursoGantryZ + folgaFusoAcimaPorcaZ;
+var fusoZ = Add(new FusoTrapezoidal(Comprimento: zTopoFusoZ - zBaseFusoZ), at: Placement.At(eixoFusoZ.X, eixoFusoZ.Y, zBaseFusoZ), name: "fuso_z");
+// Porca com o flange encostado na face de baixo do tubo e o corpo para baixo: girada 180° em X, o +Z
+// local (do flange para o corpo) aponta para −Z do mundo.
+var porcaFusoZ = Add(new PorcaFlangeadaT8(), at: Placement.Rotation(Vector3D.UnitX, 180).Then(Placement.At(eixoFusoZ.X, eixoFusoZ.Y, zBaseTuboTravessa)), name: "porca_fuso_z");
