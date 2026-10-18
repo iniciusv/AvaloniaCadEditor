@@ -9,6 +9,28 @@ var motorNema17Peca = new MotorNema17();
 var suporteMotorNema17Peca = new SuporteMotorNema17(Espessura: 10);
 var blocoConexaoMotorPeca = new BlocoConexaoMotor2020();
 var placaSuporteCarrinhoYPeca = new PlacaSuporteCarrinhoY();
+// --- Referência de altura: z = 0 é o chão (face de baixo da base, onde a impressora apoia) ---
+// A cena é montada a partir do gantry (base dos trilhos Y) e a estrutura fixa pende dele: o carrinho Z
+// fica folgaCarrinhoZAbaixoExtrusao abaixo das extrusões Y, o trilho Z é centrado no carrinho, o perfil
+// vertical é centrado no trilho e o perfil deitado da base fica uma altura de perfil abaixo dele.
+// zBaseTrilhosY soma essa cadeia (com o carrinho Z no meio do curso), para a base cair em z = 0. Se a
+// cadeia do eixo Z mudar de forma (lá embaixo), esta soma precisa acompanhar, ou o chão sai do zero.
+// posicaoGantryZ é a altura do gantry medida do meio do curso (negativo = para baixo): move tudo o que
+// os carrinhos Z levam e deixa parada a estrutura fixa (trilhos e perfis Z, base, motor, acoplamento,
+// fuso e mesa), que é ancorada no meio do curso. O curso do trilho é ±119,3; −184,4 põe o bico no topo
+// da mesa (244,4 → 60) com o adaptador de Desnivel 20, além do fim do trilho em 65,1 mm.
+var extrusaoSobTrilhoYPeca = new Extrusao2020(Comprimento: 400);
+var carrinhoZPeca = new CarrinhoHgh15();
+var extrusaoTrilhoZPeca = new Extrusao2020(Comprimento: 400);
+// Ponta de cima do carrinho Z 10 mm abaixo da base das extrusões Y; a posição dele no trilho é a
+// altura do gantry.
+const double folgaCarrinhoZAbaixoExtrusao = 10;
+var zBaseTrilhosYMeioCurso = extrusaoSobTrilhoYPeca.Altura + folgaCarrinhoZAbaixoExtrusao + carrinhoZPeca.Comprimento / 2 + extrusaoTrilhoZPeca.Comprimento / 2 + extrusaoTrilhoZPeca.Altura;
+const double posicaoGantryZ = -184.4;
+var zBaseTrilhosY = zBaseTrilhosYMeioCurso + posicaoGantryZ;
+// Leva um ponto calculado sobre o gantry para onde ele estaria no meio do curso: é por aqui que a
+// estrutura fixa é posicionada a partir das peças móveis.
+Point3D NoMeioDoCursoZ(Point3D p) => new Point3D(p.X, p.Y, p.Z - posicaoGantryZ);
 // Espaçamento (centro a centro) entre os dois trilhos Y: igual à distância entre os dois últimos
 // furos do trilho X — é por eles que o trilho MGN9 é parafusado diretamente nos carrinhos Y.
 var espacamentoTrilhosY = trilhoXPeca.DistanciaEntreUltimosFuros;
@@ -21,16 +43,16 @@ var trilhoYAX = centroXTrilhoA - trilhoYPeca.Largura / 2 - 12.276393;
 var trilhoYAY = -trilhoYPeca.Comprimento / 2 - 12.947214;
 var trilhoYBX = centroXTrilhoB - trilhoYPeca.Largura / 2 + 12.5;
 var trilhoYBY = -trilhoYPeca.Comprimento / 2 - 12.5;
-var trilhoYA = Add(trilhoYPeca, at: Placement.At(trilhoYAX, trilhoYAY, 0), name: "trilho_mgn15_y_a");
-var trilhoYB = Add(trilhoYPeca, at: Placement.At(trilhoYBX, trilhoYBY, 0), name: "trilho_mgn15_y_b");
+var trilhoYA = Add(trilhoYPeca, at: Placement.At(trilhoYAX, trilhoYAY, zBaseTrilhosY), name: "trilho_mgn15_y_a");
+var trilhoYB = Add(trilhoYPeca, at: Placement.At(trilhoYBX, trilhoYBY, zBaseTrilhosY), name: "trilho_mgn15_y_b");
 // Os dois carrinhos Y compartilham a mesma coordenada Y (a do carrinho B).
 var carrinhoYY = -carrinhoYPeca.Comprimento / 2 - 12.5;
-var carrinhoYA = Add(carrinhoYPeca, at: Placement.At(centroXTrilhoA - carrinhoYPeca.Largura / 2 - 12.5, carrinhoYY, 0), name: "carrinho_mgn15h_a");
-var carrinhoYB = Add(carrinhoYPeca, at: Placement.At(centroXTrilhoB - carrinhoYPeca.Largura / 2 + 12.5, carrinhoYY, 0), name: "carrinho_mgn15h_b");
+var carrinhoYA = Add(carrinhoYPeca, at: Placement.At(centroXTrilhoA - carrinhoYPeca.Largura / 2 - 12.5, carrinhoYY, zBaseTrilhosY), name: "carrinho_mgn15h_a");
+var carrinhoYB = Add(carrinhoYPeca, at: Placement.At(centroXTrilhoB - carrinhoYPeca.Largura / 2 + 12.5, carrinhoYY, zBaseTrilhosY), name: "carrinho_mgn15h_b");
 // --- Trilho X: MGN9 (250 mm), girado 90° para correr no sentido X, apoiado no topo dos carrinhos Y ---
-var alturaTopoCarrinhosY = carrinhoYPeca.Altura;
+var alturaTopoCarrinhosY = zBaseTrilhosY + carrinhoYPeca.Altura;
 // --- Placas de suporte impressas, uma parafusada no topo de cada carrinho MGN15H ---
-// Base da placa (Z local = -5,5) encosta no topo do carrinho (Z = 16); os 3 furos passantes
+// Base da placa (Z local = -5,5) encosta no topo do carrinho (16 acima da base dos trilhos Y); os 3 furos passantes
 // alinham com a malha 25 × 25 dos furos M3 do topo do carrinho. As duas peças são giradas 180°
 // e seus centros ficam deslocados meia-malha (12,5 mm) em X e Y, de modo que os 3 furos
 // coincidam com 3 dos 4 furos M3 do carrinho (o 4º canto é o recorte da placa).
@@ -65,14 +87,14 @@ var conexaoBlocoSuporteHotend = Add(conexaoBlocoSuporteHotendPeca, at: Placement
 // --- Extrusões de alumínio 2020: estrutura de apoio dos trilhos ---
 // Extrusões sob os trilhos Y: 400 mm, crescendo só para +Y a partir da ponta -Y (que continua
 // onde estava, junto ao carrinho Z e ao tubo travessa). Os trilhos ficam na metade -Y delas.
-var extrusaoSobTrilhoYPeca = new Extrusao2020(Comprimento: 400);
+// (extrusaoSobTrilhoYPeca é declarada no topo, porque entra na referência de altura.)
 // Comprimento suficiente só até encostar nos carrinhos Y, sem avançar sobre eles.
 var extrusaoSobTrilhoXPeca = new Extrusao2020(Comprimento: espacamentoTrilhosY - carrinhoYPeca.Largura);
 // Centradas sob o trilho Y correspondente em X (larguras diferentes); em Y, a ponta -Y fica um
 // pouco antes do início do trilho e o comprimento total cresce apenas para +Y.
 const double folgaExtrusaoYAntesDoTrilho = 50;
-var extrusaoSobTrilhoYA = Add(extrusaoSobTrilhoYPeca, at: Placement.At(trilhoYAX + trilhoYPeca.Largura / 2 - extrusaoSobTrilhoYPeca.Largura / 2, trilhoYAY - folgaExtrusaoYAntesDoTrilho, -extrusaoSobTrilhoYPeca.Altura), name: "extrusao_2020_sob_trilho_y_a");
-var extrusaoSobTrilhoYB = Add(extrusaoSobTrilhoYPeca, at: Placement.At(trilhoYBX + trilhoYPeca.Largura / 2 - extrusaoSobTrilhoYPeca.Largura / 2, trilhoYBY - folgaExtrusaoYAntesDoTrilho, -extrusaoSobTrilhoYPeca.Altura), name: "extrusao_2020_sob_trilho_y_b");
+var extrusaoSobTrilhoYA = Add(extrusaoSobTrilhoYPeca, at: Placement.At(trilhoYAX + trilhoYPeca.Largura / 2 - extrusaoSobTrilhoYPeca.Largura / 2, trilhoYAY - folgaExtrusaoYAntesDoTrilho, zBaseTrilhosY - extrusaoSobTrilhoYPeca.Altura), name: "extrusao_2020_sob_trilho_y_a");
+var extrusaoSobTrilhoYB = Add(extrusaoSobTrilhoYPeca, at: Placement.At(trilhoYBX + trilhoYPeca.Largura / 2 - extrusaoSobTrilhoYPeca.Largura / 2, trilhoYBY - folgaExtrusaoYAntesDoTrilho, zBaseTrilhosY - extrusaoSobTrilhoYPeca.Altura), name: "extrusao_2020_sob_trilho_y_b");
 var extrusaoSobTrilhoX = Add(extrusaoSobTrilhoXPeca with { Comprimento = 208 }, at: Placement.At(-extrusaoSobTrilhoXPeca.Comprimento / 2 - 11, extrusaoSobTrilhoXPeca.Largura / 2, alturaTopoCarrinhosY - extrusaoSobTrilhoXPeca.Altura, rotationZDegrees: -90), name: "extrusao_2020_sob_trilho_x");
 // --- Eixo Z: 2x trilho HGR15 vertical, cada um com o seu carrinho HGH15 na ponta -Y de uma extrusão Y ---
 // Os carrinhos são a parte móvel: levam o gantry inteiro (extrusões, trilhos Y e tudo o que está
@@ -81,13 +103,10 @@ var extrusaoSobTrilhoX = Add(extrusaoSobTrilhoXPeca with { Comprimento = 208 }, 
 // voltado para o perfil e o trilho para fora.
 // As peças que prendem carrinho e extrusão ainda são modeladas fora do software; a espessura delas
 // entra em espessuraFixacaoCarrinhoZ (0 = carrinho encostado direto no perfil, até elas virem para cá).
+// carrinhoZPeca e folgaCarrinhoZAbaixoExtrusao são declarados no topo (referência de altura).
 var trilhoZPeca = new TrilhoHgr15(Comprimento: 300);
-var carrinhoZPeca = new CarrinhoHgh15();
 const double espessuraFixacaoCarrinhoZ = 0;
-// Ponta de cima do carrinho 10 mm abaixo da base das extrusões Y; a posição dele no trilho é a
-// altura do gantry.
-const double folgaCarrinhoZAbaixoExtrusao = 10;
-var zBaseExtrusoesY = -extrusaoSobTrilhoYPeca.Altura;
+var zBaseExtrusoesY = zBaseTrilhosY - extrusaoSobTrilhoYPeca.Altura;
 var zCentroCarrinhoZ = zBaseExtrusoesY - folgaCarrinhoZAbaixoExtrusao - carrinhoZPeca.Comprimento / 2;
 var cantoExtrusaoYA = extrusaoSobTrilhoYA.ToWorld(new Point3D(0, 0, 0));
 var cantoExtrusaoYB = extrusaoSobTrilhoYB.ToWorld(new Point3D(extrusaoSobTrilhoYPeca.Largura, 0, 0));
@@ -100,22 +119,40 @@ var carrinhoZB = Add(carrinhoZPeca, at: deitarCarrinhoZ.Then(Placement.At(cantoE
 // Trilho no canal do carrinho e centrado nele (meio do curso): a origem do trilho é o ponto local
 // (RecuoTrilho, meio do carrinho − meio do trilho, 0) do carrinho, com a mesma orientação.
 var origemTrilhoNoCarrinhoZ = new Point3D(carrinhoZPeca.RecuoTrilho, (carrinhoZPeca.Comprimento - trilhoZPeca.Comprimento) / 2, 0);
-var trilhoZA = Add(trilhoZPeca, at: deitarCarrinhoZ.Then(Placement.At(carrinhoZA.ToWorld(origemTrilhoNoCarrinhoZ), rotationZDegrees: 90)), name: "trilho_hgr15_z_a");
-var trilhoZB = Add(trilhoZPeca, at: deitarCarrinhoZ.Then(Placement.At(carrinhoZB.ToWorld(origemTrilhoNoCarrinhoZ), rotationZDegrees: -90)), name: "trilho_hgr15_z_b");
+// O trilho é fixo: centrado no carrinho com o gantry no meio do curso, não onde o carrinho está agora.
+var trilhoZA = Add(trilhoZPeca, at: deitarCarrinhoZ.Then(Placement.At(NoMeioDoCursoZ(carrinhoZA.ToWorld(origemTrilhoNoCarrinhoZ)), rotationZDegrees: 90)), name: "trilho_hgr15_z_a");
+var trilhoZB = Add(trilhoZPeca, at: deitarCarrinhoZ.Then(Placement.At(NoMeioDoCursoZ(carrinhoZB.ToWorld(origemTrilhoNoCarrinhoZ)), rotationZDegrees: -90)), name: "trilho_hgr15_z_b");
 // --- Extrusões 2020 verticais (400 mm) onde cada trilho Z é parafusado ---
 // A base do trilho encosta numa face do perfil, do lado de fora em X; o perfil fica centrado no
 // trilho em Y e em Z. Deitar o perfil (giro de 90° em X) leva o comprimento (Y local) para Z do
 // mundo, o X local continua X e o Z local vai para −Y — daí o +Largura/2 em Y. A seção é simétrica,
 // então os dois lados usam o mesmo giro.
-var extrusaoTrilhoZPeca = new Extrusao2020(Comprimento: 400);
+// (extrusaoTrilhoZPeca é declarada no topo, porque entra na referência de altura.)
 var centroBaseTrilhoZ = new Point3D(trilhoZPeca.Largura / 2, trilhoZPeca.Comprimento / 2, 0);
 var centroBaseTrilhoZA = trilhoZA.ToWorld(centroBaseTrilhoZ);
 var centroBaseTrilhoZB = trilhoZB.ToWorld(centroBaseTrilhoZ);
 var deitarExtrusaoTrilhoZ = Placement.Rotation(Vector3D.UnitX, 90);
+// As deitadas (*_copia1) giram −90° em X em torno da aresta de baixo, face −Y, da vertical do lado B:
+// assim vão para +Y apoiadas sob a ponta das verticais. As duas usam o mesmo pivô, e por isso a do lado A
+// (cujo trilho fica 0,45 mm mais para −Y) acaba 0,45 mm mais alta. O X do pivô não importa num giro em X.
+var pivoExtrusoesDeitadas = new Point3D(centroBaseTrilhoZB.X + extrusaoTrilhoZPeca.Largura, centroBaseTrilhoZB.Y - extrusaoTrilhoZPeca.Altura / 2, centroBaseTrilhoZB.Z - extrusaoTrilhoZPeca.Comprimento / 2);
 var extrusaoTrilhoZA = Add(extrusaoTrilhoZPeca, at: deitarExtrusaoTrilhoZ.Then(Placement.At(centroBaseTrilhoZA.X - extrusaoTrilhoZPeca.Largura, centroBaseTrilhoZA.Y + extrusaoTrilhoZPeca.Altura / 2, centroBaseTrilhoZA.Z - extrusaoTrilhoZPeca.Comprimento / 2)), name: "extrusao_2020_trilho_z_a");
-var extrusao_2020_trilho_z_a_copia1 = Add(extrusaoTrilhoZPeca, at: deitarExtrusaoTrilhoZ.Then(Placement.At(centroBaseTrilhoZA.X - extrusaoTrilhoZPeca.Largura, centroBaseTrilhoZA.Y + extrusaoTrilhoZPeca.Altura / 2, centroBaseTrilhoZA.Z - extrusaoTrilhoZPeca.Comprimento / 2)).Then(Placement.RotationAbout(new Point3D(180.499969, -155.5, -260.700012), Vector3D.UnitX, -90)), name: "extrusao_2020_trilho_z_a_copia1");
+var extrusao_2020_trilho_z_a_copia1 = Add(extrusaoTrilhoZPeca, at: deitarExtrusaoTrilhoZ.Then(Placement.At(centroBaseTrilhoZA.X - extrusaoTrilhoZPeca.Largura, centroBaseTrilhoZA.Y + extrusaoTrilhoZPeca.Altura / 2, centroBaseTrilhoZA.Z - extrusaoTrilhoZPeca.Comprimento / 2)).Then(Placement.RotationAbout(pivoExtrusoesDeitadas, Vector3D.UnitX, -90)).Then(Placement.Translate(new Vector3D(0, -60, 0))), name: "extrusao_2020_trilho_z_a_copia1");
 var extrusaoTrilhoZB = Add(extrusaoTrilhoZPeca, at: deitarExtrusaoTrilhoZ.Then(Placement.At(centroBaseTrilhoZB.X, centroBaseTrilhoZB.Y + extrusaoTrilhoZPeca.Altura / 2, centroBaseTrilhoZB.Z - extrusaoTrilhoZPeca.Comprimento / 2)), name: "extrusao_2020_trilho_z_b");
-var extrusao_2020_trilho_z_b_copia1 = Add(extrusaoTrilhoZPeca, at: deitarExtrusaoTrilhoZ.Then(Placement.At(centroBaseTrilhoZB.X, centroBaseTrilhoZB.Y + extrusaoTrilhoZPeca.Altura / 2, centroBaseTrilhoZB.Z - extrusaoTrilhoZPeca.Comprimento / 2)).Then(Placement.RotationAbout(new Point3D(180.499969, -155.5, -260.700012), Vector3D.UnitX, -90)), name: "extrusao_2020_trilho_z_b_copia1");
+var extrusao_2020_trilho_z_b_copia1 = Add(extrusaoTrilhoZPeca, at: deitarExtrusaoTrilhoZ.Then(Placement.At(centroBaseTrilhoZB.X, centroBaseTrilhoZB.Y + extrusaoTrilhoZPeca.Altura / 2, centroBaseTrilhoZB.Z - extrusaoTrilhoZPeca.Comprimento / 2)).Then(Placement.RotationAbout(pivoExtrusoesDeitadas, Vector3D.UnitX, -90)).Then(Placement.Translate(new Vector3D(0, -60, 0))), name: "extrusao_2020_trilho_z_b_copia1");
+// --- Segundo par de verticais, recuoVerticaisTraseiras para trás (−Y, para longe da mesa) ---
+// Cópias das verticais A e B, só deslocadas em Y, na mesma altura. Não levam trilho.
+const double recuoVerticaisTraseiras = 60;
+var extrusao_2020_trilho_z_a_traseira = Add(extrusaoTrilhoZPeca, at: extrusaoTrilhoZA.Placement.Then(Placement.Translate(new Vector3D(0, -recuoVerticaisTraseiras, 0))), name: "extrusao_2020_trilho_z_a_traseira");
+var extrusao_2020_trilho_z_b_traseira = Add(extrusaoTrilhoZPeca, at: extrusaoTrilhoZB.Placement.Then(Placement.Translate(new Vector3D(0, -recuoVerticaisTraseiras, 0))), name: "extrusao_2020_trilho_z_b_traseira");
+// --- Terceiro par de verticais, na outra ponta (+Y) das deitadas ---
+// Cópias das verticais A e B deslocadas só em Y, até a face +Y delas ficar rente ao fim da deitada do
+// mesmo lado. O fim da deitada é o topo da vertical antes do giro (y local = Comprimento); a face +Y da
+// vertical é a origem dela (o z local vai para −Y).
+var yFimDeitadaA = extrusao_2020_trilho_z_a_copia1.ToWorld(new Point3D(0, extrusaoTrilhoZPeca.Comprimento, 0)).Y;
+var yFimDeitadaB = extrusao_2020_trilho_z_b_copia1.ToWorld(new Point3D(0, extrusaoTrilhoZPeca.Comprimento, 0)).Y;
+var extrusao_2020_trilho_z_a_frontal = Add(extrusaoTrilhoZPeca, at: extrusaoTrilhoZA.Placement.Then(Placement.Translate(new Vector3D(0, yFimDeitadaA - extrusaoTrilhoZA.ToWorld(Point3D.Origin).Y, 0))), name: "extrusao_2020_trilho_z_a_frontal");
+var extrusao_2020_trilho_z_b_frontal = Add(extrusaoTrilhoZPeca, at: extrusaoTrilhoZB.Placement.Then(Placement.Translate(new Vector3D(0, yFimDeitadaB - extrusaoTrilhoZB.ToWorld(Point3D.Origin).Y, 0))), name: "extrusao_2020_trilho_z_b_frontal");
 // --- Cantoneira impressa que amarra a placa do carrinho Y ao perfil 2020 transversal ---
 // Origem na interseção de três planos da montagem: face interna da placa A (a placa é girada
 // 180°, logo sua face local x = -16 vira +16), face lateral -Y do perfil (é para esse lado que
@@ -300,7 +337,7 @@ var blocoFicacaoBeltVaoCorreia = Add(blocoFicacaoBeltVaoCorreiaPeca, at: Placeme
 const double diametroPassagemFusoZ = 10;
 var tuboTravessaPeca = new TuboRetangular(Comprimento: cantoExtrusaoYB.X - cantoExtrusaoYA.X, Largura: 50, Altura: 30, DiametroFuroPassante: diametroPassagemFusoZ);
 var yPontaExtrusoesY = Math.Min(cantoExtrusaoYA.Y, cantoExtrusaoYB.Y);
-var tuboTravessa = Add(tuboTravessaPeca, at: Placement.At(cantoExtrusaoYA.X, yPontaExtrusoesY + tuboTravessaPeca.Largura, 0, rotationZDegrees: -90), name: "tubo_travessa");
+var tuboTravessa = Add(tuboTravessaPeca, at: Placement.At(cantoExtrusaoYA.X, yPontaExtrusoesY + tuboTravessaPeca.Largura, zBaseTrilhosY, rotationZDegrees: -90), name: "tubo_travessa");
 // --- Motores NEMA17 do eixo Y (movem carrinhoYA e carrinhoYB), deitados sobre o tubo travessa ---
 // Vistos de frente (plano XZ), cada motor fica com a face do eixo voltada para fora, para o trilho Z
 // do seu lado; a polia vai no eixo, no vão entre a ponta do tubo e o trilho Z, e a correia corre em Y.
@@ -333,6 +370,8 @@ var poliaYB = Add(poliaYPeca, at: Placement.Rotation(Vector3D.UnitY, 90).Then(Pl
 // furo passante do meio do tubo travessa. O acoplamento liga o eixo do motor ao fuso; a porca,
 // parafusada na face de baixo do tubo, leva o gantry (preso aos carrinhos Z) quando o fuso gira.
 var zPontaBaixoExtrusoesZ = extrusaoTrilhoZA.ToWorld(new Point3D(0, 0, 0)).Z;
+// Pela referência de altura (topo do arquivo), zChao dá 0. Ele continua medido da geometria, e não
+// fixo em 0, para o motor e a mesa ficarem certos mesmo que a soma do topo saia de sincronia.
 var zChao = zPontaBaixoExtrusoesZ - extrusaoTrilhoZPeca.Altura;
 var eixoFusoZ = tuboTravessa.ToWorld(new Point3D(tuboTravessaPeca.Largura / 2, tuboTravessaPeca.Comprimento / 2, 0));
 var motorZ = Add(motorNema17Peca, at: Placement.At(eixoFusoZ.X, eixoFusoZ.Y, zChao), name: "motor_nema17_z");
@@ -344,14 +383,37 @@ var zPontaEixoMotorZ = motorZ.ToWorld(new Point3D(0, 0, motorNema17Peca.Comprime
 var zBaseAcoplamentoZ = zPontaEixoMotorZ - insercaoEixoAcoplamentoZ;
 var acoplamentoZ = Add(acoplamentoZPeca, at: Placement.At(eixoFusoZ.X, eixoFusoZ.Y, zBaseAcoplamentoZ), name: "acoplamento_z");
 // O fuso começa no meio do acoplamento e vai até folgaFusoAcimaPorcaZ acima da porca com o gantry no
-// topo do curso. O carrinho Z está no meio do trilho, então o curso para cada lado é a sobra do trilho
-// dividida por dois; no fundo do curso o fuso atravessa o tubo pelo furo passante.
+// topo do curso. O trilho é centrado no carrinho com o gantry no meio do curso, então o curso para cada
+// lado é a sobra do trilho dividida por dois, contado da base do tubo nesse meio do curso (o fuso é fixo
+// e não acompanha posicaoGantryZ); no fundo do curso o fuso atravessa o tubo pelo furo passante.
 const double folgaFusoAcimaPorcaZ = 10;
 var cursoGantryZ = (trilhoZPeca.Comprimento - carrinhoZPeca.Comprimento) / 2;
 var zBaseTuboTravessa = tuboTravessa.ToWorld(new Point3D(0, 0, 0)).Z;
 var zBaseFusoZ = zBaseAcoplamentoZ + acoplamentoZPeca.Comprimento / 2;
-var zTopoFusoZ = zBaseTuboTravessa + cursoGantryZ + folgaFusoAcimaPorcaZ;
+var zTopoFusoZ = NoMeioDoCursoZ(tuboTravessa.ToWorld(Point3D.Origin)).Z + cursoGantryZ + folgaFusoAcimaPorcaZ;
 var fusoZ = Add(new FusoTrapezoidal(Comprimento: zTopoFusoZ - zBaseFusoZ), at: Placement.At(eixoFusoZ.X, eixoFusoZ.Y, zBaseFusoZ), name: "fuso_z");
 // Porca com o flange encostado na face de baixo do tubo e o corpo para baixo: girada 180° em X, o +Z
 // local (do flange para o corpo) aponta para −Z do mundo.
 var porcaFusoZ = Add(new PorcaFlangeadaT8(), at: Placement.Rotation(Vector3D.UnitX, 180).Then(Placement.At(eixoFusoZ.X, eixoFusoZ.Y, zBaseTuboTravessa)), name: "porca_fuso_z");
+// --- Mesa de impressão (200 x 200), fixa na estrutura ---
+// Topo a alturaMesaAcimaDoChao do ponto mais baixo da base (zChao), como na máquina hoje. Centrada no
+// bico com os carrinhos X e Y no meio do curso (é a posição em que eles estão na cena). Os apoios da
+// mesa ainda não estão modelados.
+const double ladoMesa = 200;
+const double espessuraMesa = 3;
+const double alturaMesaAcimaDoChao = 60;
+var centroBico = hotend.ToWorld(Point3D.Origin);
+var zTopoMesa = zChao + alturaMesaAcimaDoChao;
+var mesa = new BoxFeature(new Point3D(centroBico.X - ladoMesa / 2, centroBico.Y - ladoMesa / 2, zTopoMesa - espessuraMesa), ladoMesa, ladoMesa, espessuraMesa) { Name = "mesa", Color = "#B0B0B0" };
+AddFeature(mesa);
+// --- Chapa de MDF que segura a mesa, aparafusada no topo das duas extrusões deitadas da base ---
+// Em X vai da face externa da deitada A à da deitada B; em Y cobre a projeção da mesa. Apoia na mais alta
+// das duas: a deitada A fica 0,45 mm acima da B (ver pivoExtrusoesDeitadas). O vão entre a chapa e a
+// mesa (apoios, molas) ainda não está modelado.
+const double espessuraChapaMdf = 12;
+var topoDeitadaA = extrusao_2020_trilho_z_a_copia1.ToWorld(new Point3D(0, 0, extrusaoTrilhoZPeca.Altura)).Z;
+var topoDeitadaB = extrusao_2020_trilho_z_b_copia1.ToWorld(new Point3D(0, 0, extrusaoTrilhoZPeca.Altura)).Z;
+var xFaceExternaDeitadaA = extrusao_2020_trilho_z_a_copia1.ToWorld(Point3D.Origin).X;
+var xFaceExternaDeitadaB = extrusao_2020_trilho_z_b_copia1.ToWorld(new Point3D(extrusaoTrilhoZPeca.Largura, 0, 0)).X;
+var chapa_mdf_mesa = new BoxFeature(new Point3D(xFaceExternaDeitadaA, centroBico.Y - ladoMesa / 2, Math.Max(topoDeitadaA, topoDeitadaB)), xFaceExternaDeitadaB - xFaceExternaDeitadaA, ladoMesa, espessuraChapaMdf) { Name = "chapa_mdf_mesa", Color = "#A67B50" };
+AddFeature(chapa_mdf_mesa);
