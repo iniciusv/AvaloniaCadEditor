@@ -10,8 +10,32 @@ dotnet run --project AvaloniaCadEditor.PromptEval -- --dry-run      # sem IA: va
 dotnet run --project AvaloniaCadEditor.PromptEval -- --help
 ```
 
-A chave vem de `DEEPSEEK_API_KEY`. O relatório sai em `eval-results/<data>/report.md`, e cada execução
-completa (resposta, código, métricas, checks) em `runs.jsonl`.
+Sem `--endpoints`, a chave vem de `DEEPSEEK_API_KEY`. O relatório sai em `eval-results/<data>/report.md`, e
+cada execução completa (resposta, código, métricas, checks) em `runs.jsonl`.
+
+## Endpoints, ferramentas e Inspetor
+
+O PromptEval também compara provedores e modos do [harness](../AvaloniaCadEditor.Harness/README.md):
+
+```
+# DeepSeek e um modelo local (perfis do ai_settings.json), com e sem ferramentas
+dotnet run --project AvaloniaCadEditor.PromptEval -- --endpoints deepseek,ollama --tools both
+
+# o modelo do perfil escolhido por "perfil:modelo" (qwen3:8b sozinho é só o modelo, com a tag do Ollama)
+dotnet run --project AvaloniaCadEditor.PromptEval -- --models ollama:qwen3:8b,deepseek:deepseek-flash --tools on
+
+# Editor DeepSeek com um Inspetor local gratuito (pré-inspeção)
+dotnet run --project AvaloniaCadEditor.PromptEval -- --endpoints deepseek --tools on --inspector ollama
+```
+
+- **`--endpoints`** usa os perfis de endpoint do `%AppData%/AvaloniaCadEditor/ai_settings.json`, os mesmos
+  do chat.
+- **`--tools off|on|both`** escolhe entre o chat de sempre, a `HarnessChatSession` (com ferramentas) ou
+  os dois. No relatório, a variante com ferramentas aparece como `modelo@endpoint +tools`.
+- **`--inspector`** liga o Inspetor, que precisa de `--tools on` ou `both`.
+- **Colunas novas do relatório:** passos de ferramenta e tokens do Inspetor. O tamanho do system prompt
+  inclui as instruções das ferramentas.
+- **Endpoints locais** rodam uma chamada por vez, qualquer que seja o `--parallel`.
 
 ## Casos
 

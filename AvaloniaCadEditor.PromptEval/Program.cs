@@ -1,6 +1,7 @@
 using AiCore.Models;
 using AvaloniaCadEditor.Application.Ai;
 using AvaloniaCadEditor.Infrastructure.Scripting;
+using AvaloniaCadEditor.Infrastructure.Settings;
 using AvaloniaCadEditor.PromptEval;
 
 // Avaliador offline dos perfis de pré-prompt: reexecuta casos (fixtures e conversas gravadas pelo chat)
@@ -26,9 +27,10 @@ if (options.ShowHelp)
 }
 
 LlmOptions baseOptions;
-if (options.DryRun)
+if (options.DryRun || options.Endpoints.Count > 0)
 {
-    baseOptions = new LlmOptions { ApiKey = "dry-run" };
+    // Com --endpoints, chave e URL vêm de cada perfil; o ambiente não é obrigatório.
+    baseOptions = CadScriptChatSession.LoadOptionsFromEnvironment().Options ?? new LlmOptions { ApiKey = "dry-run" };
 }
 else
 {
@@ -42,7 +44,19 @@ else
 }
 baseOptions.EnableThinkingMode = options.Reasoning;
 
-var models = options.Models.Count > 0 ? options.Models : new List<string> { baseOptions.Model };
+var settingsProvider = new JsonAiSettingsProvider();
+var (targets, targetError) = EvalTargets.Build(options, baseOptions, settingsProvider.GetSettings);
+var (inspector, inspectorError) = EvalTargets.Inspector(options, settingsProvider.GetSettings);
+if (targets == null || inspectorError != null)
+{
+    Console.Error.WriteLine(targetError ?? inspectorError);
+    return 2;
+}
+if (inspector != null && !options.ToolModes.Contains(true))
+{
+    Console.Error.WriteLine("--inspector só vale com --tools on ou both.");
+    return 2;
+}
 var evaluator = new RoslynSceneEvaluator();
 
 var cases = await CaseLoader.LoadAsync(options.CaseDirectories, evaluator, options.CaseFilter);
@@ -52,10 +66,11 @@ if (cases.Count == 0)
     return 1;
 }
 
-Console.WriteLine($"{cases.Count} caso(s) × {options.Profiles.Count} perfil(is) × {models.Count} modelo(s) × {options.Repeat} repetição(ões)");
+Console.WriteLine($"{cases.Count} caso(s) × {options.Profiles.Count} perfil(is) × {targets.Count} destino(s) × {options.ToolModes.Count} modo(s) × {options.Repeat} repetição(ões)" +
+    (inspector != null ? $" · Inspetor: {inspector.Options.Model}@{inspector.Endpoint}" : ""));
 
-var runner = new EvalRunner(baseOptions, evaluator, options.DryRun, options.Parallel);
-var outcomes = await runner.RunAsync(cases, options.Profiles, models, options.Repeat);
+var runner = new EvalRunner(targets, options.ToolModes, inspector, evaluator, options.DryRun, options.Parallel);
+var outcomes = await runner.RunAsync(cases, options.Profiles, options.Repeat);
 
 string report = ReportWriter.Write(options.OutputDirectory, outcomes, cases, options);
 Console.WriteLine();

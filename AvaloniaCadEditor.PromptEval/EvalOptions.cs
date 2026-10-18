@@ -11,7 +11,11 @@ internal sealed class EvalOptions
         Uso: dotnet run --project AvaloniaCadEditor.PromptEval -- [opções]
 
           --profiles atual,enxuto,simples   perfis de pré-prompt (padrão: todos)
-          --models deepseek-flash,...       modelos (padrão: DEEPSEEK_MODEL ou o padrão do LlmOptions)
+          --models deepseek-flash,...       modelos (padrão: DEEPSEEK_MODEL ou o modelo do perfil);
+                                            perfil:modelo escolhe o endpoint (ex.: ollama:qwen3:8b)
+          --endpoints deepseek,ollama       perfis de endpoint do ai_settings.json (padrão: DEEPSEEK_* do ambiente)
+          --tools off|on|both               chat de sempre, com ferramentas (harness) ou os dois (padrão: off)
+          --inspector ollama                perfil do Inspetor (só com ferramentas; pré-inspeção ligada)
           --repeat N                        repetições de cada combinação (padrão: 1)
           --cases texto                     só casos cujo nome contém o texto
           --cases-dir pasta                 pasta extra de casos (pode repetir)
@@ -21,7 +25,8 @@ internal sealed class EvalOptions
           --out pasta                       onde gravar o relatório (padrão: eval-results)
           --dry-run                         não chama a IA: reaproveita a resposta gravada no caso
 
-        A chave vem de DEEPSEEK_API_KEY (e DEEPSEEK_BASE_URL, se houver).
+        Sem --endpoints, a chave vem de DEEPSEEK_API_KEY (e DEEPSEEK_BASE_URL, se houver).
+        Endpoints locais rodam uma chamada por vez, qualquer que seja o --parallel.
         """;
 
     public List<string> ProfileIds { get; } = new();
@@ -33,6 +38,11 @@ internal sealed class EvalOptions
     public bool Reasoning { get; private set; }
     public string OutputDirectory { get; private set; } = "eval-results";
     public bool DryRun { get; private set; }
+    public List<string> Endpoints { get; } = new();
+
+    /// <summary>false = chat de sempre; true = com ferramentas (harness).</summary>
+    public List<bool> ToolModes { get; } = new() { false };
+    public string? InspectorEndpoint { get; private set; }
     public bool ShowHelp { get; private set; }
 
     public IReadOnlyList<ICadScriptPromptProfile> Profiles =>
@@ -61,6 +71,19 @@ internal sealed class EvalOptions
                 case "--reasoning": options.Reasoning = true; break;
                 case "--out": options.OutputDirectory = Next(); break;
                 case "--dry-run": options.DryRun = true; break;
+                case "--endpoints": options.Endpoints.AddRange(List()); break;
+                case "--inspector": options.InspectorEndpoint = Next(); break;
+                case "--tools":
+                    var modes = Next() switch
+                    {
+                        "off" => new[] { false },
+                        "on" => new[] { true },
+                        "both" => new[] { false, true },
+                        var other => throw new ArgumentException($"--tools aceita off, on ou both (veio '{other}').")
+                    };
+                    options.ToolModes.Clear();
+                    options.ToolModes.AddRange(modes);
+                    break;
                 case "-h" or "--help": options.ShowHelp = true; break;
                 default: throw new ArgumentException($"Opção desconhecida: {args[i]}");
             }

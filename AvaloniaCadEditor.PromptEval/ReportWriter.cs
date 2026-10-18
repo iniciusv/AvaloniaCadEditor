@@ -34,22 +34,24 @@ internal static class ReportWriter
         sb.AppendLine("\"Passou\" = compilou, executou e cumpriu todas as verificações do caso.");
         sb.AppendLine();
 
-        sb.AppendLine("## Resumo por perfil × modelo");
+        sb.AppendLine("## Resumo por perfil × variante (modelo@endpoint; +tools = com ferramentas)");
         sb.AppendLine();
-        sb.AppendLine("| Perfil | Modelo | Execuções | Passou | Válido | 1ª tentativa | Tentativas | Tokens prompt | Tokens resposta | Tempo (s) | Parâm./peça (máx) | Linhas | System prompt (chars) |");
-        sb.AppendLine("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
-        foreach (var group in outcomes.GroupBy(o => (o.Profile, o.Model)))
+        sb.AppendLine("| Perfil | Variante | Execuções | Passou | Válido | 1ª tentativa | Tentativas | Tokens prompt | Tokens resposta | Ferramentas | Tokens Inspetor | Tempo (s) | Parâm./peça (máx) | Linhas | System prompt (chars) |");
+        sb.AppendLine("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
+        foreach (var group in outcomes.GroupBy(o => (o.Profile, o.Variant)))
         {
             var runs = group.ToList();
             var withParts = runs.Where(r => r.Metrics?.MaxPartParameters != null).ToList();
             sb.AppendLine(string.Join(" | ",
-                "", group.Key.Profile, group.Key.Model, runs.Count.ToString(CultureInfo.InvariantCulture),
+                "", group.Key.Profile, group.Key.Variant, runs.Count.ToString(CultureInfo.InvariantCulture),
                 Percent(runs, r => r.Passed),
                 Percent(runs, r => r.IsValid),
                 Percent(runs, r => r.IsValid && r.Attempts == 1),
                 Average(runs.Where(r => r.Attempts > 0), r => r.Attempts, "F2"),
                 Average(runs, r => r.PromptTokens, "F0"),
                 Average(runs, r => r.CompletionTokens, "F0"),
+                Average(runs, r => r.ToolSteps, "F1"),
+                Average(runs, r => r.InspectorTokens, "F0"),
                 Average(runs, r => r.Seconds, "F1"),
                 withParts.Count == 0 ? "—" : Average(withParts, r => r.Metrics!.MaxPartParameters!.Value, "F1"),
                 Average(runs.Where(r => r.Metrics != null), r => r.Metrics!.CodeLines, "F0"),
@@ -58,10 +60,10 @@ internal static class ReportWriter
         }
         sb.AppendLine();
 
-        var columns = outcomes.Select(o => (o.Profile, o.Model)).Distinct().ToList();
+        var columns = outcomes.Select(o => (o.Profile, o.Variant)).Distinct().ToList();
         sb.AppendLine("## Por caso (execuções que passaram / total)");
         sb.AppendLine();
-        sb.AppendLine("| Caso | " + string.Join(" | ", columns.Select(c => $"{c.Profile} · {c.Model}")) + " |");
+        sb.AppendLine("| Caso | " + string.Join(" | ", columns.Select(c => $"{c.Profile} · {c.Variant}")) + " |");
         sb.AppendLine("|---|" + string.Concat(columns.Select(_ => "---:|")));
         foreach (var caseRound in outcomes.GroupBy(o => (o.Case, o.Round)))
         {
@@ -69,7 +71,7 @@ internal static class ReportWriter
             string label = evalCase.Record.Rounds.Count > 1 ? $"{caseRound.Key.Case} #{caseRound.Key.Round}" : caseRound.Key.Case;
             var cells = columns.Select(c =>
             {
-                var runs = caseRound.Where(o => o.Profile == c.Profile && o.Model == c.Model).ToList();
+                var runs = caseRound.Where(o => o.Profile == c.Profile && o.Variant == c.Variant).ToList();
                 int passed = runs.Count(r => r.Passed);
                 return $"{(passed == runs.Count ? "✓" : passed == 0 ? "✗" : "~")} {passed}/{runs.Count}";
             });
@@ -87,7 +89,7 @@ internal static class ReportWriter
                 string why = f.Error != null
                     ? Truncate(f.Error)
                     : string.Join("; ", f.Checks.Where(c => !c.Passed).Select(c => c.Detail is { Length: > 0 } ? $"{c.Name} ({Truncate(c.Detail)})" : c.Name));
-                sb.AppendLine($"- **{f.Case}#{f.Round}** · {f.Profile} · {f.Model} · r{f.Repetition}: {why}");
+                sb.AppendLine($"- **{f.Case}#{f.Round}** · {f.Profile} · {f.Variant} · r{f.Repetition}: {why}");
             }
             sb.AppendLine();
         }
