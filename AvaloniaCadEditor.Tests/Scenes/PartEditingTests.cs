@@ -233,16 +233,49 @@ public class PartEditingTests
     // ------------------------------------------------------------ Copiar instâncias (Ctrl)
 
     [Fact]
-    public void DuplicateInstance_CriaChamadaNovaSemVariavelNemNome_EDevolveALinhaDaCopia()
+    public void DuplicateInstance_CriaDeclaracaoComNomeRastreavel_EDevolveALinhaDaCopia()
     {
         string code = "var a = Add(new Chapa(100), at: Placement.At(10, 0, 0), name: \"base\");\nvar b = 1;";
 
         var (source, line) = PartSourceEditor.DuplicateInstance(code, 1);
 
-        source.Should().Be("var a = Add(new Chapa(100), at: Placement.At(10, 0, 0), name: \"base\");\nAdd(new Chapa(100), at: Placement.At(10, 0, 0));\nvar b = 1;");
+        source.Should().Be("var a = Add(new Chapa(100), at: Placement.At(10, 0, 0), name: \"base\");\nvar base_copia1 = Add(new Chapa(100), at: Placement.At(10, 0, 0), name: \"base_copia1\");\nvar b = 1;");
         line.Should().Be(2);
         PartSourceEditor.TranslateInstance(source, line, 50, 0, 0).Should().Be(
-            "var a = Add(new Chapa(100), at: Placement.At(10, 0, 0), name: \"base\");\nAdd(new Chapa(100), at: Placement.At(60, 0, 0));\nvar b = 1;");
+            "var a = Add(new Chapa(100), at: Placement.At(10, 0, 0), name: \"base\");\nvar base_copia1 = Add(new Chapa(100), at: Placement.At(60, 0, 0), name: \"base_copia1\");\nvar b = 1;");
+    }
+
+    [Fact]
+    public void DuplicateInstance_SemNome_UsaAVariavel_EDaCopiaDaCopiaNaoEncadeiaSufixo()
+    {
+        string code = "var tampa = Add(new Chapa(100));";
+
+        var (once, _) = PartSourceEditor.DuplicateInstance(code, 1);
+        var (twice, line) = PartSourceEditor.DuplicateInstance(once, 2);
+
+        twice.Should().Be(
+            "var tampa = Add(new Chapa(100));\n" +
+            "var tampa_copia1 = Add(new Chapa(100), name: \"tampa_copia1\");\n" +
+            "var tampa_copia2 = Add(new Chapa(100), name: \"tampa_copia2\");");
+        line.Should().Be(3);
+    }
+
+    [Fact]
+    public void DuplicateInstance_SemVariavelNemNome_UsaOTipoDaPeca()
+    {
+        var (source, _) = PartSourceEditor.DuplicateInstance("Add(new Chapa(80));", 1);
+
+        source.Should().Be("Add(new Chapa(80));\nvar chapa_copia1 = Add(new Chapa(80), name: \"chapa_copia1\");");
+    }
+
+    [Fact]
+    public void DuplicateInstance_DentroDeLacoOuComNomeCalculado_FicaSemNomeFixo()
+    {
+        string loop = "for (int i = 0; i < 2; i++)\n{\n    Add(new Chapa(i), name: $\"c_{i}\");\n}";
+
+        var (source, _) = PartSourceEditor.DuplicateInstance(loop, 3);
+
+        source.Should().Be("for (int i = 0; i < 2; i++)\n{\n    Add(new Chapa(i), name: $\"c_{i}\");\n    Add(new Chapa(i));\n}");
     }
 
     [Fact]
@@ -262,9 +295,9 @@ public class PartEditingTests
         changed.Should().BeTrue();
         vm.ScriptEditor.GeneratedCSharpCode.Should().StartWith(
             "Add(new Chapa(80), at: Placement.At(0, 0, 0));\n" +
-            "Add(new Chapa(80), at: Placement.At(200, 0, 0));\n" +
+            "var chapa_copia2 = Add(new Chapa(80), at: Placement.At(200, 0, 0), name: \"chapa_copia2\");\n" +
             "Add(new Chapa(60), at: Placement.At(0, 100, 0));\n" +
-            "Add(new Chapa(60), at: Placement.At(200, 100, 0));\n");
+            "var chapa_copia1 = Add(new Chapa(60), at: Placement.At(200, 100, 0), name: \"chapa_copia1\");\n");
         vm.Sketch.Features.OfType<PartInstance>().Should().HaveCount(4);
     }
 

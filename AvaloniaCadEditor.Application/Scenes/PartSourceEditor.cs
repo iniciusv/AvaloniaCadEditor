@@ -316,8 +316,12 @@ public static class PartSourceEditor
 
     /// <summary>
     /// Duplica a chamada <c>Add(...)</c> da linha dada numa instrução nova logo depois da instrução
-    /// original (sem <c>var x =</c> e sem <c>name:</c>, para não repetir variável nem nome) e devolve
-    /// o código e a linha da cópia — use-a com <see cref="TranslateInstance"/> / <see cref="RotateInstance"/>.
+    /// original e devolve o código e a linha da cópia — use-a com <see cref="TranslateInstance"/> /
+    /// <see cref="RotateInstance"/>. A cópia ganha declaração e nome próprios, iguais e únicos no
+    /// arquivo (<c>var base_copia1 = Add(..., name: "base_copia1");</c>, regra dos sólidos
+    /// rastreáveis), com a base tirada do nome da original, da variável ou do tipo da peça.
+    /// Dentro de laço ou com nome calculado um nome fixo se repetiria, então a cópia sai sem
+    /// <c>var</c> nem <c>name:</c> e fica com o nome automático.
     /// </summary>
     public static (string Source, int Line) DuplicateInstance(string source, int line)
     {
@@ -328,15 +332,75 @@ public static class PartSourceEditor
             ?? throw new InvalidOperationException($"A chamada Add(...) da linha {line} não está numa instrução.");
 
         var args = call.ArgumentList.Arguments;
-        var nameArg = args.FirstOrDefault(a => a.NameColon?.Name.Identifier.ValueText == "name");
-        var copy = nameArg == null ? call : call.WithArgumentList(call.ArgumentList.WithArguments(args.Remove(nameArg)));
+        // name é o 3º parâmetro de Add(part, at, name, color).
+        var nameArg = args.FirstOrDefault(a => a.NameColon?.Name.Identifier.ValueText == "name")
+            ?? (args.Count > 2 && args[2].NameColon == null ? args[2] : null);
+        bool repeats = nameArg is { Expression: not LiteralExpressionSyntax } || IsInsideLoop(call);
+
+        string copyText;
+        if (repeats)
+        {
+            var named = args.FirstOrDefault(a => a.NameColon?.Name.Identifier.ValueText == "name");
+            copyText = (named == null ? call : call.WithArgumentList(call.ArgumentList.WithArguments(args.Remove(named)))).WithoutTrivia().ToString();
+        }
+        else
+        {
+            string copyName = UniqueCopyName(root, CopyBaseName(call, nameArg));
+            string literal = StringLiteral(copyName);
+            int start = call.SpanStart;
+            string callText = source.Substring(start, call.Span.Length);
+            callText = nameArg != null
+                ? callText.Remove(nameArg.Expression.SpanStart - start, nameArg.Expression.Span.Length).Insert(nameArg.Expression.SpanStart - start, literal)
+                : callText.Insert(call.ArgumentList.CloseParenToken.SpanStart - start, $", name: {literal}");
+            copyText = $"var {copyName} = {callText}";
+        }
 
         string newline = LineBreakOf(source, statement);
         string indent = IndentOf(source, statement);
 
-        string updated = Insert(source, statement.Span.End, $"{newline}{indent}{copy.WithoutTrivia()};");
+        string updated = Insert(source, statement.Span.End, $"{newline}{indent}{copyText};");
         return (updated, LineOf(statement.GetLastToken()) + 1);
     }
+
+    private static bool IsInsideLoop(SyntaxNode node) =>
+        node.Ancestors().Any(a => a is ForStatementSyntax or ForEachStatementSyntax or WhileStatementSyntax
+            or DoStatementSyntax or AnonymousFunctionExpressionSyntax);
+
+    /// <summary>
+    /// Base do nome da cópia: o nome literal da original, senão a variável, senão o tipo da peça
+    /// (<c>new Chapa(...)</c> → <c>chapa</c>). Um sufixo <c>_copiaN</c> sai, para cópias sucessivas
+    /// não encadearem <c>_copia1_copia1</c>; o resultado é sempre um identificador válido.
+    /// </summary>
+    private static string CopyBaseName(InvocationExpressionSyntax call, ArgumentSyntax? nameArg)
+    {
+        string? name = (nameArg?.Expression as LiteralExpressionSyntax)?.Token.ValueText;
+        name ??= (call.Parent as EqualsValueClauseSyntax)?.Parent is VariableDeclaratorSyntax declarator
+            ? declarator.Identifier.ValueText
+            : null;
+        name ??= call.ArgumentList.Arguments.FirstOrDefault()?.Expression is ObjectCreationExpressionSyntax { Type: var type }
+            ? LowerFirst(type is QualifiedNameSyntax q ? q.Right.Identifier.ValueText : type.ToString())
+            : "peca";
+
+        name = System.Text.RegularExpressions.Regex.Replace(name, @"_copia\d+$", string.Empty);
+        var chars = name.Select(c => char.IsLetterOrDigit(c) || c == '_' ? c : '_').ToArray();
+        string identifier = new(chars);
+        // O sufixo _copiaN vem depois, então palavra-chave (base, class...) não é problema aqui.
+        return identifier.Length == 0 || char.IsDigit(identifier[0]) ? "_" + identifier : identifier;
+    }
+
+    private static string UniqueCopyName(SyntaxNode root, string baseName)
+    {
+        var existing = root.DescendantTokens().Select(t => t.ValueText).ToHashSet(StringComparer.Ordinal);
+        string copyName = $"{baseName}_copia1";
+        for (int n = 2; existing.Contains(copyName); n++)
+        {
+            copyName = $"{baseName}_copia{n}";
+        }
+        return copyName;
+    }
+
+    private static string LowerFirst(string text) =>
+        text.Length == 0 ? text : char.ToLowerInvariant(text[0]) + text[1..];
 
     // ---------------------------------------------------------------- Girar uma instância
 

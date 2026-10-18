@@ -113,7 +113,9 @@ var centroBaseTrilhoZA = trilhoZA.ToWorld(centroBaseTrilhoZ);
 var centroBaseTrilhoZB = trilhoZB.ToWorld(centroBaseTrilhoZ);
 var deitarExtrusaoTrilhoZ = Placement.Rotation(Vector3D.UnitX, 90);
 var extrusaoTrilhoZA = Add(extrusaoTrilhoZPeca, at: deitarExtrusaoTrilhoZ.Then(Placement.At(centroBaseTrilhoZA.X - extrusaoTrilhoZPeca.Largura, centroBaseTrilhoZA.Y + extrusaoTrilhoZPeca.Altura / 2, centroBaseTrilhoZA.Z - extrusaoTrilhoZPeca.Comprimento / 2)), name: "extrusao_2020_trilho_z_a");
+var extrusao_2020_trilho_z_a_copia1 = Add(extrusaoTrilhoZPeca, at: deitarExtrusaoTrilhoZ.Then(Placement.At(centroBaseTrilhoZA.X - extrusaoTrilhoZPeca.Largura, centroBaseTrilhoZA.Y + extrusaoTrilhoZPeca.Altura / 2, centroBaseTrilhoZA.Z - extrusaoTrilhoZPeca.Comprimento / 2)).Then(Placement.RotationAbout(new Point3D(180.499969, -155.5, -260.700012), Vector3D.UnitX, -90)), name: "extrusao_2020_trilho_z_a_copia1");
 var extrusaoTrilhoZB = Add(extrusaoTrilhoZPeca, at: deitarExtrusaoTrilhoZ.Then(Placement.At(centroBaseTrilhoZB.X, centroBaseTrilhoZB.Y + extrusaoTrilhoZPeca.Altura / 2, centroBaseTrilhoZB.Z - extrusaoTrilhoZPeca.Comprimento / 2)), name: "extrusao_2020_trilho_z_b");
+var extrusao_2020_trilho_z_b_copia1 = Add(extrusaoTrilhoZPeca, at: deitarExtrusaoTrilhoZ.Then(Placement.At(centroBaseTrilhoZB.X, centroBaseTrilhoZB.Y + extrusaoTrilhoZPeca.Altura / 2, centroBaseTrilhoZB.Z - extrusaoTrilhoZPeca.Comprimento / 2)).Then(Placement.RotationAbout(new Point3D(180.499969, -155.5, -260.700012), Vector3D.UnitX, -90)), name: "extrusao_2020_trilho_z_b_copia1");
 // --- Cantoneira impressa que amarra a placa do carrinho Y ao perfil 2020 transversal ---
 // Origem na interseção de três planos da montagem: face interna da placa A (a placa é girada
 // 180°, logo sua face local x = -16 vira +16), face lateral -Y do perfil (é para esse lado que
