@@ -725,6 +725,13 @@ public partial class CadViewModel : INotifyPropertyChanged
 		DisplayFrame = isolated.Count == 1
 			? AvaloniaCadEditor.Application.Isolation.PartFrameResolver.Resolve(isolated[0], GetFeatureMesh(isolated[0].Id)?.Positions)
 			: null;
+
+		// Sem referencial próprio (feature solta, sem Placement), as cotas não têm folha: avisa em
+		// vez de ficar quieto — qualquer peça posicionada (girada ou não) tem referencial.
+		if (isolated.Count == 1 && DisplayFrame == null)
+		{
+			StatusText = $"⚠ {isolated[0].Name}: sem referencial próprio (feature solta) — cotas indisponíveis.";
+		}
 	}
 
 	private void BooleanTool_OperandAppendRequested(object? sender, (string BooleanVar, System.Collections.Generic.IReadOnlyList<string> ToolVars, string FallbackCode) args)

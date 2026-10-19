@@ -16,6 +16,14 @@ public class CameraState
     public float NearPlane { get; set; } = 0.1f;
     public float FarPlane { get; set; } = 10000f;
 
+    /// <summary>
+    /// Rotação da tela (radianos) em torno da direção de visão, além do "cima" orbital de
+    /// Azimuth/Elevation. Zero na navegação livre (<see cref="Orbit"/> sempre zera); diferente de
+    /// zero só quando <see cref="SetStandardView"/> olha para um referencial girado fora de Z, cujas
+    /// vistas padrão não ficam "de pé" olhando com a câmera Z-up sem girar a tela.
+    /// </summary>
+    public float Roll { get; set; }
+
     public Vector3 Position
     {
         get
@@ -31,10 +39,21 @@ public class CameraState
 
     // Derivative of Position w.r.t. Elevation: always orthogonal to the view direction, so it stays
     // well-defined even looking straight down (Top view), where a fixed +Z up would degenerate.
-    public Vector3 Up => new Vector3(
-        -MathF.Sin(Elevation) * MathF.Sin(Azimuth),
-        -MathF.Sin(Elevation) * MathF.Cos(Azimuth),
-        MathF.Cos(Elevation));
+    // With Roll != 0, rotated around the view direction (Position - Target).
+    public Vector3 Up
+    {
+        get
+        {
+            var baseUp = new Vector3(
+                -MathF.Sin(Elevation) * MathF.Sin(Azimuth),
+                -MathF.Sin(Elevation) * MathF.Cos(Azimuth),
+                MathF.Cos(Elevation));
+            if (Roll == 0f) return baseUp;
+
+            var axis = Vector3.Normalize(Position - Target);
+            return Vector3.Transform(baseUp, Matrix4x4.CreateFromAxisAngle(axis, Roll));
+        }
+    }
 
     public Matrix4x4 GetViewMatrix()
     {
@@ -59,12 +78,30 @@ public class CameraState
     }
 
     /// <summary>
-    /// Aponta a câmera para uma vista padrão. <paramref name="azimuthOffset"/> é a rotação em Z
-    /// (radianos, regra da mão direita) do referencial cujas vistas se quer: com uma peça isolada
-    /// girada, "Front" passa a ser a frente da peça, e não a do mundo.
+    /// Aponta a câmera para uma vista padrão. Sem <paramref name="frame"/>, são as vistas do mundo
+    /// (rolagem sempre 0). Com <paramref name="frame"/>, a direção e o "cima" canônicos da vista são
+    /// levados pelos eixos do referencial (<see cref="Placement.ApplyVector"/>) antes de apontar a
+    /// câmera — com uma peça isolada girada fora de Z, "Front" passa a ser a frente da peça, e não a
+    /// do mundo, e a rolagem acompanha o que for preciso para a tela ficar "de pé" para a peça.
     /// </summary>
-    public void SetStandardView(StandardView view, float azimuthOffset = 0f)
+    public void SetStandardView(StandardView view, PartFrame? frame = null)
     {
+        SetCanonicalStandardView(view);
+        if (frame == null) return;
+
+        var dir0 = Vector3.Normalize(Position - Target);
+        var up0 = Up;
+
+        var worldDir = ToVector3(frame.FrameToWorld.ApplyVector(ToVector3D(dir0)));
+        var worldUp = ToVector3(frame.FrameToWorld.ApplyVector(ToVector3D(up0)));
+        LookFrom(worldDir, worldUp);
+    }
+
+    /// <summary>A tabela de vistas padrão em coordenadas do mundo, sem rolagem — a base usada por
+    /// <see cref="SetStandardView"/> antes de levar para o referencial de uma peça isolada.</summary>
+    private void SetCanonicalStandardView(StandardView view)
+    {
+        Roll = 0f;
         switch (view)
         {
             case StandardView.Front:
@@ -97,14 +134,57 @@ public class CameraState
                 Elevation = MathF.Atan(1f / MathF.Sqrt(2f)); // true isometric (~35.26°)
                 break;
         }
-
-        // O azimute é medido a partir de +Y no sentido horário (x = sin, y = cos); girar o
-        // referencial de θ no sentido anti-horário subtrai θ.
-        Azimuth -= azimuthOffset;
     }
+
+    /// <summary>
+    /// Define Azimuth, Elevation e Roll para a câmera olhar na direção <paramref name="eyeDirection"/>
+    /// (do alvo para o olho) com o "cima" da tela em <paramref name="up"/> (os dois perpendiculares).
+    /// Usada por <see cref="SetStandardView"/> para vistas levadas por um referencial girado.
+    /// </summary>
+    public void LookFrom(Vector3 eyeDirection, Vector3 up)
+    {
+        var dir = Vector3.Normalize(eyeDirection);
+        up = Vector3.Normalize(up);
+
+        float cosElevation = MathF.Sqrt(dir.X * dir.X + dir.Y * dir.Y);
+        Elevation = MathF.Atan2(dir.Z, cosElevation);
+
+        const float epsilon = 1e-5f;
+        if (cosElevation > epsilon)
+        {
+            Azimuth = MathF.Atan2(dir.X, dir.Y);
+            Roll = 0f;
+            Roll = SignedAngleAround(Up, up, dir);
+        }
+        else
+        {
+            // Olhando na vertical: a direção não diz o azimute (toda rotação em Z dá a mesma
+            // direção) — escolhe o azimute que já produz o "cima" pedido, com rolagem 0.
+            float s = dir.Z >= 0 ? 1f : -1f;
+            Azimuth = MathF.Atan2(-up.X * s, -up.Y * s);
+            Roll = 0f;
+        }
+    }
+
+    /// <summary>Ângulo com sinal (regra da mão direita em torno de <paramref name="axis"/>) de
+    /// <paramref name="from"/> para <paramref name="to"/>.</summary>
+    private static float SignedAngleAround(Vector3 from, Vector3 to, Vector3 axis)
+    {
+        from = Vector3.Normalize(from);
+        to = Vector3.Normalize(to);
+        axis = Vector3.Normalize(axis);
+        float cos = Vector3.Dot(from, to);
+        float sin = Vector3.Dot(Vector3.Cross(from, to), axis);
+        return MathF.Atan2(sin, cos);
+    }
+
+    private static Vector3D ToVector3D(Vector3 v) => new(v.X, v.Y, v.Z);
+
+    private static Vector3 ToVector3(Vector3D v) => new((float)v.X, (float)v.Y, (float)v.Z);
 
     public void Orbit(float deltaAzimuth, float deltaElevation)
     {
+        Roll = 0f;
         Azimuth += deltaAzimuth;
         Elevation += deltaElevation;
 

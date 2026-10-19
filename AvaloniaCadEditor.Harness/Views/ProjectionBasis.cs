@@ -28,11 +28,10 @@ public sealed class ProjectionBasis
     public Vector3D V { get; }
     public Vector3D W { get; }
 
-    /// <param name="azimuthOffset">Rotação em Z do referencial (radianos), como em <see cref="CameraState.SetStandardView"/>.</param>
-    public static ProjectionBasis For(StandardView view, double azimuthOffset = 0)
+    public static ProjectionBasis For(StandardView view)
     {
         var camera = new CameraState { Target = Vector3.Zero, Distance = 1f };
-        camera.SetStandardView(view, (float)azimuthOffset);
+        camera.SetStandardView(view);
 
         var w = Clean(camera.Position - camera.Target);
         var v = Clean(camera.Up);

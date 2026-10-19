@@ -51,7 +51,7 @@ public class DraftingViewModelTests
 
         // Câmera como o botão Front deixa: ortho, olhando a frente DA PEÇA, centrada nela.
         var camera = new CameraState { IsOrthographic = true, AspectRatio = (float)(Viewport.Width / Viewport.Height), Distance = 60 };
-        camera.SetStandardView(StandardView.Front, (float)cad.DisplayFrame!.AzimuthOffset);
+        camera.SetStandardView(StandardView.Front, cad.DisplayFrame);
         var centro = cad.DisplayFrame.ToWorld(new Point3D(20, 8, 8.5));
         camera.Target = new Vector3((float)centro.X, (float)centro.Y, (float)centro.Z);
         return (cad, drafting, camera);

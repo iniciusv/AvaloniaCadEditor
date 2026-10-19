@@ -34,9 +34,6 @@ public sealed class PartFrame
     /// <summary>Plano XY do referencial, em coordenadas do mundo (onde a grade é desenhada).</summary>
     public WorkPlane XY => new WorkPlane(Origin, ZAxis, XAxis);
 
-    /// <summary>Rotação do referencial em torno de Z (radianos) — usada para orientar as vistas padrão.</summary>
-    public double AzimuthOffset => FrameToWorld.RotationZRadians;
-
     public Point3D ToWorld(Point3D framePoint) => FrameToWorld.Apply(framePoint);
 
     public Point3D ToFrame(Point3D worldPoint) => WorldToFrame.Apply(worldPoint);

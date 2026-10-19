@@ -15,7 +15,7 @@ namespace AvaloniaCadEditor.Harness.Inspection;
 /// Uma feature de topo pronta para ser inspecionada: a malha no mundo e no referencial dela, e
 /// onde fica o (0, 0, 0) do código nesse referencial.
 /// </summary>
-/// <param name="FrameIsWorld">Sem referencial próprio (peça girada fora de Z, ou feature sem posicionamento): vale o do mundo.</param>
+/// <param name="FrameIsWorld">Sem referencial próprio (feature sem posicionamento, solta na cena): vale o do mundo.</param>
 public sealed record InspectionTarget(
     IFeature Feature,
     PartFrame Frame,

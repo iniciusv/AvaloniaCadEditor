@@ -1,8 +1,8 @@
 # Referencial da peça isolada (H) para qualquer rotação: cotas em peças "deitadas"
 
-- **Status:** Proposto
+- **Status:** Implementado (v1), falta a verificação manual na janela (item com ⚠ abaixo)
 - **Data:** 2026-10-19
-- **Branch:** a definir (sugestão: `feature/referencial-qualquer-rotacao`)
+- **Branch:** `feature/referencial-qualquer-rotacao`
 
 ## Objetivo
 
@@ -113,19 +113,25 @@ Harness é sempre chamado sem offset, então o parâmetro some).
 
 ## Etapas
 
-- [ ] **Domain:** `Placement.FromAxes` (com teste de ortonormalidade e de `Inverse`).
-- [ ] **Domain:** `CameraState.Roll`, `Up` com rolagem, `LookFrom`, `SetStandardView(view, PartFrame?)`
-      e `Orbit` zerando a rolagem. Remover `PartFrame.AzimuthOffset`.
-- [ ] **Application:** `PartFrameResolver` com as três regras da tabela e o snap de eixos; atualizar o
-      `<summary>`.
-- [ ] **UI:** `MainWindow`, `SilkViewportControl.SetStandardView`, `DraftingViewModel.MatchesCamera`
-      e o aviso na barra de status.
-- [ ] **Harness:** tirar o `azimuthOffset` do `ProjectionBasis.For` e atualizar o comentário de
-      `FrameIsWorld` em `SceneInspectionService` ("peça girada fora de Z" deixa de ser motivo).
-- [ ] **Testes** (abaixo).
-- [ ] **Docs:** linha "Mudar o referencial da peça isolada (H)" da §4 do `ARCHITECTURE.md` (citar
-      `CameraState` e a rolagem), e Status deste plano aqui e no `docs/README.md`.
-- [ ] Rodar `dotnet test` dos dois projetos de teste e `check AiCore --geometry`.
+- [x] **Domain:** `Placement.FromAxes` (validação de ortonormalidade e de mão direita).
+- [x] **Domain:** `CameraState.Roll`, `Up` com rolagem, `LookFrom`, `SetStandardView(view, PartFrame?)`
+      e `Orbit` zerando a rolagem. Removido `PartFrame.AzimuthOffset`.
+- [x] **Application:** `PartFrameResolver` com as três regras da tabela e o snap de eixos; `<summary>`
+      atualizado.
+- [x] **UI:** `MainWindow`, `SilkViewportControl.SetStandardView`, `DraftingViewModel.MatchesCamera`
+      e o aviso na barra de status (feature isolada sem Placement).
+- [x] **Harness:** tirado o `azimuthOffset` do `ProjectionBasis.For` (não tinha caller com offset) e
+      atualizado o comentário de `FrameIsWorld` em `SceneInspectionService`.
+- [x] **Testes** (abaixo) — todos escritos e passando.
+- [x] **Docs:** linha "Mudar o referencial da peça isolada (H)" da §4 do `ARCHITECTURE.md`, e Status
+      deste plano aqui e no `docs/README.md`.
+- [x] `dotnet test` dos dois projetos de teste (`AvaloniaCadEditor.Tests`: 956/961, as 5 falhas são
+      as conhecidas e sem relação — 3 `CheckCommandProcessTests` pelo `BaseOutputPath` redirecionado
+      e 2 `ConexaoYAdaptador5mmTests` por edição em disco do `AiCore`, não pela mudança deste plano;
+      `AvaloniaCadEditor.Harness.Tests`: 80/80) e `check AiCore --geometry` (exit 0, 71 features,
+      geometria validada).
+- [ ] ⚠ **Verificação manual na janela** (pendente, fora do automatizável): isolar
+      `carrinho_hgh15_z_b` com H, ligar "Cotas" e conferir cada vista padrão.
 
 ## Testes
 

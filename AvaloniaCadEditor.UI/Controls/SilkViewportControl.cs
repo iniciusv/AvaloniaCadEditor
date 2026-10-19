@@ -6,6 +6,7 @@ using Avalonia.Input;
 using Avalonia.OpenGL;
 using Avalonia.OpenGL.Controls;
 using AvaloniaCadEditor.Domain.Entities;
+using AvaloniaCadEditor.Domain.ValueObjects;
 using AvaloniaCadEditor.UI.Controls.Input;
 using AvaloniaCadEditor.UI.Controls.Input.ContextMenus;
 using AvaloniaCadEditor.UI.Controls.Rendering;
@@ -187,9 +188,9 @@ public class SilkViewportControl : OpenGlControlBase
         FrameRendered?.Invoke();
     }
 
-    public void SetStandardView(StandardView view, float azimuthOffset = 0f)
+    public void SetStandardView(StandardView view, PartFrame? frame = null)
     {
-        _camera.SetStandardView(view, azimuthOffset);
+        _camera.SetStandardView(view, frame);
         RequestNextFrameRendering();
     }
 
