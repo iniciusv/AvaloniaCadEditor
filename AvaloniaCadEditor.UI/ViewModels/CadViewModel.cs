@@ -213,6 +213,7 @@ public partial class CadViewModel : INotifyPropertyChanged
 				if (_currentTool is FilletTool oldFillet)
 				{
 					oldFillet.PartFilletRequested -= FilletTool_PartFilletRequested;
+					oldFillet.FilletBeforeCutRequested -= FilletTool_FilletBeforeCutRequested;
 				}
 				_currentTool.Cancel();
 			}
@@ -244,6 +245,7 @@ public partial class CadViewModel : INotifyPropertyChanged
 				if (_currentTool is FilletTool newFillet)
 				{
 					newFillet.PartFilletRequested += FilletTool_PartFilletRequested;
+					newFillet.FilletBeforeCutRequested += FilletTool_FilletBeforeCutRequested;
 				}
 			}
 
@@ -594,6 +596,28 @@ public partial class CadViewModel : INotifyPropertyChanged
 			: $"✓ {what} aplicado em {request.Owner.PartTypeName} (todas as instâncias)";
 	}
 
+	/// <summary>
+	/// Chanfro/arredondamento de todas as arestas num sólido furado: entra antes dos furos (ver
+	/// <see cref="FilletTool.FilletBeforeCutRequested"/>); se o código não deixar, vai depois, como antes.
+	/// </summary>
+	private async void FilletTool_FilletBeforeCutRequested(object? sender, (string CutVar, string BaseVar, string FilletVar, string FilletCode, string FallbackCode) args)
+	{
+		CurrentTool = new SelectTool(_geometryEngine, _selectionService);
+
+		bool beforeCut = ScriptEditor.TryInsertFilletBeforeCut(args.CutVar, args.BaseVar, args.FilletVar, args.FilletCode);
+		if (!beforeCut)
+		{
+			ScriptEditor.AppendCode(args.FallbackCode + "\n");
+		}
+		await ScriptEditor.RunCodeAsync();
+
+		// Depois da execução, que escreve o próprio status.
+		if (beforeCut && !ScriptEditor.HasErrors)
+		{
+			StatusText = $"✓ {args.FilletVar} aplicado em {args.BaseVar}, antes dos furos de {args.CutVar} (as bocas dos furos ficam vivas)";
+		}
+	}
+
 	private void CurrentTool_CodeGenerated(object? sender, string codeSnippet)
 	{
 		ScriptEditor.AppendCode(codeSnippet + "\n");
@@ -695,6 +719,28 @@ public partial class CadViewModel : INotifyPropertyChanged
 		}
 
 		ApplyIsolation();
+	}
+
+	/// <summary>As features recém-saídas de uma execução que vão aparecer depois de <see cref="ReapplyIsolation"/>
+	/// (mesma regra dele): só essas têm a malha construída antes da troca de cena.</summary>
+	public System.Collections.Generic.List<IFeature> FeaturesVisibleAfterRun(System.Collections.Generic.IReadOnlyList<IFeature> features)
+	{
+		bool isolating = IsIsolating && features.Any(f => _isolatedNames.Contains(f.Name));
+		return features
+			.Where(f => f.IsVisible &&
+				(!isolating || _isolatedNames.Contains(f.Name) || f is AvaloniaCadEditor.Domain.Features.WorkPlaneFeature))
+			.ToList();
+	}
+
+	/// <summary>Sólidos da cena na tela ficaram prontos em segundo plano (ver <c>SceneScriptViewModel.RunCodeAsync</c>):
+	/// entram na malha composta e, se um deles é a peça isolada, o referencial dela sai da malha agora completa.</summary>
+	public void RefreshBackgroundMeshes()
+	{
+		RefreshSolidMesh(skipCodeGeneration: true);
+		if (IsolatedFeature != null)
+		{
+			DisplayFrame = AvaloniaCadEditor.Application.Isolation.PartFrameResolver.Resolve(IsolatedFeature, GetFeatureMesh(IsolatedFeature.Id)?.Positions);
+		}
 	}
 
 	private void ApplyIsolation()

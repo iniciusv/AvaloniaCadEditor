@@ -118,7 +118,7 @@ public static class FeatureFingerprint
     private static bool AppendFillet(StringBuilder sb, FilletFeature fillet)
     {
         AppendDouble(sb, fillet.Radius);
-        sb.Append(fillet.Mode).Append(';').Append(fillet.ApplyToAllEdges ? 'A' : 'S').Append(';');
+        sb.Append(fillet.Mode).Append(';').Append(fillet.ApplyToAllEdges ? 'A' : 'S').Append(fillet.SkipHoleEdges ? 'H' : '-').Append(';');
         if (!Append(sb, fillet.BaseFeature) || fillet.Edges == null || fillet.Faces == null) return false;
 
         sb.Append("E[");

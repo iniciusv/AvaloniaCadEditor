@@ -160,7 +160,8 @@ public class FeatureFingerprintTests
         var f5 = Fillet(); f5.AddFace(new FaceReference(f5.BaseFeature, (int)FaceType.Top, new Vector3D(0, 0, 1), "topo"));
         var outraBase = Box(); outraBase.Height = 6;
         var f6 = Fillet(outraBase);
-        new[] { f1, f2, f3, f4, f5, f6 }.Select(Fp).Should().AllSatisfy(k => k.Should().NotBe(baseFillet));
+        var f7 = Fillet(); f7.SkipHoleEdges = true;
+        new[] { f1, f2, f3, f4, f5, f6, f7 }.Select(Fp).Should().AllSatisfy(k => k.Should().NotBe(baseFillet));
 
         // A geometria do dono da aresta entra na chave.
         var a = Fillet(); a.AddEdge(new EdgeReference(Box(), EdgeType.TopFront));
@@ -233,7 +234,7 @@ public class FeatureFingerprintTests
     [InlineData(typeof(PrismFeature), new[] { "Vertices", "Height", "Plane" })]
     [InlineData(typeof(BooleanFeature), new[] { "Operation", "BaseFeatures", "ToolFeatures", "BaseFeature" })]
     [InlineData(typeof(TransformedFeature), new[] { "Source", "Placement" })]
-    [InlineData(typeof(FilletFeature), new[] { "BaseFeature", "Edges", "Faces", "Radius", "Mode", "ApplyToAllEdges" })]
+    [InlineData(typeof(FilletFeature), new[] { "BaseFeature", "Edges", "Faces", "Radius", "Mode", "ApplyToAllEdges", "SkipHoleEdges" })]
     // BaseArea, Volume, BaseCenter, TopCenter e Centroid são derivadas de Profile/Height/Direction.
     [InlineData(typeof(ExtrudeFeature), new[] { "Profile", "Height", "Direction", "BaseArea", "Volume", "BaseCenter", "TopCenter", "Centroid" })]
     // StartCenter/StartTangent são o StartPlane; EndCenter/EndTangent saem de percorrer Path a

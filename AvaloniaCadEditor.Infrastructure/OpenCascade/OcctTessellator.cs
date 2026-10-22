@@ -277,9 +277,14 @@ internal static class OcctTessellator
             }
             list.Add((t, u, v));
         }
+        // Triângulo com dois vértices soldados num só (lasca que o OCCT deixa na costura de uma aresta
+        // tolerante) não tem área nem vizinhança: entrando, as arestas dele passariam de 2 usuários e a
+        // orientação pararia de se propagar ali, deixando o resto da superfície como componente solto.
+        static bool Degenerate((int A, int B, int C) tri) => tri.A == tri.B || tri.B == tri.C || tri.C == tri.A;
         for (int t = 0; t < triCount; t++)
         {
             var (a, b, c) = triCanon[t];
+            if (Degenerate(triCanon[t])) continue;
             AddEdge(t, a, b);
             AddEdge(t, b, c);
             AddEdge(t, c, a);
@@ -292,6 +297,7 @@ internal static class OcctTessellator
         for (int seed = 0; seed < triCount; seed++)
         {
             if (visited[seed]) continue;
+            if (Degenerate(triCanon[seed])) { visited[seed] = true; continue; }
             visited[seed] = true;
             var component = new List<int> { seed };
             queue.Enqueue(seed);

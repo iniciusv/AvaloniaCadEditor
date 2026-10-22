@@ -92,10 +92,20 @@ SceneScriptViewModel.RunCodeAsync()
       RoslynSceneEvaluator: CSharpCompilation → AssemblyLoadContext colecionável
       → executa o entry point dentro de SceneHost.Begin(builder)
       → Scene.AddFeature/Add alimentam o SceneBuilder
-  → MeshManager.ResetForNewScene()             (preserva cache por fingerprint)
+  → MeshManager.PrepareSceneAsync(visíveis)    (fora da thread da UI; preserva cache por fingerprint)
   → Sketch.ClearFeatures() + AddFeature(...)
-  → CadViewModel.RefreshProfiles()             (refaz malha composta + árvore)
+  → CadViewModel.RefreshProfiles()             (refaz malha composta + árvore, só acha cache)
 ```
+
+A cena antiga continua na tela enquanto a nova é construída, mas só por um instante (`SceneBuildBudget`):
+depois disso a cena nova entra sem os sólidos que faltam, e cada um aparece quando fica pronto. Até lá
+ele é **pendente** no `SceneMeshManager`: a malha composta o deixa de fora e o pick não o acha, em vez
+de construí-lo na thread da UI. A construção só é cancelada quando outra execução avalia sem erro
+(`IGeometryKernel.BuildCancellation`, conferido a cada sólido e a cada aresta de chanfro). O kernel não
+é thread-safe: toda chamada a ele passa pelo lock do `SceneMeshManager`, e os caches de malha são
+concorrentes para que desenho e pick na UI não esperem por uma construção longa. Um `catch` no kernel
+**não pode engolir `OperationCanceledException`**: a booleana de cima seguiria sem o operando e o
+sólido errado iria para o cache por fingerprint.
 
 ### 3.2 Uma ferramenta "cria" geometria
 
@@ -156,6 +166,7 @@ de todo o resto. Falha segura: fingerprint `null` = sem cache, nunca cache errad
 | **Adicionar um tipo de feature** (ex.: `LoftFeature`) | `Domain/Features/XFeature.cs` | ver §5.1 — são **7** pontos obrigatórios |
 | Adicionar uma ferramenta interativa | `Application/Commands/XCommand.cs` + comando no `CadViewModel` + botão no `MainWindow.axaml` + `Resources/Strings.cs` | a ferramenta **emite código**, não constrói geometria |
 | Mudar como uma feature vira sólido | `Infrastructure/OpenCascade/OpenCascadeGeometryKernel.cs` → `BuildShape` | registre falha com `ReportProblem`, não lance para fora |
+| Mudar o chanfro/arredondamento (`FilletFeature`) | `Infrastructure/OpenCascade/OcctFilletBuilder.cs`, `Domain/Mesh/ArcEdgeFinder.cs` | o wrapper OCCT não tem chanfro B-Rep: fora de caixa e cilindro, o caminho é **por malha**. Arcos reconhecidos (boca de furo, ressalto, canto arredondado) viram um anel revolvido cada, cortados em lote; as retas, um prisma cada, até `MaxEdgeCuts` (acima disso o sólido sai sem chanfro, com aviso em `BuildProblems`). Toda booleana passa pela conferência de caixa e volume de `TryCutKeepingSolid` |
 | Mudar a tesselação / arestas | `Infrastructure/OpenCascade/OcctTessellator.cs`, `Domain/Settings/TessellationSettings.cs` | settings novos entram em `GeometryKey()` |
 | Mudar o código gerado pelas ferramentas | `Application/Services/FeatureCodeGenerator.cs` | respeite a regra de sólidos rastreáveis (§5.2) |
 | Editar o fonte da cena a partir da UI | `Application/Scenes/PartSourceEditor.cs` ou um `Roslyn*` em `Application/Services/` | edição sintática pontual, nunca reescrita do arquivo |

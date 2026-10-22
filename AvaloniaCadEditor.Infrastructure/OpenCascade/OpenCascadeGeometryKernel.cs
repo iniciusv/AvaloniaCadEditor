@@ -41,6 +41,19 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
     public IReadOnlyDictionary<Guid, string> BuildProblems => _buildProblems;
 
     /// <summary>Registra (ou limpa, com message null) por que a feature não gerou geometria.</summary>
+    // Avisos de uma construção que DEU sólido, mas sem parte do pedido (ex.: chanfro com arestas demais,
+    // ver OcctFilletBuilder.MaxEdgeCuts). Ficam aqui até o BuildShape da feature terminar, porque o sucesso
+    // limpa o problema dela; e a malha que sai com aviso não vai para _meshByGeometry, senão a próxima
+    // execução a reaproveitaria sem passar por aqui e o aviso sumiria.
+    private readonly Dictionary<Guid, string> _pendingWarnings = new();
+    private int _warningsIssued;
+
+    private void Warn(IFeature feature, string message)
+    {
+        _pendingWarnings[feature.Id] = message;
+        _warningsIssued++;
+    }
+
     private void ReportProblem(IFeature feature, string? message)
     {
         if (message == null) _buildProblems.Remove(feature.Id);
@@ -52,6 +65,9 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
 
     /// <inheritdoc />
     public bool SuppressFillets { get; set; }
+
+    /// <inheritdoc />
+    public System.Threading.CancellationToken BuildCancellation { get; set; }
 
     private CacheKey KeyOf(Guid featureId) => new(featureId, SuppressFillets);
 
@@ -77,6 +93,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         _meshByGeometry.Clear();
         _geometryKeysInUse.Clear();
         _buildProblems.Clear();
+        _pendingWarnings.Clear();
     }
 
     /// <summary>
@@ -92,6 +109,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         _shapeCache.Clear();
         _definitionMeshCache.Clear();
         _buildProblems.Clear();
+        _pendingWarnings.Clear();
         RemoveMeshesNotInUse();
         _geometryKeysInUse.Clear();
     }
@@ -152,6 +170,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
 
         try
         {
+            int warningsBefore = _warningsIssued;
             var shape = BuildShape(feature, settings);
             if (shape == null || shape.IsNull)
                 return TriangleMesh.Empty;
@@ -161,7 +180,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             // shape.Dispose(); // Shape is now cached, do not dispose here
 
             // Malha vazia pode ser falha do OCCT: não fica guardada, tenta de novo na próxima vez.
-            if (key != null && mesh.VertexCount > 0)
+            if (key != null && mesh.VertexCount > 0 && _warningsIssued == warningsBefore)
             {
                 if (_meshByGeometry.Count >= MaxMeshesByGeometry)
                 {
@@ -177,7 +196,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             }
             return mesh;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Console.WriteLine($"[BuildFeatureMesh Error] {ex}");
             return TriangleMesh.Empty;
@@ -211,6 +230,8 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         {
             return cached;
         }
+
+        BuildCancellation.ThrowIfCancellationRequested();
 
         OcctShape result = null;
         try {
@@ -255,7 +276,9 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
                 result = BuildTransformedShape(transformedFeature, settings, transform);
             }
         }
-        catch (Exception ex)
+        // O cancelamento atravessa: engolido aqui, a booleana de cima seguiria sem este operando e o
+        // sólido errado iria para o cache por geometria, que sobrevive à reexecução.
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             ReportProblem(feature, ex.Message);
             Console.WriteLine($"[BuildShape Error] {ex}");
@@ -264,7 +287,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         if (result != null && !result.IsNull)
         {
             // Deu certo agora: o problema anterior (se havia) está resolvido.
-            ReportProblem(feature, null);
+            ReportProblem(feature, _pendingWarnings.Remove(feature.Id, out var warning) ? warning : null);
             if (useCache) _shapeCache[KeyOf(feature.Id)] = result;
         }
 
@@ -285,7 +308,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         // O builder recebe o sólido base pronto: ele corta arestas, não constrói
         // features, e assim não precisa do dispatch nem do cache.
         var filletBase = BuildShape(fillet.BaseFeature, settings);
-        return OcctFilletBuilder.Build(fillet, filletBase, settings);
+        return OcctFilletBuilder.Build(fillet, filletBase, settings, BuildCancellation, message => Warn(fillet, message));
     }
 
     /// <summary>
