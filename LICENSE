@@ -1,0 +1,109 @@
+AvaloniaCadEditor — Proprietary Source-Available License
+
+Copyright (c) 2026 Vinicius Fortes. All rights reserved.
+
+This repository is published so that its source can be read and the program
+can be run for personal use. It is NOT open source, and no right to use it
+is granted except as written below.
+
+1. DEFINITIONS
+
+   "Software" means everything in this repository and its history: source
+   code, object code, build files, documentation, scenes, parts, prompts,
+   tests, fixtures, images and any other material.
+
+   "You" means any person or entity that accesses the Software.
+
+2. OWNERSHIP
+
+   The Software is the exclusive property of the copyright holder and is
+   protected by copyright law, including Brazilian Law No. 9.610/1998 and
+   Law No. 9.609/1998, and by international treaties. This license does not
+   transfer ownership of any part of the Software.
+
+3. THE ONLY PERMISSIONS GRANTED
+
+   a) You may view the Software through the GitHub website.
+
+   b) You may clone or download the Software, build it and run it on your
+      own computers, for your own personal and non-commercial purposes
+      only, such as learning or evaluating it. You may keep the copies this
+      requires, but only for as long as you use the Software under this
+      permission. This permission is personal: it does not extend to your
+      employer, clients or anyone else.
+
+   Running the Software does not allow anything listed in section 4.
+
+   If the GitHub Terms of Service grant you the right to view or fork this
+   repository on GitHub, you may do so only to the extent those terms
+   require. A fork grants you no rights beyond those in this license.
+
+4. RESTRICTIONS
+
+   Without prior written permission signed by the copyright holder, you may
+   NOT, in whole or in part, directly or indirectly:
+
+   a) copy, clone, download or store the Software, except as allowed in
+      section 3;
+   b) build, run or install the Software for any commercial purpose, for an
+      employer or client, or on behalf of anyone else;
+   c) modify, translate, adapt or create derivative works of the Software;
+   d) distribute, publish, sublicense, sell, rent, lend or otherwise make the
+      Software available to anyone else;
+   e) use the Software, or any idea, design, algorithm, structure or code
+      taken from it, in any product, service or project, whether commercial
+      or non-commercial;
+   f) offer the Software, or anything derived from it, as a hosted service;
+   g) use the Software to train, fine-tune, evaluate or prompt any machine
+      learning or artificial intelligence model, or include it in any
+      dataset;
+   h) scrape, index or mirror the Software with automated tools, except for
+      search engines that only index it for search;
+   i) remove, change or hide this license or any copyright notice.
+
+5. NO OTHER RIGHTS
+
+   Everything not expressly allowed in section 3 is forbidden. The things
+   you make with the Software, such as scenes and exported models, are
+   yours, but the Software itself is not. No license is
+   granted by implication, estoppel or otherwise, including any patent or
+   trademark license. Being able to access the Software does not mean you
+   are allowed to use it.
+
+6. CONTRIBUTIONS
+
+   Pull requests, patches and other contributions are not accepted unless a
+   separate written agreement says otherwise.
+
+7. TERMINATION
+
+   Any breach of this license ends your permission under section 3
+   immediately and without notice. Section 3 permits nothing after that. You must then delete every copy of the
+   Software in your possession. The copyright holder keeps all legal
+   remedies, including damages and injunctive relief.
+
+8. THIRD-PARTY COMPONENTS
+
+   The Software refers to third-party packages, such as Avalonia, Roslyn,
+   Silk.NET and Open CASCADE Technology through OcctNet.Wrapper. Those
+   packages are not part of the Software and are governed by their own
+   licenses. This license does not restrict any right those licenses give
+   you over those packages.
+
+9. NO WARRANTY
+
+   THE SOFTWARE IS MADE AVAILABLE "AS IS", WITHOUT WARRANTY OF ANY KIND,
+   EXPRESS OR IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR
+   PURPOSE AND NON-INFRINGEMENT. IN NO EVENT SHALL THE COPYRIGHT HOLDER BE
+   LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING FROM OR IN
+   CONNECTION WITH THE SOFTWARE.
+
+10. GOVERNING LAW
+
+   This license is governed by the laws of the Federative Republic of
+   Brazil. Any dispute will be settled by the courts of Brazil.
+
+11. PERMISSIONS
+
+   To ask for any permission beyond section 3, including a commercial
+   license, contact the copyright holder through GitHub (@iniciusv).
