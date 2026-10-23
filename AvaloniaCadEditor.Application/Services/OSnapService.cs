@@ -9,6 +9,15 @@ public class OSnapService : IOSnapService
 {
     private readonly IGeometryEngine _geometryEngine;
 
+    /// <summary>
+    /// Desenhando, uma ponta de linha do esboço a menos desta fração da tolerância ganha das referências do
+    /// sólido, mesmo que um canto ou ponto médio dele esteja mais perto do cursor. Sem isso, fechar uma região
+    /// perto da borda de um sólido falhava: o último clique ia para o sólido, não para o ponto inicial, e o
+    /// contorno ficava aberto. É só metade da tolerância para que uma referência um pouco mais afastada da
+    /// ponta continue alcançável.
+    /// </summary>
+    private const double OwnEndpointPriorityFraction = 0.5;
+
     public bool IsEnabled { get; set; } = true;
     public OsnapSettings Settings { get; } = new OsnapSettings();
 
@@ -35,6 +44,9 @@ public class OSnapService : IOSnapService
             }
         }
 
+        bool ownEndpointNearby = false;
+        double ownEndpointPriority = Settings.SnapTolerance * OwnEndpointPriorityFraction;
+
         foreach (var entity in sketch.Entities)
         {
             var snapPoints = _geometryEngine.GetSnapPoints(entity, referencePoint);
@@ -44,6 +56,8 @@ public class OSnapService : IOSnapService
 
                 var pt = entity.Plane.ToWorldSpace(localPt.Point);
                 var dist = cursor.DistanceTo(pt);
+                if (localPt.Type == SnapPointType.Endpoint && dist <= ownEndpointPriority)
+                    ownEndpointNearby = true;
                 if (dist < minDistance)
                 {
                     minDistance = dist;
@@ -54,8 +68,10 @@ public class OSnapService : IOSnapService
 
         if (solidSnapOnPlaneOnly)
         {
-            var references = planeReferences
-                ?? (solidMesh != null ? PlaneSection.Compute(solidMesh, sketch.Plane) : null);
+            // Ponta do próprio esboço perto do cursor: as referências do sólido nem entram na disputa.
+            var references = ownEndpointNearby
+                ? null
+                : planeReferences ?? (solidMesh != null ? PlaneSection.Compute(solidMesh, sketch.Plane) : null);
             if (references != null)
             {
                 foreach (var pt in PlaneReferenceSnapPoints(references, sketch.Plane))

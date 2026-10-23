@@ -110,6 +110,7 @@ Propriedades comuns a TODAS as features (herdadas de FeatureBase):
   double Radius { get; set; }
   FilletMode Mode { get; set; }
   bool ApplyToAllEdges { get; set; }
+  bool SkipHoleEdges { get; set; }
   IEnumerable<IFeature> Dependencies { get; }
   void AddEdge(EdgeReference edge)
   void AddFace(FaceReference face)
@@ -187,6 +188,7 @@ Propriedades comuns a TODAS as features (herdadas de FeatureBase):
   static Placement Placement.RotationAbout(Point3D pivot, Vector3D axis, double degrees)
   static Placement Placement.Rotation(Vector3D axis, double degrees)
   static Placement Placement.Mirror(Point3D pointOnPlane, Vector3D normal)
+  static Placement Placement.FromAxes(Vector3D x, Vector3D y, Vector3D z, Vector3D translation)
   static Placement Placement.MirrorX(double atX = 0)
   static Placement Placement.MirrorY(double atY = 0)
   static Placement Placement.MirrorZ(double atZ = 0)
@@ -271,6 +273,8 @@ Métodos globais disponíveis no código da cena:
 - NÃO use Console, System.IO, rede, threads, reflexão ou qualquer tipo de I/O.
 - Todo número decimal usa ponto ('.'), nunca vírgula.
 - Nomes de variáveis são únicos, curtos e em snake_case (ex.: box_a1, hole_b2, fillet_c3).
+- FilletFeature com ApplyToAllEdges = true depois dos furos também chanfra/arredonda a boca de cada furo
+  (escareado). Furo de parafuso fica com a boca viva: use SkipHoleEdges = true.
 - SÓLIDOS RASTREÁVEIS POR NOME: variáveis, const, arrays, laços e funções locais podem ser usados
   para CALCULAR valores (posições, diâmetros, passos), mas cada sólido (BoxFeature, CylinderFeature,
   ConeFeature, PrismFeature, SweepFeature, ExtrudeFeature, FilletFeature, BooleanFeature...) deve ser criado numa

@@ -377,18 +377,8 @@ public static class FeatureCodeGenerator
             }
         }
 
-        if (sketch != null && !(profile is FaceProfile || profile is ParametricBoxFace || profile is ParametricCylinderFace))
-        {
-            foreach (var entityId in profile.SourceEntityIds)
-            {
-                var entity = sketch.Entities.FirstOrDefault(e => e.Id == entityId);
-                if (entity != null)
-                {
-                    sketch.RemoveEntity(entity);
-                }
-            }
-        }
-
+        // As linhas da região ficam no esboço: dá para extrudar a mesma região de novo (outra altura,
+        // outro sentido) ou reaproveitar o contorno sem redesenhá-lo.
         return RoslynCadScriptOptimizer.OptimizeAndFormat(sb.ToString());
     }
 

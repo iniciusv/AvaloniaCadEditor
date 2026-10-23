@@ -46,6 +46,8 @@ a IA ou em `~/.claude/plans/`, onde se perdem.
 | 2026-10-17 | [Projetar face/volume como referência do esboço (+ desligar chanfros/fillets)](planos/2026-10-17-projetar-referencias-esboco.md) | Em andamento |
 | 2026-10-18 | [Skills do harness: modos de trabalho que se ligam e desligam (questionar, revisar)](planos/2026-10-18-skills-do-harness.md) | Implementado (v1), falta medir com mais modelos |
 | 2026-10-19 | [Referencial da peça isolada (H) para qualquer rotação: cotas em peças "deitadas"](planos/2026-10-19-referencial-qualquer-rotacao.md) | Implementado (v1), falta a verificação manual na janela |
+| 2026-10-19 | [Fixação do tubo travessa nos carrinhos Z (garfo em U)](planos/2026-10-19-fixacao-tubo-carrinhos-z.md) | Implementado (protótipo v1), falta imprimir e montar |
+| 2026-10-21 | [Esboço 2D como código: uma aba temporária por plano de trabalho](planos/2026-10-21-esboco-como-codigo.md) | Planejado |
 | 2026-10-21 | [Chanfro e arredondamento em arcos: um corte por arco, não por segmento (+ furos sem chanfro)](planos/2026-10-21-chanfro-em-arcos.md) | Implementado (v1), falta medir no app |
 
 ### Histórico (planos do modo de planejamento do Claude Code)

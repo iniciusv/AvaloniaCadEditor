@@ -108,8 +108,8 @@ var extrusaoSobTrilhoX = Add(extrusaoSobTrilhoXPeca with { Comprimento = 208 }, 
 // neles) para cima e para baixo; os trilhos ficam presos na estrutura da máquina. Cada carrinho fica
 // na lateral externa (em X) da sua extrusão, alinhado à ponta -Y dela, com o topo (face de fixação)
 // voltado para o perfil e o trilho para fora.
-// As peças que prendem o carrinho ao tubo travessa ainda são modeladas fora do software; o vão que elas
-// ocupam entre a face externa da extrusão Y e o topo do carrinho é espessuraFixacaoCarrinhoZ.
+// O carrinho prende no tubo travessa pela fixacao_carrinho_z_tubo_a/b (depois do tubo, mais abaixo); o vão
+// entre a face externa da extrusão Y e o topo do carrinho é espessuraFixacaoCarrinhoZ.
 // carrinhoZPeca e folgaCarrinhoZAbaixoExtrusao são declarados no topo (referência de altura).
 var trilhoZPeca = new TrilhoHgr15(Comprimento: 300);
 var zBaseExtrusoesY = zBaseTrilhosY - extrusaoSobTrilhoYPeca.Altura;
@@ -388,8 +388,8 @@ var blocoFicacaoBeltVaoCorreia = Add(blocoFicacaoBeltVaoCorreiaPeca, at: Placeme
 var espacadorTuboTravessaPeca = new EspacadorTuboTravessa(Largura: extrusaoSobTrilhoYPeca.Largura, Profundidade: 50, Altura: 10);
 var zTopoTuboTravessa = zBaseExtrusoesY - espacadorTuboTravessaPeca.Altura;
 // Em X passa um pouco além da face externa de cada extrusão Y; do fim dele ao topo do carrinho Z sobra
-// vaoTuboCarrinhoZ, que a peça de fixação do carrinho no tubo precisa vencer. Os furos que prendem o tubo
-// nas extrusões ainda vão ser refeitos e não estão modelados.
+// vaoTuboCarrinhoZ, que a fixacao_carrinho_z_tubo_a/b vence. Os furos que prendem o tubo nas extrusões
+// ainda vão ser refeitos e não estão modelados.
 var tuboTravessaPeca = new TuboRetangular(Comprimento: 280, Largura: espacadorTuboTravessaPeca.Profundidade, Altura: 30);
 var xCentroGantry = (cantoExtrusaoYA.X + cantoExtrusaoYB.X) / 2;
 var vaoTuboCarrinhoZ = (cantoExtrusaoYB.X - cantoExtrusaoYA.X + 2 * espessuraFixacaoCarrinhoZ - tuboTravessaPeca.Comprimento) / 2;
@@ -399,6 +399,16 @@ var tuboTravessa = Add(tuboTravessaPeca, at: Placement.At(xCentroGantry - tuboTr
 // Um espaçador sob cada extrusão Y, na mesma faixa em Y do tubo (a ponta da extrusão B fica 0,45 mm à frente).
 var espacadorTuboTravessaA = Add(espacadorTuboTravessaPeca, at: Placement.At(cantoExtrusaoYA.X, yPontaExtrusoesY, zTopoTuboTravessa), name: "espacador_tubo_travessa_a", color: "#00CC6A");
 var espacadorTuboTravessaB = Add(espacadorTuboTravessaPeca, at: Placement.At(cantoExtrusaoYB.X - espacadorTuboTravessaPeca.Largura, yPontaExtrusoesY, zTopoTuboTravessa), name: "espacador_tubo_travessa_b", color: "#00CC6A");
+// --- Fixação do tubo travessa nos carrinhos Z: garfo em U impresso, um por lado ---
+// A placa vai no topo do carrinho (4 M4) e as bochechas abraçam a ponta do tubo, presas por 2 M5 passantes.
+// A origem da peça é o canto do carrinho na face de fixação, na ponta −Y e na ponta de baixo: no carrinho A
+// o X local (largura) aponta para +Y, no B para −Y, por isso o canto do B é o X local = Largura. O lado B
+// é a peça espelhada em X. O tubo é um só e a ponta da extrusão B fica 0,45 mm à frente (cantoExtrusaoYA/B):
+// cada lado mede o próprio deslocamento do tubo em Y.
+var cantoFixacaoCarrinhoZA = carrinhoZA.ToWorld(new Point3D(0, 0, carrinhoZPeca.Altura));
+var cantoFixacaoCarrinhoZB = carrinhoZB.ToWorld(new Point3D(carrinhoZPeca.Largura, 0, carrinhoZPeca.Altura));
+var cantoBaseTuboTravessa = tuboTravessa.ToWorld(new Point3D(tuboTravessaPeca.Largura, 0, 0));
+var fixacaoCarrinhoZTuboPeca = new FixacaoCarrinhoZTubo(VaoTubo: vaoTuboCarrinhoZ, DeslocamentoTuboY: cantoBaseTuboTravessa.Y - cantoFixacaoCarrinhoZA.Y, AlturaBaseTubo: cantoBaseTuboTravessa.Z - cantoFixacaoCarrinhoZA.Z, LarguraTubo: tuboTravessaPeca.Largura, AlturaTubo: tuboTravessaPeca.Altura, LarguraCarrinho: carrinhoZPeca.Largura, ComprimentoCarrinho: carrinhoZPeca.Comprimento);
 // --- Motores NEMA17 do eixo Y (movem carrinhoYA e carrinhoYB), em pé ao lado de cada extrusão Y ---
 // Cada motor fica no vão entre a extrusão Y e a estrutura, com o eixo para cima, atrás do trilho Z e
 // encostado (com folga) na face externa da extrusão Y. Em Z a base fica logo acima do tubo travessa e do
@@ -496,3 +506,9 @@ var yInicioChapaMdf = centroBico.Y - profundidadeMesa / 2;
 var yFimChapaMdf = Math.Min(centroBico.Y + profundidadeMesa / 2, yFaceTrasFrontais - extrusaoTravessaXPeca.Largura);
 var chapa_mdf_mesa = new BoxFeature(new Point3D(xFaceExternaBaseA, yInicioChapaMdf, zTopoBase), xFaceExternaBaseB - xFaceExternaBaseA, yFimChapaMdf - yInicioChapaMdf, espessuraChapaMdf) { Name = "chapa_mdf_mesa", Color = "#A67B50" };
 AddFeature(chapa_mdf_mesa);
+// --- Espaçador: bloco 6 x 20 x 20 com duas abas de 3 mm nas bordas da face −X e furo central em X ---
+// A face +X fica encostada na extrusao_2020_trilho_z_b (X = 180,11); o espaçador cresce dela para −X.
+var espacadorPeca = new Espacador();
+var espacador = Add(espacadorPeca, at: Placement.At(180.11328 - espacadorPeca.EspessuraAba - espacadorPeca.Espessura, -205.5, 20), name: "espacador");
+// --- Suporte em C (abas de 10 x 6 com dois furos Ø4 cada, alma de 5 mm no lado +X) ---
+var suporteC = Add(new SuporteC(), at: Placement.At(142.1118, -212.5, 19.6), name: "suporte_c");
