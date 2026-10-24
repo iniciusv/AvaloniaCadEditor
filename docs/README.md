@@ -49,6 +49,7 @@ a IA ou em `~/.claude/plans/`, onde se perdem.
 | 2026-10-19 | [Fixação do tubo travessa nos carrinhos Z (garfo em U)](planos/2026-10-19-fixacao-tubo-carrinhos-z.md) | Implementado (protótipo v1), falta imprimir e montar |
 | 2026-10-21 | [Esboço 2D como código: uma aba temporária por plano de trabalho](planos/2026-10-21-esboco-como-codigo.md) | Planejado |
 | 2026-10-21 | [Chanfro e arredondamento em arcos: um corte por arco, não por segmento (+ furos sem chanfro)](planos/2026-10-21-chanfro-em-arcos.md) | Implementado (v1), falta medir no app |
+| 2026-10-23 | [Exportar a cena para o SketchUp (COLLADA `.dae`, componentes por peça)](planos/2026-10-23-exportar-collada-sketchup.md) | Proposto |
 
 ### Histórico (planos do modo de planejamento do Claude Code)
 

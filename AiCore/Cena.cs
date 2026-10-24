@@ -511,4 +511,7 @@ AddFeature(chapa_mdf_mesa);
 var espacadorPeca = new Espacador();
 var espacador = Add(espacadorPeca, at: Placement.At(180.11328 - espacadorPeca.EspessuraAba - espacadorPeca.Espessura, -205.5, 20), name: "espacador");
 // --- Suporte em C (abas de 10 x 6 com dois furos Ø4 cada, alma de 5 mm no lado +X) ---
-var suporteC = Add(new SuporteC(), at: Placement.At(142.1118, -212.5, 19.6), name: "suporte_c");
+// A origem local fica no centro da abertura do C (meio da altura): aumentar a Altura engrossa as abas
+// igualmente para +Z e para −Z, sem mexer no vão interno nem nos furos. O centro fica 16 mm (meia altura
+// padrão de 32) acima de onde era a base da peça (z = 35,6), então o suporte não sai do lugar.
+var suporte_c = Add(new SuporteC(), at: Placement.At(142.1118, -212.5, 51.6), name: "suporte_c");
