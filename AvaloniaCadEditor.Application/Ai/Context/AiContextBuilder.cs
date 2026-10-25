@@ -107,7 +107,7 @@ public sealed class AiContextBuilder : IAiContextBuilder
 
         var partSummaries = index.PartTypes
             .Where(t => !scope.Contains(t.FilePath))
-            .Select(FormatPartSignature)
+            .Select(t => FormatPartSignature(t, index.Find(t.FilePath)?.Text))
             .ToList();
 
         return new CadScriptContext(
@@ -170,8 +170,15 @@ public sealed class AiContextBuilder : IAiContextBuilder
         return text;
     }
 
-    /// <summary>Ex.: "Placa(double Largura, double Espessura = 5)".</summary>
-    private static string FormatPartSignature(PartTypeInfo type) =>
-        $"{type.Name}({string.Join(", ", type.Parameters.Select(p =>
+    /// <summary>
+    /// Ex.: "Placa(double Largura, double Espessura = 5)", e na linha de baixo o resumo do comentário
+    /// da peça (<see cref="PartDocSummary"/>) — o que ela é e onde fica a origem local dela.
+    /// </summary>
+    private static string FormatPartSignature(PartTypeInfo type, string? source)
+    {
+        string signature = $"{type.Name}({string.Join(", ", type.Parameters.Select(p =>
             p.DefaultValue == null ? $"{p.TypeName} {p.Name}" : $"{p.TypeName} {p.Name} = {p.DefaultValue}"))})";
+        string? summary = source == null ? null : PartDocSummary.Extract(source, type.Name);
+        return summary == null ? signature : $"{signature}\n    — {summary}";
+    }
 }

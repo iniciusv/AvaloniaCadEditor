@@ -1,9 +1,11 @@
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using AvaloniaCadEditor.Application.Ai.Context;
 using AvaloniaCadEditor.Application.Ai.Recording;
 using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.Scripting;
+using AvaloniaCadEditor.Harness.Skills;
 
 namespace AvaloniaCadEditor.PromptEval;
 
@@ -24,7 +26,8 @@ internal static class CaseLoader
     {
         PropertyNameCaseInsensitive = true,
         ReadCommentHandling = JsonCommentHandling.Skip,
-        AllowTrailingCommas = true
+        AllowTrailingCommas = true,
+        Converters = { new JsonStringEnumConverter() }
     };
 
     /// <summary>O <c>case.json</c> de uma fixture.</summary>
@@ -44,6 +47,15 @@ internal static class CaseLoader
 
         /// <summary>Arquivos fixados no contexto (vão com o código completo, não só a assinatura).</summary>
         public List<string>? Pin { get; set; }
+
+        /// <summary>
+        /// Pasta de outra fixture cujo <c>files/</c> este caso usa (relativa a esta, ex.: "../motor-z-gantry"):
+        /// variantes do mesmo pedido sem duplicar a cena.
+        /// </summary>
+        public string? FilesFrom { get; set; }
+
+        /// <summary>Skills do harness ligadas neste caso (ids do <see cref="SkillRegistry"/>).</summary>
+        public List<string>? Skills { get; set; }
 
         public CaseChecks Checks { get; set; } = new();
     }
@@ -88,7 +100,18 @@ internal static class CaseLoader
         var spec = JsonSerializer.Deserialize<FixtureSpec>(File.ReadAllText(Path.Combine(dir, FixtureFile)), JsonOptions)
                    ?? throw new InvalidDataException($"{name}: case.json vazio.");
 
-        var documents = ReadFiles(Path.Combine(dir, "files"));
+        string filesDir = spec.FilesFrom == null ? dir : Path.GetFullPath(Path.Combine(dir, spec.FilesFrom));
+        if (spec.FilesFrom != null && !Directory.Exists(Path.Combine(filesDir, "files")))
+        {
+            throw new InvalidDataException($"{name}: não há files/ em {filesDir}.");
+        }
+        var unknownSkill = (spec.Skills ?? new()).FirstOrDefault(id => SkillRegistry.Default().Find(id) == null);
+        if (unknownSkill != null)
+        {
+            throw new InvalidDataException($"{name}: skill desconhecida '{unknownSkill}'. Existentes: {string.Join(", ", SkillRegistry.Default().All.Select(s => s.Id))}.");
+        }
+
+        var documents = ReadFiles(Path.Combine(filesDir, "files"));
         if (!documents.Any(d => d.FilePath.Equals(spec.EntryFile, StringComparison.OrdinalIgnoreCase)))
         {
             documents.Insert(0, new ScriptDocument(spec.EntryFile, string.Empty));
@@ -109,7 +132,7 @@ internal static class CaseLoader
         {
             Rounds = { new RecordedRound { Instruction = spec.Instruction, Context = RecordedContext.From(context) } }
         };
-        return new EvalCase(name, "fixture", spec.Description, record, spec.Checks);
+        return new EvalCase(name, "fixture", spec.Description, record, spec.Checks, spec.Skills);
     }
 
     private static List<ScriptDocument> ReadFiles(string root)

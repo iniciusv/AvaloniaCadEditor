@@ -219,7 +219,7 @@ public class DraftingAnalyzerTests
     }
 
     [Fact]
-    public async Task BlocoFixacaoBelt_Front_FurosDeFixacaoEPressaoAgrupados()
+    public async Task BlocoFixacaoBelt_Front_FurosDeFixacaoAgrupados()
     {
         var project = SceneProject.Load(AiCoreFolder());
         var result = await new RoslynSceneEvaluator().EvaluateAsync(project.ReadDocuments());
@@ -234,11 +234,11 @@ public class DraftingAnalyzerTests
         sheet.PartMin.U.Should().BeApproximately(0, 1e-3, "a origem do referencial é o canto mínimo");
         sheet.PartMin.V.Should().BeApproximately(0, 1e-3);
         sheet.Entities.OfType<ViewCircle>().Select(c => c.SourceName)
-            .Should().Contain(new[] { "furo_fixacao", "furo_fixacao_espelhado", "furo_pressao_correia", "furo_pressao_correia_espelhado" });
-        // furo_fixacao é coaxial com o rebaixo_fixacao: uma chamada só com os dois diâmetros. O
-        // furo_pressao_correia tem o mesmo Ø3,4 mas é sozinho: chamada própria.
+            .Should().Contain(new[] { "furo_fixacao", "furo_fixacao_espelhado" });
+        // furo_fixacao é coaxial com o rebaixo_fixacao: uma chamada só com os dois diâmetros. A
+        // correia é presa pela GarraCorreia do topo, sem parafuso de pressão: nenhum Ø3,4 sozinho.
         sheet.Dimensions.Should().Contain(d => d.Kind == DimensionKind.Diameter && d.Text == "2× Ø3,4 / Ø7,2");
-        sheet.Dimensions.Should().Contain(d => d.Kind == DimensionKind.Diameter && d.Text == "2× Ø3,4");
+        sheet.Dimensions.Should().NotContain(d => d.Kind == DimensionKind.Diameter && d.Text == "2× Ø3,4");
         // Simétrica: pares cotados entre si, menos fileiras que a cotagem a partir da borda (eram 8).
         sheet.Dimensions.Where(d => d.Side == DimensionSide.Below).Select(d => d.LinePosition).Distinct().Count()
             .Should().BeLessThan(8);
@@ -249,11 +249,9 @@ public class DraftingAnalyzerTests
         double meio = (sheet.PartMin.U + sheet.PartMax.U) / 2;
         sheet.Dimensions.Where(d => d.Kind == DimensionKind.Horizontal && !d.Text.StartsWith("Ø") && !d.Text.Contains('×'))
             .Should().NotContain(d => System.Math.Abs(d.To.U - meio) < 1e-3);
-        // O alojamento hexagonal é cotado pela largura (a chave da porca M3).
-        sheet.Dimensions.Should().Contain(d => d.Text == "2× 5,83");
-
         // Na vista lateral os furos espelhados se sobrepõem: uma posição só, sem "2×".
         var lateral = DraftingAnalyzer.Analyze(DraftingInput.ForIsolated(bloco, frame, positions, StandardView.Right)!)!;
-        lateral.Dimensions.Should().Contain(d => d.Text == "Ø6");
+        lateral.Dimensions.Should().NotBeEmpty();
+        lateral.Dimensions.Should().NotContain(d => d.Text.Contains('×'));
     }
 }

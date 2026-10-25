@@ -150,7 +150,7 @@ public class MirrorToolTests
 
         vm.ScriptEditor.GeneratedCSharpCode.Should()
             .Contain("var chapa = Add(new Chapa(), at: Placement.At(100, 0, 0), name: \"chapa\");")
-            .And.Contain("Add(new Chapa(), at: Placement.At(100, 0, 0).Then(Placement.MirrorY(atY: 20)));");
+            .And.Contain("var chapa_copia1 = Add(new Chapa(), at: Placement.At(100, 0, 0).Then(Placement.MirrorY(atY: 20)), name: \"chapa_copia1\");");
     }
 
     [Fact]

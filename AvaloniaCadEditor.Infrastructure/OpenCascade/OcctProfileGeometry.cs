@@ -30,6 +30,17 @@ internal static class OcctProfileGeometry
         else
             u = new Vector3D(1, 0, 0);
 
+        return RevolveProfile(points2D, origin, dir, u, 2.0 * Math.PI);
+    }
+
+    /// <summary>
+    /// Como a revolução de 360°, mas o perfil começa na direção <paramref name="start"/> (perpendicular ao
+    /// eixo) e gira <paramref name="angle"/> radianos em torno de <paramref name="dir"/>, pela regra da
+    /// mão direita: um setor de anel, para o chanfro de um arco que não é um círculo inteiro.
+    /// </summary>
+    public static OcctShape RevolveProfile(IReadOnlyList<(double r, double z)> points2D, Point3D origin, Vector3D dir, Vector3D start, double angle)
+    {
+        var u = start;
         double uLen = Math.Sqrt(u.X * u.X + u.Y * u.Y + u.Z * u.Z);
         u = new Vector3D(u.X / uLen, u.Y / uLen, u.Z / uLen);
 
@@ -98,6 +109,6 @@ internal static class OcctProfileGeometry
             new OcctVector3d(dir.X, dir.Y, dir.Z)
         );
 
-        return face.Revolve(axis, 2.0 * Math.PI);
+        return face.Revolve(axis, angle);
     }
 }

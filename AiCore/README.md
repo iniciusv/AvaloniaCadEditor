@@ -12,8 +12,9 @@ JsonOperator para ser copiado para outros projetos.
 |---|---|
 | `Abstractions\IAiProtocol.cs` | Contrato `IAiProtocol<TContext, TResult>` + `ProtocolParseResult<TResult>` |
 | `Models\ChatMessage.cs` | Modelo de mensagem (POCO puro, sem UI/Mvvm) |
-| `Models\LlmOptions.cs` | Configuração da chamada (ApiKey, BaseUrl, Model, Temperature, etc.) |
-| `Services\LlmClient.cs` | Cliente HTTP compatível com OpenAI (`/v1/chat/completions`) |
+| `Models\LlmOptions.cs` | Configuração da chamada (ApiKey, BaseUrl, Model, Temperature, MaxTokens, Thinking, RequestTimeout) |
+| `Services\LlmClient.cs` | Cliente HTTP compatível com OpenAI (`/v1/chat/completions`, `/v1/models`) |
+| `Services\LlmResponseParser.cs` | Leitura tolerante da resposta: `reasoning_content`, `reasoning` ou `<think>` no conteúdo |
 
 ## Como usar
 
@@ -48,6 +49,48 @@ Console.WriteLine(result.ReasoningContent);  // raciocínio (se houver)
 Console.WriteLine(result.PromptTokens);      // tokens de entrada
 Console.WriteLine(result.CompletionTokens);  // tokens de saída
 ```
+
+### Servidor local (Ollama, LM Studio, llama.cpp)
+
+Qualquer servidor OpenAI-compatível serve. Sem chave, a requisição vai sem `Authorization`; com
+`MaxTokens = 0`, vale o limite do servidor; e `ThinkingControl.None` não manda o campo `thinking`,
+que é da DeepSeek.
+
+```csharp
+var local = new LlmOptions
+{
+    BaseUrl = "http://localhost:11434/v1",   // LM Studio: 1234, llama.cpp: 8080
+    Model = "qwen3:8b",
+    ApiKey = "",
+    ApiKeyRequired = false,
+    MaxTokens = 0,
+    Thinking = ThinkingControl.None,
+    RequestTimeout = TimeSpan.FromMinutes(30)
+};
+
+IReadOnlyList<string> modelos = await client.ListModelsAsync(local);
+LlmResult resposta = await client.SendConversationAsync(messages, local);
+```
+
+### Ferramentas (function calling)
+
+O cliente só transporta as ferramentas, sem executar nada. Ele manda as `tools` na requisição
+e devolve as chamadas pedidas em `LlmResult.ToolCalls`. Quem executa é você: devolva cada resultado
+numa mensagem `role = "tool"` com o `ToolCallId` da chamada e reenvie a conversa.
+
+```csharp
+var tools = new[] { new ToolDefinition("get_view", "Vista em texto.", schema) };
+var r = await client.SendConversationAsync(messages, options, tools: tools);
+if (r.FinishReason == "tool_calls")
+{
+    messages.Add(new ChatMessage { Role = "assistant", Content = r.Content, ReasoningContent = r.ReasoningContent, ToolCalls = r.ToolCalls });
+    foreach (var call in r.ToolCalls)
+        messages.Add(new ChatMessage { Role = "tool", ToolCallId = call.Id, Content = Execute(call) });
+}
+```
+
+Com `tools` na DeepSeek, o `reasoning_content` de todos os turnos anteriores é reenviado,
+porque sem ele a API responde 400. O cliente cuida disso.
 
 ## Protocolos
 

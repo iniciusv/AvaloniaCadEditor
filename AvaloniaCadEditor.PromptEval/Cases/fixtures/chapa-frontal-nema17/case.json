@@ -1,0 +1,24 @@
+{
+  // Peça nova a partir de uma descrição solta, com dois encaixes: a malha de 31 mm dos furos M3 do
+  // NEMA17 e o ressalto de centragem (Ø22 × 2 mm) que tem que passar com folga. O motor está em
+  // (50, -30, 0), de pé: face da frente em z = 40, furos em (50 ± 15,5; -30 ± 15,5).
+  // Montada: a chapa encosta na face (min z = 40), os 4 eixos e o centro ficam vazios, e um ponto
+  // a 11,3 mm do centro (o ressalto tem raio 11) também — é a folga. Material a 19 mm do centro.
+  // Erros típicos: furo central do tamanho exato do ressalto (sem folga), chapa em cima do ressalto (z 42).
+  "description": "Peça nova com encaixe: chapa frontal do NEMA17 (furos M3 + passagem do ressalto).",
+  "instruction": "Faz uma chapinha de fixação pro motor_x (NEMA17). Ela encosta na face da frente do motor, onde sai o eixo, com os 4 furos de fixação dele e um furo no meio pro ressalto e o eixo passarem com uma folguinha. Uns 5 mm de espessura. Peça nova, já montada no motor; instância chapa_motor.",
+  "checks": {
+    "expectNewFiles": ["Pecas/*.cs"],
+    "solidBounds": [
+      { "name": "chapa_motor", "min": [null, null, 40], "max": [null, null, null], "tolerance": 0.1 }
+    ],
+    "solidPoints": [
+      {
+        "name": "chapa_motor",
+        "outside": [[65.5, -14.5, 41.5], [34.5, -14.5, 41.5], [65.5, -45.5, 41.5], [34.5, -45.5, 41.5],
+                    [50, -30, 41.5], [61.3, -30, 41], [50, -18.7, 41]],
+        "inside": [[50, -11, 41.5], [69, -30, 41.5], [31, -30, 41.5], [50, -49, 41.5]]
+      }
+    ]
+  }
+}

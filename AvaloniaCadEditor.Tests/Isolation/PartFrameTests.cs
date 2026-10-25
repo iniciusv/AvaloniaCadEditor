@@ -1,3 +1,4 @@
+using System;
 using System.Linq;
 using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Application.Services;
@@ -109,11 +110,114 @@ public class PartFrameTests
     }
 
     [Fact]
-    public void Resolve_RotacaoForaDeZ_SemReferencial()
+    public void Resolve_RotacaoEmX_ReferencialNosEixosDaPeca()
     {
-        var instancia = new PartInstance<PecaDeTeste>(new PecaDeTeste(), Corpo(), Placement.Rotation(Vector3D.UnitX, 90));
+        var instancia = new PartInstance<PecaDeTeste>(new PecaDeTeste(), Corpo(), Placement.Rotation(Vector3D.UnitX, 90))
+        {
+            Name = "peca"
+        };
 
-        PartFrameResolver.Resolve(instancia, WorldPositions(instancia)).Should().BeNull();
+        var frame = PartFrameResolver.Resolve(instancia, WorldPositions(instancia));
+
+        frame.Should().NotBeNull();
+        // Giro de 90° em X: Y local vira +Z do mundo, Z local vira -Y do mundo.
+        frame!.XAxis.Should().Be(Vector3D.UnitX);
+        frame.YAxis.Should().Be(Vector3D.UnitZ);
+        frame.ZAxis.Should().Be(new Vector3D(0, -1, 0));
+
+        var noReferencial = instancia.GetVertices().Select(frame.ToFrame).ToList();
+        noReferencial.Min(p => p.X).Should().BeApproximately(0, 1e-6);
+        noReferencial.Min(p => p.Y).Should().BeApproximately(0, 1e-6);
+        noReferencial.Min(p => p.Z).Should().BeApproximately(0, 1e-6);
+        noReferencial.Max(p => p.X).Should().BeApproximately(40, 1e-6);
+        noReferencial.Max(p => p.Y).Should().BeApproximately(16, 1e-6);
+        noReferencial.Max(p => p.Z).Should().BeApproximately(17, 1e-6);
+    }
+
+    [Fact]
+    public void Resolve_GiroDoCarrinhoZ_ReferencialNosEixosDaPeca()
+    {
+        // Como carrinho_hgh15_z_b: deitado em X (90°) e depois giro de -90° em Z.
+        var placement = Placement.Rotation(Vector3D.UnitX, 90).Then(Placement.At(5, 0, 26, rotationZDegrees: -90));
+        var instancia = new PartInstance<PecaDeTeste>(new PecaDeTeste(), Corpo(), placement) { Name = "carrinho_hgh15_z_b" };
+
+        var frame = PartFrameResolver.Resolve(instancia, WorldPositions(instancia));
+
+        frame.Should().NotBeNull();
+        frame!.XAxis.Should().Be(new Vector3D(0, -1, 0));
+        frame.YAxis.Should().Be(Vector3D.UnitZ);
+        frame.ZAxis.Should().Be(new Vector3D(-1, 0, 0));
+
+        var noReferencial = instancia.GetVertices().Select(frame.ToFrame).ToList();
+        noReferencial.Min(p => p.X).Should().BeApproximately(0, 1e-6);
+        noReferencial.Min(p => p.Y).Should().BeApproximately(0, 1e-6);
+        noReferencial.Min(p => p.Z).Should().BeApproximately(0, 1e-6);
+        noReferencial.Max(p => p.X).Should().BeApproximately(40, 1e-6);
+        noReferencial.Max(p => p.Y).Should().BeApproximately(16, 1e-6);
+        noReferencial.Max(p => p.Z).Should().BeApproximately(17, 1e-6);
+    }
+
+    [Fact]
+    public void Resolve_GiroQualquerForaDeZ_ReferencialNosEixosDaPecaSemSnap()
+    {
+        var instancia = new PartInstance<PecaDeTeste>(new PecaDeTeste(), Corpo(), Placement.Rotation(Vector3D.UnitX, 37))
+        {
+            Name = "peca"
+        };
+        double rad = 37.0 * Math.PI / 180.0;
+
+        var frame = PartFrameResolver.Resolve(instancia, WorldPositions(instancia));
+
+        frame.Should().NotBeNull();
+        frame!.XAxis.Should().Be(Vector3D.UnitX);
+        frame.YAxis.Should().Be(new Vector3D(0, Math.Cos(rad), Math.Sin(rad)));
+        frame.ZAxis.Should().Be(new Vector3D(0, -Math.Sin(rad), Math.Cos(rad)));
+
+        var noReferencial = instancia.GetVertices().Select(frame.ToFrame).ToList();
+        noReferencial.Min(p => p.X).Should().BeApproximately(0, 1e-6);
+        noReferencial.Min(p => p.Y).Should().BeApproximately(0, 1e-6);
+        noReferencial.Min(p => p.Z).Should().BeApproximately(0, 1e-6);
+        noReferencial.Max(p => p.X).Should().BeApproximately(40, 1e-6);
+        noReferencial.Max(p => p.Y).Should().BeApproximately(16, 1e-6);
+        noReferencial.Max(p => p.Z).Should().BeApproximately(17, 1e-6);
+    }
+
+    [Fact]
+    public void Resolve_Giro180EmX_ReferencialSeguePecaComZParaBaixo()
+    {
+        // Como porca_fuso_z: giro de 180° em X (rotação pura, não espelho) — o referencial acompanha
+        // a peça mesmo com o Z dela virado para baixo no mundo.
+        var instancia = new PartInstance<PecaDeTeste>(new PecaDeTeste(), Corpo(), Placement.Rotation(Vector3D.UnitX, 180))
+        {
+            Name = "porca_fuso_z"
+        };
+
+        var frame = PartFrameResolver.Resolve(instancia, WorldPositions(instancia));
+
+        frame.Should().NotBeNull();
+        frame!.XAxis.Should().Be(Vector3D.UnitX);
+        frame.YAxis.Should().Be(new Vector3D(0, -1, 0));
+        frame.ZAxis.Should().Be(new Vector3D(0, 0, -1));
+    }
+
+    [Fact]
+    public void Resolve_EspelhoQueNaoMantemZ_ReferencialPorXeYComZFechandoABase()
+    {
+        // Espelho pelo plano Y + Z = 0: nem X, nem Y, nem Z da peça ficam alinhados a ±Z do mundo.
+        var placement = Placement.Mirror(Point3D.Origin, new Vector3D(0, 1, 1));
+        var instancia = new PartInstance<PecaDeTeste>(new PecaDeTeste(), Corpo(), placement) { Name = "espelhada_fora_de_z" };
+
+        var frame = PartFrameResolver.Resolve(instancia, WorldPositions(instancia));
+
+        frame.Should().NotBeNull();
+        frame!.XAxis.Should().Be(new Vector3D(1, 0, 0));
+        frame.YAxis.Should().Be(new Vector3D(0, 0, -1));
+        frame.ZAxis.Should().Be(new Vector3D(0, 1, 0));
+
+        var noReferencial = instancia.GetVertices().Select(frame.ToFrame).ToList();
+        noReferencial.Min(p => p.X).Should().BeApproximately(0, 1e-6);
+        noReferencial.Min(p => p.Y).Should().BeApproximately(0, 1e-6);
+        noReferencial.Min(p => p.Z).Should().BeApproximately(0, 1e-6);
     }
 
     [Fact]

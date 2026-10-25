@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\AvaloniaCadEditor.Application\AvaloniaCadEditor.Application.csproj" />
+    <ProjectReference Include="..\AvaloniaCadEditor.Harness\AvaloniaCadEditor.Harness.csproj" />
     <ProjectReference Include="..\AvaloniaCadEditor.Infrastructure\AvaloniaCadEditor.Infrastructure.csproj" />
   </ItemGroup>
 

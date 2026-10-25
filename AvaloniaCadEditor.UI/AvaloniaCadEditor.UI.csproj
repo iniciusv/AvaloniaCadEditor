@@ -33,6 +33,7 @@
     <ProjectReference Include="..\AvaloniaCadEditor.Application\AvaloniaCadEditor.Application.csproj" />
     <ProjectReference Include="..\AvaloniaCadEditor.Domain\AvaloniaCadEditor.Domain.csproj" />
     <ProjectReference Include="..\AvaloniaCadEditor.Drafting\AvaloniaCadEditor.Drafting.csproj" />
+    <ProjectReference Include="..\AvaloniaCadEditor.Harness\AvaloniaCadEditor.Harness.csproj" />
     <ProjectReference Include="..\AvaloniaCadEditor.Infrastructure\AvaloniaCadEditor.Infrastructure.csproj" />
   </ItemGroup>
 

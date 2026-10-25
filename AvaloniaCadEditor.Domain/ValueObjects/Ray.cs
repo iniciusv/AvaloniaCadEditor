@@ -39,9 +39,14 @@ public readonly struct Ray
     /// <summary>
     /// Möller–Trumbore ray-triangle intersection algorithm.
     /// </summary>
-    public bool IntersectTriangle(Vector3 v0, Vector3 v1, Vector3 v2, out float t)
+    public bool IntersectTriangle(Vector3 v0, Vector3 v1, Vector3 v2, out float t) =>
+        IntersectTriangle(v0, v1, v2, out t, out _, out _);
+
+    private bool IntersectTriangle(Vector3 v0, Vector3 v1, Vector3 v2, out float t, out float u, out float v)
     {
         t = 0;
+        u = 0;
+        v = 0;
         Vector3 edge1 = v1 - v0;
         Vector3 edge2 = v2 - v0;
         Vector3 h = Vector3.Cross(Direction, edge2);
@@ -52,13 +57,13 @@ public readonly struct Ray
 
         float f = 1.0f / a;
         Vector3 s = Origin - v0;
-        float u = f * Vector3.Dot(s, h);
+        u = f * Vector3.Dot(s, h);
 
         if (u < 0.0f || u > 1.0f)
             return false;
 
         Vector3 q = Vector3.Cross(s, edge1);
-        float v = f * Vector3.Dot(Direction, q);
+        v = f * Vector3.Dot(Direction, q);
 
         if (v < 0.0f || u + v > 1.0f)
             return false;
@@ -87,23 +92,25 @@ public readonly struct Ray
             Vector3 v1 = new Vector3(mesh.Positions[i1 * 3], mesh.Positions[i1 * 3 + 1], mesh.Positions[i1 * 3 + 2]);
             Vector3 v2 = new Vector3(mesh.Positions[i2 * 3], mesh.Positions[i2 * 3 + 1], mesh.Positions[i2 * 3 + 2]);
 
-            if (IntersectTriangle(v0, v1, v2, out float t))
+            if (IntersectTriangle(v0, v1, v2, out float t, out float u, out float v))
             {
                 if (t > 0 && t < minDistance)
                 {
                     minDistance = t;
 
-                    // Calculate Hit Point
-                    Vector3 hitPos = Origin + Direction * t;
+                    // Ponto pelas coordenadas baricêntricas, não por Origin + Direction·t: em ortho a
+                    // origem fica a ~3·far do alvo e o erro de t tira o ponto do plano da face por
+                    // alguns milésimos, o bastante para o FaceProfile (tolerância 1e-3) não achar a face.
+                    Vector3 edge1 = v1 - v0;
+                    Vector3 edge2 = v2 - v0;
+                    Vector3 hitPos = v0 + u * edge1 + v * edge2;
                     Point3D point = new Point3D(hitPos.X, hitPos.Y, hitPos.Z);
 
                     // Calculate Flat Face Normal (Cross product of edges)
-                    Vector3 edge1 = v1 - v0;
-                    Vector3 edge2 = v2 - v0;
                     Vector3 normalVec = Vector3.Normalize(Vector3.Cross(edge1, edge2));
                     Vector3D normal = new Vector3D(normalVec.X, normalVec.Y, normalVec.Z);
 
-                    bestHit = new RaycastHit(t, point, normal);
+                    bestHit = new RaycastHit(t, point, normal, triangleIndex: i / 3);
                 }
             }
         }

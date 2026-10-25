@@ -5,6 +5,8 @@
              xmlns:vm="clr-namespace:AvaloniaCadEditor.UI.ViewModels"
              xmlns:controls="clr-namespace:AvaloniaCadEditor.UI.Controls"
              xmlns:prompts="clr-namespace:AvaloniaCadEditor.Application.Ai.Prompts;assembly=AvaloniaCadEditor.Application"
+             xmlns:settings="clr-namespace:AvaloniaCadEditor.Domain.Settings;assembly=AvaloniaCadEditor.Domain"
+             xmlns:harness="clr-namespace:AvaloniaCadEditor.UI.ViewModels.Harness"
              xmlns:AvaloniaEdit="https://github.com/avaloniaui/avaloniaedit"
              mc:Ignorable="d" d:DesignWidth="360" d:DesignHeight="640"
              x:Class="AvaloniaCadEditor.UI.Views.AiChatView"
@@ -50,7 +52,7 @@
                             ToolTip.Tip="Gravar a conversa (contexto exato de cada round) para testá-la com outros perfis de prompt"
                             FontSize="12" Padding="6,2" Margin="0,0,4,0" />
                     <Button Grid.Column="3" Content="⚙" Command="{Binding ToggleSettingsCommand}"
-                            ToolTip.Tip="AI settings (API key, model, prompt profile, base URL)"
+                            ToolTip.Tip="AI settings (endpoint profiles, model, prompt profile)"
                             FontSize="12" Padding="6,2" Margin="0,0,4,0" />
                     <Button Grid.Column="4" Content="New chat" Command="{Binding NewConversationCommand}" FontSize="10" Padding="6,2" />
                     <SelectableTextBlock Grid.Row="1" Grid.ColumnSpan="5" Text="{Binding RecordingStatus}"
@@ -59,27 +61,62 @@
                 </Grid>
             </Border>
 
-            <!-- Settings panel (chave de API, modelo, URL base — persistidos entre execuções) -->
+            <!-- Settings panel (perfis de endpoint, prompt e opções do chat — persistidos entre execuções) -->
             <Border Grid.Row="1" Background="#232323" BorderBrush="#333333" BorderThickness="0,0,0,1"
                     Padding="10" IsVisible="{Binding IsSettingsOpen}">
                 <StackPanel Spacing="6">
-                    <TextBlock Text="DeepSeek API settings" FontWeight="Bold" Foreground="#DDDDDD" FontSize="11" />
+                    <TextBlock Text="AI endpoint settings" FontWeight="Bold" Foreground="#DDDDDD" FontSize="11" />
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Perfil" Foreground="#999999" FontSize="10" />
+                        <Grid ColumnDefinitions="*,Auto,Auto">
+                            <ComboBox Grid.Column="0" ItemsSource="{Binding Profiles}" SelectedItem="{Binding SelectedProfile}"
+                                      HorizontalAlignment="Stretch" FontSize="11">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="settings:AiEndpointProfile">
+                                        <TextBlock Text="{Binding DisplayName}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <Button Grid.Column="1" Content="+ Local" Command="{Binding AddLocalProfileCommand}"
+                                    ToolTip.Tip="Novo perfil para um servidor local OpenAI-compatível (Ollama, LM Studio, llama.cpp)"
+                                    FontSize="10" Padding="6,2" Margin="4,0,0,0" />
+                            <Button Grid.Column="2" Content="✕" Command="{Binding RemoveProfileCommand}"
+                                    ToolTip.Tip="Remover este perfil" FontSize="10" Padding="6,2" Margin="4,0,0,0" />
+                        </Grid>
+                    </StackPanel>
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Nome" Foreground="#999999" FontSize="10" />
+                        <TextBox Text="{Binding ProfileNameInput}" FontSize="11" />
+                    </StackPanel>
+
+                    <CheckBox IsChecked="{Binding IsLocalInput}" FontSize="11" Foreground="#DDDDDD"
+                              Content="Servidor local (chave opcional)"
+                              ToolTip.Tip="Ollama, LM Studio, llama.cpp: sem chave de API e sem o campo 'thinking' da DeepSeek. Requisições podem demorar mais (timeout de 30 min)." />
+
+                    <StackPanel Spacing="2">
+                        <TextBlock Text="Base URL" Foreground="#999999" FontSize="10" />
+                        <TextBox Text="{Binding BaseUrlInput}" Watermark="https://api.deepseek.com/ · http://localhost:11434/v1 (Ollama) · :1234 (LM Studio) · :8080 (llama.cpp)" FontSize="11" />
+                    </StackPanel>
 
                     <StackPanel Spacing="2">
                         <TextBlock Text="API key" Foreground="#999999" FontSize="10" />
-                        <TextBox Text="{Binding ApiKeyInput}" PasswordChar="•" Watermark="sk-..." FontSize="11" />
+                        <TextBox Text="{Binding ApiKeyInput}" PasswordChar="•" Watermark="sk-... (vazio = variável de ambiente; local = sem chave)" FontSize="11" />
                     </StackPanel>
 
                     <StackPanel Spacing="2">
                         <TextBlock Text="Model" Foreground="#999999" FontSize="10" />
-                        <ComboBox ItemsSource="{Binding ModelOptions}" SelectedItem="{Binding SelectedModelOption}"
-                                  HorizontalAlignment="Stretch" FontSize="11">
-                            <ComboBox.ItemTemplate>
-                                <DataTemplate x:DataType="vm:AiModelOption">
-                                    <TextBlock Text="{Binding DisplayName}" />
-                                </DataTemplate>
-                            </ComboBox.ItemTemplate>
-                        </ComboBox>
+                        <Grid ColumnDefinitions="*,Auto">
+                            <AutoCompleteBox Grid.Column="0" Text="{Binding ModelInput, Mode=TwoWay}" ItemsSource="{Binding ModelSuggestions}"
+                                             FilterMode="Contains" MinimumPrefixLength="0" Watermark="deepseek-v4-pro · qwen3:8b ..."
+                                             FontSize="11" />
+                            <Button Grid.Column="1" Content="↻" Command="{Binding RefreshModelsCommand}"
+                                    ToolTip.Tip="Listar os modelos do servidor (GET /v1/models)"
+                                    FontSize="11" Padding="6,2" Margin="4,0,0,0" />
+                        </Grid>
+                        <TextBlock Text="{Binding ModelsStatus}" IsVisible="{Binding ModelsStatus, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                   Foreground="#888888" FontSize="9" TextWrapping="Wrap" />
                     </StackPanel>
 
                     <StackPanel Spacing="2">
@@ -94,10 +131,37 @@
                         </ComboBox>
                     </StackPanel>
 
-                    <StackPanel Spacing="2">
-                        <TextBlock Text="Base URL" Foreground="#999999" FontSize="10" />
-                        <TextBox Text="{Binding BaseUrlInput}" Watermark="https://api.deepseek.com/ (default)" FontSize="11" />
-                    </StackPanel>
+                    <!-- Harness: ferramentas e Inspetor (harness_settings.json) -->
+                    <Border IsVisible="{Binding HasHarness}" BorderBrush="#333333" BorderThickness="0,1,0,0" Padding="0,6,0,0">
+                        <StackPanel Spacing="4">
+                            <CheckBox IsChecked="{Binding Harness.Enabled}" FontSize="11" Foreground="#DDDDDD"
+                                      Content="Ferramentas (vista em texto, cotas, mover/girar)"
+                                      ToolTip.Tip="A IA consulta a geometria (vistas em arame e cotas em texto) e edita por ferramentas, numa cópia dos arquivos. Desligado: o chat de sempre (arquivo completo + correção automática)." />
+                            <CheckBox IsChecked="{Binding Harness.UseInspector}" IsEnabled="{Binding Harness.Enabled}" FontSize="11" Foreground="#DDDDDD"
+                                      Content="Inspetor (outro perfil, ex.: modelo local)"
+                                      ToolTip.Tip="Um segundo modelo só lê a geometria e resume os fatos para o Editor. Com um modelo local, as consultas pesadas ficam de graça." />
+                            <ComboBox ItemsSource="{Binding Profiles}" SelectedItem="{Binding Harness.InspectorProfile}"
+                                      IsEnabled="{Binding Harness.UseInspector}" HorizontalAlignment="Stretch" FontSize="11">
+                                <ComboBox.ItemTemplate>
+                                    <DataTemplate x:DataType="settings:AiEndpointProfile">
+                                        <TextBlock Text="{Binding DisplayName}" />
+                                    </DataTemplate>
+                                </ComboBox.ItemTemplate>
+                            </ComboBox>
+                            <CheckBox IsChecked="{Binding Harness.PreInspection}" IsEnabled="{Binding Harness.UseInspector}" FontSize="11" Foreground="#DDDDDD"
+                                      Content="Inspecionar antes de cada pedido"
+                                      ToolTip.Tip="Ligado: o Inspetor roda antes e o resumo vai junto com o pedido ('Notas geométricas'). Desligado: o Editor chama o Inspetor só quando quiser (ferramenta inspect)." />
+                            <TextBlock Text="Skills (desligada: /nome no começo do pedido usa só uma vez)" Foreground="#999999" FontSize="10" Margin="0,4,0,0" />
+                            <ItemsControl ItemsSource="{Binding Harness.Skills}" IsEnabled="{Binding Harness.Enabled}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="harness:SkillToggleViewModel">
+                                        <CheckBox IsChecked="{Binding IsEnabled}" Content="{Binding Title}" ToolTip.Tip="{Binding ToolTip}"
+                                                  FontSize="11" Foreground="#DDDDDD" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
 
                     <CheckBox IsChecked="{Binding EnableReasoningInput}" FontSize="11" Foreground="#DDDDDD"
                               Content="Reasoning (thinking mode)"
@@ -169,6 +233,17 @@
 
                                     <Expander Header="Reasoning" IsVisible="{Binding HasReasoning}" FontSize="10" Padding="0">
                                         <TextBlock Text="{Binding Reasoning}" Foreground="#999999" TextWrapping="Wrap" FontSize="10" Margin="4" />
+                                    </Expander>
+
+                                    <Expander Header="{Binding ToolStepsHeader}" IsVisible="{Binding HasToolSteps}" FontSize="10" Padding="0">
+                                        <ItemsControl ItemsSource="{Binding ToolSteps}" Margin="4">
+                                            <ItemsControl.ItemTemplate>
+                                                <DataTemplate x:DataType="x:String">
+                                                    <SelectableTextBlock Text="{Binding}" Foreground="#999999" TextWrapping="Wrap" FontSize="10"
+                                                                         FontFamily="Consolas, Fira Code, Monospace" />
+                                                </DataTemplate>
+                                            </ItemsControl.ItemTemplate>
+                                        </ItemsControl>
                                     </Expander>
 
                                     <Border IsVisible="{Binding HasCode}" Background="#1E1E1E" CornerRadius="4"

@@ -20,6 +20,15 @@ public class FilletTool : ICommandTool, IDisposable
     /// </summary>
     public event EventHandler<(PartInstance Owner, IReadOnlyList<(Vector3D Normal, Point3D Point)> WorldFaces, FilletMode Mode, double Radius)>? PartFilletRequested;
 
+    /// <summary>
+    /// Disparado, em vez de <see cref="CodeGenerated"/>, quando o alvo de "todas as arestas" é uma subtração
+    /// (furos): o fillet deve entrar ANTES da subtração mais interna, sobre a base dela (ver
+    /// <see cref="RoslynFilletBeforeCutInserter"/>). Depois dos furos, o caminho genérico por malha faz uma
+    /// booleana por segmento da boca de cada furo e trava a UI. <c>FallbackCode</c> é o fillet de sempre,
+    /// sobre o sólido selecionado, para quando o código não estiver num formato que dê para reescrever.
+    /// </summary>
+    public event EventHandler<(string CutVar, string BaseVar, string FilletVar, string FilletCode, string FallbackCode)>? FilletBeforeCutRequested;
+
     private const double DefaultRadius = 2.0;
     private readonly ISelectionService _selectionService;
     private Sketch? _sketch;
@@ -69,8 +78,17 @@ public class FilletTool : ICommandTool, IDisposable
         }
         else if (sel is IFeature feature && feature is not WorkPlaneFeature)
         {
-            string code = $"var {filletVar} = new FilletFeature(name: \"{filletVar}\", baseFeature: {AvaloniaCadEditor.Domain.Scripting.FeatureOrigin.VariableName(feature)}, radius: 2.0) {{ Mode = {modeStr}, ApplyToAllEdges = true }};\r\nAddFeature({filletVar});";
-            CodeGenerated?.Invoke(this, code);
+            string code = AllEdgesFilletCode(filletVar, AvaloniaCadEditor.Domain.Scripting.FeatureOrigin.VariableName(feature), modeStr);
+            if (InnermostCut(feature) is { } cut)
+            {
+                string baseVar = AvaloniaCadEditor.Domain.Scripting.FeatureOrigin.VariableName(cut.BaseFeature);
+                FilletBeforeCutRequested?.Invoke(this, (AvaloniaCadEditor.Domain.Scripting.FeatureOrigin.VariableName(cut), baseVar, filletVar,
+                    AllEdgesFilletCode(filletVar, baseVar, modeStr), code));
+            }
+            else
+            {
+                CodeGenerated?.Invoke(this, code);
+            }
             Cancel();
         }
         else if (sel is AvaloniaCadEditor.Domain.Profiles.IProfile profile)
@@ -114,6 +132,26 @@ public class FilletTool : ICommandTool, IDisposable
                 Cancel();
             }
         }
+    }
+
+    private static string AllEdgesFilletCode(string filletVar, string baseVar, string modeStr) =>
+        $"var {filletVar} = new FilletFeature(name: \"{filletVar}\", baseFeature: {baseVar}, radius: 2.0) {{ Mode = {modeStr}, ApplyToAllEdges = true }};\r\nAddFeature({filletVar});";
+
+    /// <summary>
+    /// A subtração mais interna de uma cadeia de subtrações de base única que começa em
+    /// <paramref name="feature"/> (furos sobre furos), ou null se <paramref name="feature"/> não é uma.
+    /// A base dela é o corpo ainda sem nenhum furo.
+    /// </summary>
+    private static BooleanFeature? InnermostCut(IFeature feature)
+    {
+        BooleanFeature? cut = null;
+        for (var current = feature;
+             current is BooleanFeature { Operation: BooleanOperationType.Subtract, BaseFeatures.Count: 1 } boolean;
+             current = boolean.BaseFeature)
+        {
+            cut = boolean;
+        }
+        return cut;
     }
 
     /// <summary>

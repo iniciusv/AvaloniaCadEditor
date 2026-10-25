@@ -66,6 +66,40 @@ public class OSnapBehaviorTests
         noMeio.Should().Be(new Point3D(5, 0, 0), "o ponto médio de uma aresta do contorno também é ponto de snap");
     }
 
+    private static OSnapService OSnapComUmaLinha(Sketch sketch, Point3D inicio, Point3D fim)
+    {
+        var line = new LineEntity(inicio, fim);
+        sketch.AddEntity(line);
+        var engine = new Mock<IGeometryEngine>();
+        engine.Setup(e => e.GetSnapPoints(line, It.IsAny<Point3D?>()))
+              .Returns(new List<(Point3D, SnapPointType)> { (inicio, SnapPointType.Endpoint), (fim, SnapPointType.Endpoint) });
+        return new OSnapService(engine.Object);
+    }
+
+    [Fact]
+    public void OSnap_DesenhandoNoPlano_PontaDoEsbocoGanhaDoCantoDoSolidoMaisPerto()
+    {
+        // Fechando uma região que começa perto do canto (10, 10) da face: o clique tem de ir ao ponto
+        // inicial da polilinha, senão o contorno fica aberto.
+        var sketch = new Sketch();
+        var osnap = OSnapComUmaLinha(sketch, new Point3D(8, 9.5, 0), new Point3D(8, 2, 0));
+
+        var snapped = osnap.GetSnappedPoint(sketch, new Point3D(9.1, 9.7, 0), null, SolidoComFaceNoPlanoEArestaAbaixo(), solidSnapOnPlaneOnly: true);
+
+        snapped.Should().Be(new Point3D(8, 9.5, 0), "o canto do sólido está mais perto, mas a ponta do esboço tem prioridade");
+    }
+
+    [Fact]
+    public void OSnap_DesenhandoNoPlano_CantoDoSolidoContinuaAlcancavelLongeDasPontasDoEsboco()
+    {
+        var sketch = new Sketch();
+        var osnap = OSnapComUmaLinha(sketch, new Point3D(6.5, 10, 0), new Point3D(6.5, 2, 0));
+
+        var snapped = osnap.GetSnappedPoint(sketch, new Point3D(9.7, 9.7, 0), null, SolidoComFaceNoPlanoEArestaAbaixo(), solidSnapOnPlaneOnly: true);
+
+        snapped.Should().Be(new Point3D(10, 10, 0), "a ponta do esboço está a mais de metade da tolerância do cursor");
+    }
+
     [Fact]
     public void OSnap_ForaDoEsboco_MantemOSnap3DEmQualquerVertice()
     {
@@ -82,7 +116,7 @@ public class OSnapBehaviorTests
     {
         var sketch = new Sketch();
         var osnap = new OSnapService(new Mock<IGeometryEngine>().Object);
-        var cilindro = AvaloniaCadEditor.Tests.Features.PlaneSectionTests.Cylinder(30, 30, 8, -10, 0);
+        var cilindro = AvaloniaCadEditor.Tests.Features.TestMeshes.Cylinder(30, 30, 8, -10, 0);
 
         var snapped = osnap.GetSnappedPoint(sketch, new Point3D(31, 29, 0), null, cilindro, solidSnapOnPlaneOnly: true);
 
@@ -95,7 +129,7 @@ public class OSnapBehaviorTests
     {
         var sketch = new Sketch();
         var osnap = new OSnapService(new Mock<IGeometryEngine>().Object);
-        var caixa = AvaloniaCadEditor.Tests.Features.PlaneSectionTests.Box(0, 0, 40, 40, -5, 5);
+        var caixa = AvaloniaCadEditor.Tests.Features.TestMeshes.Box(0, 0, 40, 40, -5, 5);
 
         var snapped = osnap.GetSnappedPoint(sketch, new Point3D(19, 1, 0), null, caixa, solidSnapOnPlaneOnly: true);
 

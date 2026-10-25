@@ -12,10 +12,16 @@ namespace AvaloniaCadEditor.Infrastructure.OpenCascade;
 
 public class OpenCascadeGeometryKernel : IGeometryKernel
 {
-    private readonly Dictionary<Guid, OcctShape> _shapeCache = new();
+    /// <summary>
+    /// Chave dos caches por Id. Com os fillets suprimidos a mesma feature tem outro sólido, e as duas versões
+    /// ficam guardadas: religar os fillets não refaz as booleanas de chanfro de nenhuma peça.
+    /// </summary>
+    private readonly record struct CacheKey(Guid Id, bool FilletsSuppressed);
+
+    private readonly Dictionary<CacheKey, OcctShape> _shapeCache = new();
 
     // Malha local de cada definição de peça (compartilhada por instâncias de peças iguais).
-    private readonly Dictionary<Guid, TriangleMesh> _definitionMeshCache = new();
+    private readonly Dictionary<CacheKey, TriangleMesh> _definitionMeshCache = new();
 
     // Malhas por geometria (FeatureFingerprint + tesselação). Diferente dos caches por Id, sobrevivem
     // a uma reexecução da cena: mover uma peça não refaz as booleanas/tesselação de nenhuma definição.
@@ -35,6 +41,19 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
     public IReadOnlyDictionary<Guid, string> BuildProblems => _buildProblems;
 
     /// <summary>Registra (ou limpa, com message null) por que a feature não gerou geometria.</summary>
+    // Avisos de uma construção que DEU sólido, mas sem parte do pedido (ex.: chanfro com arestas demais,
+    // ver OcctFilletBuilder.MaxEdgeCuts). Ficam aqui até o BuildShape da feature terminar, porque o sucesso
+    // limpa o problema dela; e a malha que sai com aviso não vai para _meshByGeometry, senão a próxima
+    // execução a reaproveitaria sem passar por aqui e o aviso sumiria.
+    private readonly Dictionary<Guid, string> _pendingWarnings = new();
+    private int _warningsIssued;
+
+    private void Warn(IFeature feature, string message)
+    {
+        _pendingWarnings[feature.Id] = message;
+        _warningsIssued++;
+    }
+
     private void ReportProblem(IFeature feature, string? message)
     {
         if (message == null) _buildProblems.Remove(feature.Id);
@@ -44,14 +63,22 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
     /// <summary>Quantas malhas foram de fato tesseladas (cache miss). Usado por testes.</summary>
     public int MeshBuildCount { get; private set; }
 
+    /// <inheritdoc />
+    public bool SuppressFillets { get; set; }
+
+    /// <inheritdoc />
+    public System.Threading.CancellationToken BuildCancellation { get; set; }
+
+    private CacheKey KeyOf(Guid featureId) => new(featureId, SuppressFillets);
+
     public void InvalidateShape(Guid featureId)
     {
-        if (_shapeCache.TryGetValue(featureId, out var cached))
+        foreach (bool suppressed in new[] { false, true })
         {
-            cached.Dispose();
-            _shapeCache.Remove(featureId);
+            var key = new CacheKey(featureId, suppressed);
+            if (_shapeCache.Remove(key, out var cached)) cached.Dispose();
+            _definitionMeshCache.Remove(key);
         }
-        _definitionMeshCache.Remove(featureId);
         _buildProblems.Remove(featureId);
     }
 
@@ -66,6 +93,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         _meshByGeometry.Clear();
         _geometryKeysInUse.Clear();
         _buildProblems.Clear();
+        _pendingWarnings.Clear();
     }
 
     /// <summary>
@@ -81,6 +109,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         _shapeCache.Clear();
         _definitionMeshCache.Clear();
         _buildProblems.Clear();
+        _pendingWarnings.Clear();
         RemoveMeshesNotInUse();
         _geometryKeysInUse.Clear();
     }
@@ -93,7 +122,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         }
     }
 
-    private static string? GeometryKey(IFeature feature, TessellationSettings settings)
+    private string? GeometryKey(IFeature feature, TessellationSettings settings)
     {
         var fingerprint = FeatureFingerprint.Compute(feature);
         if (fingerprint == null) return null;
@@ -108,6 +137,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             BitConverter.SingleToInt32Bits(settings.CreaseAngle),
             settings.FeatureEdgeColor,
             settings.InternalEdgeColor,
+            SuppressFillets,
             fingerprint);
     }
 
@@ -121,10 +151,10 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         if (feature is PartInstance instance)
         {
             // A geometria da peça é construída uma vez por definição; cada instância só transforma a malha.
-            if (!_definitionMeshCache.TryGetValue(instance.Definition.Id, out var local))
+            if (!_definitionMeshCache.TryGetValue(KeyOf(instance.Definition.Id), out var local))
             {
                 local = BuildFeatureMesh(instance.Definition, settings);
-                _definitionMeshCache[instance.Definition.Id] = local;
+                _definitionMeshCache[KeyOf(instance.Definition.Id)] = local;
             }
             return local.Transform(instance.Placement);
         }
@@ -140,6 +170,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
 
         try
         {
+            int warningsBefore = _warningsIssued;
             var shape = BuildShape(feature, settings);
             if (shape == null || shape.IsNull)
                 return TriangleMesh.Empty;
@@ -149,7 +180,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             // shape.Dispose(); // Shape is now cached, do not dispose here
 
             // Malha vazia pode ser falha do OCCT: não fica guardada, tenta de novo na próxima vez.
-            if (key != null && mesh.VertexCount > 0)
+            if (key != null && mesh.VertexCount > 0 && _warningsIssued == warningsBefore)
             {
                 if (_meshByGeometry.Count >= MaxMeshesByGeometry)
                 {
@@ -165,7 +196,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             }
             return mesh;
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             Console.WriteLine($"[BuildFeatureMesh Error] {ex}");
             return TriangleMesh.Empty;
@@ -188,12 +219,19 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
     /// </summary>
     private OcctShape BuildShape(IFeature feature, TessellationSettings settings, Placement? transform = null)
     {
+        // Fillet suprimido vale o sólido base. Não entra no cache: guardaria o mesmo OcctShape em duas chaves,
+        // e invalidar uma delas daria Dispose num sólido que a outra ainda usa.
+        if (SuppressFillets && feature is FilletFeature suppressed && suppressed.IsEnabled)
+            return BuildShape(suppressed.BaseFeature, settings, transform);
+
         bool useCache = transform == null || transform.IsIdentity;
 
-        if (useCache && _shapeCache.TryGetValue(feature.Id, out var cached) && cached != null && !cached.IsNull)
+        if (useCache && _shapeCache.TryGetValue(KeyOf(feature.Id), out var cached) && cached != null && !cached.IsNull)
         {
             return cached;
         }
+
+        BuildCancellation.ThrowIfCancellationRequested();
 
         OcctShape result = null;
         try {
@@ -227,19 +265,7 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
             }
             else if (feature is FilletFeature fillet && fillet.IsEnabled)
             {
-                if (transform != null && transform.HasRotation)
-                {
-                    // O fillet depende das arestas/malha do sólido base já construído; não dá para
-                    // "girar" essa receita sem refazer o corte em cima de arestas que não existem
-                    // nessa orientação. EnsureCanBeBooleanOperand já barra isso mais cedo; isto é
-                    // uma segunda trava, para qualquer outro caminho que chegue aqui girado.
-                    throw new NotSupportedException(
-                        $"O fillet de '{feature.Name}' não pode ser reconstruído girado nem espelhado (depende das arestas do sólido base).");
-                }
-                // O builder recebe o sólido base pronto: ele corta arestas, não constrói
-                // features, e assim não precisa do dispatch nem do cache.
-                var filletBase = BuildShape(fillet.BaseFeature, settings);
-                result = OcctFilletBuilder.Build(fillet, filletBase, settings);
+                result = BuildFillet(fillet, settings, transform);
             }
             else if (feature is PartInstance instance && instance.IsEnabled)
             {
@@ -250,7 +276,9 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
                 result = BuildTransformedShape(transformedFeature, settings, transform);
             }
         }
-        catch (Exception ex)
+        // O cancelamento atravessa: engolido aqui, a booleana de cima seguiria sem este operando e o
+        // sólido errado iria para o cache por geometria, que sobrevive à reexecução.
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             ReportProblem(feature, ex.Message);
             Console.WriteLine($"[BuildShape Error] {ex}");
@@ -259,11 +287,28 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         if (result != null && !result.IsNull)
         {
             // Deu certo agora: o problema anterior (se havia) está resolvido.
-            ReportProblem(feature, null);
-            if (useCache) _shapeCache[feature.Id] = result;
+            ReportProblem(feature, _pendingWarnings.Remove(feature.Id, out var warning) ? warning : null);
+            if (useCache) _shapeCache[KeyOf(feature.Id)] = result;
         }
 
         return result;
+    }
+
+    private OcctShape BuildFillet(FilletFeature fillet, TessellationSettings settings, Placement? transform)
+    {
+        if (transform != null && transform.HasRotation)
+        {
+            // O fillet depende das arestas/malha do sólido base já construído; não dá para
+            // "girar" essa receita sem refazer o corte em cima de arestas que não existem
+            // nessa orientação. EnsureCanBeBooleanOperand já barra isso mais cedo; isto é
+            // uma segunda trava, para qualquer outro caminho que chegue aqui girado.
+            throw new NotSupportedException(
+                $"O fillet de '{fillet.Name}' não pode ser reconstruído girado nem espelhado (depende das arestas do sólido base).");
+        }
+        // O builder recebe o sólido base pronto: ele corta arestas, não constrói
+        // features, e assim não precisa do dispatch nem do cache.
+        var filletBase = BuildShape(fillet.BaseFeature, settings);
+        return OcctFilletBuilder.Build(fillet, filletBase, settings, BuildCancellation, message => Warn(fillet, message));
     }
 
     /// <summary>

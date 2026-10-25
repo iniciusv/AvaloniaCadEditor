@@ -317,13 +317,13 @@ public class SweepCommand : ICommandTool, IGeometryPickingTool
 
     /// <summary>
     /// Remove do esboço o desenho que a varredura consumiu: as arestas do caminho e o contorno da
-    /// região usada como seção. Mesmo comportamento da extrusão (ver
-    /// <c>FeatureCodeGenerator.GenerateExtrusionCode</c>) — o desenho 2D era o meio de chegar ao
-    /// sólido, e deixá-lo riscado por cima dele só atrapalha a vista e o próximo clique.
+    /// região usada como seção. O desenho 2D era o meio de chegar ao sólido, e deixá-lo riscado
+    /// por cima dele só atrapalha a vista e o próximo clique. (A extrusão, ao contrário, mantém as
+    /// linhas da região.)
     /// <para>
     /// Mexe só na sessão: linhas e círculos de esboço não são código de cena, então isto não
     /// reescreve o script. O preço é que varrer uma segunda seção pelo mesmo caminho exige
-    /// redesenhá-lo — o mesmo preço que a extrusão já cobra.
+    /// redesenhá-lo.
     /// </para>
     /// <para>
     /// Uma região sem <c>SourceEntityIds</c> não deixa nada para trás, e isso está certo: ela não

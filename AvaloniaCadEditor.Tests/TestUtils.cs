@@ -19,7 +19,7 @@ public static class TestUtils
         var selService = selectionService ?? new SelectionService();
         var settingsProvider = new JsonTessellationSettingsProvider();
         
-        var meshManager = new SceneMeshManager(kernel, settingsProvider);
+        var meshManager = new SceneMeshManager(kernel, settingsProvider, RunInline);
         var vcbService = new VcbInputService();
         var deletionService = new SceneDeletionService(selService);
         
@@ -36,5 +36,23 @@ public static class TestUtils
             
         vm.ScriptEditor = new SceneScriptViewModel(vm, new AvaloniaCadEditor.Infrastructure.Scripting.RoslynSceneEvaluator(), null);
         return vm;
+    }
+
+    /// <summary>
+    /// Constrói as malhas da cena na própria thread: os testes disparam <c>RunCodeCommand</c> sem esperar e
+    /// conferem o resultado logo em seguida, o que só funciona se a execução inteira terminar ali mesmo.
+    /// </summary>
+    public static System.Threading.Tasks.Task RunInline(System.Action work, System.Threading.CancellationToken cancellation)
+    {
+        try
+        {
+            cancellation.ThrowIfCancellationRequested();
+            work();
+            return System.Threading.Tasks.Task.CompletedTask;
+        }
+        catch (System.Exception ex)
+        {
+            return System.Threading.Tasks.Task.FromException(ex);
+        }
     }
 }

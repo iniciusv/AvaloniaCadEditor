@@ -87,7 +87,7 @@ public partial class MainWindow : Window
             // Com uma peça isolada (H), as vistas seguem os eixos dela.
             var vm = DataContext as AvaloniaCadEditor.UI.ViewModels.CadViewModel;
             vm?.Drafting?.SetView(view);
-            ViewportControl.SetStandardView(view, (float)(vm?.DisplayFrame?.AzimuthOffset ?? 0.0));
+            ViewportControl.SetStandardView(view, vm?.DisplayFrame);
         }
     }
 

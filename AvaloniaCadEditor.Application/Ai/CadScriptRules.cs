@@ -21,6 +21,8 @@ public static class CadScriptRules
         - NÃO use Console, System.IO, rede, threads, reflexão ou qualquer tipo de I/O.
         - Todo número decimal usa ponto ('.'), nunca vírgula.
         - Nomes de variáveis são únicos, curtos e em snake_case (ex.: box_a1, hole_b2, fillet_c3).
+        - FilletFeature com ApplyToAllEdges = true depois dos furos também chanfra/arredonda a boca de cada furo
+          (escareado). Furo de parafuso fica com a boca viva: use SkipHoleEdges = true.
         """;
 
     /// <summary>

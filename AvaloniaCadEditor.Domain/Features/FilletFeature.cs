@@ -13,6 +13,14 @@ public class FilletFeature : FeatureBase
     public FilletMode Mode { get; set; } = FilletMode.Round;
     public bool ApplyToAllEdges { get; set; } = false;
 
+    /// <summary>
+    /// Deixa sem chanfro/arredondamento as arestas em arco com o material do lado de fora do círculo: a boca
+    /// de um furo (de parafuso, por exemplo) e o canto arredondado côncavo de um rebaixo. As arestas externas
+    /// continuam. Vale para arcos reconhecidos na malha; um furo que não sai num plano perpendicular a ele
+    /// (inclinado, numa face curva) não é reconhecido como arco e continua sendo chanfrado.
+    /// </summary>
+    public bool SkipHoleEdges { get; set; } = false;
+
     public FilletFeature(string name, IFeature baseFeature, double radius)
     {
         Name = name ?? throw new ArgumentNullException(nameof(name));

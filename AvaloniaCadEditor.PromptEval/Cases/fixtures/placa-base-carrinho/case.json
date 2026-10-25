@@ -1,0 +1,21 @@
+{
+  // Peça nova a partir de uma descrição solta (uma versão simples da PlacaSuporteCarrinhoY), com
+  // encaixe: o carrinho está em (30, 10, 0), topo 32 × 58,8 em z = 16, M3 em (33,5 | 58,5; 26,9 | 51,9).
+  // Montada: base em z = 16, os 4 eixos dos M3 vazios e material no resto do topo (pontos a ~3 mm
+  // das bordas e no centro). A espessura ("uns 8 mm") não é conferida além de cobrir z = 20.
+  "description": "Peça nova com encaixe: placa base parafusada no topo do carrinho MGN15H.",
+  "instruction": "Preciso de uma placa pra parafusar em cima do carrinho_y, tipo uma base pra montar coisa depois. Uns 8 mm de espessura, do tamanho do topo do carrinho, com furo passante pros 4 parafusos M3 dele. Faz como peça nova e já deixa montada; chama a instância de placa_base.",
+  "checks": {
+    "expectNewFiles": ["Pecas/*.cs"],
+    "solidBounds": [
+      { "name": "placa_base", "min": [null, null, 16], "max": [null, null, null], "tolerance": 0.1 }
+    ],
+    "solidPoints": [
+      {
+        "name": "placa_base",
+        "outside": [[33.5, 26.9, 20], [58.5, 26.9, 20], [33.5, 51.9, 20], [58.5, 51.9, 20]],
+        "inside": [[46, 39.4, 20], [46, 13, 20], [46, 65.8, 20], [33, 39.4, 20], [59, 39.4, 20]]
+      }
+    ]
+  }
+}

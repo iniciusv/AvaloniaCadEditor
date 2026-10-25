@@ -43,14 +43,21 @@ public partial class App : Avalonia.Application
 			    new AvaloniaCadEditor.Infrastructure.Engines.BoundingBoxHeuristicAlgorithm()
 			};
 			var reconstructionService = new AvaloniaCadEditor.Application.Services.ShapeReconstructionService(algorithms, geometryKernel);
+			var projectionService = new SketchProjectionService(meshManager, new AvaloniaCadEditor.Infrastructure.Geometry.ClipperPolygonUnion());
 			
-			var viewModel = new CadViewModel(geometryEngine, osnapService, meshManager, vcbService, deletionService, null!, profileRecognitionService, selectionService, settingsProvider, null, filePicker, reconstructionService);
+			var viewModel = new CadViewModel(geometryEngine, osnapService, meshManager, vcbService, deletionService, null!, profileRecognitionService, selectionService, settingsProvider, null, filePicker, reconstructionService, projectionService: projectionService);
 			
 			var scriptEditor = new SceneScriptViewModel(viewModel, evaluator, filePicker);
 			viewModel.ScriptEditor = scriptEditor;
 
 			var aiSettingsProvider = new AvaloniaCadEditor.Infrastructure.Settings.JsonAiSettingsProvider();
-			viewModel.AiChat = new AvaloniaCadEditor.UI.ViewModels.AiChatViewModel(viewModel, scriptEditor, evaluator, aiSettingsProvider);
+			// Harness de ferramentas da IA: ligado só aqui. Cada sessão ganha um kernel próprio, para o
+			// cache das ferramentas não invalidar o da UI.
+			var harnessStore = new AvaloniaCadEditor.Harness.Roles.JsonHarnessSettingsStore();
+			var harnessFactory = new AvaloniaCadEditor.Harness.HarnessSessionFactory(aiSettingsProvider, harnessStore, evaluator,
+				() => new AvaloniaCadEditor.Infrastructure.OpenCascade.OpenCascadeGeometryKernel());
+			var harnessSettings = new AvaloniaCadEditor.UI.ViewModels.Harness.HarnessSettingsViewModel(harnessStore, harnessFactory);
+			viewModel.AiChat = new AvaloniaCadEditor.UI.ViewModels.AiChatViewModel(viewModel, scriptEditor, evaluator, aiSettingsProvider, harness: harnessSettings);
 
 			var referenceGuideService = new AvaloniaCadEditor.Application.ReferenceGuides.ReferenceGuideService();
 			viewModel.ReferenceGuides = new AvaloniaCadEditor.UI.ReferenceGuides.ReferenceGuidesViewModel(referenceGuideService, () => viewModel.Sketch.Features);

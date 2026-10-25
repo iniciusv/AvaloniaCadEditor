@@ -149,13 +149,18 @@ public sealed class DraftingViewModel : INotifyPropertyChanged
         return Frame!.ToWorld(sheet.Basis.Unproject(point, sheet.FrontDepth + sheet.Gap * 0.2));
     }
 
-    /// <summary>True quando a câmera mostra exatamente a vista desenhada (ortho, mesma direção).</summary>
+    /// <summary>True quando a câmera mostra exatamente a vista desenhada (ortho, mesma direção e
+    /// mesma rolagem — senão as cotas, desenhadas no plano da folha, sairiam de lado ou invertidas).</summary>
     public bool MatchesCamera(CameraState camera)
     {
         if (Sheet == null || Frame == null || !camera.IsOrthographic) return false;
         var w = Frame.FrameToWorld.ApplyVector(Sheet.Basis.W);
         var eye = Vector3.Normalize(camera.Position - camera.Target);
-        return eye.X * w.X + eye.Y * w.Y + eye.Z * w.Z > 0.999;
+        if (eye.X * w.X + eye.Y * w.Y + eye.Z * w.Z <= 0.999) return false;
+
+        var v = Frame.FrameToWorld.ApplyVector(Sheet.Basis.V);
+        var up = camera.Up;
+        return up.X * v.X + up.Y * v.Y + up.Z * v.Z > 0.999;
     }
 
     public bool IsShowing(CameraState camera) => IsVisible && MatchesCamera(camera);

@@ -110,6 +110,7 @@ Propriedades comuns a TODAS as features (herdadas de FeatureBase):
   double Radius { get; set; }
   FilletMode Mode { get; set; }
   bool ApplyToAllEdges { get; set; }
+  bool SkipHoleEdges { get; set; }
   IEnumerable<IFeature> Dependencies { get; }
   void AddEdge(EdgeReference edge)
   void AddFace(FaceReference face)
@@ -187,6 +188,7 @@ Propriedades comuns a TODAS as features (herdadas de FeatureBase):
   static Placement Placement.RotationAbout(Point3D pivot, Vector3D axis, double degrees)
   static Placement Placement.Rotation(Vector3D axis, double degrees)
   static Placement Placement.Mirror(Point3D pointOnPlane, Vector3D normal)
+  static Placement Placement.FromAxes(Vector3D x, Vector3D y, Vector3D z, Vector3D translation)
   static Placement Placement.MirrorX(double atX = 0)
   static Placement Placement.MirrorY(double atY = 0)
   static Placement Placement.MirrorZ(double atZ = 0)
@@ -226,6 +228,7 @@ Propriedades comuns a TODAS as features (herdadas de FeatureBase):
 ### SweepPath
   static SweepPath SweepPath.Arc(Point3D start, Vector3D startTangent, Vector3D bendDirection, double bendRadius, double angleDegrees)
   static SweepPath SweepPath.FullCircle(Point3D center, Vector3D axis, double radius)
+  static SweepPath SweepPath.AroundCircles(Point3D start, IEnumerable<SweepWrap> wraps, Point3D end, Vector3D normal)
   static double SweepPath.MaxCornerRadius(IEnumerable<Point3D> points, bool closed = false)
   static SweepPath SweepPath.FromPolyline(IEnumerable<Point3D> points, double cornerRadius, bool closed = false)
   IReadOnlyList<Point3D> Points { get; }
@@ -236,6 +239,17 @@ Propriedades comuns a TODAS as features (herdadas de FeatureBase):
   string Error { get; }
   Vector3D StartTangent { get; }
   IReadOnlyList<WorkPlane> Stations(WorkPlane startPlane)
+
+### SweepWrap
+  new SweepWrap(Point3D Center, double Radius, bool Clockwise)
+  Point3D Center { get; set; }
+  double Radius { get; set; }
+  bool Clockwise { get; set; }
+  string ToString()
+  int GetHashCode()
+  bool Equals(Object obj)
+  bool Equals(SweepWrap other)
+  void Deconstruct(Point3D& Center, Double& Radius, Boolean& Clockwise)
 
 enum FaceType { Top, Bottom, Front, Back, Left, Right }
 enum EdgeType { TopFront, TopBack, TopLeft, TopRight, BottomFront, BottomBack, BottomLeft, BottomRight, FrontLeft, FrontRight, BackLeft, BackRight }
@@ -259,6 +273,8 @@ Métodos globais disponíveis no código da cena:
 - NÃO use Console, System.IO, rede, threads, reflexão ou qualquer tipo de I/O.
 - Todo número decimal usa ponto ('.'), nunca vírgula.
 - Nomes de variáveis são únicos, curtos e em snake_case (ex.: box_a1, hole_b2, fillet_c3).
+- FilletFeature com ApplyToAllEdges = true depois dos furos também chanfra/arredonda a boca de cada furo
+  (escareado). Furo de parafuso fica com a boca viva: use SkipHoleEdges = true.
 - SÓLIDOS RASTREÁVEIS POR NOME: variáveis, const, arrays, laços e funções locais podem ser usados
   para CALCULAR valores (posições, diâmetros, passos), mas cada sólido (BoxFeature, CylinderFeature,
   ConeFeature, PrismFeature, SweepFeature, ExtrudeFeature, FilletFeature, BooleanFeature...) deve ser criado numa

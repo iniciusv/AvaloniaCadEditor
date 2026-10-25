@@ -8,6 +8,8 @@ mora, quais invariantes não podem ser quebradas e onde intervir para cada tipo 
 > fonte única consumida pelo system prompt, pelo `.cad/api.md` e pelo `AGENTS.md` gerado
 > dentro de cada pasta de cena. Se você está editando uma **cena**, leia o `AGENTS.md` dela,
 > não este arquivo. Se você está editando o **app**, é aqui.
+>
+> Índice de toda a documentação, planos de implementação e referências externas: [`docs/README.md`](docs/README.md).
 
 ---
 
@@ -45,7 +47,13 @@ Domain  ←  Application  ←  Infrastructure  ←  UI
 Domain  ←  Analysis  ←  Drafting  ←  UI
               ↑
          Application
+
+Application, Drafting, Analysis, Domain, AiCore  ←  Harness  ←  UI (composição), PromptEval
 ```
+
+O Harness é a ponta: **nenhum projeto do app o referencia**, e ele não referencia Infrastructure
+nem UI (kernel e avaliador chegam pelas portas do Application). `ArchitectureTests`, em
+`Harness.Tests`, trava as setas lidas dos `.csproj`.
 
 | Projeto | TFM | Papel |
 |---|---|---|
@@ -56,7 +64,10 @@ Domain  ←  Analysis  ←  Drafting  ←  UI
 | `AiCore` | `net10.0` | Cliente LLM e `IAiProtocol`, sem dependências externas (BCL só). **Também é uma pasta de cena** (ver §7). |
 | `AvaloniaCadEditor.Analysis` | `net10.0` | Análise de modelo, pura: `FactExtractor` (o **único** percurso da árvore que acumula `Placement`s → `PrimitiveFact`s com papel e nome estável) e `RelationAnalyzer` (alinhamentos, quase-alinhamentos, coaxiais, padrões com passo, planos de simetria). **Só depende do Domain.** Consumida pelo desenho e pelas guias de referência. |
 | `AvaloniaCadEditor.Drafting` | `net10.0` | Desenho técnico da peça isolada: projeta os fatos numa vista padrão, escolhe as cotas com hierarquia e as encaixa em fileiras. Depende de Domain e Analysis; a UI o consome (`UI/Drafting/`) e o core não depende dele. |
-| `AvaloniaCadEditor.Tests` | `net10.0-windows` | xunit + FluentAssertions + Moq. ~445 testes. |
+| `AvaloniaCadEditor.Harness` | `net10.0` | Harness de ferramentas da IA: laço de agente, papéis Editor/Inspetor, `ICadTool`s de consulta/edição/verificação, vista em texto (HLR em CPU), fallback de tool calling em texto. Detalhes em [`Harness/README.md`](AvaloniaCadEditor.Harness/README.md). |
+| `AvaloniaCadEditor.PromptEval` | `net10.0-windows` | Console que compara perfis de pré-prompt, modelos, endpoints e modo com/sem ferramentas sobre casos fixos, com checks textuais e geométricos. Detalhes em [`PromptEval/README.md`](AvaloniaCadEditor.PromptEval/README.md). |
+| `AvaloniaCadEditor.Tests` | `net10.0-windows` | xunit + FluentAssertions + Moq. Testes do app. |
+| `AvaloniaCadEditor.Harness.Tests` | `net10.0-windows` | Testes do Harness + `ArchitectureTests` (sentido das referências entre projetos). |
 
 **A regra:** a seta nunca inverte. `Application` não conhece `Infrastructure` — é por isso que o
 kernel geométrico pôde ser trocado três vezes sem tocar em regra de negócio nem em UI (ver
@@ -81,10 +92,20 @@ SceneScriptViewModel.RunCodeAsync()
       RoslynSceneEvaluator: CSharpCompilation → AssemblyLoadContext colecionável
       → executa o entry point dentro de SceneHost.Begin(builder)
       → Scene.AddFeature/Add alimentam o SceneBuilder
-  → MeshManager.ResetForNewScene()             (preserva cache por fingerprint)
+  → MeshManager.PrepareSceneAsync(visíveis)    (fora da thread da UI; preserva cache por fingerprint)
   → Sketch.ClearFeatures() + AddFeature(...)
-  → CadViewModel.RefreshProfiles()             (refaz malha composta + árvore)
+  → CadViewModel.RefreshProfiles()             (refaz malha composta + árvore, só acha cache)
 ```
+
+A cena antiga continua na tela enquanto a nova é construída, mas só por um instante (`SceneBuildBudget`):
+depois disso a cena nova entra sem os sólidos que faltam, e cada um aparece quando fica pronto. Até lá
+ele é **pendente** no `SceneMeshManager`: a malha composta o deixa de fora e o pick não o acha, em vez
+de construí-lo na thread da UI. A construção só é cancelada quando outra execução avalia sem erro
+(`IGeometryKernel.BuildCancellation`, conferido a cada sólido e a cada aresta de chanfro). O kernel não
+é thread-safe: toda chamada a ele passa pelo lock do `SceneMeshManager`, e os caches de malha são
+concorrentes para que desenho e pick na UI não esperem por uma construção longa. Um `catch` no kernel
+**não pode engolir `OperationCanceledException`**: a booleana de cima seguiria sem o operando e o
+sólido errado iria para o cache por fingerprint.
 
 ### 3.2 Uma ferramenta "cria" geometria
 
@@ -145,6 +166,7 @@ de todo o resto. Falha segura: fingerprint `null` = sem cache, nunca cache errad
 | **Adicionar um tipo de feature** (ex.: `LoftFeature`) | `Domain/Features/XFeature.cs` | ver §5.1 — são **7** pontos obrigatórios |
 | Adicionar uma ferramenta interativa | `Application/Commands/XCommand.cs` + comando no `CadViewModel` + botão no `MainWindow.axaml` + `Resources/Strings.cs` | a ferramenta **emite código**, não constrói geometria |
 | Mudar como uma feature vira sólido | `Infrastructure/OpenCascade/OpenCascadeGeometryKernel.cs` → `BuildShape` | registre falha com `ReportProblem`, não lance para fora |
+| Mudar o chanfro/arredondamento (`FilletFeature`) | `Infrastructure/OpenCascade/OcctFilletBuilder.cs`, `Domain/Mesh/ArcEdgeFinder.cs` | o wrapper OCCT não tem chanfro B-Rep: fora de caixa e cilindro, o caminho é **por malha**. Arcos reconhecidos (boca de furo, ressalto, canto arredondado) viram um anel revolvido cada, cortados em lote; as retas, um prisma cada, até `MaxEdgeCuts` (acima disso o sólido sai sem chanfro, com aviso em `BuildProblems`). Toda booleana passa pela conferência de caixa e volume de `TryCutKeepingSolid` |
 | Mudar a tesselação / arestas | `Infrastructure/OpenCascade/OcctTessellator.cs`, `Domain/Settings/TessellationSettings.cs` | settings novos entram em `GeometryKey()` |
 | Mudar o código gerado pelas ferramentas | `Application/Services/FeatureCodeGenerator.cs` | respeite a regra de sólidos rastreáveis (§5.2) |
 | Editar o fonte da cena a partir da UI | `Application/Scenes/PartSourceEditor.cs` ou um `Roslyn*` em `Application/Services/` | edição sintática pontual, nunca reescrita do arquivo |
@@ -154,9 +176,19 @@ de todo o resto. Falha segura: fingerprint `null` = sem cache, nunca cache errad
 | Mudar as regras do dialeto | `Application/Ai/CadScriptRules.cs` | fonte **única**: prompt + `.cad/api.md` + `AGENTS.md`. Há teste que falha se divergirem |
 | Adicionar exemplo few-shot para a IA | `Application/Ai/Prompts/CurrentPromptProfile.Examples` | há teste que compila e executa **cada** exemplo de **cada** perfil |
 | Testar outra estratégia de pré-prompt | novo `ICadScriptPromptProfile` em `Application/Ai/Prompts/`, registrado em `CadScriptPromptProfiles` | o perfil `atual` é congelado por golden (`Tests/Ai/Golden`); compare perfis com `AvaloniaCadEditor.PromptEval` |
+| Mudar o cliente HTTP da LLM (corpo da requisição, `tool_calls`, campo de reasoning) | `AiCore/Services/LlmClient.cs`, `AiCore/Services/LlmResponseParser.cs`, `AiCore/Models/` | AiCore é só BCL e não referencia nenhum projeto (`ArchitectureTests`). Particularidades de cada servidor em `docs/referencias/` |
+| Mudar os perfis de endpoint (DeepSeek, Ollama, LM Studio…) | `Domain/Settings/AiEndpointProfile.cs`, `Domain/Settings/AiSettingsMigration.cs`, `Application/Ai/AiEndpointOptions.cs`, `Infrastructure/Settings/JsonAiSettingsProvider.cs` | `ai_settings.json` antigo passa pela migração; o PromptEval (`--endpoints`) usa os mesmos perfis do chat |
+| Adicionar uma ferramenta da IA (tool calling) | `Harness/Tools/{Query,Edit,Verify}/XTool.cs` (implemente `ICadTool`) + `Harness/Tools/ToolRegistry.Default` | ferramenta **fina**: valida argumentos, delega a um serviço e formata. Números em `InvariantCulture`, formato `0.###`, saída determinística (`Harness/Views/TextFormat.cs`) |
+| Mudar o laço de agente ou os limites de passos/tempo | `Harness/Agents/AgentLoop.cs`, `AgentLimits.cs`, `HarnessChatSession.cs` | limites diferentes para endpoint remoto e local (`AgentLimits.Remote`/`Local`) |
+| Mudar papéis (Editor/Inspetor) e a configuração do harness | `Harness/Roles/`, `Harness/Agents/InspectorAgent.cs`, `Harness/HarnessSessionFactory.cs` | config própria em `harness_settings.json`, separada do `ai_settings.json` do app |
+| Mudar a vista em texto que a IA "enxerga" | `Harness/Views/` (`ProjectionBasis`, `HiddenLineProjector`, `WireframeReport`), `Harness/Inspection/SceneInspectionService.cs` | algoritmos puros, sem I/O nem estado. Só sobem para Domain/Drafting quando houver um **segundo consumidor** no app (regra no README do Harness) |
+| Adicionar ou mudar uma skill do harness (modo que se liga e desliga, ex.: questionar antes de editar) | `Harness/Skills/SkillRegistry.cs` (`Default`), `UI/ViewModels/Harness/SkillToggleViewModel.cs` | skill é só texto, sem ferramenta nem código. Ligada, vai no system prompt; `/id` no começo do pedido a usa num turno só. O id fica gravado no `harness_settings.json`: renomear desliga a skill para quem a tinha ligado |
+| Suportar servidor sem tool calling nativo | `Harness/Protocol/TextToolProtocol.cs` | fallback em bloco ```` ```tool ````; a detecção do suporte também mora aqui |
+| Mudar como o chat liga o harness / o rastro das ferramentas na UI | `UI/App.axaml.cs` (único ponto que instancia o Harness), `UI/ViewModels/Harness/`, `UI/ViewModels/AiChatViewModel.cs` | a UI é o único projeto do app que conhece o Harness |
+| Adicionar um caso ou um check ao PromptEval | `PromptEval/Cases/fixtures/<nome>/case.json` + `files/`; checks em `PromptEval/CaseChecks.cs` e `PromptEval/GeometryChecks.cs` | antes de gravar `solidBounds`/`solidPoints`, confira a posição esperada com `--dry-run --cases-dir <cópia com a resposta>` |
 | Mudar a renderização | `UI/Controls/Rendering/*RenderPass.cs` (implemente `IRenderPass`) | registre em `SilkViewportControl._renderPasses` |
 | Mudar o modo wireframe (linhas ocultas tracejadas) | `UI/Controls/Rendering/WireframeRenderPass.cs`, `WireframeEdgeShader.cs`, `WireframeGeometry.cs` | quem entra no frame e com que cor vem de `SolidRenderables`, compartilhado com o sombreado. As arestas e silhuetas são calculadas sob demanda pelo `EdgeDetector`, só para as malhas exibidas no modo: a mudança é só visual e não acrescenta nada à `TriangleMesh` |
-| Mudar o referencial da peça isolada (H) | `Application/Isolation/PartFrameResolver.cs`, `Domain/ValueObjects/PartFrame.cs`, `CadViewModel.ToggleIsolateSelection`/`ReapplyIsolation` | só visual: a grade e as vistas usam o referencial, o código continua em mundo. O isolamento é guardado **por nome** e reaplicado em `RunCodeAsync`, porque cada execução recria as features |
+| Mudar o referencial da peça isolada (H) | `Application/Isolation/PartFrameResolver.cs`, `Domain/ValueObjects/PartFrame.cs`, `Domain/Entities/CameraState.cs` (`Roll`, `LookFrom`), `CadViewModel.ToggleIsolateSelection`/`ReapplyIsolation` | só visual: a grade e as vistas usam o referencial, o código continua em mundo. Qualquer peça posicionada (girada em qualquer eixo) tem referencial; a câmera acompanha com uma rolagem além do azimute/elevação orbital, que `Orbit` sempre zera. O isolamento é guardado **por nome** e reaplicado em `RunCodeAsync`, porque cada execução recria as features |
 | Mudar o que a análise enxerga (primitivas, papéis, nomes) | `AvaloniaCadEditor.Analysis/FactExtractor.cs` | é o único percurso da árvore com `Placement`: não crie outro. Feature nova → um `case` aqui |
 | Mudar as relações inferidas (simetria, padrões, coaxiais, alinhamentos) | `AvaloniaCadEditor.Analysis/RelationAnalyzer.cs` | 3D e sem vista; serve ao desenho **e** às guias. Simetria exige pares de mesmo tipo e tamanho |
 | Mudar quais cotas o desenho escolhe | `AvaloniaCadEditor.Drafting/DimensionPlanner.cs` (hierarquia: 1 cadeias e tamanhos, 2 localização, 3 totais) e `DimensionLayout.cs` (fileiras por intervalos) | as medidas vêm dos **parâmetros** das features, não da malha: o OCCT não expõe arestas analíticas e furos são prismas de 32 lados |
@@ -309,7 +341,7 @@ undo/redo, navegação F12/F2, parâmetros de peça e o run. Extrações candida
   verdade." ([`SceneScriptViewModel.cs:68`](AvaloniaCadEditor.UI/ViewModels/SceneScriptViewModel.cs#L68)).
   Continua sendo chamado em todo `RefreshSolidMesh` e tem botão na toolbar ("Atualizar código").
 - `MainViewModel` ainda é o "Welcome to Avalonia!" do template.
-- `AiCore.Avalonia/` está vazia.
+- A pasta `AiCore.Avalonia` está vazia e fora do git (sobra local, sem projeto).
 - `PlanarTopologyService` é a única implementação de serviço que vive em `Domain/Services/`
   (as outras estão em `Infrastructure`).
 
@@ -343,8 +375,9 @@ runtime**. Consequência: **um erro de sintaxe em `AiCore/Pecas/` passa o build 
 # Build (ver armadilha abaixo)
 dotnet build AvaloniaCadEditor.slnx
 
-# Testes (~445)
+# Testes do app e do harness
 dotnet test AvaloniaCadEditor.Tests/AvaloniaCadEditor.Tests.csproj
+dotnet test AvaloniaCadEditor.Harness.Tests/AvaloniaCadEditor.Harness.Tests.csproj
 
 # Validar uma cena sem abrir a janela: 0 = ok, 1 = erro de cena, 2 = uso/pasta inválida
 AvaloniaCadEditor.UI.exe check AiCore --geometry
@@ -366,7 +399,7 @@ dotnet test AvaloniaCadEditor.Tests/AvaloniaCadEditor.Tests.csproj -p:BaseOutput
 Com isso, três testes de `CheckCommandProcessTests` falham com *"Expected dir not to be null
 because os testes rodam dentro da pasta da solução"*: eles procuram o `AvaloniaCadEditor.UI.exe`
 subindo a partir de `AppContext.BaseDirectory`, que agora está fora da solução. **São falhas do
-atalho, não do código** — as outras 531 valem.
+atalho, não do código** — as outras valem.
 
 ### Onde os testes moram
 
@@ -375,12 +408,18 @@ atalho, não do código** — as outras 531 valem.
 | `Tests/BehaviorTests/` | ferramentas e kernel ponta a ponta (volume/área da malha, não contagem de triângulos) |
 | `Tests/Features/` | fingerprint, fillet, detector de arestas, cache de malha |
 | `Tests/Scenes/` | projeto de cena, edição de peça, tracer, navegação, `check` |
-| `Tests/Ai/` | protocolo, validador, sessão de chat, contexto e escopo |
+| `Tests/Ai/` | protocolo, validador, sessão de chat, contexto e escopo, cliente LLM, perfis de endpoint |
+| `Tests/Analysis/`, `Tests/Drafting/` | fatos, relações e cotas, inclusive sobre peças reais de `AiCore/Pecas` |
+| `Harness.Tests/` | laço de agente (com modelo roteirizado), Inspetor, papéis, inspeção da cena, HLR e vista em texto |
 
-Três testes funcionam como travas de arquitetura e devem continuar passando:
+Estes testes funcionam como travas de arquitetura e devem continuar passando:
 
 - `FeatureFingerprintTests` — falha se uma propriedade geométrica pública ficar fora do fingerprint.
 - `CadScriptProtocolExamplesTests` — compila e executa **cada** exemplo few-shot de **cada** perfil de
   pré-prompt: o dialeto ensinado à IA não pode apodrecer.
 - `CadScriptPromptProfilesTests` — o perfil `atual` bate com o golden; todo perfil traz o formato de resposta.
 - `CadScriptRulesTests` — garante que prompt, `.cad/api.md` e `AGENTS.md` usem o mesmo texto.
+- `ArchitectureTests` (Harness.Tests) — nenhum projeto do app referencia o Harness; o Harness não referencia
+  Infrastructure nem UI; AiCore não referencia nada; Application não referencia Drafting.
+- `ArchitectureDocTests` — todo caminho citado em backticks neste arquivo existe, e todo projeto da `.slnx`
+  aparece na tabela da §2. Mapa velho falha o teste em vez de mandar alguém para um arquivo que não existe.

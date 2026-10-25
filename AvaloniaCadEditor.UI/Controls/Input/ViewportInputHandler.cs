@@ -31,8 +31,8 @@ public sealed class ViewportInputHandler
     private Point? _rightPressPos;
     private bool _rightDragged;
 
-    /// <summary>Clique com o botão direito sem arrastar (a órbita não chegou a acontecer).</summary>
-    public event Action? ContextMenuRequested;
+    /// <summary>Clique com o botão direito sem arrastar (a órbita não chegou a acontecer), na posição do clique.</summary>
+    public event Action<Point>? ContextMenuRequested;
 
     public void HandlePointerWheelChanged(PointerWheelEventArgs e, CameraState camera, Action requestRender)
     {
@@ -481,7 +481,7 @@ public sealed class ViewportInputHandler
         {
             bool click = !_rightDragged;
             _rightPressPos = null;
-            if (click) ContextMenuRequested?.Invoke();
+            if (click) ContextMenuRequested?.Invoke(e.GetPosition(visual));
         }
     }
 

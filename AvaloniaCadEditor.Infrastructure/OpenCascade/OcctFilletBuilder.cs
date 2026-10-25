@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.Mesh;
 using AvaloniaCadEditor.Domain.Settings;
@@ -38,8 +39,17 @@ internal static class OcctFilletBuilder
     /// é o mesmo contrato que valia quando isto era <c>OpenCascadeGeometryKernel.BuildFillet</c>,
     /// onde a forma de entrada vinha do cache por Id.
     /// </para>
+    /// <para>
+    /// <paramref name="cancellation"/> é conferido antes de cada aresta: o caminho por malha faz uma
+    /// booleana por aresta e pode levar minutos. Cancelado, os cortes intermediários são descartados e
+    /// sai <see cref="OperationCanceledException"/>.
+    /// </para>
+    /// <para>
+    /// <paramref name="warn"/> recebe o motivo quando o sólido sai sem parte do que foi pedido (ex.: arestas
+    /// demais para cortar uma a uma), para o kernel levar a <c>BuildProblems</c>.
+    /// </para>
     /// </summary>
-    public static OcctShape Build(FilletFeature fillet, OcctShape baseShape, TessellationSettings settings)
+    public static OcctShape Build(FilletFeature fillet, OcctShape baseShape, TessellationSettings settings, CancellationToken cancellation = default, Action<string>? warn = null)
     {
         var currentShape = baseShape;
         if (currentShape == null || currentShape.IsNull) return null;
@@ -84,61 +94,78 @@ internal static class OcctFilletBuilder
             var mesh = OcctTessellator.Tessellate(currentShape, settings);
             if (mesh != null && mesh.FeatureEdges.Length > 0)
             {
-                // Recalcula a convexidade de cada feature edge (mesma entrada e mesma ordem de
-                // EdgeDetector.ClassifyEdges usada dentro de OcctTessellator.Tessellate, então os índices
-                // batem com mesh.FeatureEdges par a par).
-                var (_, _, _, _, edgeConvex) = EdgeDetector.ClassifyEdges(mesh.Positions, mesh.Indices, settings.CreaseAngle);
+                // Quina, para o chanfro, é o que dobra mais que uma faceta de superfície curva (o mesmo
+                // limite do ArcEdgeFinder), não o CreaseAngle do desenho das arestas: com os 30° dele,
+                // a quina de 150° de um prisma (30° entre as normais) caía como suave e ficava sem chanfro.
+                double maxStep = ArcEdgeFinder.MaxStepFor(settings.ProfileSegments);
+                var creaseAngle = (float)Math.Min(settings.CreaseAngle, maxStep * 180 / Math.PI);
+                var classification = EdgeDetector.ClassifyEdges(mesh.Positions, mesh.Indices, creaseAngle);
+                var edgeConvex = classification.FeatureConvex;
 
                 // A face alvo é o PLANO (normal + ponto) quando a referência traz um ponto: só arestas
                 // sobre ele são cortadas. Só a normal casaria também faces paralelas — o fundo de um
                 // rebaixo, de um vão — que não fazem parte da face selecionada.
-                var targetFaces = fillet.ApplyToAllEdges
+                List<(Vector3D Normal, WorkPlane? Plane)> targetFaces = fillet.ApplyToAllEdges
                     ? new List<(Vector3D Normal, WorkPlane? Plane)>()
                     : fillet.Faces.Select(f => (f.NormalHint, f.PointOnFace.HasValue ? f.GetWorkPlane() : (WorkPlane?)null)).ToList();
+                bool OnTargetFace(Vector3D n1, Vector3D n2, params Point3D[] points) =>
+                    targetFaces.Count == 0 || targetFaces.Any(t =>
+                        (t.Normal.DotProduct(n1) > 0.99 || t.Normal.DotProduct(n2) > 0.99) &&
+                        (t.Plane == null || points.All(p => t.Plane.Contains(p))));
+
+                // Arcos (boca de furo, ressalto, canto arredondado) saem da lista de retas: cada um vira um
+                // anel só, em vez de um prisma por segmento da tesselação.
+                var arcs = ArcEdgeFinder.Find(mesh.Positions, classification, maxStep);
+                var arcEdges = new HashSet<int>(arcs.SelectMany(a => a.EdgeIndices));
+                var ringArcs = arcs
+                    .Where(a => !(fillet.SkipHoleEdges && a.IsHole) && OnTargetFace(a.Axis, a.Axis, a.Center))
+                    .ToList();
+
                 var candidates = new List<(Point3D Start, Point3D End, Vector3D N1, Vector3D N2)>();
-                for (int i = 0; i < mesh.FeatureEdges.Length; i += 2)
+                for (int i = 0; i < classification.FeatureEdges.Length; i += 2)
                 {
                     // O cutter deste fillet só remove material (chanfro/arredondamento de quina).
                     // Numa aresta côncava (ex.: o canto interno de um degrau) isso abriria um
                     // entalhe em vez de cortar a quina, então essas arestas ficam de fora.
-                    if (!edgeConvex[i / 2]) continue;
+                    if (!edgeConvex[i / 2] || arcEdges.Contains(i / 2)) continue;
 
-                    uint idx1 = mesh.FeatureEdges[i];
-                    uint idx2 = mesh.FeatureEdges[i + 1];
+                    uint idx1 = classification.FeatureEdges[i];
+                    uint idx2 = classification.FeatureEdges[i + 1];
                     var start = new Point3D(mesh.Positions[idx1 * 3], mesh.Positions[idx1 * 3 + 1], mesh.Positions[idx1 * 3 + 2]);
                     var end = new Point3D(mesh.Positions[idx2 * 3], mesh.Positions[idx2 * 3 + 1], mesh.Positions[idx2 * 3 + 2]);
 
-                    var n1 = new Vector3D(mesh.FeatureNormals1[(i/2)*3], mesh.FeatureNormals1[(i/2)*3+1], mesh.FeatureNormals1[(i/2)*3+2]);
-                    var n2 = new Vector3D(mesh.FeatureNormals2[(i/2)*3], mesh.FeatureNormals2[(i/2)*3+1], mesh.FeatureNormals2[(i/2)*3+2]);
+                    var fn1 = classification.FeatureNormals1[i / 2];
+                    var fn2 = classification.FeatureNormals2[i / 2];
+                    var n1 = new Vector3D(fn1.X, fn1.Y, fn1.Z);
+                    var n2 = new Vector3D(fn2.X, fn2.Y, fn2.Z);
 
                     // Sem quina para cortar: emenda entre faces coplanares (ex.: o topo de dois operandos
-                    // de uma união na mesma altura) ou normal indefinida. Com n1 ≈ n2 os pontos (-r, 0) e
-                    // (0, -r) do perfil coincidem, o OCCT recusa a aresta ("edge creation failed") e,
+                    // de uma união na mesma altura) ou normal indefinida. Com n1 ≈ n2 os pontos do perfil nas
+                    // duas faces coincidem, o OCCT recusa a aresta ("edge creation failed") e,
                     // sem esta guarda, a exceção derrubava o sólido inteiro.
                     if (n1.Length < 0.5 || n2.Length < 0.5 || n1.Normalize().DotProduct(n2.Normalize()) > 0.99) continue;
 
-                    // Filter by selected faces if applicable
-                    if (!fillet.ApplyToAllEdges && targetFaces.Count > 0)
-                    {
-                        bool match = false;
-                        foreach (var (tn, plane) in targetFaces)
-                        {
-                            bool normalMatches = tn.DotProduct(n1) > 0.99 || tn.DotProduct(n2) > 0.99;
-                            if (normalMatches && (plane == null || (plane.Contains(start) && plane.Contains(end))))
-                            {
-                                match = true;
-                                break;
-                            }
-                        }
-                        if (!match) continue;
-                    }
+                    if (!OnTargetFace(n1, n2, start, end)) continue;
 
                     if (start.DistanceTo(end) < 1e-5) continue;
                     candidates.Add((start, end, n1, n2));
                 }
 
-                foreach (var (start, end, n1, n2) in MergeCollinearEdges(candidates))
+                // Um prisma por aresta custa uma booleana no sólido inteiro (mais a conferência de volume).
+                // Acima do teto, o que sobrou sem forma reconhecida (furo inclinado, boca numa face curva)
+                // levaria minutos: o sólido sai sem o chanfro e o motivo vai para a barra de status.
+                var straightEdges = MergeCollinearEdges(candidates);
+                if (straightEdges.Count > MaxEdgeCuts)
                 {
+                    warn?.Invoke(
+                        $"chanfro/arredondamento com {straightEdges.Count} arestas sem forma reconhecida (o limite é {MaxEdgeCuts}) não foi aplicado. " +
+                        "Aplique-o antes dos furos, ou use SkipHoleEdges = true se forem furos de parafuso.");
+                    return currentShape;
+                }
+
+                foreach (var (start, end, n1, n2) in straightEdges)
+                {
+                    CancelIfRequested(cancellation, currentShape, isIntermediate);
                     // Um corte que o OCCT erra (forma vazia, ou só um caco do sólido) costuma acertar com
                     // o cortador um pouco mais curto ou mais longo: a falha vem de faces quase
                     // coincidentes com o chanfro já feito na aresta vizinha, e mudar a sobra nas pontas
@@ -157,6 +184,10 @@ internal static class OcctFilletBuilder
                         break;
                     }
                 }
+
+                // Os anéis depois das retas: num canto arredondado, a quina do arco encontra a reta vizinha já chanfrada.
+                CancelIfRequested(cancellation, currentShape, isIntermediate);
+                CutArcs(ref currentShape, ref isIntermediate, ref currentBox, ref currentVolume, ringArcs, r, fillet.Mode, segments, settings, cancellation);
             }
         }
         else
@@ -184,6 +215,7 @@ internal static class OcctFilletBuilder
 
             foreach (var edgeRef in allEdges)
             {
+                CancelIfRequested(cancellation, currentShape, isIntermediate);
                 if (edgeRef.ParentFeature is BoxFeature box)
                 {
                     var geom = box.GetEdgeGeometry(edgeRef.EdgeId);
@@ -209,6 +241,14 @@ internal static class OcctFilletBuilder
         return currentShape;
     }
 
+    /// <summary>Cancelado: descarta o corte intermediário (o sólido base é do cache e fica) e lança.</summary>
+    private static void CancelIfRequested(CancellationToken cancellation, OcctShape currentShape, bool isIntermediate)
+    {
+        if (!cancellation.IsCancellationRequested) return;
+        if (isIntermediate) currentShape.Dispose();
+        cancellation.ThrowIfCancellationRequested();
+    }
+
     /// <summary>
     /// Sobra do cortador além de cada ponta da aresta, em múltiplos do raio, na ordem em que é
     /// tentada. A primeira é a de sempre; as outras só entram se o corte com ela falhar.
@@ -229,36 +269,60 @@ internal static class OcctFilletBuilder
         var extStart = new Point3D(start.X - dEdge.X * overhang, start.Y - dEdge.Y * overhang, start.Z - dEdge.Z * overhang);
         double extLen = len + 2 * overhang;
 
-        // Perfil em (x ao longo de n1, y ao longo de n2), com a quina na origem.
-        var profile = new List<(double X, double Y)> { (0.1 * r, 0.1 * r), (-r, 0.1 * r), (-r, 0) };
+        // Perfil no plano perpendicular à aresta, com a quina na origem. t1 e t2 correm DENTRO de cada
+        // face, para longe da aresta: o chanfro vai do ponto a d de distância numa face ao ponto a d na
+        // outra. Numa quina de 90° elas são -n2 e -n1, exatamente; fora dela, -n2 e -n1 punham os pontos
+        // dentro do material (quina de 60° ou 150°), o cortador abria um entalhe e o corte era recusado.
+        // Na quina reta fica o -n2/-n1: o produto vetorial carregaria o ruído das normais da malha, e há
+        // trechos (arco não reconhecido de um furo) que o OCCT só corta com o cortador de sempre.
+        Vector3D t1, t2;
+        if (Math.Abs(n1.Normalize().DotProduct(n2.Normalize())) < 1e-3)
+        {
+            t1 = n2 * -1;
+            t2 = n1 * -1;
+        }
+        else
+        {
+            n1 = n1.Normalize();
+            n2 = n2.Normalize();
+            t1 = dEdge.CrossProduct(n1).Normalize();
+            if (t1.DotProduct(n2) > 0) t1 = t1 * -1;
+            t2 = dEdge.CrossProduct(n2).Normalize();
+            if (t2.DotProduct(n1) > 0) t2 = t2 * -1;
+        }
+
+        // Ângulo entre as normais: 90° numa quina reta. O arco de raio r tangente às duas faces as toca a
+        // r / tan(ângulo interno / 2) da quina; o chanfro corta a r em cada face.
+        double alpha = Math.Acos(Math.Clamp(n1.DotProduct(n2), -1, 1));
+        double d = mode == FilletMode.Round ? r * Math.Tan(alpha / 2) : r;
+
+        var profile = new List<Vector3D> { (n1 + n2) * (0.1 * r), t2 * d + n2 * (0.1 * r), t2 * d };
         if (mode == FilletMode.Round)
         {
+            // Centro do arco a r das duas faces; o raio gira de n2 (toca a face 2) para n1 (toca a face 1).
+            var center = t1 * d - n1 * r;
             for (int k = 1; k < segments; k++)
             {
-                double theta = (Math.PI / 2.0) * (1.0 - (double)k / segments);
-                profile.Add((-r + r * Math.Cos(theta), -r + r * Math.Sin(theta)));
+                double s = (double)k / segments;
+                var radial = (n2 * Math.Sin((1 - s) * alpha) + n1 * Math.Sin(s * alpha)) * (1 / Math.Sin(alpha));
+                profile.Add(center + radial * r);
             }
         }
-        profile.Add((0, -r));
-        profile.Add((0.1 * r, -r));
+        profile.Add(t1 * d);
+        profile.Add(t1 * d + n1 * (0.1 * r));
 
-        // Área pela fórmula do laço, corrigida por |n1 × n2|: o perfil está na base (n1, n2), que só é
-        // ortonormal numa quina de 90°. A extrusão corre ao longo da aresta, perpendicular às duas normais.
-        double area = 0;
+        // Área pela fórmula do laço, no plano do perfil (perpendicular à aresta).
+        var doubleArea = new Vector3D(0, 0, 0);
         for (int k = 0; k < profile.Count; k++)
-        {
-            var (x1, y1) = profile[k];
-            var (x2, y2) = profile[(k + 1) % profile.Count];
-            area += x1 * y2 - x2 * y1;
-        }
+            doubleArea += profile[k].CrossProduct(profile[(k + 1) % profile.Count]);
 
         try
         {
             var edges = new List<OcctEdge>();
             for (int k = 0; k < profile.Count; k++)
             {
-                var p1 = Get3DPoint(extStart, n1, n2, profile[k].X, profile[k].Y);
-                var p2 = Get3DPoint(extStart, n1, n2, profile[(k + 1) % profile.Count].X, profile[(k + 1) % profile.Count].Y);
+                var p1 = extStart + profile[k];
+                var p2 = extStart + profile[(k + 1) % profile.Count];
                 edges.Add(new OcctEdge(
                     new OcctPointCoordinates(p1.X, p1.Y, p1.Z),
                     new OcctPointCoordinates(p2.X, p2.Y, p2.Z)
@@ -268,7 +332,7 @@ internal static class OcctFilletBuilder
             var wire = new OcctWire(edges.ToArray());
             var face = new OcctFace(wire);
             var cutter = face.Extrude(new OcctVector3d(dEdge.X * extLen, dEdge.Y * extLen, dEdge.Z * extLen));
-            double volume = Math.Abs(area) / 2 * n1.CrossProduct(n2).Length * extLen;
+            double volume = doubleArea.Length / 2 * extLen;
             return cutter == null || cutter.IsNull ? null : (cutter, volume);
         }
         catch (OcctException)
@@ -359,11 +423,20 @@ internal static class OcctFilletBuilder
                 after.SizeX < before.SizeX - 2 * tolerance ||
                 after.SizeY < before.SizeY - 2 * tolerance ||
                 after.SizeZ < before.SizeZ - 2 * tolerance;
+            // Quanto a caixa avançou em cada um dos 6 lados. A caixa do OCCT soma a tolerância do sólido, e uma
+            // booleana com superfície curva (o cone do anel de um arco cruzando as facetas da parede) sobe essa
+            // tolerância: a caixa cresce IGUAL nos 6 lados (0,036 mm num furo de raio 3) sem o sólido crescer. Essa
+            // parte comum (a mediana) é descontada; o que denuncia a booleana corrompida é crescer de um lado só.
             const double growthTolerance = 1e-3;
-            bool grew =
-                after.MinX < before.MinX - growthTolerance || after.MaxX > before.MaxX + growthTolerance ||
-                after.MinY < before.MinY - growthTolerance || after.MaxY > before.MaxY + growthTolerance ||
-                after.MinZ < before.MinZ - growthTolerance || after.MaxZ > before.MaxZ + growthTolerance;
+            var growth = new[]
+            {
+                before.MinX - after.MinX, after.MaxX - before.MaxX,
+                before.MinY - after.MinY, after.MaxY - before.MaxY,
+                before.MinZ - after.MinZ, after.MaxZ - before.MaxZ,
+            };
+            var sorted = growth.OrderBy(g => g).ToArray();
+            double toleranceGap = Math.Max(0, (sorted[2] + sorted[3]) / 2);
+            bool grew = growth.Any(g => g - toleranceGap > growthTolerance);
             if (!shrankTooMuch && !grew)
             {
                 double volumeBefore = shapeVolume ??= OcctTessellator.Volume(shape, settings.LinearDeflection, settings.AngularDeflection);
@@ -386,74 +459,177 @@ internal static class OcctFilletBuilder
         return null;
     }
 
-    private static OcctShape CreateCylinderCutter(CylinderFeature cyl, double filletRadius, bool isTop, bool isRound, TessellationSettings settings)
+    /// <summary>
+    /// Acima disto, as arestas retas que sobram depois de tirar os arcos não são cortadas uma a uma: cada
+    /// corte é uma booleana no sólido inteiro, e com centenas delas a construção levava minutos.
+    /// </summary>
+    internal const int MaxEdgeCuts = 200;
+
+    /// <summary>
+    /// Corta os arcos com anéis de revolução. Primeiro todos juntos (uma booleana só, conferida pelo volume
+    /// somado dos anéis); se o OCCT errar o lote, um por vez, e o anel que falhar sozinho fica sem chanfro.
+    /// </summary>
+    private static void CutArcs(ref OcctShape currentShape, ref bool isIntermediate, ref OcctBoundingBox? currentBox, ref double? currentVolume,
+        IReadOnlyList<CircularEdge> arcs, double r, FilletMode mode, int segments, TessellationSettings settings, CancellationToken cancellation)
     {
-        var origin = cyl.GlobalBaseCenter;
-        var dir = cyl.GlobalDirection;
-        
-        var points2D = new System.Collections.Generic.List<(double r, double z)>();
-        double R = cyl.Radius;
-        double H = cyl.Height;
-        double r = filletRadius;
-        
-        if (isTop)
+        var cutters = new List<(OcctShape Shape, double Volume)>();
+        try
         {
-            points2D.Add((R - r, H + 0.1));
-            points2D.Add((R + 0.1, H + 0.1));
-            points2D.Add((R + 0.1, H - r));
-            
+            foreach (var arc in arcs)
+            {
+                if (CreateArcCutter(arc, r, mode, segments) is { } cutter) cutters.Add(cutter);
+            }
+            if (cutters.Count == 0) return;
+
+            CutBatch(ref currentShape, ref isIntermediate, ref currentBox, ref currentVolume, cutters, r, settings, cancellation);
+        }
+        finally
+        {
+            foreach (var (shape, _) in cutters) shape.Dispose();
+        }
+    }
+
+    private static void CutBatch(ref OcctShape currentShape, ref bool isIntermediate, ref OcctBoundingBox? currentBox, ref double? currentVolume,
+        List<(OcctShape Shape, double Volume)> cutters, double r, TessellationSettings settings, CancellationToken cancellation)
+    {
+        CancelIfRequested(cancellation, currentShape, isIntermediate);
+        OcctShape? tool = cutters.Count == 1 ? cutters[0].Shape : FuseAll(cutters.Select(c => c.Shape).ToList());
+        OcctShape? cut = tool == null ? null : TryCutKeepingSolid(currentShape, ref currentBox, ref currentVolume, tool, cutters.Sum(c => c.Volume), r, settings);
+        if (cutters.Count > 1) tool?.Dispose();
+        if (cut != null)
+        {
+            if (isIntermediate) currentShape.Dispose();
+            currentShape = cut;
+            isIntermediate = true;
+            return;
+        }
+        if (cutters.Count == 1) return;
+        int half = cutters.Count / 2;
+        CutBatch(ref currentShape, ref isIntermediate, ref currentBox, ref currentVolume, cutters.GetRange(0, half), r, settings, cancellation);
+        CutBatch(ref currentShape, ref isIntermediate, ref currentBox, ref currentVolume, cutters.GetRange(half, cutters.Count - half), r, settings, cancellation);
+    }
+
+    /// <summary>União dos cortadores (sem descartar os de entrada), ou null se o OCCT recusar.</summary>
+    private static OcctShape? FuseAll(List<OcctShape> shapes)
+    {
+        try
+        {
+            var current = shapes[0];
+            for (int i = 1; i < shapes.Count; i++)
+            {
+                var next = current.Fuse(shapes[i]);
+                if (i > 1) current.Dispose();
+                if (next == null || next.IsNull) return null;
+                current = next;
+            }
+            return current;
+        }
+        catch (OcctException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Anel (ou setor de anel) que chanfra/arredonda o arco: o perfil de <see cref="RingProfile"/> revolvido
+    /// em torno do eixo do arco, a partir do plano da face. Null se o perfil degenera (ressalto com raio de
+    /// chanfro maior que o dele) ou o OCCT recusa.
+    /// </summary>
+    private static (OcctShape Shape, double Volume)? CreateArcCutter(CircularEdge arc, double r, FilletMode mode, int segments)
+    {
+        if (RingProfile(arc.Radius, r, arc.IsHole, mode == FilletMode.Round, segments) is not { } profile) return null;
+        try
+        {
+            var shape = OcctProfileGeometry.RevolveProfile(profile, arc.Center, arc.Axis, arc.StartDirection, arc.SweepRadians);
+            return shape == null || shape.IsNull ? null : (shape, RevolvedVolume(profile, arc.SweepRadians));
+        }
+        catch (OcctException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// Perfil (r = distância ao eixo, z = altura) do cortador de um arco de raio <paramref name="R"/>, com
+    /// z = 0 no plano da face e z positivo para fora do material. Sobra de 0,1 do raio do chanfro para o
+    /// lado do vazio, como os prismas das retas.
+    /// <list type="bullet">
+    /// <item><b>furo</b> (material fora do círculo): de <c>R</c> a <c>R + r</c> no plano, descendo <c>r</c>
+    /// pela parede. Nunca chega ao eixo, então serve para qualquer raio de furo;</item>
+    /// <item><b>ressalto</b> (material dentro): de <c>R − r</c> a <c>R</c>. Com <c>r ≥ R</c> o chanfro
+    /// passaria do eixo: null.</item>
+    /// </list>
+    /// </summary>
+    private static List<(double r, double z)>? RingProfile(double R, double r, bool isHole, bool isRound, int segments)
+    {
+        double o = 0.1 * r;
+        var points = new List<(double r, double z)>();
+        if (isHole)
+        {
+            double inner = Math.Max(R - o, R * 0.5);
+            points.Add((inner, o));
+            points.Add((R + r, o));
+            points.Add((R + r, 0));
             if (isRound)
             {
-                int segments = settings.ProfileSegments > 0 ? settings.ProfileSegments / 4 : 8;
-                if (segments < 2) segments = 2;
-                for (int i = 0; i <= segments; i++)
+                // Centro do arredondamento em (R + r, −r), dentro do material: de (R + r, 0) a (R, −r).
+                for (int k = 1; k < segments; k++)
                 {
-                    double theta = (Math.PI / 2.0) * (1.0 - (double)i / segments);
-                    double pr = (R - r) + r * Math.Cos(theta);
-                    double pz = (H - r) + r * Math.Sin(theta);
-                    points2D.Add((pr, pz));
+                    double theta = Math.PI / 2 + (Math.PI / 2) * k / segments;
+                    points.Add((R + r + r * Math.Cos(theta), -r + r * Math.Sin(theta)));
                 }
             }
-            else
-            {
-                points2D.Add((R, H - r));
-                points2D.Add((R - r, H));
-            }
+            points.Add((R, -r));
+            points.Add((inner, -r));
         }
         else
         {
-            points2D.Add((R - r, -0.1));
-            points2D.Add((R + 0.1, -0.1));
-            points2D.Add((R + 0.1, r));
-            
+            if (r >= R) return null;
+            points.Add((R - r, o));
+            points.Add((R + o, o));
+            points.Add((R + o, -r));
+            points.Add((R, -r));
             if (isRound)
             {
-                int segments = settings.ProfileSegments > 0 ? settings.ProfileSegments / 4 : 8;
-                if (segments < 2) segments = 2;
-                for (int i = 0; i <= segments; i++)
+                // Centro em (R − r, −r): de (R, −r) a (R − r, 0).
+                for (int k = 1; k < segments; k++)
                 {
-                    double theta = (Math.PI / 2.0) * ((double)i / segments);
-                    double pr = (R - r) + r * Math.Cos(theta);
-                    double pz = r - r * Math.Sin(theta);
-                    points2D.Add((pr, pz));
+                    double theta = (Math.PI / 2) * k / segments;
+                    points.Add((R - r + r * Math.Cos(theta), -r + r * Math.Sin(theta)));
                 }
             }
-            else
-            {
-                points2D.Add((R, r));
-                points2D.Add((R - r, 0));
-            }
+            points.Add((R - r, 0));
         }
-        
-        return OcctProfileGeometry.RevolveProfile(points2D, origin, dir);
+        return points;
     }
 
-    private static Point3D Get3DPoint(Point3D origin, Vector3D n1, Vector3D n2, double x, double y)
+    /// <summary>Volume do perfil revolvido <paramref name="angle"/> radianos (Pappus: área × raio do centroide × ângulo).</summary>
+    private static double RevolvedVolume(IReadOnlyList<(double r, double z)> profile, double angle)
     {
-        return new Point3D(
-            origin.X + x * n1.X + y * n2.X,
-            origin.Y + x * n1.Y + y * n2.Y,
-            origin.Z + x * n1.Z + y * n2.Z
-        );
+        double area2 = 0, centroidR6 = 0;
+        for (int k = 0; k < profile.Count; k++)
+        {
+            var (r1, z1) = profile[k];
+            var (r2, z2) = profile[(k + 1) % profile.Count];
+            double cross = r1 * z2 - r2 * z1;
+            area2 += cross;
+            centroidR6 += (r1 + r2) * cross;
+        }
+        if (Math.Abs(area2) < 1e-12) return 0;
+        double area = Math.Abs(area2) / 2;
+        double centroidR = centroidR6 / (3 * area2);
+        return area * Math.Abs(centroidR) * angle;
+    }
+
+    private static OcctShape CreateCylinderCutter(CylinderFeature cyl, double filletRadius, bool isTop, bool isRound, TessellationSettings settings)
+    {
+        int segments = settings.ProfileSegments > 0 ? settings.ProfileSegments / 4 : 8;
+        if (segments < 2) segments = 2;
+        if (RingProfile(cyl.Radius, filletRadius, isHole: false, isRound, segments) is not { } profile) return null;
+
+        // O topo olha para a direção do cilindro e a base para o lado oposto; o perfil é do plano para fora.
+        var dir = cyl.GlobalDirection;
+        var origin = isTop ? cyl.GlobalBaseCenter + dir * cyl.Height : cyl.GlobalBaseCenter;
+        return OcctProfileGeometry.RevolveProfile(profile, origin, isTop ? dir : dir * -1);
     }
 }

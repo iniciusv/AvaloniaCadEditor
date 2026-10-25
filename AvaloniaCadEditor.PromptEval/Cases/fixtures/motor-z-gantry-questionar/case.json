@@ -1,0 +1,23 @@
+{
+  // O mesmo pedido de motor-z-gantry (mesma cena congelada, via filesFrom, e a mesma seleção), com a
+  // skill "questionar" ligada. Mesmo com o contexto certo, o pedido deixa decisões em aberto: não há
+  // estrutura no chão no meio (as *_copia1 ficam em X ±170) para apoiar o motor, nem fuso, porca ou
+  // acoplamento na cena. A resposta certa é perguntar, sem código, e as perguntas têm de partir dos
+  // fatos certos: o chão em z -280,7 (base das *_copia1), não em -20, 0 ou 30.
+  "description": "Mesmo pedido do motor Z com a skill questionar: perguntas sem código, citando o chão em z -280,7.",
+  "filesFrom": "../motor-z-gantry",
+  "skills": ["questionar"],
+  "instruction": "Preciso colocar um motor nema para mover o gantry fazendo o eixo Z. Ele vai ser voltado para cima com um parafuso ligado ao eixo que liga a uma porca no tuboTravessa movendo todo o gantry que está preso aos carrinhos carrinhoZA e carrinhoZB. A base do motor, o chão fica na altura do inicio das extrusões de aluminio na parte mais baixa.",
+  "select": [
+    "extrusao_2020_trilho_z_a_copia1",
+    "extrusao_2020_trilho_z_b_copia1",
+    "motor_nema17_y_a",
+    "tubo_travessa",
+    "trilho_hgr15_z_a",
+    "trilho_hgr15_z_b"
+  ],
+  "checks": {
+    "expectNoCode": true,
+    "chatMustMatch": ["280[,.][0-9]", "tubo_travessa"]
+  }
+}

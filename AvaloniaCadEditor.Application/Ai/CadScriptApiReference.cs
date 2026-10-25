@@ -41,7 +41,8 @@ public static class CadScriptApiReference
         typeof(Placement),
         typeof(PartInstance),
         typeof(SweepSection),
-        typeof(SweepPath)
+        typeof(SweepPath),
+        typeof(SweepWrap)
     };
 
     private static readonly Type[] EnumTypes =

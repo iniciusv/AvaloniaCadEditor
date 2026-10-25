@@ -699,6 +699,31 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
 
     // ---------------------------------------------------------------- Execução
 
+    /// <summary>
+    /// Quanto a troca de cena espera pela geometria antes de ir para a tela sem o que falta: o bastante para
+    /// uma cena comum entrar inteira, de uma vez, sem aparecer aos pedaços.
+    /// </summary>
+    private static readonly TimeSpan SceneBuildBudget = TimeSpan.FromMilliseconds(400);
+
+    /// <summary>De quanto em quanto tempo a cena na tela recebe os sólidos que ficaram prontos depois da troca.</summary>
+    private static readonly TimeSpan SceneBuildRefreshInterval = TimeSpan.FromMilliseconds(500);
+
+    /// <summary>Conta as execuções: uma que termina de avaliar depois de outra mais nova ter começado não aplica nada.</summary>
+    private int _runSequence;
+
+    /// <summary>A construção da geometria da cena na tela (ou prestes a ir); a próxima cena que avaliar bem a cancela.</summary>
+    private CancellationTokenSource? _sceneBuild;
+
+    /// <summary>
+    /// Executa a cena e troca a que está na tela pela nova. A geometria é construída fora da thread da UI
+    /// (<see cref="ISceneMeshManager.PrepareSceneAsync"/>): a troca espera no máximo
+    /// <see cref="SceneBuildBudget"/> e o que ainda faltar (ex.: um chanfro por malha num corpo furado, que
+    /// leva minutos) entra na tela quando ficar pronto, sem travar a janela nem esconder o resto.
+    /// <para>
+    /// A construção anterior só é cancelada quando esta cena avalia sem erro: um erro de digitação no meio
+    /// não deixa a cena na tela com sólidos que nunca chegam.
+    /// </para>
+    /// </summary>
     public async Task RunCodeAsync()
     {
         if (_sceneEvaluator == null)
@@ -706,6 +731,8 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
             _cadViewModel.StatusText = "Aviso: Evaluator não configurado.";
             return;
         }
+
+        int run = ++_runSequence;
         _cadViewModel.StatusText = "Avaliando código...";
 
         var stopwatch = System.Diagnostics.Stopwatch.StartNew();
@@ -726,10 +753,24 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         }
         long evaluateMs = stopwatch.ElapsedMilliseconds;
 
+        // Uma execução mais nova começou enquanto esta avaliava: ela decide o que vai para a tela.
+        if (run != _runSequence) return;
+
         if (result.Success)
         {
+            _sceneBuild?.Cancel();
+            var build = new CancellationTokenSource();
+            _sceneBuild = build;
+            var cancellation = build.Token;
+
             // Reaproveita malhas de geometria idêntica da execução anterior (ex.: só uma peça mudou de lugar).
-            _cadViewModel.MeshManager.ResetForNewScene();
+            // Só as que vão aparecer: o resto continua sob demanda, como antes.
+            _cadViewModel.StatusText = "Construindo geometria...";
+            var prepare = _cadViewModel.MeshManager.PrepareSceneAsync(_cadViewModel.FeaturesVisibleAfterRun(result.Features), cancellation);
+            if (!prepare.IsCompleted) await Task.WhenAny(prepare, Task.Delay(SceneBuildBudget));
+            if (cancellation.IsCancellationRequested) return; // outra cena assumiu durante a espera
+            if (prepare.IsCompleted) await prepare; // erro inesperado do kernel sobe, como antes
+
             _cadViewModel.Sketch.ClearFeatures();
             foreach (var feature in result.Features)
             {
@@ -740,11 +781,15 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
             // RefreshProfiles já refaz a malha composta e a árvore, uma vez cada.
             _cadViewModel.RefreshProfiles();
             Console.WriteLine($"[Run] avaliação {evaluateMs} ms, geometria/árvore {stopwatch.ElapsedMilliseconds - evaluateMs} ms, {result.Features.Count} feature(s)");
-            _cadViewModel.StatusText = _project != null
+            string done = _project != null
                 ? $"✓ {_project.Name}: {result.Features.Count} feature(s) em {_documents.Count} arquivo(s)"
                 : $"✓ Código executado: {result.Features.Count} feature(s)";
+            _cadViewModel.StatusText = prepare.IsCompleted ? done : BuildingStatus(done);
             SetErrors(Array.Empty<ScriptDiagnostic>());
             RefreshPartTypes();
+
+            // Sem await: quem chamou (inspector, ferramentas, chat) segue com a cena já na tela.
+            if (!prepare.IsCompleted) _ = FollowSceneBuildAsync(prepare, cancellation, done, stopwatch);
         }
         else
         {
@@ -760,6 +805,49 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
             SetErrors(errors);
             RefreshPartTypes();
         }
+    }
+
+    private string BuildingStatus(string done) =>
+        $"{done} ⏳ construindo {_cadViewModel.MeshManager.PendingCount} sólido(s) em segundo plano...";
+
+    /// <summary>
+    /// Leva para a tela, aos poucos, os sólidos que <paramref name="prepare"/> termina depois da troca de
+    /// cena. Para sem mexer em nada quando outra cena assume (<paramref name="cancellation"/>).
+    /// </summary>
+    private async Task FollowSceneBuildAsync(Task prepare, CancellationToken cancellation, string done, System.Diagnostics.Stopwatch stopwatch)
+    {
+        var meshes = _cadViewModel.MeshManager;
+        int pending = meshes.PendingCount;
+        while (!prepare.IsCompleted)
+        {
+            await Task.WhenAny(prepare, Task.Delay(SceneBuildRefreshInterval));
+            if (cancellation.IsCancellationRequested) return;
+            if (meshes.PendingCount != pending && !prepare.IsCompleted)
+            {
+                pending = meshes.PendingCount;
+                _cadViewModel.RefreshBackgroundMeshes();
+                _cadViewModel.StatusText = BuildingStatus(done);
+            }
+        }
+
+        try
+        {
+            await prepare;
+        }
+        catch (OperationCanceledException)
+        {
+            return;
+        }
+        catch (Exception ex)
+        {
+            _cadViewModel.StatusText = $"✗ Geometria: {ex.Message}";
+            return;
+        }
+
+        _cadViewModel.StatusText = done;
+        // Depois do status: um sólido que não saiu põe o motivo dele na barra (ReportBuildProblems).
+        _cadViewModel.RefreshBackgroundMeshes();
+        Console.WriteLine($"[Run] geometria em segundo plano terminou em {stopwatch.ElapsedMilliseconds} ms");
     }
 
     public event PropertyChangedEventHandler? PropertyChanged;
@@ -1643,6 +1731,24 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         EnsureEntryDocumentActive();
         _history.SaveState(GeneratedCSharpCode);
         GeneratedCSharpCode = HoistMovedOperands(result);
+        return true;
+    }
+
+    /// <summary>
+    /// Põe o fillet <paramref name="filletVar"/> antes da subtração <paramref name="cutVar"/>, sobre a base
+    /// dela (ver <see cref="RoslynFilletBeforeCutInserter"/>). Devolve <c>false</c> sem alterar o script se
+    /// o código não estiver num formato reconhecido; quem chamou cai para o fillet depois da subtração.
+    /// </summary>
+    public bool TryInsertFilletBeforeCut(string cutVar, string baseVar, string filletVar, string filletCode)
+    {
+        EnsureEntryDocumentActive();
+        if (!RoslynFilletBeforeCutInserter.TryInsert(GeneratedCSharpCode, cutVar, baseVar, filletVar, filletCode, out var result))
+        {
+            return false;
+        }
+
+        _history.SaveState(GeneratedCSharpCode);
+        GeneratedCSharpCode = result;
         return true;
     }
 

@@ -132,6 +132,32 @@ public sealed class Placement
             new Vector3D(d * x, d * y, d * z));
     }
 
+    /// <summary>
+    /// Monta um posicionamento cuja parte linear leva os eixos locais (1,0,0), (0,1,0) e (0,0,1) para
+    /// <paramref name="x"/>, <paramref name="y"/> e <paramref name="z"/> — devem ser unitários,
+    /// ortogonais entre si e formar uma base de mão direita (determinante +1). Usada para montar um
+    /// referencial a partir dos eixos que uma peça ocupa no mundo (<c>PartFrameResolver</c>).
+    /// </summary>
+    public static Placement FromAxes(Vector3D x, Vector3D y, Vector3D z, Vector3D translation)
+    {
+        const double tolerance = 1e-6;
+        if (Math.Abs(x.Length - 1) > tolerance || Math.Abs(y.Length - 1) > tolerance || Math.Abs(z.Length - 1) > tolerance)
+            throw new ArgumentException("Os eixos precisam ser unitários.");
+        if (Math.Abs(x.DotProduct(y)) > tolerance || Math.Abs(y.DotProduct(z)) > tolerance || Math.Abs(x.DotProduct(z)) > tolerance)
+            throw new ArgumentException("Os eixos precisam ser ortogonais entre si.");
+
+        var placement = new Placement(
+            x.X, y.X, z.X,
+            x.Y, y.Y, z.Y,
+            x.Z, y.Z, z.Z,
+            translation);
+
+        if (placement.Determinant < 1 - tolerance)
+            throw new ArgumentException("Os eixos precisam formar uma base de mão direita (determinante +1).");
+
+        return placement;
+    }
+
     /// <summary>Espelho pelo plano X = <paramref name="atX"/>: inverte a coordenada X em torno dele (Y e Z ficam).</summary>
     public static Placement MirrorX(double atX = 0) => Mirror(new Point3D(atX, 0, 0), Vector3D.UnitX);
 

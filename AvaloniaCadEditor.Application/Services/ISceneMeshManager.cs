@@ -40,4 +40,29 @@ public interface ISceneMeshManager
     /// geometria idêntica da execução anterior. Para descartar tudo (ex.: mudou a tesselação), use <see cref="ClearCache"/>.
     /// </summary>
     void ResetForNewScene();
+
+    /// <summary>
+    /// Como <see cref="ResetForNewScene"/>, mas constrói as malhas de <paramref name="features"/> fora da
+    /// thread da UI e sem esquecer as da cena que ainda está na tela (saem no próximo
+    /// <see cref="BuildCompositeMesh"/>, quando o sketch já tem as features novas).
+    /// <para>
+    /// A cena nova pode ir para a tela antes de a tarefa terminar: enquanto uma feature da lista não fica
+    /// pronta, a malha composta a deixa de fora e <see cref="GetFeatureMesh"/>/<see cref="GetMeshFor"/>
+    /// devolvem malha vazia sem guardar, em vez de esperar pelo kernel. Cancelado, lança
+    /// <see cref="OperationCanceledException"/> e não guarda nada pela metade.
+    /// </para>
+    /// </summary>
+    System.Threading.Tasks.Task PrepareSceneAsync(IReadOnlyList<IFeature> features, System.Threading.CancellationToken cancellation);
+
+    /// <summary>
+    /// Quantas features do último <see cref="PrepareSceneAsync"/> ainda não têm malha. Uma construção
+    /// cancelada deixa as dela aqui até a próxima cena: construí-las na UI travaria a janela.
+    /// </summary>
+    int PendingCount { get; }
+
+    /// <summary>
+    /// Supressão temporária de chanfros e fillets (<see cref="IGeometryKernel.SuppressFillets"/>). As malhas
+    /// das duas versões ficam em cache separado: alternar não refaz nada que já foi construído.
+    /// </summary>
+    bool SuppressFillets { get; set; }
 }
