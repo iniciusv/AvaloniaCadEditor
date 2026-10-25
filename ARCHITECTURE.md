@@ -198,6 +198,7 @@ de todo o resto. Falha segura: fingerprint `null` = sem cache, nunca cache errad
 | Mudar as guias de referência | `Application/ReferenceGuides/ReferenceGuideService.cs` | é só apresentação sobre `Analysis`: a análise em si muda no `RelationAnalyzer` |
 | Mudar seleção / hover / pick | `UI/ViewModels/CadViewModel.cs` (hover com timer, ciclo TAB), `UI/Controls/Input/` | |
 | Mudar a árvore ou o inspector | `UI/ViewModels/ModelTreeViewModel.cs`, `PropertyInspectorViewModel.cs` | o inspector escreve no **código**, não no objeto |
+| Mudar o export para o SketchUp (COLLADA `.dae`) | `Application/Export/SceneExportCollector.cs` (o que vira componente, grupo ou pasta), `Infrastructure/Export/Collada/ColladaDocument.cs` (o XML), porta `Application/Interfaces/ISceneFileWriter.cs` | peça = componente por `(Definition.Id, cor)` dentro de uma pasta pelo tipo; sólido solto = grupo; instância **espelhada** sai como grupo com a malha do mundo. Números sempre em `InvariantCulture`. Outro formato = outro `ISceneFileWriter`, sem tocar no coletor |
 | Mudar a validação headless | `UI/Cli/CheckCommand.cs`, `Application/Scenes/SceneCheckService.cs` | exit codes: 0 ok, 1 erro de cena, 2 uso/pasta inválida |
 | Mexer nas configurações de tesselação | `Infrastructure/Settings/JsonTessellationSettingsProvider.cs`, `Domain/Settings/TessellationSettings.cs` | **leia §5.7 antes** — o cache validado por data não é desperdício |
 | Mudar a composição / injeção | `UI/App.axaml.cs` | ciclo `CadViewModel` ↔ `SceneScriptViewModel`, ver §6.1 |

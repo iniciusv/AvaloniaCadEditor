@@ -45,7 +45,8 @@ public partial class App : Avalonia.Application
 			var reconstructionService = new AvaloniaCadEditor.Application.Services.ShapeReconstructionService(algorithms, geometryKernel);
 			var projectionService = new SketchProjectionService(meshManager, new AvaloniaCadEditor.Infrastructure.Geometry.ClipperPolygonUnion());
 			
-			var viewModel = new CadViewModel(geometryEngine, osnapService, meshManager, vcbService, deletionService, null!, profileRecognitionService, selectionService, settingsProvider, null, filePicker, reconstructionService, projectionService: projectionService);
+			var viewModel = new CadViewModel(geometryEngine, osnapService, meshManager, vcbService, deletionService, null!, profileRecognitionService, selectionService, settingsProvider, null, filePicker, reconstructionService, projectionService: projectionService,
+				sceneFileWriter: new AvaloniaCadEditor.Infrastructure.Export.Collada.ColladaSceneWriter());
 			
 			var scriptEditor = new SceneScriptViewModel(viewModel, evaluator, filePicker);
 			viewModel.ScriptEditor = scriptEditor;

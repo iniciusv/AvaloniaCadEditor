@@ -913,6 +913,7 @@ public partial class CadViewModel : INotifyPropertyChanged
 
 	public ICommand ImportStlCommand { get; }
 	public ICommand ExportStlCommand { get; }
+	public ICommand ExportSketchUpCommand { get; }
 
 	public OsnapSettings OsnapSettings => _osnapService.Settings;
 
@@ -991,6 +992,7 @@ public partial class CadViewModel : INotifyPropertyChanged
 	private readonly IFilePickerService _filePickerService;
 	private readonly IShapeReconstructionService _reconstructionService;
 	private readonly ISketchProjectionService _projections;
+	private readonly AvaloniaCadEditor.Application.Export.SceneExportService? _sceneExport;
 
 	public CadViewModel(
 		IGeometryEngine geometryEngine,
@@ -1006,7 +1008,8 @@ public partial class CadViewModel : INotifyPropertyChanged
 		IFilePickerService? filePickerService = null,
 		IShapeReconstructionService? reconstructionService = null,
 		IPlanarTopologyService? planarTopologyService = null,
-		ISketchProjectionService? projectionService = null)
+		ISketchProjectionService? projectionService = null,
+		ISceneFileWriter? sceneFileWriter = null)
 	{
 		_geometryEngine = geometryEngine;
 		_osnapService = osnapService;
@@ -1023,6 +1026,8 @@ public partial class CadViewModel : INotifyPropertyChanged
 		_reconstructionService = reconstructionService!;
 		_planarTopologyService = planarTopologyService ?? new AvaloniaCadEditor.Domain.Services.PlanarTopologyService(_geometryEngine);
 		_projections = projectionService ?? new SketchProjectionService(MeshManager, new AvaloniaCadEditor.Infrastructure.Geometry.ClipperPolygonUnion());
+		// Sem default: quem não injeta o escritor (os testes) fica sem o export, em vez de puxar o Infrastructure.
+		_sceneExport = sceneFileWriter != null ? new AvaloniaCadEditor.Application.Export.SceneExportService(MeshManager, sceneFileWriter) : null;
 
 		ModelTree = new ModelTreeViewModel(_selectionService);
 		ModelTree.WorkPlaneDoubleClicked += (wpf) =>
@@ -1213,6 +1218,23 @@ public partial class CadViewModel : INotifyPropertyChanged
 			if (string.IsNullOrEmpty(path)) return;
 
 			await _stlService.ExportAsync(meshToExport, path, asBinary: true);
+		});
+
+		ExportSketchUpCommand = new RelayCommand(async () =>
+		{
+			if (_sceneExport == null) return;
+
+			var path = await _filePickerService.SaveFileAsync("Export to SketchUp", "dae", "cena");
+			if (string.IsNullOrEmpty(path)) return;
+
+			try
+			{
+				StatusText = (await _sceneExport.ExportAsync(Sketch.Features.ToList(), path)).Message;
+			}
+			catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException)
+			{
+				StatusText = $"✗ Exportar: não foi possível gravar o arquivo ({ex.Message}).";
+			}
 		});
 
 		ReconstructMeshCommand = new RelayCommand(async () =>

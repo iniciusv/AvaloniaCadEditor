@@ -1,6 +1,6 @@
 # Exportar a cena para o SketchUp (COLLADA `.dae`, componentes por peça)
 
-**Status:** Proposto · **Data:** 2026-10-23 · **Branch:** `feature/exportar-collada` (a criar a partir de `master`)
+**Status:** Implementado (v1), falta importar no SketchUp · **Data:** 2026-10-23 (implementado em 2026-10-25) · **Branch:** `feature/exportar-collada`
 
 ## Objetivo
 
@@ -169,15 +169,15 @@ COLLADA 1.4.1 com `System.Xml.Linq`, sem pacote externo:
 
 ## Etapas
 
-- [ ] `Application/Export/ExportScene.cs` (DTO)
-- [ ] `Application/Interfaces/ISceneFileWriter.cs` (porta)
-- [ ] `Application/Export/SceneExportCollector.cs` (componentes, pastas por tipo, grupos soltos)
-- [ ] `Application/Export/SceneExportService.cs`: recusa com `PendingCount > 0` ("aguarde a cena terminar
+- [x] `Application/Export/ExportScene.cs` (DTO)
+- [x] `Application/Interfaces/ISceneFileWriter.cs` (porta)
+- [x] `Application/Export/SceneExportCollector.cs` (componentes, pastas por tipo, grupos soltos)
+- [x] `Application/Export/SceneExportService.cs`: recusa com `PendingCount > 0` ("aguarde a cena terminar
       de construir") em vez de exportar faltando sólidos; gera o XML em `Task.Run`
-- [ ] `Infrastructure/Export/Collada/ColladaSceneWriter.cs`, `ColladaDocument.cs`, `VertexWelder.cs`
-- [ ] Comando, botão e strings na UI; injeção em `App.axaml.cs`
-- [ ] Testes (abaixo)
-- [ ] ARCHITECTURE.md: linha na §4 ("Exportar a cena para o SketchUp") citando as pastas `Export/`.
+- [x] `Infrastructure/Export/Collada/ColladaSceneWriter.cs`, `ColladaDocument.cs`, `VertexWelder.cs`
+- [x] Comando, botão e strings na UI; injeção em `App.axaml.cs`
+- [x] Testes (abaixo)
+- [x] ARCHITECTURE.md: linha na §4 ("Exportar a cena para o SketchUp") citando as pastas `Export/`.
       O `ArchitectureDocTests` confere os caminhos
 - [ ] Verificação manual pelo usuário: importar `AiCore` no SketchUp com "mesclar faces coplanares".
       Conferir se as peças repetidas chegam como componente, se as pastas de tipo estão certas e se as
@@ -212,6 +212,16 @@ Em `Tests/Export/` (pasta nova):
 
 - 2026-10-23: peças viram **componentes desde a primeira entrega**, sem uma v1 só com grupos.
 - 2026-10-23: as tags são simuladas por um **grupo pai por tipo de peça**. Os sólidos soltos ficam na raiz.
+- 2026-10-25: instância **espelhada** já sai como grupo com a malha do mundo, dentro da pasta do tipo, em vez
+  de componente com escala negativa. É o caminho seguro sem poder testar no SketchUp; se a importação de
+  escala negativa se mostrar confiável, dá para trocar depois.
+- 2026-10-25: a cor do componente é a da instância (`instance.Color`), como a viewport pinta.
+
+## Medição (2026-10-25)
+
+Cena `AiCore` com a tesselação do app: 70 peças em 40 componentes, 3 grupos soltos e 34 pastas de tipo.
+Arquivo de 1,4 MB. Gravar levou 0,1 s com as malhas já construídas (construí-las do zero, 41 s, é o que o
+app já faz ao executar a cena).
 
 ## Perguntas em aberto
 
@@ -220,18 +230,14 @@ Em `Tests/Export/` (pasta nova):
 
 ## Riscos
 
-- **Instância espelhada** (`Placement.IsMirrored`, determinante −1): o SketchUp aceita escala negativa
-  em componente, mas é preciso conferir na importação se as faces não saem invertidas. Se saírem, o
-  coletor passa a exportar a instância espelhada como grupo com a malha do mundo (`GetFeatureMesh`, que
-  já desfaz o espelho), fora do componente.
+- **Instância espelhada:** resolvido de saída (ver Decisões). O custo é que a cópia espelhada não acompanha
+  a edição do componente no SketchUp.
 - **Faces trianguladas no SketchUp:** sem "mesclar faces coplanares" na importação, cada triângulo mostra
   as arestas. Mitigação: a solda de vértices e a dica no tooltip. Se não bastar, juntar os triângulos
   coplanares em polígonos no próprio escritor (`<polylist>`), o que dá bem mais trabalho.
 - **Superfícies curvas facetadas:** furos e cilindros chegam como prismas da tesselação. No SketchUp é
   preciso suavizar as arestas (*Suavizar arestas*). Não há como mandar arcos analíticos: o OcctNet.Wrapper
   não expõe a topologia.
-- **Cena grande:** a cena da impressora tem centenas de milhares de triângulos. Os componentes reduzem
-  o arquivo, mas é preciso medir o tempo na `AiCore` antes de fechar.
 - **Export com chanfro suprimido:** se `SuppressFillets` estiver ligado, exporta a versão sem chanfro (é
   o que está na tela). Avisar no status.
 
