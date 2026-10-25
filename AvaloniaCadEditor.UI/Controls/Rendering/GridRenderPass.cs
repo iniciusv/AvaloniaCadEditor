@@ -61,6 +61,15 @@ public sealed class GridRenderPass : IRenderPass
     /// oculta tracejada (também fina e cinza) deixa as duas ilegíveis.</summary>
     private const float WireframeDim = 0.5f;
 
+    /// <summary>Com a câmera atrás do plano de trabalho a grade fica por cima de tudo o que está do
+    /// lado de cá e só atrapalha: recua para esta fração do traço.</summary>
+    private const float BehindPlaneDim = 0.3f;
+
+    /// <summary>Altura da câmera sobre o plano, em fração da distância ao alvo (≈ seno da
+    /// elevação), em que a grade termina de recuar. A transição é gradual a partir do plano para
+    /// não piscar quando a órbita passa rente a ele.</summary>
+    private const float BehindPlaneFadeEnd = 0.15f;
+
     public void Init(GL gl)
     {
         var vertices = new List<float>();
@@ -150,6 +159,14 @@ public sealed class GridRenderPass : IRenderPass
         float minorAlpha = 1f - Smoothstep(MinorFadeStart, MinorFadeEnd, frac);
 
         float dim = context.ViewModel?.IsWireframe == true ? WireframeDim : 1f;
+
+        // Lado do plano em que a câmera está: negativo é atrás da normal.
+        var eye = context.Camera.Position;
+        float height = (float)((eye.X - wp.Origin.X) * wp.Normal.X
+                             + (eye.Y - wp.Origin.Y) * wp.Normal.Y
+                             + (eye.Z - wp.Origin.Z) * wp.Normal.Z) / distance;
+        float behind = Smoothstep(0f, BehindPlaneFadeEnd, -height);
+        dim *= 1f - behind * (1f - BehindPlaneDim);
 
         // A grade segue o alvo da câmera para não acabar antes da borda da tela, encaixada no passo
         // da grade principal: assim toda linha cai num múltiplo exato do passo nas coordenadas do

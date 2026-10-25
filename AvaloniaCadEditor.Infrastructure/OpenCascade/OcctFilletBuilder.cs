@@ -94,10 +94,12 @@ internal static class OcctFilletBuilder
             var mesh = OcctTessellator.Tessellate(currentShape, settings);
             if (mesh != null && mesh.FeatureEdges.Length > 0)
             {
-                // Recalcula a convexidade de cada feature edge (mesma entrada e mesma ordem de
-                // EdgeDetector.ClassifyEdges usada dentro de OcctTessellator.Tessellate, então os índices
-                // batem com mesh.FeatureEdges par a par).
-                var classification = EdgeDetector.ClassifyEdges(mesh.Positions, mesh.Indices, settings.CreaseAngle);
+                // Quina, para o chanfro, é o que dobra mais que uma faceta de superfície curva (o mesmo
+                // limite do ArcEdgeFinder), não o CreaseAngle do desenho das arestas: com os 30° dele,
+                // a quina de 150° de um prisma (30° entre as normais) caía como suave e ficava sem chanfro.
+                double maxStep = ArcEdgeFinder.MaxStepFor(settings.ProfileSegments);
+                var creaseAngle = (float)Math.Min(settings.CreaseAngle, maxStep * 180 / Math.PI);
+                var classification = EdgeDetector.ClassifyEdges(mesh.Positions, mesh.Indices, creaseAngle);
                 var edgeConvex = classification.FeatureConvex;
 
                 // A face alvo é o PLANO (normal + ponto) quando a referência traz um ponto: só arestas
@@ -113,31 +115,33 @@ internal static class OcctFilletBuilder
 
                 // Arcos (boca de furo, ressalto, canto arredondado) saem da lista de retas: cada um vira um
                 // anel só, em vez de um prisma por segmento da tesselação.
-                var arcs = ArcEdgeFinder.Find(mesh.Positions, classification, ArcEdgeFinder.MaxStepFor(settings.ProfileSegments));
+                var arcs = ArcEdgeFinder.Find(mesh.Positions, classification, maxStep);
                 var arcEdges = new HashSet<int>(arcs.SelectMany(a => a.EdgeIndices));
                 var ringArcs = arcs
                     .Where(a => !(fillet.SkipHoleEdges && a.IsHole) && OnTargetFace(a.Axis, a.Axis, a.Center))
                     .ToList();
 
                 var candidates = new List<(Point3D Start, Point3D End, Vector3D N1, Vector3D N2)>();
-                for (int i = 0; i < mesh.FeatureEdges.Length; i += 2)
+                for (int i = 0; i < classification.FeatureEdges.Length; i += 2)
                 {
                     // O cutter deste fillet só remove material (chanfro/arredondamento de quina).
                     // Numa aresta côncava (ex.: o canto interno de um degrau) isso abriria um
                     // entalhe em vez de cortar a quina, então essas arestas ficam de fora.
                     if (!edgeConvex[i / 2] || arcEdges.Contains(i / 2)) continue;
 
-                    uint idx1 = mesh.FeatureEdges[i];
-                    uint idx2 = mesh.FeatureEdges[i + 1];
+                    uint idx1 = classification.FeatureEdges[i];
+                    uint idx2 = classification.FeatureEdges[i + 1];
                     var start = new Point3D(mesh.Positions[idx1 * 3], mesh.Positions[idx1 * 3 + 1], mesh.Positions[idx1 * 3 + 2]);
                     var end = new Point3D(mesh.Positions[idx2 * 3], mesh.Positions[idx2 * 3 + 1], mesh.Positions[idx2 * 3 + 2]);
 
-                    var n1 = new Vector3D(mesh.FeatureNormals1[(i/2)*3], mesh.FeatureNormals1[(i/2)*3+1], mesh.FeatureNormals1[(i/2)*3+2]);
-                    var n2 = new Vector3D(mesh.FeatureNormals2[(i/2)*3], mesh.FeatureNormals2[(i/2)*3+1], mesh.FeatureNormals2[(i/2)*3+2]);
+                    var fn1 = classification.FeatureNormals1[i / 2];
+                    var fn2 = classification.FeatureNormals2[i / 2];
+                    var n1 = new Vector3D(fn1.X, fn1.Y, fn1.Z);
+                    var n2 = new Vector3D(fn2.X, fn2.Y, fn2.Z);
 
                     // Sem quina para cortar: emenda entre faces coplanares (ex.: o topo de dois operandos
-                    // de uma união na mesma altura) ou normal indefinida. Com n1 ≈ n2 os pontos (-r, 0) e
-                    // (0, -r) do perfil coincidem, o OCCT recusa a aresta ("edge creation failed") e,
+                    // de uma união na mesma altura) ou normal indefinida. Com n1 ≈ n2 os pontos do perfil nas
+                    // duas faces coincidem, o OCCT recusa a aresta ("edge creation failed") e,
                     // sem esta guarda, a exceção derrubava o sólido inteiro.
                     if (n1.Length < 0.5 || n2.Length < 0.5 || n1.Normalize().DotProduct(n2.Normalize()) > 0.99) continue;
 
@@ -265,36 +269,60 @@ internal static class OcctFilletBuilder
         var extStart = new Point3D(start.X - dEdge.X * overhang, start.Y - dEdge.Y * overhang, start.Z - dEdge.Z * overhang);
         double extLen = len + 2 * overhang;
 
-        // Perfil em (x ao longo de n1, y ao longo de n2), com a quina na origem.
-        var profile = new List<(double X, double Y)> { (0.1 * r, 0.1 * r), (-r, 0.1 * r), (-r, 0) };
+        // Perfil no plano perpendicular à aresta, com a quina na origem. t1 e t2 correm DENTRO de cada
+        // face, para longe da aresta: o chanfro vai do ponto a d de distância numa face ao ponto a d na
+        // outra. Numa quina de 90° elas são -n2 e -n1, exatamente; fora dela, -n2 e -n1 punham os pontos
+        // dentro do material (quina de 60° ou 150°), o cortador abria um entalhe e o corte era recusado.
+        // Na quina reta fica o -n2/-n1: o produto vetorial carregaria o ruído das normais da malha, e há
+        // trechos (arco não reconhecido de um furo) que o OCCT só corta com o cortador de sempre.
+        Vector3D t1, t2;
+        if (Math.Abs(n1.Normalize().DotProduct(n2.Normalize())) < 1e-3)
+        {
+            t1 = n2 * -1;
+            t2 = n1 * -1;
+        }
+        else
+        {
+            n1 = n1.Normalize();
+            n2 = n2.Normalize();
+            t1 = dEdge.CrossProduct(n1).Normalize();
+            if (t1.DotProduct(n2) > 0) t1 = t1 * -1;
+            t2 = dEdge.CrossProduct(n2).Normalize();
+            if (t2.DotProduct(n1) > 0) t2 = t2 * -1;
+        }
+
+        // Ângulo entre as normais: 90° numa quina reta. O arco de raio r tangente às duas faces as toca a
+        // r / tan(ângulo interno / 2) da quina; o chanfro corta a r em cada face.
+        double alpha = Math.Acos(Math.Clamp(n1.DotProduct(n2), -1, 1));
+        double d = mode == FilletMode.Round ? r * Math.Tan(alpha / 2) : r;
+
+        var profile = new List<Vector3D> { (n1 + n2) * (0.1 * r), t2 * d + n2 * (0.1 * r), t2 * d };
         if (mode == FilletMode.Round)
         {
+            // Centro do arco a r das duas faces; o raio gira de n2 (toca a face 2) para n1 (toca a face 1).
+            var center = t1 * d - n1 * r;
             for (int k = 1; k < segments; k++)
             {
-                double theta = (Math.PI / 2.0) * (1.0 - (double)k / segments);
-                profile.Add((-r + r * Math.Cos(theta), -r + r * Math.Sin(theta)));
+                double s = (double)k / segments;
+                var radial = (n2 * Math.Sin((1 - s) * alpha) + n1 * Math.Sin(s * alpha)) * (1 / Math.Sin(alpha));
+                profile.Add(center + radial * r);
             }
         }
-        profile.Add((0, -r));
-        profile.Add((0.1 * r, -r));
+        profile.Add(t1 * d);
+        profile.Add(t1 * d + n1 * (0.1 * r));
 
-        // Área pela fórmula do laço, corrigida por |n1 × n2|: o perfil está na base (n1, n2), que só é
-        // ortonormal numa quina de 90°. A extrusão corre ao longo da aresta, perpendicular às duas normais.
-        double area = 0;
+        // Área pela fórmula do laço, no plano do perfil (perpendicular à aresta).
+        var doubleArea = new Vector3D(0, 0, 0);
         for (int k = 0; k < profile.Count; k++)
-        {
-            var (x1, y1) = profile[k];
-            var (x2, y2) = profile[(k + 1) % profile.Count];
-            area += x1 * y2 - x2 * y1;
-        }
+            doubleArea += profile[k].CrossProduct(profile[(k + 1) % profile.Count]);
 
         try
         {
             var edges = new List<OcctEdge>();
             for (int k = 0; k < profile.Count; k++)
             {
-                var p1 = Get3DPoint(extStart, n1, n2, profile[k].X, profile[k].Y);
-                var p2 = Get3DPoint(extStart, n1, n2, profile[(k + 1) % profile.Count].X, profile[(k + 1) % profile.Count].Y);
+                var p1 = extStart + profile[k];
+                var p2 = extStart + profile[(k + 1) % profile.Count];
                 edges.Add(new OcctEdge(
                     new OcctPointCoordinates(p1.X, p1.Y, p1.Z),
                     new OcctPointCoordinates(p2.X, p2.Y, p2.Z)
@@ -304,7 +332,7 @@ internal static class OcctFilletBuilder
             var wire = new OcctWire(edges.ToArray());
             var face = new OcctFace(wire);
             var cutter = face.Extrude(new OcctVector3d(dEdge.X * extLen, dEdge.Y * extLen, dEdge.Z * extLen));
-            double volume = Math.Abs(area) / 2 * n1.CrossProduct(n2).Length * extLen;
+            double volume = doubleArea.Length / 2 * extLen;
             return cutter == null || cutter.IsNull ? null : (cutter, volume);
         }
         catch (OcctException)
@@ -603,14 +631,5 @@ internal static class OcctFilletBuilder
         var dir = cyl.GlobalDirection;
         var origin = isTop ? cyl.GlobalBaseCenter + dir * cyl.Height : cyl.GlobalBaseCenter;
         return OcctProfileGeometry.RevolveProfile(profile, origin, isTop ? dir : dir * -1);
-    }
-
-    private static Point3D Get3DPoint(Point3D origin, Vector3D n1, Vector3D n2, double x, double y)
-    {
-        return new Point3D(
-            origin.X + x * n1.X + y * n2.X,
-            origin.Y + x * n1.Y + y * n2.Y,
-            origin.Z + x * n1.Z + y * n2.Z
-        );
     }
 }
