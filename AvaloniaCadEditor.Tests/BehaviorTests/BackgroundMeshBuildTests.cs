@@ -150,6 +150,58 @@ public class BackgroundMeshBuildTests
         meshes.BuildCompositeMesh(sketch, null).VertexCount.Should().BeGreaterThan(semOLento.VertexCount);
     }
 
+    [Fact]
+    public async Task PrepareScene_ComEscondidas_NaoAsConstroiMasMantemAGeometriaDelas()
+    {
+        var kernel = new OpenCascadeGeometryKernel();
+        var meshes = MeshManager(kernel);
+        var isolada = CaixaChanfrada("isolada");
+        var resto = CaixaChanfrada("resto");
+        await meshes.PrepareSceneAsync(new IFeature[] { isolada, resto }, CancellationToken.None);
+        int construidas = kernel.MeshBuildCount;
+
+        // Duas execuções com "isolada" no H: features novas, e "resto" escondido.
+        IFeature restoNovo = resto;
+        for (int i = 0; i < 2; i++)
+        {
+            restoNovo = CaixaChanfrada("resto");
+            await meshes.PrepareSceneAsync(new IFeature[] { CaixaChanfrada("isolada") }, CancellationToken.None, new[] { restoNovo });
+        }
+        kernel.MeshBuildCount.Should().Be(construidas, "a isolada não mudou e o resto não foi construído");
+
+        var sketch = new Sketch();
+        sketch.AddFeature(restoNovo);
+        await meshes.PrepareFeaturesAsync(new[] { restoNovo }, CancellationToken.None);
+        meshes.BuildCompositeMesh(sketch, null).VertexCount.Should().BeGreaterThan(0);
+        kernel.MeshBuildCount.Should().Be(construidas, "sair do H reaproveita a malha do resto");
+    }
+
+    [Fact]
+    public async Task PrepareFeatures_SolidoLento_FicaPendenteSemTravarAUI()
+    {
+        var kernel = new KernelComSolidoLento("lento");
+        var meshes = MeshManager(kernel);
+        var isolado = new BoxFeature(Point3D.Origin, 10, 10, 10) { Name = "isolado" };
+        var lento = new BoxFeature(new Point3D(20, 0, 0), 10, 10, 10) { Name = "lento" };
+        var sketch = new Sketch();
+        sketch.AddFeature(isolado);
+        sketch.AddFeature(lento);
+        await meshes.PrepareSceneAsync(new IFeature[] { isolado }, CancellationToken.None, new IFeature[] { lento });
+
+        var mostrar = meshes.PrepareFeaturesAsync(new IFeature[] { isolado, lento }, CancellationToken.None);
+        kernel.ComecouOLento.Wait(TimeSpan.FromSeconds(30)).Should().BeTrue();
+
+        meshes.PendingCount.Should().Be(1, "o isolado já tinha malha");
+        var semOLento = meshes.BuildCompositeMesh(sketch, null);
+        semOLento.VertexCount.Should().BeGreaterThan(0);
+
+        kernel.Liberar.Set();
+        await mostrar;
+
+        meshes.PendingCount.Should().Be(0);
+        meshes.BuildCompositeMesh(sketch, null).VertexCount.Should().BeGreaterThan(semOLento.VertexCount);
+    }
+
     /// <summary>OCCT de verdade, mas a construção da feature <c>nomeLento</c> só termina quando o teste libera.</summary>
     private sealed class KernelComSolidoLento(string nomeLento) : IGeometryKernel
     {

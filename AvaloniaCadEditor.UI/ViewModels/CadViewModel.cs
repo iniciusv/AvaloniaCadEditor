@@ -672,7 +672,8 @@ public partial class CadViewModel : INotifyPropertyChanged
 	{
 		if (IsIsolating)
 		{
-			foreach (var feature in _isolationHidden)
+			var revealed = _isolationHidden;
+			foreach (var feature in revealed)
 			{
 				feature.IsVisible = true;
 			}
@@ -682,7 +683,10 @@ public partial class CadViewModel : INotifyPropertyChanged
 			IsolatedFeature = null;
 			DisplayFrame = null;
 			OnPropertyChanged(nameof(IsIsolating));
-			RefreshProfiles();
+			// Se o código rodou com a peça isolada, o resto não tem malha desta execução: construí-la aqui
+			// travaria a janela. ShowFeaturesAsync a constrói em segundo plano e chama o RefreshProfiles.
+			if (ScriptEditor != null) _ = ScriptEditor.ShowFeaturesAsync(revealed);
+			else RefreshProfiles();
 			return;
 		}
 

@@ -764,9 +764,12 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
             var cancellation = build.Token;
 
             // Reaproveita malhas de geometria idêntica da execução anterior (ex.: só uma peça mudou de lugar).
-            // Só as que vão aparecer: o resto continua sob demanda, como antes.
+            // Só as que vão aparecer: o resto continua sob demanda, como antes, mas sem perder a geometria
+            // que já tem (com a peça isolada, sair do H não reconstrói o modelo inteiro).
             _cadViewModel.StatusText = "Construindo geometria...";
-            var prepare = _cadViewModel.MeshManager.PrepareSceneAsync(_cadViewModel.FeaturesVisibleAfterRun(result.Features), cancellation);
+            var visible = _cadViewModel.FeaturesVisibleAfterRun(result.Features);
+            var hidden = result.Features.Except(visible).ToList();
+            var prepare = _cadViewModel.MeshManager.PrepareSceneAsync(visible, cancellation, hidden);
             if (!prepare.IsCompleted) await Task.WhenAny(prepare, Task.Delay(SceneBuildBudget));
             if (cancellation.IsCancellationRequested) return; // outra cena assumiu durante a espera
             if (prepare.IsCompleted) await prepare; // erro inesperado do kernel sobe, como antes
@@ -805,6 +808,29 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
             SetErrors(errors);
             RefreshPartTypes();
         }
+    }
+
+    /// <summary>
+    /// Sólidos da cena na tela que voltam a aparecer sem nova execução (sair do isolamento do H). A execução
+    /// com a peça isolada só construiu ela; o resto é construído fora da thread da UI, com a mesma espera
+    /// curta da troca de cena, e o que ainda faltar entra quando ficar pronto. A próxima cena que avaliar
+    /// sem erro cancela, como cancela a construção dela.
+    /// </summary>
+    public async Task ShowFeaturesAsync(IReadOnlyList<IFeature> features)
+    {
+        var cancellation = (_sceneBuild ??= new CancellationTokenSource()).Token;
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+        var prepare = _cadViewModel.MeshManager.PrepareFeaturesAsync(features, cancellation);
+        if (!prepare.IsCompleted) await Task.WhenAny(prepare, Task.Delay(SceneBuildBudget));
+        if (cancellation.IsCancellationRequested) return; // outra cena assumiu durante a espera
+        if (prepare.IsCompleted) await prepare;
+
+        _cadViewModel.RefreshProfiles();
+        if (prepare.IsCompleted) return;
+
+        string done = _cadViewModel.StatusText;
+        _cadViewModel.StatusText = BuildingStatus(done);
+        await FollowSceneBuildAsync(prepare, cancellation, done, stopwatch);
     }
 
     private string BuildingStatus(string done) =>

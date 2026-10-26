@@ -52,11 +52,22 @@ public interface ISceneMeshManager
     /// <see cref="OperationCanceledException"/> e não guarda nada pela metade.
     /// </para>
     /// </summary>
-    System.Threading.Tasks.Task PrepareSceneAsync(IReadOnlyList<IFeature> features, System.Threading.CancellationToken cancellation);
+    /// <param name="hidden">O resto da cena nova, que não vai para a tela agora: não é construído, mas a
+    /// geometria que já tem no kernel continua em cache para quando voltar (<see cref="PrepareFeaturesAsync"/>).</param>
+    System.Threading.Tasks.Task PrepareSceneAsync(IReadOnlyList<IFeature> features, System.Threading.CancellationToken cancellation,
+        IReadOnlyList<IFeature>? hidden = null);
 
     /// <summary>
-    /// Quantas features do último <see cref="PrepareSceneAsync"/> ainda não têm malha. Uma construção
-    /// cancelada deixa as dela aqui até a próxima cena: construí-las na UI travaria a janela.
+    /// Features da cena que já está na tela e que voltam a aparecer sem nova execução (ex.: sair do
+    /// isolamento do H): as que não têm malha são construídas fora da thread da UI e ficam pendentes até lá,
+    /// como em <see cref="PrepareSceneAsync"/>, mas sem recomeçar a cena no kernel.
+    /// </summary>
+    System.Threading.Tasks.Task PrepareFeaturesAsync(IReadOnlyList<IFeature> features, System.Threading.CancellationToken cancellation);
+
+    /// <summary>
+    /// Quantas features do último <see cref="PrepareSceneAsync"/> (e dos <see cref="PrepareFeaturesAsync"/>
+    /// depois dele) ainda não têm malha. Uma construção cancelada deixa as dela aqui até a próxima cena:
+    /// construí-las na UI travaria a janela.
     /// </summary>
     int PendingCount { get; }
 

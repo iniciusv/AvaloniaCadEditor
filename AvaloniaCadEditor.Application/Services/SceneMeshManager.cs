@@ -86,7 +86,7 @@ public class SceneMeshManager : ISceneMeshManager
 
     private bool IsPending(Guid featureId) => _pending.ContainsKey(featureId);
 
-    public Task PrepareSceneAsync(IReadOnlyList<IFeature> features, CancellationToken cancellation)
+    public Task PrepareSceneAsync(IReadOnlyList<IFeature> features, CancellationToken cancellation, IReadOnlyList<IFeature>? hidden = null)
     {
         // Antes de sair para a outra thread: a cena pode ir para a tela antes de a construção começar.
         var pending = new ConcurrentDictionary<Guid, byte>(features.Select(f => new KeyValuePair<Guid, byte>(f.Id, 0)));
@@ -94,26 +94,48 @@ public class SceneMeshManager : ISceneMeshManager
 
         return _runInBackground(() =>
         {
+            var settings = _settingsProvider.GetSettings();
             // Aqui e não na UI: com uma construção cancelada ainda terminando a etapa em curso, esperar
             // pelo kernel na thread da UI a travaria.
-            lock (_kernelGate) _geometryKernel.BeginSceneRebuild();
+            lock (_kernelGate)
+            {
+                _geometryKernel.BeginSceneRebuild();
+                if (hidden != null) _geometryKernel.RetainGeometry(hidden, settings);
+            }
             // A versão sem fillets não está na tela: não há o que manter dela.
             InactiveMeshCache.Clear();
 
-            var settings = _settingsProvider.GetSettings();
-            foreach (var feature in features)
-            {
-                cancellation.ThrowIfCancellationRequested();
-                if (!ActiveMeshCache.ContainsKey(feature.Id))
-                {
-                    // Uma feature por vez: entre uma e outra a UI consegue o kernel se precisar dele.
-                    var mesh = BuildMesh(feature, settings, cancellation);
-                    if (mesh != null) ActiveMeshCache[feature.Id] = mesh;
-                }
-                // Depois do cache: quem vê a feature fora da lista já acha a malha.
-                pending.TryRemove(feature.Id, out _);
-            }
+            BuildPending(features, pending, settings, cancellation);
         }, cancellation);
+    }
+
+    public Task PrepareFeaturesAsync(IReadOnlyList<IFeature> features, CancellationToken cancellation)
+    {
+        var missing = features.Where(f => !ActiveMeshCache.ContainsKey(f.Id)).ToList();
+        if (missing.Count == 0) return Task.CompletedTask;
+
+        // No conjunto da cena que está valendo: uma cena nova o troca, e esta construção já não vale para ela.
+        var pending = _pending;
+        foreach (var feature in missing) pending[feature.Id] = 0;
+
+        return _runInBackground(() => BuildPending(missing, pending, _settingsProvider.GetSettings(), cancellation), cancellation);
+    }
+
+    private void BuildPending(IReadOnlyList<IFeature> features, ConcurrentDictionary<Guid, byte> pending,
+        Domain.Settings.TessellationSettings settings, CancellationToken cancellation)
+    {
+        foreach (var feature in features)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            if (!ActiveMeshCache.ContainsKey(feature.Id))
+            {
+                // Uma feature por vez: entre uma e outra a UI consegue o kernel se precisar dele.
+                var mesh = BuildMesh(feature, settings, cancellation);
+                if (mesh != null) ActiveMeshCache[feature.Id] = mesh;
+            }
+            // Depois do cache: quem vê a feature fora da lista já acha a malha.
+            pending.TryRemove(feature.Id, out _);
+        }
     }
 
     private ConcurrentDictionary<Guid, TriangleMesh> InactiveMeshCache => SuppressFillets ? _meshCache : _filletsSuppressedMeshCache;

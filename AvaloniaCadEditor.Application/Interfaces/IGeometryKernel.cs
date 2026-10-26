@@ -36,6 +36,14 @@ public interface IGeometryKernel
     void BeginSceneRebuild() => InvalidateAll();
 
     /// <summary>
+    /// Features da cena nova que não vão ser construídas agora (escondidas, ex.: pelo isolamento do H): as
+    /// malhas por geometria que elas já têm continuam valendo, como se tivessem sido usadas nesta execução.
+    /// Sem isto, duas execuções com a peça isolada esvaziam o cache do resto do modelo, e sair do isolamento
+    /// reconstrói tudo do zero. Chamado logo depois de <see cref="BeginSceneRebuild"/>. Padrão: nada.
+    /// </summary>
+    void RetainGeometry(IEnumerable<IFeature> features, TessellationSettings settings) { }
+
+    /// <summary>
     /// Por que a geometria de uma feature não saiu, indexado pelo Id dela — caminho de varredura
     /// inválido, seção que não cabe no raio de curvatura, exceção na construção.
     /// <para>

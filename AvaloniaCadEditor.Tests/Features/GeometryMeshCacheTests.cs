@@ -116,6 +116,26 @@ public class GeometryMeshCacheTests
         kernel.MeshBuildCount.Should().Be(3);
     }
 
+    /// <summary>Isolamento do H: as execuções só constroem a peça isolada, e o resto do modelo, escondido,
+    /// não pode perder a malha por isso.</summary>
+    [Fact]
+    public void GeometriaRetidaDeFeatureEscondida_SobreviveAExecucoesQueNaoAConstroem()
+    {
+        var kernel = new OpenCascadeGeometryKernel();
+        var settings = new TessellationSettings();
+
+        kernel.BuildFeatureMesh(Instancia(100, Placement.Identity), settings);   // execução 1: tudo visível
+        for (int execucao = 2; execucao <= 4; execucao++)                         // H: só a 120 é construída
+        {
+            kernel.BeginSceneRebuild();
+            kernel.RetainGeometry(new IFeature[] { Instancia(100, Placement.At(execucao, 0, 0)) }, settings);
+            kernel.BuildFeatureMesh(Instancia(120, Placement.Identity), settings);
+        }
+        kernel.BuildFeatureMesh(Instancia(100, Placement.Identity), settings);    // sai do H
+
+        kernel.MeshBuildCount.Should().Be(2, "a 100 continuou na cena, escondida");
+    }
+
     [Fact]
     public void InvalidateAll_DescartaTudo()
     {

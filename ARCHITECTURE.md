@@ -100,7 +100,9 @@ SceneScriptViewModel.RunCodeAsync()
 A cena antiga continua na tela enquanto a nova é construída, mas só por um instante (`SceneBuildBudget`):
 depois disso a cena nova entra sem os sólidos que faltam, e cada um aparece quando fica pronto. Até lá
 ele é **pendente** no `SceneMeshManager`: a malha composta o deixa de fora e o pick não o acha, em vez
-de construí-lo na thread da UI. A construção só é cancelada quando outra execução avalia sem erro
+de construí-lo na thread da UI. Só o que vai aparecer é construído: com uma peça isolada (H), o resto da
+cena vai como `hidden` e o kernel mantém a malha por geometria dele (`RetainGeometry`), e sair do H o
+constrói em segundo plano (`PrepareFeaturesAsync`), do mesmo jeito. A construção só é cancelada quando outra execução avalia sem erro
 (`IGeometryKernel.BuildCancellation`, conferido a cada sólido e a cada aresta de chanfro). O kernel não
 é thread-safe: toda chamada a ele passa pelo lock do `SceneMeshManager`, e os caches de malha são
 concorrentes para que desenho e pick na UI não esperem por uma construção longa. Um `catch` no kernel

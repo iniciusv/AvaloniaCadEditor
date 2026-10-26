@@ -114,6 +114,19 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         _geometryKeysInUse.Clear();
     }
 
+    public void RetainGeometry(IEnumerable<IFeature> features, TessellationSettings settings)
+    {
+        foreach (var feature in features)
+        {
+            // Mesma chave que BuildFeatureMesh procura: a de uma instância é a da definição.
+            var geometry = feature;
+            while (geometry is PartInstance instance) geometry = instance.Definition;
+
+            string? key = GeometryKey(geometry, settings);
+            if (key != null && _meshByGeometry.ContainsKey(key)) _geometryKeysInUse.Add(key);
+        }
+    }
+
     private void RemoveMeshesNotInUse()
     {
         foreach (var key in _meshByGeometry.Keys.Where(k => !_geometryKeysInUse.Contains(k)).ToList())
