@@ -158,4 +158,26 @@ public class MoveBehaviorTests
         moveu.Should().BeFalse();
         copia.Should().Be(new Vector3D(7, 0, 0));
     }
+
+    [Fact]
+    public void MoveTool_Copia_SelecaoEntregueSobreviveAoCancelDeQuemTrocaDeFerramenta()
+    {
+        // O CadViewModel volta à SelectTool (que chama Cancel na MoveTool) antes de ler as features.
+        var sketch = new Sketch();
+        sketch.AddFeature(new AvaloniaCadEditor.Domain.Features.BoxFeature(Point3D.Origin, 10, 10, 10) { IsSelected = true });
+        var moveTool = new MoveTool();
+
+        int copiadas = -1;
+        moveTool.FeaturesCopied += (vector, features) =>
+        {
+            moveTool.Cancel();
+            copiadas = features.Count();
+        };
+
+        moveTool.OnMouseDown(sketch, new Point3D(0, 0, 0));
+        moveTool.OnKeyDown(sketch, CadKey.Control);
+        moveTool.OnMouseDown(sketch, new Point3D(110, 0, 0));
+
+        copiadas.Should().Be(1);
+    }
 }

@@ -91,6 +91,36 @@ public class MoverInstanciaPeloViewportTests
         vm.ScriptEditor.GeneratedCSharpCode.Should().Contain("Placement.At(canto.X + 12, canto.Y, canto.Z, rotationZDegrees: 180)");
     }
 
+    /// <summary>
+    /// Ctrl no Mover copia. O handler do app volta à SelectTool (Cancel na MoveTool) antes de ler as
+    /// features: se a ferramenta entregasse a própria lista, ela chegaria vazia e nada seria copiado.
+    /// </summary>
+    [Fact]
+    public async Task CopiaComCtrl_CriaUmaDeclaracaoNovaNoLugarNovo_EMantemAOriginal()
+    {
+        using var folder = new SceneTestFolder();
+        var vm = await AbrirCena(folder);
+        var antes = vm.Sketch.Features.OfType<PartInstance>().Single(f => f.Name == "apoiado");
+        double x0 = antes.Placement.Translation.X;
+
+        vm.SelectionService.SelectById(vm.Sketch, antes.Id);
+        vm.CurrentTool = new MoveTool();
+        vm.OnPointerPressed(new Point3D(0, 0, 0));
+        vm.CurrentTool!.OnKeyDown(vm.Sketch, CadKey.Control);
+        vm.OnPointerPressed(new Point3D(110, 0, 0));
+
+        PartInstance? copia = null;
+        for (int i = 0; i < 200 && copia == null; i++)
+        {
+            copia = vm.Sketch.Features.OfType<PartInstance>().SingleOrDefault(f => f.Name == "apoiado_copia1");
+            if (copia == null) await Task.Delay(50);
+        }
+
+        copia.Should().NotBeNull($"a cópia não apareceu (status: {vm.StatusText})");
+        copia!.Placement.Translation.X.Should().BeApproximately(x0 + 110, 1e-6);
+        vm.Sketch.Features.OfType<PartInstance>().Single(f => f.Name == "apoiado").Placement.Translation.X.Should().BeApproximately(x0, 1e-6);
+    }
+
     [Fact]
     public async Task ReescritaQueFalha_DeixaOMotivoNoStatus_EmVezDaCoordenadaDoCursor()
     {

@@ -80,6 +80,9 @@ public class MoveTool : ICommandTool, ITransformPreviewTool
 
     private void ApplyMove(Sketch sketch, Vector3D vector)
     {
+        // Quem recebe o evento costuma trocar de ferramenta, e o Cancel() limpa _selectedFeatures no
+        // lugar: entregar a própria lista esvaziaria a seleção na mão de quem a recebeu.
+        var features = _selectedFeatures.ToList();
         if (IsCopyMode)
         {
             foreach (var entity in _selectedOriginals)
@@ -89,9 +92,9 @@ public class MoveTool : ICommandTool, ITransformPreviewTool
                 sketch.AddEntity(clone);
             }
 
-            if (_selectedFeatures.Any())
+            if (features.Any())
             {
-                FeaturesCopied?.Invoke(ToWorld(vector), _selectedFeatures);
+                FeaturesCopied?.Invoke(ToWorld(vector), features);
             }
         }
         else
@@ -101,9 +104,9 @@ public class MoveTool : ICommandTool, ITransformPreviewTool
                 entity.Translate(vector);
             }
             
-            if (_selectedFeatures.Any())
+            if (features.Any())
             {
-                FeaturesMoved?.Invoke(ToWorld(vector), _selectedFeatures);
+                FeaturesMoved?.Invoke(ToWorld(vector), features);
             }
         }
 
