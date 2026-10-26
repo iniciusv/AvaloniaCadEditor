@@ -22,7 +22,9 @@ namespace AvaloniaCadEditor.Infrastructure.Scripting;
 /// <summary>
 /// Compila a cena como um programa C# comum (top-level statements + tipos em outros arquivos)
 /// com uma <see cref="CSharpCompilation"/>, executa o ponto de entrada num
-/// <see cref="AssemblyLoadContext"/> colecionável e descarrega o assembly ao final.
+/// <see cref="AssemblyLoadContext"/> colecionável e descarrega o assembly ao final. Os arquivos sem
+/// top-level statements (as peças) vêm compilados à parte e guardados entre execuções
+/// (<see cref="ScenePartsLibrary"/>), e cada arquivo só é lido de novo quando o texto muda.
 /// </summary>
 public class RoslynSceneEvaluator : ISceneEvaluator
 {
@@ -85,34 +87,69 @@ public class RoslynSceneEvaluator : ISceneEvaluator
         out IReadOnlyList<SyntaxTree> userTrees,
         CancellationToken cancellationToken = default)
     {
-        var trees = documents
-            .Select(d => CSharpSyntaxTree.ParseText(
-                SourceText.From(d.Text ?? string.Empty, Encoding.UTF8),
-                ParseOptions,
-                path: d.FilePath,
-                cancellationToken: cancellationToken))
-            .ToList();
+        var trees = documents.Select(d => Parse(d, cancellationToken)).ToList();
         userTrees = trees;
+        return CreateCompilation(trees, cancellationToken);
+    }
 
-        bool hasEntryPoint = trees.Any(t =>
-            ((CompilationUnitSyntax)t.GetRoot(cancellationToken)).Members.OfType<GlobalStatementSyntax>().Any());
+    private static SyntaxTree Parse(ScriptDocument document, CancellationToken cancellationToken) =>
+        CSharpSyntaxTree.ParseText(
+            SourceText.From(document.Text ?? string.Empty, Encoding.UTF8),
+            ParseOptions,
+            path: document.FilePath,
+            cancellationToken: cancellationToken);
+
+    private static CSharpCompilation CreateCompilation(IReadOnlyList<SyntaxTree> trees, CancellationToken cancellationToken)
+    {
+        bool hasEntryPoint = trees.Any(t => HasGlobalStatements(t, cancellationToken));
 
         return CSharpCompilation.Create(
             assemblyName: "CadScene_" + Guid.NewGuid().ToString("N"),
             syntaxTrees: trees.Prepend(GlobalUsingsTree.Value),
             references: References.Value,
-            options: new CSharpCompilationOptions(
-                hasEntryPoint ? OutputKind.ConsoleApplication : OutputKind.DynamicallyLinkedLibrary,
-                optimizationLevel: OptimizationLevel.Debug,
-                nullableContextOptions: NullableContextOptions.Disable,
-                concurrentBuild: true));
+            options: CompilationOptions(hasEntryPoint ? OutputKind.ConsoleApplication : OutputKind.DynamicallyLinkedLibrary));
+    }
+
+    internal static CSharpCompilationOptions CompilationOptions(OutputKind kind) =>
+        new(kind,
+            optimizationLevel: OptimizationLevel.Debug,
+            nullableContextOptions: NullableContextOptions.Disable,
+            concurrentBuild: true);
+
+    private static bool HasGlobalStatements(SyntaxTree tree, CancellationToken cancellationToken) =>
+        ((CompilationUnitSyntax)tree.GetRoot(cancellationToken)).Members.OfType<GlobalStatementSyntax>().Any();
+
+    /// <summary>
+    /// Última árvore lida de cada arquivo: a cada execução quase todos chegam iguais (só a Cena.cs muda ao
+    /// arrastar uma peça), e ler de novo os ~45 arquivos da cena de referência custa ~35 ms.
+    /// </summary>
+    private static readonly Dictionary<string, (string Text, SyntaxTree Tree)> ParsedByPath = new(StringComparer.Ordinal);
+
+    private const int MaxParsedFiles = 512;
+
+    private static SyntaxTree ParseCached(ScriptDocument document, CancellationToken cancellationToken)
+    {
+        string text = document.Text ?? string.Empty;
+        lock (ParsedByPath)
+        {
+            if (ParsedByPath.TryGetValue(document.FilePath, out var cached) && cached.Text == text) return cached.Tree;
+        }
+
+        var tree = Parse(document, cancellationToken);
+        lock (ParsedByPath)
+        {
+            if (ParsedByPath.Count >= MaxParsedFiles) ParsedByPath.Clear();
+            ParsedByPath[document.FilePath] = (text, tree);
+        }
+        return tree;
     }
 
     private static async Task<SceneEvaluationResult> EvaluateCoreAsync(
         IReadOnlyList<ScriptDocument> documents,
         CancellationToken cancellationToken)
     {
-        var compilation = CreateCompilation(documents, out _, cancellationToken);
+        var trees = documents.Select(d => ParseCached(d, cancellationToken)).ToList();
+        var compilation = CreateCompilation(trees, cancellationToken);
         bool hasEntryPoint = compilation.Options.OutputKind == OutputKind.ConsoleApplication;
 
         // Sem top-level statements não há o que executar (ex.: só comentários): cena vazia,
@@ -124,6 +161,9 @@ public class RoslynSceneEvaluator : ISceneEvaluator
                 ? CompileFailure(documents, diagnostics)
                 : new SceneEvaluationResult(Array.Empty<IFeature>(), true) { Diagnostics = diagnostics };
         }
+
+        var withParts = await TryEvaluateWithPartsLibraryAsync(documents, trees, cancellationToken);
+        if (withParts != null) return withParts;
 
         using var peStream = new MemoryStream();
         using var pdbStream = new MemoryStream();
@@ -139,10 +179,64 @@ public class RoslynSceneEvaluator : ISceneEvaluator
             return CompileFailure(documents, compileDiagnostics);
         }
 
+        return await RunAsync(peStream, pdbStream, null, documents, compileDiagnostics);
+    }
+
+    /// <summary>
+    /// A cena compilada sozinha contra as peças já compiladas (<see cref="ScenePartsLibrary"/>). <c>null</c>
+    /// quando o resultado poderia sair diferente do da compilação única, que então é feita: mais de um arquivo
+    /// com top-level statements, peças que não compilam sozinhas, erro na cena (para os diagnósticos saírem
+    /// iguais) ou um tipo da cena com o mesmo nome de uma peça (CS0436, que na compilação única é erro).
+    /// </summary>
+    private static async Task<SceneEvaluationResult?> TryEvaluateWithPartsLibraryAsync(
+        IReadOnlyList<ScriptDocument> documents,
+        IReadOnlyList<SyntaxTree> trees,
+        CancellationToken cancellationToken)
+    {
+        var entry = Enumerable.Range(0, trees.Count).Where(i => HasGlobalStatements(trees[i], cancellationToken)).ToList();
+        if (entry.Count != 1 || trees.Count == 1) return null;
+
+        var partIndices = Enumerable.Range(0, trees.Count).Where(i => i != entry[0]).ToList();
+        var library = ScenePartsLibrary.GetOrCompile(
+            partIndices.Select(i => documents[i]).ToList(),
+            partIndices.Select(i => trees[i]).ToList(),
+            new[] { GlobalUsingsTree.Value },
+            References.Value,
+            cancellationToken);
+        if (library.Reference == null) return null;
+
+        var compilation = CSharpCompilation.Create(
+            ScenePartsLibrary.EntryAssemblyName,
+            new[] { GlobalUsingsTree.Value, trees[entry[0]] },
+            References.Value.Append(library.Reference),
+            CompilationOptions(OutputKind.ConsoleApplication));
+
+        using var peStream = new MemoryStream();
+        using var pdbStream = new MemoryStream();
+        EmitResult emit = compilation.Emit(
+            peStream,
+            pdbStream,
+            options: new EmitOptions(debugInformationFormat: DebugInformationFormat.PortablePdb),
+            cancellationToken: cancellationToken);
+        if (!emit.Success || emit.Diagnostics.Any(d => d.Id == "CS0436")) return null;
+
+        var assembly = library.Load();
+        if (assembly == null) return null;
+
+        return await RunAsync(peStream, pdbStream, assembly, documents, ToScriptDiagnostics(library.Diagnostics.Concat(emit.Diagnostics)));
+    }
+
+    private static async Task<SceneEvaluationResult> RunAsync(
+        MemoryStream peStream,
+        MemoryStream pdbStream,
+        Assembly? parts,
+        IReadOnlyList<ScriptDocument> documents,
+        IReadOnlyList<ScriptDiagnostic> compileDiagnostics)
+    {
         peStream.Position = 0;
         pdbStream.Position = 0;
 
-        var loadContext = new SceneLoadContext();
+        var loadContext = new SceneLoadContext(parts);
         try
         {
             Assembly assembly = loadContext.LoadFromStream(peStream, pdbStream);
@@ -304,12 +398,12 @@ public class RoslynSceneEvaluator : ISceneEvaluator
 
     /// <summary>
     /// Contexto colecionável sem resolução própria: dependências (Domain, runtime) vêm do contexto
-    /// padrão, então as features criadas pelo script são os mesmos tipos que a aplicação usa.
+    /// padrão, então as features criadas pelo script são os mesmos tipos que a aplicação usa. A única
+    /// exceção são as peças compiladas à parte (<see cref="ScenePartsLibrary"/>), que já estão carregadas.
     /// </summary>
-    private sealed class SceneLoadContext : AssemblyLoadContext
+    private sealed class SceneLoadContext(Assembly? parts) : AssemblyLoadContext("CadScene", isCollectible: true)
     {
-        public SceneLoadContext() : base("CadScene", isCollectible: true) { }
-
-        protected override Assembly? Load(AssemblyName assemblyName) => null;
+        protected override Assembly? Load(AssemblyName assemblyName) =>
+            parts != null && assemblyName.Name == parts.GetName().Name ? parts : null;
     }
 }

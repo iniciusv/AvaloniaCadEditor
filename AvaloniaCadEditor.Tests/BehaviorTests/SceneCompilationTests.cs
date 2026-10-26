@@ -155,6 +155,96 @@ public class SceneCompilationTests
         }
     }
 
+    // Cada teste usa um nome de peça próprio: o cache das peças é do processo, e outros testes rodam junto.
+    private static ScriptDocument Peca(string tipo, double lado) =>
+        Doc($"Pecas/{tipo}.cs",
+            $"record {tipo}(double Lado = {lado}) : Part\n" +
+            "{\n" +
+            "    protected override IFeature Build() => new BoxFeature(Point3D.Origin, Lado, Lado, Lado);\n" +
+            "}\n");
+
+    private static ScriptDocument CenaCom(string tipo, double x) =>
+        Doc("Cena.cs", $"Add(new {tipo}(), at: Placement.At({x}, 0, 0), name: \"peca\");");
+
+    [Fact]
+    public async Task PecasIguais_SaoCompiladasUmaVez_EAsExecucoesUsamOMesmoTipo()
+    {
+        var evaluator = new RoslynSceneEvaluator();
+
+        var primeira = await evaluator.EvaluateAsync(new[] { Peca("PecaCacheA", 10), CenaCom("PecaCacheA", 0) });
+        var segunda = await evaluator.EvaluateAsync(new[] { Peca("PecaCacheA", 10), CenaCom("PecaCacheA", 50) });
+
+        primeira.Success.Should().BeTrue(because: primeira.ErrorMessage);
+        segunda.Success.Should().BeTrue(because: segunda.ErrorMessage);
+        var antes = (AvaloniaCadEditor.Domain.Features.PartInstance)primeira.Features.Single();
+        var depois = (AvaloniaCadEditor.Domain.Features.PartInstance)segunda.Features.Single();
+        depois.GetType().Should().BeSameAs(antes.GetType(), "só a cena mudou: as peças vêm do mesmo assembly");
+        depois.Placement.Translation.X.Should().Be(50);
+    }
+
+    [Fact]
+    public async Task PecaAlterada_ACenaUsaAVersaoNova()
+    {
+        var evaluator = new RoslynSceneEvaluator();
+
+        await evaluator.EvaluateAsync(new[] { Peca("PecaCacheB", 10), CenaCom("PecaCacheB", 0) });
+        var result = await evaluator.EvaluateAsync(new[] { Peca("PecaCacheB", 30), CenaCom("PecaCacheB", 0) });
+
+        result.Success.Should().BeTrue(because: result.ErrorMessage);
+        var caixa = (AvaloniaCadEditor.Domain.Features.BoxFeature)((AvaloniaCadEditor.Domain.Features.PartInstance)result.Features.Single()).Definition;
+        caixa.Width.Should().Be(30);
+    }
+
+    [Fact]
+    public async Task PecaQueUsaTipoDaCena_CompilaJuntoComACena()
+    {
+        var docs = new[]
+        {
+            Doc("Pecas/Usa.cs", "record PecaUsaMedida : Part { protected override IFeature Build() => new BoxFeature(Point3D.Origin, MedidaDaCena.Lado, 1, 1); }"),
+            Doc("Cena.cs", "Add(new PecaUsaMedida(), name: \"peca\");\nstatic class MedidaDaCena { public const double Lado = 7; }")
+        };
+
+        var result = await new RoslynSceneEvaluator().EvaluateAsync(docs);
+
+        result.Success.Should().BeTrue(because: result.ErrorMessage);
+        result.Features.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task ErroEmExecucaoDentroDeUmaPeca_ApontaOArquivoDaPeca()
+    {
+        var docs = new[]
+        {
+            Doc("Pecas/PecaQueFalha.cs",
+                "record PecaQueFalha : Part\n" +
+                "{\n" +
+                "    protected override IFeature Build() => throw new InvalidOperationException(\"peça quebrada\");\n" +
+                "}\n"),
+            Doc("Cena.cs", "Add(new PecaQueFalha(), name: \"peca\");")
+        };
+
+        var result = await new RoslynSceneEvaluator().EvaluateAsync(docs);
+
+        result.Success.Should().BeFalse();
+        result.ErrorMessage.Should().Contain("peça quebrada");
+        result.ErrorMessage.Should().Contain("Pecas/PecaQueFalha.cs(3,");
+    }
+
+    [Fact]
+    public async Task TipoDaCenaComONomeDeUmaPeca_ContinuaSendoErro()
+    {
+        var docs = new[]
+        {
+            Peca("PecaRepetida", 10),
+            Doc("Cena.cs", "Add(new PecaRepetida(), name: \"peca\");\nrecord PecaRepetida : Part { protected override IFeature Build() => new BoxFeature(Point3D.Origin, 1, 1, 1); }")
+        };
+
+        var result = await new RoslynSceneEvaluator().EvaluateAsync(docs);
+
+        result.Success.Should().BeFalse();
+        result.Diagnostics.Should().Contain(d => d.Id == "CS0101");
+    }
+
     [Fact]
     public async Task AvaliacoesRepetidas_DescarregamOsAssembliesGerados()
     {
