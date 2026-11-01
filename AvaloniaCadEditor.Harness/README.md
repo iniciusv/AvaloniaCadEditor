@@ -44,7 +44,7 @@ Nos projetos do app só entram dois tipos de mudança, e cada uma vai em um comm
 | `Inspection/` | Avaliação da cópia de trabalho com cache, resolução de alvo, malha e referencial |
 | `Views/` | Base de projeção (vistas padrão e Iso), HLR em CPU e texto da vista |
 | `Protocol/` | Fallback ```` ```tool ```` para servidores sem tool calling e a detecção do suporte |
-| `Skills/` | Skills: modos de trabalho do Editor que se ligam e desligam (`questionar`, `revisar`) |
+| `Skills/` | Skills: modos de trabalho do Editor que se ligam e desligam (`questionar`, `revisar`, `parametrico`) |
 
 ## Skills
 
@@ -55,6 +55,7 @@ código. As que vêm com o app estão em `SkillRegistry.Default()`:
 |---|---|
 | `questionar` | Confere o pedido contra a geometria antes de editar. Se faltar uma decisão que a cena não responde, não altera nada e responde só com as perguntas, cada uma com uma sugestão. |
 | `revisar` | Depois de editar, compara as caixas e os eixos das peças novas ou movidas com o pedido e mostra uma seção **Conferência** na resposta. |
+| `parametrico` | Libera parâmetros, variáveis, laços e funções para calcular valores (mantendo os sólidos rastreáveis). Com o perfil de prompt `editavel`, desliga a rodada de correção de estilo do turno. |
 
 Há duas formas de usar uma skill:
 - **Ligada** no painel do chat (`harness_settings.json`, campo `Skills`): as instruções vão no system

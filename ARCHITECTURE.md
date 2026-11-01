@@ -178,6 +178,7 @@ de todo o resto. Falha segura: fingerprint `null` = sem cache, nunca cache errad
 | Mudar o que a IA vê | `Application/Ai/Context/AiContextBuilder.cs` | o motivo de cada arquivo é rastreável (`AiContextReason`) |
 | Mudar o que a IA pode escrever | `Application/Ai/Context/AiEditScopePolicy.cs` | só arquivos no escopo + peça nova em `Pecas/` |
 | Mudar as regras do dialeto | `Application/Ai/CadScriptRules.cs` | fonte **única**: prompt + `.cad/api.md` + `AGENTS.md`. Há teste que falha se divergirem |
+| Mudar o que conta como código editável (sólidos rastreáveis, coordenada calculada, parâmetros demais…) | `Application/Ai/CadScriptEditabilityLint.cs` | puro e sintático. **Erros** (sólido em laço/LINQ, nome calculado ou repetido) derrubam a resposta da IA em qualquer perfil (`CadScriptValidator`) e saem como CAD0200 no `check`; **avisos** de estilo só voltam à IA no perfil `editavel` (`EditabilityStyleFeedback`, uma rodada, só os avisos que o arquivo não tinha) e saem como CAD0201 com `check --estilo` |
 | Adicionar exemplo few-shot para a IA | `Application/Ai/Prompts/CurrentPromptProfile.Examples` | há teste que compila e executa **cada** exemplo de **cada** perfil |
 | Testar outra estratégia de pré-prompt | novo `ICadScriptPromptProfile` em `Application/Ai/Prompts/`, registrado em `CadScriptPromptProfiles` | o perfil `atual` é congelado por golden (`Tests/Ai/Golden`); compare perfis com `AvaloniaCadEditor.PromptEval` |
 | Mudar o cliente HTTP da LLM (corpo da requisição, `tool_calls`, campo de reasoning) | `AiCore/Services/LlmClient.cs`, `AiCore/Services/LlmResponseParser.cs`, `AiCore/Models/` | AiCore é só BCL e não referencia nenhum projeto (`ArchitectureTests`). Particularidades de cada servidor em `docs/referencias/` |
@@ -203,7 +204,7 @@ de todo o resto. Falha segura: fingerprint `null` = sem cache, nunca cache errad
 | Mudar seleção / hover / pick | `UI/ViewModels/CadViewModel.cs` (hover com timer, ciclo TAB), `UI/Controls/Input/` | |
 | Mudar a árvore ou o inspector | `UI/ViewModels/ModelTreeViewModel.cs`, `PropertyInspectorViewModel.cs` | o inspector escreve no **código**, não no objeto |
 | Mudar o export para o SketchUp (COLLADA `.dae`) | `Application/Export/SceneExportCollector.cs` (o que vira componente, grupo ou pasta), `Infrastructure/Export/Collada/ColladaDocument.cs` (o XML), porta `Application/Interfaces/ISceneFileWriter.cs` | peça = componente por `(Definition.Id, cor)` dentro de uma pasta pelo tipo; sólido solto = grupo; instância **espelhada** sai como grupo com a malha do mundo. Números sempre em `InvariantCulture`. Outro formato = outro `ISceneFileWriter`, sem tocar no coletor |
-| Mudar a validação headless | `UI/Cli/CheckCommand.cs`, `Application/Scenes/SceneCheckService.cs` | exit codes: 0 ok, 1 erro de cena, 2 uso/pasta inválida |
+| Mudar a validação headless | `UI/Cli/CheckCommand.cs`, `Application/Scenes/SceneCheckService.cs` | exit codes: 0 ok, 1 erro de cena, 2 uso/pasta inválida. O resumo traz a editabilidade; `--estilo` lista os avisos (CAD0201) e `--strict` faz o CAD0200 reprovar |
 | Mexer nas configurações de tesselação | `Infrastructure/Settings/JsonTessellationSettingsProvider.cs`, `Domain/Settings/TessellationSettings.cs` | **leia §5.7 antes** — o cache validado por data não é desperdício |
 | Mudar a composição / injeção | `UI/App.axaml.cs` | ciclo `CadViewModel` ↔ `SceneScriptViewModel`, ver §6.1 |
 
@@ -246,6 +247,10 @@ da variável, único no arquivo. Nunca em laço, LINQ ou com nome interpolado. �
 ↔ linha de código ↔ seleção ↔ árvore. Texto normativo completo em
 [`CadScriptRules.TrackableSolids`](AvaloniaCadEditor.Application/Ai/CadScriptRules.cs).
 Vale para o `FeatureCodeGenerator` e para qualquer código que escreva cena.
+
+A regra é conferida pelo `CadScriptEditabilityLint`: resposta da IA que a quebra volta para correção, e o
+`check` a reporta como CAD0200. A cena `AiCore` ainda tem cinco peças antigas fora dela, travadas como linha de
+base por `CadScriptEditabilityLintTests` (nenhuma peça nova pode entrar na lista).
 
 ### 5.3 Geometria que falha devolve malha vazia, não exceção
 
@@ -424,6 +429,8 @@ Estes testes funcionam como travas de arquitetura e devem continuar passando:
   pré-prompt: o dialeto ensinado à IA não pode apodrecer.
 - `CadScriptPromptProfilesTests` — o perfil `atual` bate com o golden; todo perfil traz o formato de resposta.
 - `CadScriptRulesTests` — garante que prompt, `.cad/api.md` e `AGENTS.md` usem o mesmo texto.
+- `CadScriptEditabilityLintTests` — nenhum exemplo few-shot quebra a regra dos sólidos rastreáveis, os do perfil
+  `editavel` não têm nenhum aviso, e a `AiCore` não ganha peças novas fora da regra.
 - `ArchitectureTests` (Harness.Tests) — nenhum projeto do app referencia o Harness; o Harness não referencia
   Infrastructure nem UI; AiCore não referencia nada; Application não referencia Drafting.
 - `ArchitectureDocTests` — todo caminho citado em backticks neste arquivo existe, e todo projeto da `.slnx`

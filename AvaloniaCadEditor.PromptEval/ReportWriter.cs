@@ -38,8 +38,8 @@ internal static class ReportWriter
 
         sb.AppendLine("## Resumo por perfil × variante (modelo@endpoint; +tools = com ferramentas)");
         sb.AppendLine();
-        sb.AppendLine("| Perfil | Variante | Execuções | Passou | Entendeu | Válido | 1ª tentativa | Tentativas | Tokens prompt | Tokens resposta | Ferramentas | Tokens Inspetor | Tempo (s) | Parâm./peça (máx) | Linhas | System prompt (chars) |");
-        sb.AppendLine("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
+        sb.AppendLine("| Perfil | Variante | Execuções | Passou | Entendeu | Válido | 1ª tentativa | Tentativas | Tokens prompt | Tokens resposta | Ferramentas | Tokens Inspetor | Tempo (s) | Parâm./peça (máx) | Linhas | Coord. editáveis | Sólidos rastreáveis | Avisos de estilo novos | System prompt (chars) |");
+        sb.AppendLine("|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|");
         foreach (var group in outcomes.GroupBy(o => (o.Profile, o.Variant)))
         {
             var runs = group.ToList();
@@ -58,6 +58,9 @@ internal static class ReportWriter
                 Average(runs, r => r.Seconds, "F1"),
                 withParts.Count == 0 ? "—" : Average(withParts, r => r.Metrics!.MaxPartParameters!.Value, "F1"),
                 Average(runs.Where(r => r.Metrics != null), r => r.Metrics!.CodeLines, "F0"),
+                Ratio(runs, m => m.Editability.EditablePoints, m => m.Editability.Points),
+                Ratio(runs, m => m.Editability.TrackableSolids, m => m.Editability.Solids),
+                Average(runs.Where(r => r.Metrics != null), r => r.Metrics!.NewStyleWarnings, "F1"),
                 runs[0].SystemPromptChars.ToString(CultureInfo.InvariantCulture),
                 "").Trim());
         }
@@ -109,6 +112,14 @@ internal static class ReportWriter
         }
 
         return sb.ToString();
+    }
+
+    /// <summary>Soma dos numeradores / soma dos denominadores das execuções com métricas (não a média das frações).</summary>
+    private static string Ratio(IEnumerable<RunOutcome> runs, Func<CodeMetrics, int> part, Func<CodeMetrics, int> total)
+    {
+        var metrics = runs.Where(r => r.Metrics != null).Select(r => r.Metrics!).ToList();
+        int denominator = metrics.Sum(total);
+        return denominator == 0 ? "—" : $"{100.0 * metrics.Sum(part) / denominator:F0}%";
     }
 
     private static string Percent(IReadOnlyCollection<RunOutcome> runs, Func<RunOutcome, bool> predicate) =>

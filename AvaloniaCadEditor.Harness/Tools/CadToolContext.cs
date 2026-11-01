@@ -83,6 +83,16 @@ public sealed class CadToolContext
         foreach (var document in documents) WriteFile(document.FilePath, document.Text);
     }
 
+    /// <summary>Volta a cópia de trabalho a um estado anterior (ex.: a reescrita de estilo que falhou).</summary>
+    public void RestoreChanges(IReadOnlyList<ScriptDocument> snapshot)
+    {
+        _changes.Clear();
+        _changes.AddRange(snapshot);
+        Revision++;
+        _evaluation = null;
+        Inspection.Clear();
+    }
+
     /// <summary>A cena avaliada com a cópia de trabalho (em cache por revisão).</summary>
     public async Task<SceneEvaluationResult> EvaluateAsync(CancellationToken cancellationToken = default)
     {

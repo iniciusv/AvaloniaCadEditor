@@ -37,4 +37,11 @@ public interface ICadScriptPromptProfile
     IReadOnlyList<CadScriptPromptExample> Examples { get; }
 
     string BuildSystemPrompt();
+
+    /// <summary>
+    /// True quando o perfil pede código editável à mão: a sessão de chat devolve à IA, uma vez, os avisos de
+    /// estilo do <see cref="CadScriptEditabilityLint"/> de uma resposta que já funciona. Os erros de
+    /// rastreabilidade valem para todos os perfis (<see cref="CadScriptValidator"/>).
+    /// </summary>
+    bool RequestsEditableCode => false;
 }

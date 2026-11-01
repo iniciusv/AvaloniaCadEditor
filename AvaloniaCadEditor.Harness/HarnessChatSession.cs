@@ -129,6 +129,14 @@ public sealed class HarnessChatSession : ICadScriptChatSession
         var steps = new List<AgentStep>();
         int promptTokens = 0, completionTokens = 0;
 
+        // Perfil "editável": uma rodada com os avisos de estilo depois que o turno já funcionou, salvo com a
+        // skill /parametrico (o usuário pediu os recursos avançados). Se a reescrita falhar, vale a anterior.
+        bool styleRound = (_protocol as CadScriptProtocol)?.Profile.RequestsEditableCode == true
+                          && !LastTurnSkills.Any(s => s.Id == SkillRegistry.Parametrico);
+        CadScriptTurnResult? styleFallback = null;
+        IReadOnlyList<ScriptDocument>? styleSnapshot = null;
+        int styleRoundStart = -1, styleRevision = -1;
+
         for (int attempt = 1; attempt <= MaxAttempts; attempt++)
         {
             var run = await _loop.RunAsync(_history.Messages, _options, _tools, toolContext, Limits, cancellationToken);
@@ -146,6 +154,14 @@ public sealed class HarnessChatSession : ICadScriptChatSession
                 error = scopeError;
             }
 
+            if (styleFallback != null && (error != null || !parsed.HasPayload && toolContext.Revision == styleRevision))
+            {
+                // Reescrita de estilo recusada (só texto, sem edição) ou inválida: fica o que já funcionava.
+                toolContext.RestoreChanges(styleSnapshot!);
+                _history.Messages.RemoveRange(styleRoundStart, _history.Messages.Count - styleRoundStart);
+                return Result(styleFallback.ChatText, run, toolContext, isValid: true, null, styleFallback.FeatureCount, attempt, promptTokens, completionTokens);
+            }
+
             if (error == null && toolContext.Changes.Count == 0)
             {
                 return Result(parsed.ChatMessage, run, toolContext, isValid: true, null, 0, attempt, promptTokens, completionTokens);
@@ -160,7 +176,30 @@ public sealed class HarnessChatSession : ICadScriptChatSession
 
             if (error == null)
             {
-                return Result(parsed.ChatMessage, run, toolContext, isValid: true, null, check!.Evaluation!.Features.Count, attempt, promptTokens, completionTokens);
+                var valid = Result(parsed.ChatMessage, run, toolContext, isValid: true, null, check!.Evaluation!.Features.Count, attempt, promptTokens, completionTokens);
+                string? style = styleRound && styleFallback == null && attempt < MaxAttempts
+                    ? EditabilityStyleFeedback.Build(toolContext.Changes, context)
+                    : null;
+                if (style == null) return valid;
+
+                styleFallback = valid;
+                styleSnapshot = toolContext.Changes.ToList();
+                styleRevision = toolContext.Revision;
+                styleRoundStart = _history.Messages.Count;
+                _history.Messages.Add(new ChatMessage
+                {
+                    Role = "user",
+                    Content = _protocol.BuildUserMessage(WorkingCopyEvaluator.WithProposedChanges(context, toolContext.Changes),
+                        style + " Use as ferramentas (replace_in_file, evaluate_scene) ou blocos ```cadscript completos.")
+                });
+                continue;
+            }
+
+            if (styleFallback != null)
+            {
+                toolContext.RestoreChanges(styleSnapshot!);
+                _history.Messages.RemoveRange(styleRoundStart, _history.Messages.Count - styleRoundStart);
+                return Result(styleFallback.ChatText, run, toolContext, isValid: true, null, styleFallback.FeatureCount, attempt, promptTokens, completionTokens);
             }
 
             if (attempt == MaxAttempts)

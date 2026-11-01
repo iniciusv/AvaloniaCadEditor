@@ -9,7 +9,8 @@ using AvaloniaCadEditor.Infrastructure.Scripting;
 namespace AvaloniaCadEditor.UI.Cli;
 
 /// <summary>
-/// <c>AvaloniaCadEditor.UI.exe check [pasta] [--geometry]</c>: verifica uma cena sem abrir a janela.
+/// <c>AvaloniaCadEditor.UI.exe check [pasta] [--geometry] [--estilo] [--strict]</c>: verifica uma cena sem abrir a janela.
+/// <c>--estilo</c> lista os avisos de editabilidade (CAD0201); <c>--strict</c> faz sólido não rastreável (CAD0200) reprovar.
 /// Códigos de saída: 0 = cena válida, 1 = erros na cena, 2 = uso incorreto ou pasta inválida.
 /// </summary>
 public static class CheckCommand
@@ -25,9 +26,11 @@ public static class CheckCommand
 
         var options = args.Skip(1).ToList();
         bool geometry = options.RemoveAll(a => a is "--geometry" or "-g") > 0;
+        bool style = options.RemoveAll(a => a is "--estilo" or "--style") > 0;
+        bool strict = options.RemoveAll(a => a is "--strict") > 0;
         if (options.Any(a => a.StartsWith('-')) || options.Count > 1)
         {
-            Console.Error.WriteLine("Uso: AvaloniaCadEditor.UI.exe check [pasta-da-cena] [--geometry]");
+            Console.Error.WriteLine("Uso: AvaloniaCadEditor.UI.exe check [pasta-da-cena] [--geometry] [--estilo] [--strict]");
             return 2;
         }
 
@@ -48,7 +51,7 @@ public static class CheckCommand
             new RoslynSceneEvaluator(),
             geometry ? new OpenCascadeGeometryKernel() : null);
 
-        var report = service.CheckAsync(project, geometry).GetAwaiter().GetResult();
+        var report = service.CheckAsync(project, geometry, new EditabilityCheckOptions(style, strict)).GetAwaiter().GetResult();
         Console.Out.Write(report.Format());
         Console.Out.Flush();
         return report.Success ? 0 : 1;

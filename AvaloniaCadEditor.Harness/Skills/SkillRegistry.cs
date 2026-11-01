@@ -8,6 +8,7 @@ public sealed class SkillRegistry
 {
     public const string Questionar = "questionar";
     public const string Revisar = "revisar";
+    public const string Parametrico = "parametrico";
 
     private readonly List<HarnessSkill> _skills;
 
@@ -26,7 +27,10 @@ public sealed class SkillRegistry
             QuestionarInstructions),
         new HarnessSkill(Revisar, "Conferir o resultado",
             "Depois de editar, a IA compara as caixas e os eixos das peças novas ou movidas com o pedido e mostra a conferência na resposta.",
-            RevisarInstructions)
+            RevisarInstructions),
+        new HarnessSkill(Parametrico, "Código paramétrico",
+            "Libera variáveis, laços, funções e mais parâmetros para modelos que vão ser ajustados pelos valores, e não pela interface. Com o perfil \"Editável\", desliga a correção de estilo.",
+            ParametricoInstructions)
     });
 
     public IReadOnlyList<HarnessSkill> All => _skills;
@@ -91,6 +95,20 @@ public sealed class SkillRegistry
         Não pergunte o que o pedido, o histórico da conversa ou a cena já respondem, nem detalhes que dá
         para ajustar depois (um raio, uma folga): assuma um valor e diga qual. Se não sobrar nenhuma
         decisão em aberto, faça a alteração normalmente e liste as suposições no fim da resposta.
+        """;
+
+    public const string ParametricoInstructions = """
+        O usuário quer código PARAMÉTRICO: o modelo vai ser ajustado mudando valores, e não arrastando na interface.
+        Isso libera o que o estilo padrão evita:
+
+        - parâmetros para cada medida que faça sentido variar (mais de 3, se preciso), com valor padrão;
+        - variáveis intermediárias e contas entre medidas (Largura / 2, margem + passo), para que mudar um
+          parâmetro arraste o resto junto;
+        - laços, LINQ e funções locais para CALCULAR posições e quantidades.
+
+        Continua valendo a regra dos sólidos rastreáveis: cada sólido com declaração própria e Name literal, nunca
+        criado dentro de laço ou com nome interpolado. Para N furos calculados, calcule as posições (num laço, se
+        quiser) e declare furo_1 ... furo_N, um por linha. Ao terminar, diga quais parâmetros controlam o quê.
         """;
 
     public const string RevisarInstructions = """

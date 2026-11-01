@@ -13,7 +13,8 @@ public static class CadScriptPromptProfiles
     {
         Default,
         new LeanPromptProfile(),
-        new SimplePromptProfile()
+        new SimplePromptProfile(),
+        new EditablePromptProfile()
     };
 
     /// <summary>O perfil com esse id; vazio ou desconhecido (ex.: perfil removido) cai no <see cref="Default"/>.</summary>

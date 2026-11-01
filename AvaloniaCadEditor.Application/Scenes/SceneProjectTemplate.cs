@@ -202,7 +202,8 @@ public static class SceneProjectTemplate
         2. `"{tools.CheckExecutable}" check . --geometry` — executa a cena e valida a geometria no kernel.
 
         Os dois precisam terminar com código de saída 0. Os erros vêm no formato `arquivo(linha,coluna): mensagem`;
-        corrija e repita até passar.
+        corrija e repita até passar. Um aviso CAD0200 (sólido criado em laço ou com nome calculado) também precisa ser
+        corrigido nos arquivos que você mexeu; `--estilo` lista onde o código ficou difícil de editar pela interface.
 
         """;
 

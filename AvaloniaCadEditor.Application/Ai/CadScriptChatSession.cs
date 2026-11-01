@@ -54,6 +54,9 @@ public class CadScriptChatSession : ICadScriptChatSession
     private readonly SendDelegate _send;
     private readonly List<ChatMessage> _history = new();
 
+    /// <summary>Perfil que pede código editável à mão: uma rodada de correção com os avisos de estilo (<see cref="EditabilityStyleFeedback"/>).</summary>
+    private readonly bool _styleRound;
+
     /// <summary>Índice em <see cref="_history"/> onde começa a mensagem de usuário de cada turno da UI.
     /// Um turno pode ocupar vários itens do histórico (pares de correção automática do auto-fix).</summary>
     private readonly List<int> _turnStarts = new();
@@ -77,6 +80,7 @@ public class CadScriptChatSession : ICadScriptChatSession
         _protocol = protocol ?? throw new ArgumentNullException(nameof(protocol));
         _workingCopy = new WorkingCopyEvaluator(evaluator ?? throw new ArgumentNullException(nameof(evaluator)));
         _send = send ?? DefaultSend;
+        _styleRound = (protocol as CadScriptProtocol)?.Profile.RequestsEditableCode == true;
         ResetHistory();
     }
 
@@ -131,6 +135,10 @@ public class CadScriptChatSession : ICadScriptChatSession
         int promptTokens = 0;
         int completionTokens = 0;
 
+        // Resposta que já funcionou e voltou à IA só por estilo: se a reescrita falhar (ou a IA recusar), vale esta.
+        CadScriptTurnResult? styleFallback = null;
+        int styleRoundStart = -1;
+
         for (int attempt = 1; attempt <= MaxAttempts; attempt++)
         {
             LlmResult raw = await _send(_history, _options, cancellationToken);
@@ -142,6 +150,11 @@ public class CadScriptChatSession : ICadScriptChatSession
             _history.Add(new ChatMessage { Role = "assistant", Content = raw.Content });
 
             var parsed = _protocol.ParseResponse(raw.Content);
+
+            if (!parsed.HasPayload && styleFallback != null)
+            {
+                return KeepStyleFallback(styleFallback, styleRoundStart, attempt, promptTokens, completionTokens);
+            }
 
             if (!parsed.HasPayload)
             {
@@ -167,7 +180,7 @@ public class CadScriptChatSession : ICadScriptChatSession
 
             if (error == null)
             {
-                return new CadScriptTurnResult
+                var valid = new CadScriptTurnResult
                 {
                     ChatText = parsed.ChatMessage,
                     Changes = changes,
@@ -178,6 +191,25 @@ public class CadScriptChatSession : ICadScriptChatSession
                     PromptTokens = promptTokens,
                     CompletionTokens = completionTokens
                 };
+
+                string? style = _styleRound && styleFallback == null && attempt < MaxAttempts
+                    ? EditabilityStyleFeedback.Build(changes, context)
+                    : null;
+                if (style == null) return valid;
+
+                styleFallback = valid;
+                styleRoundStart = _history.Count;
+                _history.Add(new ChatMessage
+                {
+                    Role = "user",
+                    Content = _protocol.BuildUserMessage(WorkingCopyEvaluator.WithProposedChanges(context, changes), style)
+                });
+                continue;
+            }
+
+            if (styleFallback != null)
+            {
+                return KeepStyleFallback(styleFallback, styleRoundStart, attempt, promptTokens, completionTokens);
             }
 
             if (attempt == MaxAttempts)
@@ -208,6 +240,26 @@ public class CadScriptChatSession : ICadScriptChatSession
         }
 
         throw new InvalidOperationException("Loop de tentativas do CadScriptChatSession terminou sem retornar um resultado.");
+    }
+
+    /// <summary>
+    /// A reescrita de estilo não serviu (falhou ou a IA só respondeu com texto): fica a resposta que já funcionava,
+    /// e a rodada de estilo sai do histórico para o próximo turno não partir de um código que não foi aplicado.
+    /// </summary>
+    private CadScriptTurnResult KeepStyleFallback(CadScriptTurnResult fallback, int styleRoundStart, int attempt, int promptTokens, int completionTokens)
+    {
+        _history.RemoveRange(styleRoundStart, _history.Count - styleRoundStart);
+        return new CadScriptTurnResult
+        {
+            ChatText = fallback.ChatText,
+            Changes = fallback.Changes,
+            Reasoning = fallback.Reasoning,
+            IsValid = true,
+            FeatureCount = fallback.FeatureCount,
+            Attempts = attempt,
+            PromptTokens = promptTokens,
+            CompletionTokens = completionTokens
+        };
     }
 
     /// <summary>

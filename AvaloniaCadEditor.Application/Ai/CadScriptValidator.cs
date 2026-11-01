@@ -46,12 +46,28 @@ public static class CadScriptValidator
             return new CadScriptValidationResult(false, "O arquivo não pode declarar 'namespace'.");
         }
 
-        return kind switch
+        var result = kind switch
         {
             CadFileKind.PartFile => ValidatePartFile(root),
             CadFileKind.SupportFile => ValidateSupportFile(root),
             _ => ValidateScriptFile(root, kind)
         };
+        return result.IsValid ? ValidateTrackableSolids(code) : result;
+    }
+
+    /// <summary>
+    /// A regra dos sólidos rastreáveis (<see cref="CadScriptRules.TrackableSolids"/>) deixa de ser só texto:
+    /// sólido em laço/LINQ, nome calculado ou repetido derruba a resposta, e o auto-fix devolve a lista à IA.
+    /// Os avisos de estilo do mesmo linter não entram aqui (ver <see cref="Prompts.ICadScriptPromptProfile.RequestsEditableCode"/>).
+    /// </summary>
+    private static CadScriptValidationResult ValidateTrackableSolids(string code)
+    {
+        var report = CadScriptEditabilityLint.Analyze(code);
+        if (!report.HasErrors) return new CadScriptValidationResult(true, null);
+
+        return new CadScriptValidationResult(false,
+            "Cada sólido precisa de uma declaração própria com Name literal e único (laços e LINQ só calculam valores):\n" +
+            EditabilityReport.Format(report.Errors, max: 8));
     }
 
     private static CadScriptValidationResult ValidateScriptFile(SyntaxNode root, CadFileKind kind)

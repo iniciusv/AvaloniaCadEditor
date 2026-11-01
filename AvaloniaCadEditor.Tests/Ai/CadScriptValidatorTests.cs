@@ -144,4 +144,37 @@ public class CadScriptValidatorTests
         result.IsValid.Should().BeFalse();
         result.Error.Should().Contain("record");
     }
+
+    [Fact]
+    public void Validate_SolidoCriadoEmLaco_RetornaInvalidoComALinha()
+    {
+        string code = """
+            var chapa_1 = new BoxFeature(Point3D.Origin, 80, 50, 6) { Name = "chapa_1" };
+            AddFeature(chapa_1);
+            foreach (var x in new[] { 10.0, 70.0 })
+            {
+                var furo = new CylinderFeature(new Point3D(x, 10, 0), Vector3D.UnitZ, 2, 6) { Name = $"furo_{x}" };
+                AddFeature(furo);
+            }
+            """;
+
+        var result = CadScriptValidator.Validate(code);
+
+        result.IsValid.Should().BeFalse();
+        result.Error.Should().Contain("linha 5").And.Contain("laço");
+    }
+
+    [Fact]
+    public void Validate_CoordenadaCalculada_ContinuaValido()
+    {
+        string code = """
+            var largura = 80.0;
+            var chapa_1 = new BoxFeature(Point3D.Origin, largura, 50, 6) { Name = "chapa_1" };
+            AddFeature(chapa_1);
+            var furo_1 = new CylinderFeature(new Point3D(largura / 2, 25, 0), Vector3D.UnitZ, 2, 6) { Name = "furo_1" };
+            AddFeature(furo_1);
+            """;
+
+        CadScriptValidator.Validate(code).IsValid.Should().BeTrue("estilo é aviso, só a rastreabilidade derruba a resposta");
+    }
 }

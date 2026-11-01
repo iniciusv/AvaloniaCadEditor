@@ -55,6 +55,59 @@ public class SceneCheckServiceTests
         report.Success.Should().BeTrue(because: report.Format());
         report.GeometryChecked.Should().BeFalse();
     }
+
+    private const string LoopPart = """
+        public sealed record Trilho(double Comprimento = 100) : Part
+        {
+            protected override IFeature Build()
+            {
+                var corpo = new BoxFeature(Point3D.Origin, 15, Comprimento, 10) { Name = "corpo" };
+                var furos = new System.Collections.Generic.List<IFeature>();
+                for (var i = 0; i < 2; i++)
+                {
+                    furos.Add(new CylinderFeature(new Point3D(7.5, 20 + i * 60, 0), Vector3D.UnitZ, 1.75, 10) { Name = $"furo_{i}", IsTransientTool = true });
+                }
+                return BooleanFeature.CreateDifference("trilho", corpo, furos.ToArray());
+            }
+        }
+        """;
+
+    [Fact]
+    public async Task SolidoNaoRastreavel_EAvisoCAD0200_ESoReprovaComStrict()
+    {
+        using var folder = new SceneTestFolder();
+        var project = folder.CreateScene();
+        folder.Write("Pecas/Trilho.cs", LoopPart);
+        var service = new SceneCheckService(new RoslynSceneEvaluator());
+
+        var report = await service.CheckAsync(project, checkGeometry: false);
+        var strict = await service.CheckAsync(project, checkGeometry: false, new EditabilityCheckOptions(Strict: true));
+
+        report.Success.Should().BeTrue(because: report.Format());
+        report.Diagnostics.Should().Contain(d => d.Id == "CAD0200" && d.FilePath == "Pecas/Trilho.cs" && d.Line == 9
+                                                 && d.Severity == ScriptDiagnosticSeverity.Warning);
+        strict.Success.Should().BeFalse();
+        strict.Errors.Should().Contain(d => d.Id == "CAD0200");
+    }
+
+    [Fact]
+    public async Task AvisosDeEstilo_SoContamNoResumo_ESaoListadosComEstilo()
+    {
+        using var folder = new SceneTestFolder();
+        var project = folder.CreateScene();
+        folder.Write("Pecas/Trilho.cs", LoopPart);
+        var service = new SceneCheckService(new RoslynSceneEvaluator());
+
+        var summary = await service.CheckAsync(project, checkGeometry: false);
+        var listed = await service.CheckAsync(project, checkGeometry: false, new EditabilityCheckOptions(ListStyleWarnings: true));
+
+        summary.Diagnostics.Should().NotContain(d => d.Id == "CAD0201");
+        summary.HiddenStyleWarnings.Should().BeGreaterThan(0);
+        summary.Format().Should().Contain("Editabilidade:").And.Contain("liste com --estilo");
+        listed.Diagnostics.Should().Contain(d => d.Id == "CAD0201" && d.Message.Contains("coordenada calculada"));
+        listed.HiddenStyleWarnings.Should().Be(0);
+        summary.Editability!.Solids.Should().BeGreaterThan(summary.Editability.TrackableSolids);
+    }
 }
 
 /// <summary>A origem de cada feature vem dos atributos Caller* de AddFeature.</summary>
