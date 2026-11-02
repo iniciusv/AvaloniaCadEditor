@@ -65,17 +65,21 @@ internal static class OcctFilletBuilder
             bool isRound = fillet.Mode == FilletMode.Round;
             var resultShape = currentShape;
             
+            int uncutRims = 0;
             if (doTop)
             {
                 var cutter = CreateCylinderCutter(cyl, rad, true, isRound, settings);
                 if (cutter != null && !cutter.IsNull) resultShape = resultShape.Cut(cutter);
+                else uncutRims++;
             }
             if (doBottom)
             {
                 var cutter = CreateCylinderCutter(cyl, rad, false, isRound, settings);
                 if (cutter != null && !cutter.IsNull) resultShape = resultShape.Cut(cutter);
+                else uncutRims++;
             }
-            
+
+            WarnUncut(warn, uncutRims);
             return resultShape;
         }
 
@@ -87,6 +91,7 @@ internal static class OcctFilletBuilder
         bool isIntermediate = false;
         OcctBoundingBox? currentBox = null; // caixa de currentShape, para não recalcular a cada aresta
         double? currentVolume = null; // idem, volume
+        int uncut = 0; // arestas escolhidas que ficaram sem o corte, para o aviso
 
         // --- MESH-BASED GENERALIZED FILLET FOR ANY FEATURE (ESPECIALLY BOOLEANS) ---
         if (!(fillet.BaseFeature is BoxFeature))
@@ -170,6 +175,7 @@ internal static class OcctFilletBuilder
                     // o cortador um pouco mais curto ou mais longo: a falha vem de faces quase
                     // coincidentes com o chanfro já feito na aresta vizinha, e mudar a sobra nas pontas
                     // desfaz a coincidência.
+                    bool done = false;
                     foreach (var overhang in CutterOverhangs)
                     {
                         if (BuildEdgeCutter(start, end, n1, n2, r, overhang * r, fillet.Mode, segments) is not var (cutter, cutterVolume)) continue;
@@ -181,13 +187,15 @@ internal static class OcctFilletBuilder
                         if (isIntermediate) currentShape.Dispose();
                         currentShape = cutShape;
                         isIntermediate = true;
+                        done = true;
                         break;
                     }
+                    if (!done) uncut++;
                 }
 
                 // Os anéis depois das retas: num canto arredondado, a quina do arco encontra a reta vizinha já chanfrada.
                 CancelIfRequested(cancellation, currentShape, isIntermediate);
-                CutArcs(ref currentShape, ref isIntermediate, ref currentBox, ref currentVolume, ringArcs, r, fillet.Mode, segments, settings, cancellation);
+                uncut += CutArcs(ref currentShape, ref isIntermediate, ref currentBox, ref currentVolume, ringArcs, r, fillet.Mode, segments, settings, cancellation);
             }
         }
         else
@@ -225,7 +233,11 @@ internal static class OcctFilletBuilder
                     var n2 = geom.Normal2;
 
                     if (start.DistanceTo(end) < 1e-5) continue;
-                    if (BuildEdgeCutter(start, end, n1, n2, r, 0.1 * r, fillet.Mode, segments) is not var (cutter, cutterVolume)) continue;
+                    if (BuildEdgeCutter(start, end, n1, n2, r, 0.1 * r, fillet.Mode, segments) is not var (cutter, cutterVolume))
+                    {
+                        uncut++;
+                        continue;
+                    }
 
                     if (TryCutKeepingSolid(currentShape, ref currentBox, ref currentVolume, cutter, cutterVolume, r, settings) is { } cutShape)
                     {
@@ -233,12 +245,26 @@ internal static class OcctFilletBuilder
                         currentShape = cutShape;
                         isIntermediate = true;
                     }
+                    else uncut++;
                     cutter.Dispose();
                 }
             }
         }
 
+        WarnUncut(warn, uncut);
         return currentShape;
+    }
+
+    /// <summary>
+    /// Avisa quantas arestas escolhidas ficaram sem o corte: o raio não cabe (arco menor que ele) ou a booleana
+    /// não deu um sólido válido. Sem isto o sólido saía com parte do chanfro e nada dizia por quê.
+    /// </summary>
+    private static void WarnUncut(Action<string>? warn, int uncut)
+    {
+        if (uncut == 0) return;
+        warn?.Invoke(uncut == 1
+            ? "1 aresta ficou sem o chanfro/arredondamento: o raio não cabe nela ou o corte não deu um sólido válido."
+            : $"{uncut} arestas ficaram sem o chanfro/arredondamento: o raio não cabe nelas ou o corte não deu um sólido válido.");
     }
 
     /// <summary>Cancelado: descarta o corte intermediário (o sólido base é do cache e fica) e lança.</summary>
@@ -407,6 +433,13 @@ internal static class OcctFilletBuilder
     /// (sai maior, ou perde mais do que o cortador tinha), enquanto o volume pela malha de um corte
     /// válido bate com a conta até a terceira casa.
     /// </para>
+    /// <para>
+    /// As duas caixas têm de ser medidas do mesmo jeito. Com triangulação, o OCCT mede a caixa pelos
+    /// vértices dela, que num círculo ficam no polígono (o de 51 lados de um raio 25 chega a 24,95 em −X),
+    /// e sem ela pela superfície exata. A forma de entrada já vem tesselada; a cortada era medida antes de
+    /// ser, e a borda de um disco que encosta na caixa "crescia" 0,05: o corte válido era descartado. Por
+    /// isso o volume vem antes, e a tesselação dele deixa o polígono também na forma cortada.
+    /// </para>
     /// </summary>
     private static OcctShape TryCutKeepingSolid(OcctShape shape, ref OcctBoundingBox? shapeBox, ref double? shapeVolume, OcctShape cutter, double cutterVolume, double radius, TessellationSettings settings)
     {
@@ -415,6 +448,9 @@ internal static class OcctFilletBuilder
         {
             cut = shape.Cut(cutter);
             if (cut == null || cut.IsNull) return null;
+
+            double volumeBefore = shapeVolume ??= OcctTessellator.Volume(shape, settings);
+            double volumeAfter = OcctTessellator.Volume(cut, settings);
 
             var before = shapeBox ??= shape.BoundingBox;
             var after = cut.BoundingBox; // forma vazia: "Bnd_Box is void" (OcctException)
@@ -439,8 +475,6 @@ internal static class OcctFilletBuilder
             bool grew = growth.Any(g => g - toleranceGap > growthTolerance);
             if (!shrankTooMuch && !grew)
             {
-                double volumeBefore = shapeVolume ??= OcctTessellator.Volume(shape, settings.LinearDeflection, settings.AngularDeflection);
-                double volumeAfter = OcctTessellator.Volume(cut, settings.LinearDeflection, settings.AngularDeflection);
                 double removed = volumeBefore - volumeAfter;
                 double volumeTolerance = volumeBefore * 1e-4 + cutterVolume * 0.05;
                 if (volumeAfter > 0 && removed > -volumeTolerance && removed < cutterVolume + volumeTolerance)
@@ -469,7 +503,8 @@ internal static class OcctFilletBuilder
     /// Corta os arcos com anéis de revolução. Primeiro todos juntos (uma booleana só, conferida pelo volume
     /// somado dos anéis); se o OCCT errar o lote, um por vez, e o anel que falhar sozinho fica sem chanfro.
     /// </summary>
-    private static void CutArcs(ref OcctShape currentShape, ref bool isIntermediate, ref OcctBoundingBox? currentBox, ref double? currentVolume,
+    /// <returns>Quantos arcos ficaram sem o corte.</returns>
+    private static int CutArcs(ref OcctShape currentShape, ref bool isIntermediate, ref OcctBoundingBox? currentBox, ref double? currentVolume,
         IReadOnlyList<CircularEdge> arcs, double r, FilletMode mode, int segments, TessellationSettings settings, CancellationToken cancellation)
     {
         var cutters = new List<(OcctShape Shape, double Volume)>();
@@ -479,9 +514,10 @@ internal static class OcctFilletBuilder
             {
                 if (CreateArcCutter(arc, r, mode, segments) is { } cutter) cutters.Add(cutter);
             }
-            if (cutters.Count == 0) return;
+            int noCutter = arcs.Count - cutters.Count;
+            if (cutters.Count == 0) return noCutter;
 
-            CutBatch(ref currentShape, ref isIntermediate, ref currentBox, ref currentVolume, cutters, r, settings, cancellation);
+            return noCutter + CutBatch(ref currentShape, ref isIntermediate, ref currentBox, ref currentVolume, cutters, r, settings, cancellation);
         }
         finally
         {
@@ -489,7 +525,8 @@ internal static class OcctFilletBuilder
         }
     }
 
-    private static void CutBatch(ref OcctShape currentShape, ref bool isIntermediate, ref OcctBoundingBox? currentBox, ref double? currentVolume,
+    /// <returns>Quantos cortadores do lote ficaram sem cortar.</returns>
+    private static int CutBatch(ref OcctShape currentShape, ref bool isIntermediate, ref OcctBoundingBox? currentBox, ref double? currentVolume,
         List<(OcctShape Shape, double Volume)> cutters, double r, TessellationSettings settings, CancellationToken cancellation)
     {
         CancelIfRequested(cancellation, currentShape, isIntermediate);
@@ -501,12 +538,12 @@ internal static class OcctFilletBuilder
             if (isIntermediate) currentShape.Dispose();
             currentShape = cut;
             isIntermediate = true;
-            return;
+            return 0;
         }
-        if (cutters.Count == 1) return;
+        if (cutters.Count == 1) return 1;
         int half = cutters.Count / 2;
-        CutBatch(ref currentShape, ref isIntermediate, ref currentBox, ref currentVolume, cutters.GetRange(0, half), r, settings, cancellation);
-        CutBatch(ref currentShape, ref isIntermediate, ref currentBox, ref currentVolume, cutters.GetRange(half, cutters.Count - half), r, settings, cancellation);
+        return CutBatch(ref currentShape, ref isIntermediate, ref currentBox, ref currentVolume, cutters.GetRange(0, half), r, settings, cancellation)
+            + CutBatch(ref currentShape, ref isIntermediate, ref currentBox, ref currentVolume, cutters.GetRange(half, cutters.Count - half), r, settings, cancellation);
     }
 
     /// <summary>União dos cortadores (sem descartar os de entrada), ou null se o OCCT recusar.</summary>

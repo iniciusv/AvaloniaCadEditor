@@ -23,6 +23,13 @@ public static class CadScriptRules
         - Nomes de variáveis são únicos, curtos e em snake_case (ex.: box_a1, hole_b2, fillet_c3).
         - FilletFeature com ApplyToAllEdges = true depois dos furos também chanfra/arredonda a boca de cada furo
           (escareado). Furo de parafuso fica com a boca viva: use SkipHoleEdges = true.
+        - FilletFeature só em algumas faces (ex.: "chanfre o topo"): deixe ApplyToAllEdges = false e passe cada
+          face com AddFace; ApplyToAllEdges = true pega todas as arestas, inclusive as de baixo. Numa BoxFeature
+          ou CylinderFeature, a face é a do próprio primitivo, por FaceType:
+          chanfro_topo.AddFace(new FaceReference(cilindro_a, (int)FaceType.Top, Vector3D.UnitZ, "topo"));
+          Em qualquer outro sólido (booleana, extrusão, outro fillet), use faceId -1 com a normal e um ponto da
+          face: só as arestas convexas daquele plano são cortadas, e a emenda com um sólido unido em cima fica.
+          chanfro_topo.AddFace(new FaceReference(uniao_a, -1, Vector3D.UnitZ, new Point3D(0, 0, 3), "topo"));
         """;
 
     /// <summary>

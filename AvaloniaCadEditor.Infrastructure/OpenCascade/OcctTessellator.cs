@@ -18,18 +18,19 @@ namespace AvaloniaCadEditor.Infrastructure.OpenCascade;
 /// </summary>
 internal static class OcctTessellator
 {
+    /// <summary>
+    /// ProfileSegments é o knob de "quão redondo é redondo" em todo o app: o cilindro e a caixa o
+    /// usam direto (polígono extrudado) e aqui ele vira um PISO de facetas para as superfícies
+    /// curvas exatas (cone, fillet), para um cone e um cilindro de mesmo raio não saírem com
+    /// contagens de faceta diferentes. Faces planas ignoram a deflexão, então isto só alcança
+    /// geometria curva. GeometryKey já inclui ProfileSegments, então o cache continua coerente.
+    /// </summary>
+    private static double AngularDeflection(TessellationSettings settings) =>
+        Math.Min(settings.AngularDeflection, 2.0 * Math.PI / Math.Max(settings.ProfileSegments, 3));
+
     public static TriangleMesh Tessellate(OcctShape shape, TessellationSettings settings)
     {
-        // ProfileSegments é o knob de "quão redondo é redondo" em todo o app: o cilindro e a caixa o
-        // usam direto (polígono extrudado) e aqui ele vira um PISO de facetas para as superfícies
-        // curvas exatas (cone, fillet), para um cone e um cilindro de mesmo raio não saírem com
-        // contagens de faceta diferentes. Faces planas ignoram a deflexão, então isto só alcança
-        // geometria curva. GeometryKey já inclui ProfileSegments, então o cache continua coerente.
-        double angularDeflection = Math.Min(
-            settings.AngularDeflection,
-            2.0 * Math.PI / Math.Max(settings.ProfileSegments, 3));
-
-        var occtMesh = shape.Triangulate(settings.LinearDeflection, angularDeflection);
+        var occtMesh = shape.Triangulate(settings.LinearDeflection, AngularDeflection(settings));
         if (occtMesh == null || occtMesh.TriangleCount == 0)
             return TriangleMesh.Empty;
 
@@ -194,10 +195,15 @@ internal static class OcctTessellator
     /// Volume do sólido pela malha (teorema da divergência, com a orientação já corrigida por
     /// <see cref="FixTriangleWinding"/>). O OcctNet.Wrapper não expõe o volume do B-Rep; isto é o
     /// substituto, com o erro da tesselação. 0 para forma vazia ou sem triângulos.
+    /// <para>
+    /// Tessela com a mesma deflexão de <see cref="Tessellate"/>, e a triangulação fica na forma: a caixa
+    /// envolvente do OCCT passa a ser a do polígono, a mesma de uma forma que já passou por
+    /// <see cref="Tessellate"/>. Com deflexões diferentes, um círculo sairia com outra contagem de lados.
+    /// </para>
     /// </summary>
-    public static double Volume(OcctShape shape, double linearDeflection, double angularDeflection)
+    public static double Volume(OcctShape shape, TessellationSettings settings)
     {
-        var occtMesh = shape.Triangulate(linearDeflection, angularDeflection);
+        var occtMesh = shape.Triangulate(settings.LinearDeflection, AngularDeflection(settings));
         if (occtMesh == null || occtMesh.TriangleCount == 0) return 0;
 
         var verts = occtMesh.Vertices;
