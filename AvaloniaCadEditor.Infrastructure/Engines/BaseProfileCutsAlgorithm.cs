@@ -6,48 +6,50 @@ using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.Mesh;
 using AvaloniaCadEditor.Domain.Profiles;
-using AvaloniaCadEditor.Domain.ValueObjects;
 using AvaloniaCadEditor.Infrastructure.Engines.MultiAxis;
 
 namespace AvaloniaCadEditor.Infrastructure.Engines;
 
 /// <summary>
-/// Deduz a peça como um projetista modelaria: UM perfil base extrudado ao longo do eixo em que
-/// ele se repete (aparece igual nas duas pontas da malha) e alguns cortes (furos/bolsões)
-/// subtraídos dele. Produz árvores muito mais simples (1 base + N cortes, sem aninhamento) do
-/// que tentar "varrer" cada eixo com múltiplas camadas independentes.
+/// Deduz a peça como um projetista modelaria: UM perfil base extrudado ao longo de um eixo e
+/// alguns cortes (furos, rasgos, chanfros, recortes) subtraídos dele, cada um reto ao longo do
+/// próprio eixo. Produz árvores simples (1 base + N cortes, sem aninhamento).
 ///
-/// Ideia central (do usuário): o perfil base se repete em inúmeros pontos ao longo do eixo de
-/// extrusão — em particular, aparece inteiro nas duas pontas do objeto — e as diferenças no meio
-/// são resultado de cortes. Um corte nunca aparece como um "furo" na fatia do seu próprio eixo de
-/// varredura (ver <see cref="MeshSlicer.BuildRegions"/>: a fatia de um prisma reto não tem furo
-/// interno), então basta olhar os furos detectados ao varrer cada eixo — cada um já aparece
-/// naturalmente no eixo real do corte que o produziu.
+/// Passo 1 — base, por eixo A: a silhueta da malha projetada no plano (U, V) de A (a união de
+///   todos os triângulos projetados), extrudada pelo comprimento inteiro em A. É o menor prisma
+///   em A que contém a peça: um corte só remove material, então a peça cabe nele. Cada eixo com
+///   silhueta de uma ilha só vira um candidato; o <see cref="IShapeReconstructionService"/> escolhe
+///   pela IoU real e, no empate, pelo menor número de operações.
 ///
-/// Passo 1 — perfil base, por eixo A:
-///   1. Fatia perto das duas pontas da malha em A. Se o contorno externo bater (área e bbox
-///      dentro da tolerância) nas duas pontas, esse é o candidato a perfil base nesse eixo.
-///   2. Só é válido se, extrudado pelo comprimento inteiro, contém TODOS os vértices da malha
-///      projetados no plano (U, V) do eixo — um corte só remove material, nunca adiciona.
-///   3. Entre os eixos válidos, todos entram como candidatos (o <see cref="IShapeReconstructionService"/>
-///      escolhe pela IoU real); a ordem de prioridade interna prefere o de menor volume (área ×
-///      comprimento), ou seja, o superconjunto mais justo.
+/// Passo 2 — cortes, por eixo B (os três, incluindo A): em cada camada entre os níveis de tampa de
+///   B, o material removido é a seção do prisma-base menos a fatia real (<see cref="SectionRegions.RemovedRegions"/>).
+///   Isso pega tanto o furo fechado quanto o recorte que abre para a borda (o vão de um U, um
+///   rasgo, um chanfro). Regiões com área e centróide parecidos em camadas vizinhas são o MESMO
+///   corte, que vira uma extrusão só cobrindo a faixa contígua. Um corte só vale se a seção não
+///   muda dentro da faixa (reamostragem): a superfície de um corte de OUTRO eixo, fatiada de
+///   raspão, muda de largura e é descartada. Dois trechos do mesmo corte separados por um vão sem
+///   material (o furo que atravessa os dois braços de um U) viram uma ferramenta só. Círculo
+///   (ajuste de mínimos quadrados) vira <see cref="CylinderFeature"/>; o resto, <see cref="ExtrudeFeature"/>
+///   poligonal.
 ///
-/// Passo 2 — cortes, por eixo B (os três eixos, incluindo A):
-///   Fatia cada camada entre os níveis de tampa em B e coleta os furos de cada fatia. Furos com
-///   área e centróide parecidos em camadas vizinhas são o MESMO corte — junta-os numa única
-///   extrusão cobrindo a faixa contígua onde aparecem. Círculo (ajuste de mínimos quadrados) vira
-///   <see cref="CylinderFeature"/>; o resto vira <see cref="ExtrudeFeature"/> poligonal.
+/// As fatias nunca caem no meio exato da camada: furos centrados na espessura de uma aba são
+///   comuns, e fatiar exatamente pelo eixo de um furo de outro eixo deixa a seção degenerada.
 ///
 /// Resultado: <c>BooleanFeature.CreateDifference(base, cortes...)</c>, uma árvore de um nível só.
-///
-/// Limitação conhecida: um corte que abre lateralmente (um rasgo que toca a borda do perfil, não
-/// um furo fechado) não aparece como "furo" numa fatia e não é capturado por este algoritmo.
 /// </summary>
 public class BaseProfileCutsAlgorithm : IMultiCandidateReconstructionAlgorithm
 {
     private const int MaxLevelsPerAxis = 64;
     private const int MinPointsForCircle = 12;
+
+    /// <summary>Posição da fatia principal de cada camada (fração da espessura), fora do meio exato.</summary>
+    private const double PrimarySample = 0.5137;
+
+    /// <summary>Posições da reamostragem que confirma que a seção do corte não muda dentro da faixa.</summary>
+    private static readonly double[] SampleFractions = { 0.113, 0.307, PrimarySample, 0.709, 0.893 };
+
+    /// <summary>Posições, em cada camada de um vão, onde se confere que um corte atravessaria só ar.</summary>
+    private static readonly double[] BridgeFractions = { 0.0213, 0.2537, PrimarySample, 0.7461, 0.9787 };
 
     public string Name => "Perfil Base + Cortes";
 
@@ -67,33 +69,22 @@ public class BaseProfileCutsAlgorithm : IMultiCandidateReconstructionAlgorithm
         if (mesh == null || mesh.VertexCount == 0) return Array.Empty<ReconstructionResult>();
 
         double tolerance = 0.05 * toleranceMultiplier;
-        var allVertices = CollectVertices(mesh);
-
-        // Cortes são calculados uma vez por eixo (independem de qual eixo acabou virando a base).
-        var cutsByAxis = AxisFrame.All.ToDictionary(axis => axis, axis => FindCuts(mesh, axis, tolerance));
-
-        var baseCandidates = new List<(AxisFrame Axis, List<(double U, double V)> Profile, double Volume)>();
-        foreach (var axis in AxisFrame.All)
-        {
-            var profile = FindBaseProfile(mesh, axis, tolerance, allVertices);
-            if (profile == null) continue;
-
-            var (rangeMin, rangeMax) = MeshSlicer.GetAxisRange(mesh, axis);
-            double length = rangeMax - rangeMin;
-            double area = Math.Abs(PolygonArea(profile));
-            baseCandidates.Add((axis, profile, area * length));
-        }
 
         var results = new List<ReconstructionResult>();
-        foreach (var (axis, profile, _) in baseCandidates.OrderBy(b => b.Volume))
+        foreach (var axis in AxisFrame.All)
         {
             var (rangeMin, rangeMax) = MeshSlicer.GetAxisRange(mesh, axis);
             double length = rangeMax - rangeMin;
+            if (length <= 1e-6) continue;
 
+            var profile = SectionRegions.SilhouetteOuter(mesh, axis);
+            if (profile == null || profile.Count < 3) continue;
+
+            var envelope = new PrismEnvelope(axis, profile, rangeMin, rangeMax);
             var baseProfile = ToPolygonProfile(profile, axis, rangeMin);
             IFeature baseFeature = new ExtrudeFeature(baseProfile, length, axis.Axis * length, $"Base ({axis.Name})");
 
-            var allCuts = AxisFrame.All.SelectMany(cutAxis => cutsByAxis[cutAxis]).ToList();
+            var allCuts = AxisFrame.All.SelectMany(cutAxis => FindCuts(mesh, cutAxis, envelope, tolerance)).ToList();
 
             if (allCuts.Count == 0)
             {
@@ -109,81 +100,7 @@ public class BaseProfileCutsAlgorithm : IMultiCandidateReconstructionAlgorithm
         return results;
     }
 
-    /// <summary>
-    /// Procura, para o eixo dado, um contorno externo que se repete nas duas pontas da malha
-    /// (mesma área e bbox) e que — extrudado pelo comprimento inteiro — contém todos os vértices
-    /// da malha. Esse é o perfil da extrusão base nesse eixo.
-    /// </summary>
-    private static List<(double U, double V)>? FindBaseProfile(
-        TriangleMesh mesh, AxisFrame axis, double tolerance, List<Point3D> allVertices)
-    {
-        var (rangeMin, rangeMax) = MeshSlicer.GetAxisRange(mesh, axis);
-        double length = rangeMax - rangeMin;
-        if (length <= 1e-6) return null;
-
-        // A tesselação pode ficar levemente irregular bem perto da borda física da peça (fica
-        // mais provável depois de um boolean, mesmo em faces que o corte nem tocou), então tenta
-        // algumas margens diferentes em vez de confiar numa só sonda por ponta.
-        var deltaFractions = new[] { 0.02, 0.05, 0.1, 0.005, 0.2 };
-        var startOuters = new List<List<(double U, double V)>>();
-        var endOuters = new List<List<(double U, double V)>>();
-
-        foreach (var fraction in deltaFractions)
-        {
-            double delta = Math.Max(tolerance, length * fraction);
-            if (delta * 2 >= length) continue; // peça muito curta pra ter "duas pontas" distintas nesse eixo
-
-            if (startOuters.Count == 0) startOuters = SliceOuters(mesh, axis, rangeMin + delta);
-            if (endOuters.Count == 0) endOuters = SliceOuters(mesh, axis, rangeMax - delta);
-            if (startOuters.Count > 0 && endOuters.Count > 0) break;
-        }
-        if (startOuters.Count == 0 || endOuters.Count == 0) return null;
-
-        List<(double U, double V)>? matched = null;
-        foreach (var s in startOuters)
-        {
-            foreach (var e in endOuters)
-            {
-                if (SameSignature(s, e, tolerance)) { matched = s; break; }
-            }
-            if (matched != null) break;
-        }
-        if (matched == null) return null;
-
-        foreach (var v in allVertices)
-        {
-            var (u, vv, _) = axis.ToLocal(v);
-            if (!MeshSlicer.ContainsPointWithTolerance(matched, (u, vv), tolerance * 5))
-                return null;
-        }
-
-        return matched;
-    }
-
-    private static List<List<(double U, double V)>> SliceOuters(TriangleMesh mesh, AxisFrame axis, double w)
-    {
-        var loops = MeshSlicer.Slice(mesh, axis, w);
-        if (loops.Count == 0) return new List<List<(double U, double V)>>();
-        return MeshSlicer.BuildRegions(loops).Select(r => r.Outer).ToList();
-    }
-
-    private static bool SameSignature(List<(double U, double V)> a, List<(double U, double V)> b, double tolerance)
-    {
-        double areaA = Math.Abs(PolygonArea(a));
-        double areaB = Math.Abs(PolygonArea(b));
-        if (areaA < 1e-9 || areaB < 1e-9) return false;
-        if (Math.Abs(areaA - areaB) / Math.Max(areaA, areaB) > 0.01) return false;
-
-        var (aMinU, aMaxU, aMinV, aMaxV) = BoundingBox(a);
-        var (bMinU, bMaxU, bMinV, bMaxV) = BoundingBox(b);
-        double dimTolerance = Math.Max(tolerance * 5, Math.Max(aMaxU - aMinU, bMaxU - bMinU) * 0.01);
-
-        if (Math.Abs((aMaxU - aMinU) - (bMaxU - bMinU)) > dimTolerance) return false;
-        if (Math.Abs((aMaxV - aMinV) - (bMaxV - bMinV)) > dimTolerance) return false;
-        return true;
-    }
-
-    private sealed class HoleThread
+    private sealed class CutThread
     {
         public double Lo;
         public double Hi;
@@ -193,19 +110,19 @@ public class BaseProfileCutsAlgorithm : IMultiCandidateReconstructionAlgorithm
     }
 
     /// <summary>
-    /// Todos os cortes detectados ao varrer o eixo dado: agrupa furos com área/centróide
-    /// parecidos entre camadas vizinhas numa única extrusão (ou cilindro) cobrindo a faixa
-    /// contígua onde aparecem.
+    /// Todos os cortes detectados ao varrer o eixo dado: agrupa o material removido com
+    /// área/centróide parecidos entre camadas vizinhas numa única extrusão (ou cilindro) cobrindo
+    /// a faixa contígua onde aparece.
     /// </summary>
-    private static List<IFeature> FindCuts(TriangleMesh mesh, AxisFrame axis, double tolerance)
+    private static List<IFeature> FindCuts(TriangleMesh mesh, AxisFrame axis, PrismEnvelope envelope, double tolerance)
     {
         var levels = MeshSlicer.FindCapLevels(mesh, axis, tolerance);
         if (levels.Count < 2 || levels.Count > MaxLevelsPerAxis) return new List<IFeature>();
 
         var (rangeMin, rangeMax) = MeshSlicer.GetAxisRange(mesh, axis);
 
-        var active = new List<HoleThread>();
-        var finished = new List<HoleThread>();
+        var active = new List<CutThread>();
+        var finished = new List<CutThread>();
 
         for (int i = 0; i < levels.Count - 1; i++)
         {
@@ -213,31 +130,24 @@ public class BaseProfileCutsAlgorithm : IMultiCandidateReconstructionAlgorithm
             double hi = levels[i + 1];
             if (hi - lo <= tolerance) continue; // camada degenerada
 
-            double mid = (lo + hi) / 2.0;
-            var loops = MeshSlicer.Slice(mesh, axis, mid);
-            var holesThisLayer = loops.Count > 0
-                ? MeshSlicer.BuildRegions(loops).SelectMany(r => r.Holes).ToList()
-                : new List<List<(double U, double V)>>();
+            var regions = SectionRegions.RemovedRegions(mesh, axis, envelope, lo + (hi - lo) * PrimarySample, tolerance);
 
-            var matchedThreads = new HashSet<HoleThread>();
-            var usedHoleIndices = new HashSet<int>();
+            var matchedThreads = new HashSet<CutThread>();
+            var usedRegions = new HashSet<int>();
 
-            for (int h = 0; h < holesThisLayer.Count; h++)
+            for (int r = 0; r < regions.Count; r++)
             {
-                var hole = holesThisLayer[h];
-                double area = Math.Abs(PolygonArea(hole));
-                var centroid = Centroid(hole);
+                double area = Math.Abs(SectionRegions.Area(regions[r]));
+                var centroid = SectionRegions.Centroid(regions[r]);
 
-                HoleThread? best = null;
+                CutThread? best = null;
                 double bestDistance = double.MaxValue;
                 foreach (var thread in active)
                 {
                     if (matchedThreads.Contains(thread)) continue;
-                    if (area < 1e-9 || thread.Area < 1e-9) continue;
-                    if (Math.Abs(thread.Area - area) / Math.Max(thread.Area, area) > 0.02) continue;
+                    if (!SameSection(thread.Area, thread.Centroid, area, centroid, 0.02, tolerance * 5)) continue;
 
                     double distance = Distance(thread.Centroid, centroid);
-                    if (distance > tolerance * 5) continue;
                     if (distance < bestDistance) { bestDistance = distance; best = thread; }
                 }
 
@@ -245,11 +155,11 @@ public class BaseProfileCutsAlgorithm : IMultiCandidateReconstructionAlgorithm
                 {
                     best.Hi = hi;
                     matchedThreads.Add(best);
-                    usedHoleIndices.Add(h);
+                    usedRegions.Add(r);
                 }
             }
 
-            var stillActive = new List<HoleThread>();
+            var stillActive = new List<CutThread>();
             foreach (var thread in active)
             {
                 if (matchedThreads.Contains(thread)) stillActive.Add(thread);
@@ -257,34 +167,32 @@ public class BaseProfileCutsAlgorithm : IMultiCandidateReconstructionAlgorithm
             }
             active = stillActive;
 
-            for (int h = 0; h < holesThisLayer.Count; h++)
+            for (int r = 0; r < regions.Count; r++)
             {
-                if (usedHoleIndices.Contains(h)) continue;
-                var hole = holesThisLayer[h];
-                active.Add(new HoleThread
+                if (usedRegions.Contains(r)) continue;
+                active.Add(new CutThread
                 {
                     Lo = lo,
                     Hi = hi,
-                    Points = hole,
-                    Area = Math.Abs(PolygonArea(hole)),
-                    Centroid = Centroid(hole)
+                    Points = regions[r],
+                    Area = Math.Abs(SectionRegions.Area(regions[r])),
+                    Centroid = SectionRegions.Centroid(regions[r])
                 });
             }
         }
         finished.AddRange(active);
 
-        // Um furo genuíno é reto ao longo do eixo B inteiro: sua seção não muda dentro da faixa
-        // [Lo,Hi] onde foi detectado. Uma superfície curva de OUTRO eixo, cortada de raspão por B
-        // (ex.: um cilindro ao longo de X aparece como uma "fenda" larga no meio e estreita nas
-        // pontas ao varrer por Y), só bate a assinatura no ponto médio de uma camada sem cap
-        // levels próprios em B — reamostrar outros pontos dentro da própria faixa denuncia isso.
-        var validated = finished.Where(t => IsConsistentAcrossRange(mesh, axis, t, tolerance)).ToList();
+        // Um corte genuíno é reto ao longo do eixo B: sua seção não muda dentro da faixa [Lo,Hi]
+        // onde foi detectado. Uma superfície de OUTRO eixo, cortada de raspão por B (um cilindro ao
+        // longo de X aparece como uma fenda larga no meio e estreita nas pontas ao varrer por Y),
+        // só bate a assinatura na fatia principal — reamostrar dentro da faixa denuncia isso.
+        var validated = finished.Where(t => IsConsistentAcrossRange(mesh, axis, envelope, t, tolerance)).ToList();
+        var merged = MergeAcrossEmptyGaps(mesh, axis, levels, validated, tolerance);
 
         var cutFeatures = new List<IFeature>();
         int n = 0;
-        foreach (var thread in validated)
+        foreach (var thread in merged.OrderBy(t => t.Lo).ThenBy(t => t.Centroid.U).ThenBy(t => t.Centroid.V))
         {
-            n++;
             double lo = thread.Lo;
             double hi = thread.Hi;
 
@@ -295,12 +203,13 @@ public class BaseProfileCutsAlgorithm : IMultiCandidateReconstructionAlgorithm
             double height = hi - lo;
             if (height <= 1e-6) continue;
 
+            n++;
             var fit = LoopFitting.FitCircle(thread.Points);
             // Um polígono regular (hexágono, octógono...) também tem todos os vértices
             // exatamente sobre um círculo, então o erro do ajuste de mínimos quadrados por si só
             // não distingue os dois casos. O que distingue é a densidade de pontos: a tesselação
-            // de um cilindro real neste kernel usa dezenas de segmentos (ex.: ~32 para um furo
-            // pequeno), enquanto um polígono modelado como feição tem poucos vértices.
+            // de um cilindro real usa dezenas de segmentos, enquanto um polígono modelado como
+            // feição tem poucos vértices.
             bool isCircle = fit.Radius > 1e-4 && fit.Error < fit.Radius * 0.05 && thread.Points.Count >= MinPointsForCircle;
 
             if (isCircle)
@@ -318,7 +227,7 @@ public class BaseProfileCutsAlgorithm : IMultiCandidateReconstructionAlgorithm
         return cutFeatures;
     }
 
-    private static bool IsConsistentAcrossRange(TriangleMesh mesh, AxisFrame axis, HoleThread thread, double tolerance)
+    private static bool IsConsistentAcrossRange(TriangleMesh mesh, AxisFrame axis, PrismEnvelope envelope, CutThread thread, double tolerance)
     {
         double range = thread.Hi - thread.Lo;
         if (range <= 1e-9) return true;
@@ -326,63 +235,93 @@ public class BaseProfileCutsAlgorithm : IMultiCandidateReconstructionAlgorithm
         foreach (var fraction in SampleFractions)
         {
             double w = thread.Lo + range * fraction;
-            var loops = MeshSlicer.Slice(mesh, axis, w);
-            if (loops.Count == 0) return false;
-
-            bool found = MeshSlicer.BuildRegions(loops).SelectMany(r => r.Holes).Any(hole =>
-            {
-                double area = Math.Abs(PolygonArea(hole));
-                if (thread.Area < 1e-9 || area < 1e-9) return false;
-                if (Math.Abs(thread.Area - area) / Math.Max(thread.Area, area) > 0.05) return false;
-                return Distance(Centroid(hole), thread.Centroid) <= tolerance * 10;
-            });
+            bool found = SectionRegions.RemovedRegions(mesh, axis, envelope, w, tolerance).Any(region =>
+                SameSection(thread.Area, thread.Centroid,
+                    Math.Abs(SectionRegions.Area(region)), SectionRegions.Centroid(region), 0.05, tolerance * 10));
 
             if (!found) return false;
         }
         return true;
     }
 
-    private static readonly double[] SampleFractions = { 0.1, 0.3, 0.5, 0.7, 0.9 };
-
-    private static List<Point3D> CollectVertices(TriangleMesh mesh)
+    /// <summary>
+    /// Junta trechos do mesmo corte (mesma seção) separados por camadas onde essa seção não
+    /// encontra material nenhum: o furo que atravessa os dois braços de um U passando pelo vão,
+    /// ou o chanfro que segue pelas duas abas. Uma ferramenta só, em vez de uma por trecho.
+    /// </summary>
+    private static List<CutThread> MergeAcrossEmptyGaps(
+        TriangleMesh mesh, AxisFrame axis, List<double> levels, List<CutThread> threads, double tolerance)
     {
-        var vertices = new List<Point3D>(mesh.VertexCount);
-        for (int i = 0; i < mesh.Positions.Length; i += 3)
+        var ordered = threads.OrderBy(t => t.Lo).ToList();
+        var result = new List<CutThread>();
+        var consumed = new HashSet<CutThread>();
+
+        foreach (var first in ordered)
         {
-            vertices.Add(new Point3D(mesh.Positions[i], mesh.Positions[i + 1], mesh.Positions[i + 2]));
+            if (consumed.Contains(first)) continue;
+            consumed.Add(first);
+            var current = first;
+
+            bool extended = true;
+            while (extended)
+            {
+                extended = false;
+                foreach (var next in ordered)
+                {
+                    if (consumed.Contains(next)) continue;
+                    if (next.Lo < current.Hi - tolerance) continue;
+                    if (!SameSection(current.Area, current.Centroid, next.Area, next.Centroid, 0.02, tolerance * 5)) continue;
+                    if (!GapIsEmpty(mesh, axis, levels, current.Points, current.Area, current.Hi, next.Lo)) continue;
+
+                    current = new CutThread
+                    {
+                        Lo = current.Lo,
+                        Hi = next.Hi,
+                        Points = current.Points,
+                        Area = current.Area,
+                        Centroid = current.Centroid
+                    };
+                    consumed.Add(next);
+                    extended = true;
+                    break;
+                }
+            }
+
+            result.Add(current);
         }
-        return vertices;
+
+        return result;
     }
 
-    private static (double MinU, double MaxU, double MinV, double MaxV) BoundingBox(List<(double U, double V)> loop)
+    private static bool GapIsEmpty(
+        TriangleMesh mesh, AxisFrame axis, List<double> levels, List<(double U, double V)> section, double sectionArea, double from, double to)
     {
-        double minU = double.MaxValue, maxU = double.MinValue;
-        double minV = double.MaxValue, maxV = double.MinValue;
-        foreach (var p in loop)
+        if (to - from <= 1e-9) return true;
+
+        // As camadas do vão são delimitadas pelos níveis de tampa (onde o material muda); amostra
+        // cada uma em vários pontos.
+        var bounds = levels.Where(l => l > from && l < to).Append(from).Append(to).OrderBy(l => l).ToList();
+        double limit = Math.Max(sectionArea * 0.005, 1e-4);
+
+        for (int i = 0; i < bounds.Count - 1; i++)
         {
-            if (p.U < minU) minU = p.U; if (p.U > maxU) maxU = p.U;
-            if (p.V < minV) minV = p.V; if (p.V > maxV) maxV = p.V;
+            double lo = bounds[i], hi = bounds[i + 1];
+            if (hi - lo <= 1e-9) continue;
+            foreach (var fraction in BridgeFractions)
+            {
+                if (SectionRegions.MaterialAreaInside(mesh, axis, section, lo + (hi - lo) * fraction) > limit) return false;
+            }
         }
-        return (minU, maxU, minV, maxV);
+        return true;
     }
 
-    private static double PolygonArea(List<(double U, double V)> loop)
+    private static bool SameSection(
+        double areaA, (double U, double V) centroidA, double areaB, (double U, double V) centroidB,
+        double areaTolerance, double centroidTolerance)
     {
-        double area = 0;
-        for (int i = 0; i < loop.Count; i++)
-        {
-            var a = loop[i];
-            var b = loop[(i + 1) % loop.Count];
-            area += a.U * b.V - b.U * a.V;
-        }
-        return area * 0.5;
-    }
-
-    private static (double U, double V) Centroid(List<(double U, double V)> loop)
-    {
-        double u = 0, v = 0;
-        foreach (var p in loop) { u += p.U; v += p.V; }
-        return (u / loop.Count, v / loop.Count);
+        if (areaA < 1e-9 || areaB < 1e-9) return false;
+        if (Math.Abs(areaA - areaB) / Math.Max(areaA, areaB) > areaTolerance) return false;
+        return Distance(centroidA, centroidB) <= centroidTolerance;
     }
 
     private static double Distance((double U, double V) a, (double U, double V) b)
