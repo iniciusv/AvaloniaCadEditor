@@ -1,0 +1,256 @@
+using System;
+using System.IO;
+using System.Linq;
+using System.Threading.Tasks;
+using AvaloniaCadEditor.Application.Commands;
+using AvaloniaCadEditor.Application.EditContext;
+using AvaloniaCadEditor.Application.Interfaces;
+using AvaloniaCadEditor.Application.Services;
+using AvaloniaCadEditor.Domain.Features;
+using AvaloniaCadEditor.Domain.Profiles;
+using AvaloniaCadEditor.Domain.ValueObjects;
+using AvaloniaCadEditor.Infrastructure.OpenCascade;
+using AvaloniaCadEditor.UI.Controls.Rendering;
+using AvaloniaCadEditor.UI.ViewModels;
+using FluentAssertions;
+using Moq;
+using Xunit;
+
+namespace AvaloniaCadEditor.Tests.Scenes;
+
+/// <summary>
+/// Entidade aberta com duplo clique, pelas ViewModels: o nível decide o que se seleciona (sólidos na cena,
+/// faces e vazios dentro), o resto do modelo fica à vista mas esmaecido, o H isola a entidade aberta, e o
+/// Extrude numa face da peça aberta grava no Build() dela.
+/// </summary>
+public class OpenEntityTests
+{
+    private sealed record PecaDeTeste : Part
+    {
+        protected override IFeature Build() => throw new NotSupportedException();
+    }
+
+    private static CadViewModel CreateViewModel() =>
+        TestUtils.CreateCadViewModel(
+            new Mock<AvaloniaCadEditor.Domain.Interfaces.IGeometryEngine>().Object,
+            new Mock<IOSnapService>().Object,
+            null,
+            new OpenCascadeGeometryKernel());
+
+    /// <summary>
+    /// Bloco 20 × 20 × 10 com um furo passante no centro, instanciado em x = 100 ("bloco_1"), e uma tampa
+    /// solta por cima dele ("tampa", z de 20 a 25).
+    /// </summary>
+    private static (CadViewModel Vm, PartInstance Bloco, BoxFeature Tampa) Scene()
+    {
+        var corpo = new BoxFeature(Point3D.Origin, 20, 20, 10) { Name = "corpo" };
+        var furo = new CylinderFeature(new Point3D(10, 10, 0), Vector3D.UnitZ, 3, 10) { Name = "furo", IsTransientTool = true };
+        var definicao = BooleanFeature.CreateDifference("bloco", corpo, furo);
+        var bloco = new PartInstance<PecaDeTeste>(new PecaDeTeste(), definicao, Placement.At(100, 0, 0)) { Name = "bloco_1" };
+        var tampa = new BoxFeature(new Point3D(95, -5, 20), 30, 30, 5) { Name = "tampa" };
+
+        var vm = CreateViewModel();
+        vm.Sketch.AddFeature(bloco);
+        vm.Sketch.AddFeature(tampa);
+        return (vm, bloco, tampa);
+    }
+
+    /// <summary>Raio de cima para baixo num ponto do bloco fora do furo: passa pela tampa antes.</summary>
+    private static Ray RayDown(float x = 105, float y = 5) =>
+        new(new System.Numerics.Vector3(x, y, 100), new System.Numerics.Vector3(0, 0, -1));
+
+    // ---------------------------------------------------------------- Nível
+
+    [Fact]
+    public void ONivelDecideOQueSeSeleciona()
+    {
+        var (vm, _, _) = Scene();
+        vm.CurrentSelectionMode.Should().Be(CadViewModel.TargetSelectionMode.Feature);
+        vm.SelectionLevelText.Should().Be("Cena: sólidos inteiros");
+
+        vm.ActiveBooleanGroupName = "bloco_1";
+        vm.SelectionLevel.Should().Be(SelectionLevel.Entity);
+        vm.CurrentSelectionMode.Should().Be(CadViewModel.TargetSelectionMode.Face);
+        vm.SelectionLevelText.Should().Contain("bloco_1");
+
+        vm.CurrentMode = EditorMode.SketchEdit;
+        vm.CurrentSelectionMode.Should().Be(CadViewModel.TargetSelectionMode.Edge, "o esboço ganha da entidade aberta");
+    }
+
+    [Fact]
+    public void NaCena_OCliquePegaOSolidoDaFrente()
+    {
+        var (vm, _, tampa) = Scene();
+
+        vm.Raycast3D(RayDown())!.Value.FeatureId.Should().Be(tampa.Id);
+    }
+
+    [Fact]
+    public void DentroDaPeca_OResto_NaoESelecionavel_MasContinuaComoReferencia()
+    {
+        var (vm, bloco, tampa) = Scene();
+        vm.ActiveBooleanGroupName = "bloco_1";
+
+        vm.Raycast3D(RayDown())!.Value.FeatureId.Should().Be(bloco.Id, "a tampa na frente é de fora da entidade aberta");
+        vm.RaycastReference(RayDown())!.Value.FeatureId.Should().Be(tampa.Id, "referência (plano de trabalho, duplo clique) vê a cena toda");
+    }
+
+    [Fact]
+    public void DentroDaPeca_OVazioESelecionavel_MasOExtrudeSoPegaOCorpo()
+    {
+        var (vm, _, _) = Scene();
+        vm.ActiveBooleanGroupName = "bloco_1";
+        var furo = vm.ActiveToolFeatures.Should().ContainSingle().Subject;
+
+        // Pelo centro do furo: o vazio é atingido; o corpo não (o furo é passante).
+        vm.Raycast3D(RayDown(110, 10))!.Value.FeatureId.Should().Be(furo.Id);
+        vm.IsOpenEntityToolHit(vm.Raycast3D(RayDown(110, 10))).Should().BeTrue();
+
+        vm.CurrentTool = new ExtrudeCommand();
+        vm.Raycast3D(RayDown(110, 10)).Should().BeNull("o Extrude quer uma face do corpo, não o vazio");
+    }
+
+    [Fact]
+    public void EntrarNumaEntidade_LimpaASelecaoDoNivelAnterior()
+    {
+        var (vm, _, tampa) = Scene();
+        vm.SelectionService.SelectById(vm.Sketch, tampa.Id);
+        tampa.IsSelected.Should().BeTrue();
+
+        vm.ActiveBooleanGroupName = "bloco_1";
+
+        tampa.IsSelected.Should().BeFalse();
+    }
+
+    [Fact]
+    public void ComAEntidadeAberta_ORestoFicaEsmaecido()
+    {
+        var (vm, bloco, tampa) = Scene();
+        var tampaItem = new SolidRenderable(tampa, false, false);
+        var blocoItem = new SolidRenderable(bloco, false, false);
+        var antes = SolidRenderables.ResolveColors(vm, tampaItem).Face;
+
+        vm.ActiveBooleanGroupName = "bloco_1";
+
+        SolidRenderables.IsOutsideOpenEntity(vm, tampaItem).Should().BeTrue();
+        SolidRenderables.IsOutsideOpenEntity(vm, blocoItem).Should().BeFalse();
+        SolidRenderables.ResolveColors(vm, tampaItem).Face.Should().NotBe(antes);
+    }
+
+    [Fact]
+    public void H_DentroDaEntidade_IsolaAEntidadeAberta()
+    {
+        var (vm, bloco, tampa) = Scene();
+        vm.ActiveBooleanGroupName = "bloco_1";
+
+        vm.OnKeyDown("H");
+
+        vm.IsIsolating.Should().BeTrue();
+        vm.IsolatedFeature.Should().BeSameAs(bloco);
+        tampa.IsVisible.Should().BeFalse();
+    }
+
+    [Fact]
+    public void EntidadeQueSumiuDoCodigo_VoltaAoNivelDaCena()
+    {
+        var (vm, _, tampa) = Scene();
+        vm.ActiveBooleanGroupName = "bloco_1";
+
+        vm.Sketch.ClearFeatures();
+        vm.Sketch.AddFeature(tampa);
+        vm.ReapplyOpenEntity();
+
+        vm.IsEditingBooleanGroup.Should().BeFalse();
+        vm.SelectionLevel.Should().Be(SelectionLevel.Scene);
+    }
+
+    [Fact]
+    public void SolidoSolto_AbreSemContextoDePeca()
+    {
+        var (vm, _, _) = Scene();
+
+        vm.ActiveBooleanGroupName = "tampa";
+
+        vm.SelectionLevel.Should().Be(SelectionLevel.Entity);
+        vm.EditContext.Should().BeNull("o código de um sólido solto está na cena, em coordenadas do mundo");
+        vm.ActiveGroupTitle.Should().Be("Editando sólido:");
+    }
+
+    // ---------------------------------------------------------------- Entrega 1, ponta a ponta
+
+    private const string BlocoRecord = """
+        public sealed record Bloco(double Largura = 40) : Part
+        {
+            protected override IFeature Build()
+            {
+                var corpo = new BoxFeature(Point3D.Origin, Largura, 30, 10) { Name = "corpo" };
+                return corpo;
+            }
+        }
+        """;
+
+    /// <summary>Girado 90° em Z e erguido: o topo local (z = 10) fica em z = 30 no mundo.</summary>
+    private const string BlocoScene = """
+        var bloco = Add(new Bloco(), at: Placement.At(100, 50, 20, rotationZDegrees: 90), name: "bloco");
+        """;
+
+    [Fact]
+    public async Task ExtrudarAFaceDeCimaDaPecaAberta_GravaNoBuildEmCoordenadasLocais_EACenaNaoMuda()
+    {
+        using var folder = new SceneTestFolder();
+        folder.CreateScene();
+        folder.Write("Pecas/Bloco.cs", BlocoRecord);
+        folder.Write("Cena.cs", BlocoScene);
+
+        var vm = CreateViewModel();
+        await vm.ScriptEditor.OpenProjectAsync(folder.Root);
+        vm.ScriptEditor.HasErrors.Should().BeFalse(vm.ScriptEditor.ErrorSummary);
+        string sceneBefore = File.ReadAllText(folder.FullPath("Cena.cs"));
+
+        // Duplo clique na peça.
+        vm.ActiveBooleanGroupName = "bloco";
+        vm.EditContext.Should().NotBeNull();
+        vm.ActiveGroupTitle.Should().Be("Editando peça:");
+
+        // Clique na face de cima (z = 30 no mundo), como o ViewportInputHandler faz.
+        var instance = vm.Sketch.Features.OfType<PartInstance>().Single(i => i.Name == "bloco");
+        var mesh = vm.GetFeatureMesh(instance.Id)!;
+        var face = new FaceProfile(instance, new WorkPlane(Vector3D.UnitZ, new Point3D(85, 70, 30)), mesh);
+
+        var extrude = new ExtrudeCommand();
+        vm.CurrentTool = extrude;
+        extrude.Target.Should().Be(ExtrusionTarget.Standalone, "com uma peça aberta o Extrude gera o sólido autônomo");
+        extrude.StartDirectExtrusion(vm.Sketch, face, new Point3D(85, 70, 30));
+        extrude.OnValueEntered(vm.Sketch, 5);
+
+        // O evento é async void (como o resto das ferramentas): espera o arquivo da peça mudar.
+        string part = File.ReadAllText(folder.FullPath("Pecas/Bloco.cs"));
+        for (int i = 0; i < 200 && !part.Contains("box_", StringComparison.Ordinal); i++)
+        {
+            await Task.Delay(50);
+            part = File.ReadAllText(folder.FullPath("Pecas/Bloco.cs"));
+        }
+
+        part.Should().Contain("box_", "a extrusão foi gravada no Build() da peça");
+        part.Should().NotContain("Push/Pull");
+        File.ReadAllText(folder.FullPath("Cena.cs")).Should().Be(sceneBefore, "a cena não muda");
+        vm.ScriptEditor.ActiveFile.Should().Be("Pecas/Bloco.cs", "o arquivo da peça fica ativo, para o Ctrl+Z valer");
+        vm.StatusText.Should().StartWith("✓");
+
+        // Na peça, a caixa nova fica sobre o topo local (z de 10 a 15), dentro dos 40 × 30 do bloco.
+        var updated = vm.Sketch.Features.OfType<PartInstance>().Single(i => i.Name == "bloco");
+        var box = Leaves(updated.Definition).OfType<BoxFeature>().Single(b => b.Name.StartsWith("box_", StringComparison.Ordinal));
+        box.GetVertices().Min(v => v.Z).Should().BeApproximately(10, 1e-4);
+        box.GetVertices().Max(v => v.Z).Should().BeApproximately(15, 1e-4);
+        box.GetVertices().Min(v => v.X).Should().BeApproximately(0, 1e-4);
+        box.GetVertices().Max(v => v.X).Should().BeApproximately(40, 1e-4);
+        vm.IsEditingBooleanGroup.Should().BeTrue("a peça continua aberta depois de gravar");
+    }
+
+    private static System.Collections.Generic.IEnumerable<IFeature> Leaves(IFeature feature) => feature switch
+    {
+        BooleanFeature b => b.BaseFeatures.Concat(b.ToolFeatures).SelectMany(Leaves),
+        TransformedFeature t => Leaves(t.Source),
+        _ => new[] { feature }
+    };
+}

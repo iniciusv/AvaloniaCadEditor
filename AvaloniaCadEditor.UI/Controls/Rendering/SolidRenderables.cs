@@ -133,6 +133,26 @@ public static class SolidRenderables
             }
         }
 
+        // Com uma entidade aberta (duplo clique), o resto do modelo continua à vista, como referência, mas
+        // esmaecido: não é selecionável. Opaco, e não translúcido, para não depender da ordem de desenho.
+        if (IsOutsideOpenEntity(vm, item))
+        {
+            (faceR, faceG, faceB) = Fade((faceR, faceG, faceB));
+            (edgeR, edgeG, edgeB) = Fade((edgeR, edgeG, edgeB));
+        }
+
         return ((faceR, faceG, faceB), (edgeR, edgeG, edgeB));
     }
+
+    /// <summary>Um sólido da cena que não é a entidade aberta (nem vazio dela, nem preview).</summary>
+    public static bool IsOutsideOpenEntity(CadViewModel vm, SolidRenderable item) =>
+        vm.IsEditingBooleanGroup && !item.IsToolFeature && !item.IsPreview && item.Feature.Name != vm.ActiveBooleanGroupName;
+
+    private const float FadeAmount = 0.6f;
+    private static readonly (float R, float G, float B) FadeTarget = (0.32f, 0.32f, 0.34f);
+
+    private static (float R, float G, float B) Fade((float R, float G, float B) c) => (
+        c.R + (FadeTarget.R - c.R) * FadeAmount,
+        c.G + (FadeTarget.G - c.G) * FadeAmount,
+        c.B + (FadeTarget.B - c.B) * FadeAmount);
 }

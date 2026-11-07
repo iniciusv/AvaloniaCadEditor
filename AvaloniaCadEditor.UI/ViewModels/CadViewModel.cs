@@ -35,7 +35,7 @@ public partial class CadViewModel : INotifyPropertyChanged
 	public EditorMode CurrentMode
 	{
 		get => _currentMode;
-		set { _currentMode = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsSketchEditing)); }
+		set { _currentMode = value; OnPropertyChanged(); OnPropertyChanged(nameof(IsSketchEditing)); NotifySelectionLevelChanged(); }
 	}
 
 	public bool IsSketchEditing => CurrentMode == EditorMode.SketchEdit;
@@ -125,8 +125,8 @@ public partial class CadViewModel : INotifyPropertyChanged
 		}
 	}
 
-	private bool IsFacePickMode() =>
-		CurrentTool is ExtrudeCommand || CurrentSelectionMode == TargetSelectionMode.Face;
+	/// <summary>Faces são selecionáveis só dentro de uma entidade aberta (inclusive para o Extrude).</summary>
+	private bool IsFacePickMode() => CurrentSelectionMode == TargetSelectionMode.Face;
 
 	private Ray? _lastHoverRay;
 	private Avalonia.Threading.DispatcherTimer? _hoverTimer;
@@ -163,17 +163,7 @@ public partial class CadViewModel : INotifyPropertyChanged
 				_hoverTimer.Stop();
 				if (_lastHoverRay.HasValue)
 				{
-					var hit = RaycastScene(_lastHoverRay.Value);
-					if (hit?.FeatureId != null && IsFacePickMode())
-					{
-						HoveredFeatureId = null;
-						HoveredFaceProfile = AvaloniaCadEditor.UI.Controls.Input.ViewportInputHandler.BuildFaceProfile(this, hit.Value);
-					}
-					else
-					{
-						HoveredFaceProfile = null;
-						HoveredFeatureId = hit?.FeatureId;
-					}
+					ApplyHover(RaycastScene(_lastHoverRay.Value));
 				}
 			};
 		}
@@ -723,7 +713,11 @@ public partial class CadViewModel : INotifyPropertyChanged
 			return;
 		}
 
-		var selected = PreSelectedSolids();
+		// Dentro de uma entidade aberta, o H esconde o resto do modelo: isola a própria entidade, já que o
+		// que se seleciona lá dentro são faces e vazios, não sólidos da cena.
+		var selected = OpenEntity is { } open
+			? new System.Collections.Generic.List<IFeature> { open }
+			: PreSelectedSolids();
 		if (selected.Count == 0)
 		{
 			return;
@@ -857,43 +851,30 @@ public partial class CadViewModel : INotifyPropertyChanged
 	/// (linhas e círculos do esboço).</summary>
 	public enum TargetSelectionMode { Feature, Face, Edge }
 
-	private TargetSelectionMode _currentSelectionMode = TargetSelectionMode.Feature;
-	public TargetSelectionMode CurrentSelectionMode
-	{
-		get => _currentSelectionMode;
-		set
-		{
-			_currentSelectionMode = value;
-			OnPropertyChanged();
-			OnPropertyChanged(nameof(SelectionModeIndex));
-			OnPropertyChanged(nameof(IsFeatureSelectionMode));
-			OnPropertyChanged(nameof(IsFaceSelectionMode));
-			OnPropertyChanged(nameof(IsEdgeSelectionMode));
-		}
-	}
+	/// <summary>
+	/// Em que nível o usuário está: na cena, dentro de uma entidade aberta (duplo clique) ou num esboço.
+	/// Não há mais seletor Sólido/Face/Aresta: o nível decide o que se seleciona.
+	/// </summary>
+	public AvaloniaCadEditor.Application.EditContext.SelectionLevel SelectionLevel =>
+		AvaloniaCadEditor.Application.EditContext.SelectionLevels.Resolve(IsSketchEditing, OpenEntity != null);
 
-	public int SelectionModeIndex
+	/// <summary>O que a seleção pega, derivado do nível: sólidos na cena, faces dentro de uma entidade, linhas no esboço.</summary>
+	public TargetSelectionMode CurrentSelectionMode => SelectionLevel switch
 	{
-		get => (int)CurrentSelectionMode;
-		set { CurrentSelectionMode = (TargetSelectionMode)value; }
-	}
+		AvaloniaCadEditor.Application.EditContext.SelectionLevel.Sketch => TargetSelectionMode.Edge,
+		AvaloniaCadEditor.Application.EditContext.SelectionLevel.Entity => TargetSelectionMode.Face,
+		_ => TargetSelectionMode.Feature
+	};
 
-	public bool IsFeatureSelectionMode
-	{
-		get => CurrentSelectionMode == TargetSelectionMode.Feature;
-		set { if (value) CurrentSelectionMode = TargetSelectionMode.Feature; }
-	}
+	/// <summary>O nível atual por extenso, no lugar do antigo seletor da barra lateral.</summary>
+	public string SelectionLevelText =>
+		AvaloniaCadEditor.Application.EditContext.SelectionLevels.Describe(SelectionLevel, _activeBooleanGroupName);
 
-	public bool IsFaceSelectionMode
+	private void NotifySelectionLevelChanged()
 	{
-		get => CurrentSelectionMode == TargetSelectionMode.Face;
-		set { if (value) CurrentSelectionMode = TargetSelectionMode.Face; }
-	}
-
-	public bool IsEdgeSelectionMode
-	{
-		get => CurrentSelectionMode == TargetSelectionMode.Edge;
-		set { if (value) CurrentSelectionMode = TargetSelectionMode.Edge; }
+		OnPropertyChanged(nameof(SelectionLevel));
+		OnPropertyChanged(nameof(CurrentSelectionMode));
+		OnPropertyChanged(nameof(SelectionLevelText));
 	}
 
 	public bool IsInCustomWorkPlane => !ActiveWorkPlane.Equals(WorkPlane.XY);
@@ -1165,8 +1146,8 @@ public partial class CadViewModel : INotifyPropertyChanged
 			
 			CurrentTool = filletCmd;
 
-			// Automatically switch to Face selection mode for convenience
-			CurrentSelectionMode = TargetSelectionMode.Face;
+			// O que o chanfro pega vem do nível: na cena, o sólido inteiro; dentro de uma entidade aberta,
+			// as faces dela.
 
 			// Just store the sketch so the tool is ready.
 			// Do NOT automatically execute! The user must press Enter.
@@ -1341,7 +1322,13 @@ public partial class CadViewModel : INotifyPropertyChanged
 				_activeBooleanGroupName = value;
 				HighlightedToolId = null;
 				SelectedPartSolid = null;
+				// Entrar ou sair muda o que é selecionável: o que estava marcado no nível anterior (um sólido
+				// da cena, uma face da entidade) não faz sentido no novo.
+				_selectionService.ClearSelection(Sketch);
+				HoveredFeatureId = null;
+				HoveredFaceProfile = null;
 				OnPropertyChanged();
+				NotifySelectionLevelChanged();
 				OnPropertyChanged(nameof(IsEditingBooleanGroup));
 				OnPropertyChanged(nameof(ActiveBooleanGroup));
 				OnPropertyChanged(nameof(EditContext));
@@ -1364,7 +1351,12 @@ public partial class CadViewModel : INotifyPropertyChanged
 				Sketch.Features.FirstOrDefault(f => f.Name == _activeBooleanGroupName), Sketch.Features);
 
 	/// <summary>Título do letreiro do grupo aberto.</summary>
-	public string ActiveGroupTitle => EditContext != null ? "Editando peça:" : "Editando Grupo Booleano:";
+	public string ActiveGroupTitle => OpenEntity switch
+	{
+		PartInstance => "Editando peça:",
+		AvaloniaCadEditor.Domain.Features.BooleanFeature => "Editando grupo booleano:",
+		_ => "Editando sólido:"
+	};
 
 	/// <summary>
 	/// Nome do grupo aberto; numa peça, também o tipo e, com mais de uma instância, o aviso de que todas
@@ -1383,6 +1375,26 @@ public partial class CadViewModel : INotifyPropertyChanged
 		}
 	}
 
+	/// <summary>
+	/// Depois de uma execução (que recria todas as features): se a entidade aberta sumiu do código
+	/// (apagada, renomeada), volta ao nível da cena; se continua, atualiza o letreiro (o número de
+	/// instâncias pode ter mudado).
+	/// </summary>
+	public void ReapplyOpenEntity()
+	{
+		if (!IsEditingBooleanGroup) return;
+		if (OpenEntity == null)
+		{
+			ActiveBooleanGroupName = null;
+			return;
+		}
+		OnPropertyChanged(nameof(EditContext));
+		OnPropertyChanged(nameof(ActiveGroupTitle));
+		OnPropertyChanged(nameof(ActiveGroupDetail));
+		NotifySelectionLevelChanged();
+		ApplyEditContextToTool();
+	}
+
 	/// <summary>Com uma peça aberta, o Extrude gera o sólido autônomo que vai para o <c>Build()</c> dela.</summary>
 	private void ApplyEditContextToTool()
 	{
@@ -1398,6 +1410,12 @@ public partial class CadViewModel : INotifyPropertyChanged
         Sketch.Features.OfType<AvaloniaCadEditor.Domain.Features.BooleanFeature>().FirstOrDefault(f => f.Name == _activeBooleanGroupName);
 
 	public bool IsEditingBooleanGroup => !string.IsNullOrEmpty(_activeBooleanGroupName);
+
+	/// <summary>A entidade de topo aberta com duplo clique (peça, booleana ou sólido solto); null no nível da cena.</summary>
+	public IFeature? OpenEntity =>
+		string.IsNullOrEmpty(_activeBooleanGroupName)
+			? null
+			: Sketch.Features.FirstOrDefault(f => f.Name == _activeBooleanGroupName);
 
 	/// <summary>
 	/// Sólidos-ferramenta (vazios) do grupo aberto com duplo-clique, desenhados em vermelho. Numa booleana
@@ -1554,31 +1572,34 @@ public partial class CadViewModel : INotifyPropertyChanged
 	}
 
 	/// <summary>
-	/// Raycast na cena incluindo as ferramentas do grupo aberto (soltas ou de peça). Com um grupo aberto, o
-	/// próprio sólido do grupo é atravessado, para o clique alcançar os vazios que ficam dentro dele.
+	/// O alvo de um clique pelo nível (<see cref="AvaloniaCadEditor.Application.EditContext.SelectionLevels.Pick"/>).
+	/// Na cena, o sólido mais perto. Com uma entidade aberta, só ela e os vazios dela: um vazio ganha do corpo
+	/// mesmo atrás dele, senão nunca seria alcançado; com o Extrude, só o corpo, porque o alvo é uma face.
 	/// </summary>
 	private RaycastHit? RaycastScene(Ray ray)
 	{
-		if (!IsEditingBooleanGroup)
+		var open = OpenEntity;
+		if (open == null)
 		{
 			return MeshManager.Raycast3D(Sketch, ray);
 		}
 
-		var groupId = Sketch.Features.FirstOrDefault(f => f.Name == _activeBooleanGroupName)?.Id;
-
-		// Extrudar dentro da peça aberta: o alvo são as faces DELA, e não os vazios nem o resto da cena.
-		if (CurrentTool is ExtrudeCommand && EditContext != null)
-		{
-			return MeshManager.RaycastAll3D(Sketch, ray)
-				.Cast<RaycastHit?>()
-				.FirstOrDefault(h => h!.Value.FeatureId == groupId);
-		}
-
 		var tools = ActiveToolFeatures;
-		return MeshManager.RaycastAll3D(Sketch, ray, f => tools.Contains(f), ExtraToolFeatures(tools))
-			.Cast<RaycastHit?>()
-			.FirstOrDefault(h => h!.Value.FeatureId != groupId);
+		var hits = MeshManager.RaycastAll3D(Sketch, ray, f => tools.Contains(f), ExtraToolFeatures(tools));
+		return AvaloniaCadEditor.Application.EditContext.SelectionLevels.Pick(
+			hits, open.Id, tools.Select(t => t.Id).ToList(), bodyOnly: CurrentTool is ExtrudeCommand);
 	}
+
+	/// <summary>
+	/// Raio para REFERÊNCIA, não para seleção: o sólido visível mais perto, em qualquer nível. Serve ao duplo
+	/// clique (entrar em outra entidade) e ao plano de trabalho tirado de uma face, que podem usar qualquer
+	/// objeto da cena mesmo com uma entidade aberta.
+	/// </summary>
+	public RaycastHit? RaycastReference(Ray ray) => MeshManager.Raycast3D(Sketch, ray);
+
+	/// <summary>True se o acerto é num vazio (ferramenta) da entidade aberta, e não no corpo dela.</summary>
+	public bool IsOpenEntityToolHit(RaycastHit? hit) =>
+		hit?.FeatureId is Guid id && ActiveToolFeatures.Any(t => t.Id == id);
 
 	/// <summary>Ferramentas que não estão no sketch (as de peça) e por isso precisam ir como extras no raycast.</summary>
 	private IEnumerable<IFeature>? ExtraToolFeatures(IReadOnlyList<IFeature> tools) =>
@@ -1601,9 +1622,11 @@ public partial class CadViewModel : INotifyPropertyChanged
 
 		if (_pickCandidates == null)
 		{
+			// Só o que é selecionável no nível atual: com uma entidade aberta, ela e os vazios dela.
 			var tools = ActiveToolFeatures;
-			_pickCandidates = MeshManager
-				.RaycastAll3D(Sketch, ray, f => tools.Contains(f), ExtraToolFeatures(tools))
+			var hits = MeshManager.RaycastAll3D(Sketch, ray, f => tools.Contains(f), ExtraToolFeatures(tools));
+			_pickCandidates = AvaloniaCadEditor.Application.EditContext.SelectionLevels
+				.Selectable(hits, OpenEntity?.Id, tools.Select(t => t.Id).ToList())
 				.ToList();
 			_pickCandidateIndex = -1;
 		}
@@ -1614,15 +1637,32 @@ public partial class CadViewModel : INotifyPropertyChanged
 		var candidate = _pickCandidates[_pickCandidateIndex];
 		_pickOverride = candidate;
 
-		if (IsFacePickMode())
+		ApplyHover(candidate);
+	}
+
+	/// <summary>
+	/// Realce do que está sob o mouse, pelo nível: dentro de uma entidade, a face do corpo (ou o vazio
+	/// inteiro); na cena, o sólido. O Extrude na cena não pega faces de sólido (é preciso entrar antes),
+	/// então ali nada é realçado.
+	/// </summary>
+	private void ApplyHover(RaycastHit? hit)
+	{
+		if (CurrentTool is ExtrudeCommand && OpenEntity == null)
+		{
+			HoveredFaceProfile = null;
+			HoveredFeatureId = null;
+			return;
+		}
+
+		if (hit?.FeatureId != null && IsFacePickMode() && !IsOpenEntityToolHit(hit))
 		{
 			HoveredFeatureId = null;
-			HoveredFaceProfile = AvaloniaCadEditor.UI.Controls.Input.ViewportInputHandler.BuildFaceProfile(this, candidate);
+			HoveredFaceProfile = AvaloniaCadEditor.UI.Controls.Input.ViewportInputHandler.BuildFaceProfile(this, hit.Value);
 		}
 		else
 		{
 			HoveredFaceProfile = null;
-			HoveredFeatureId = candidate.FeatureId;
+			HoveredFeatureId = hit?.FeatureId;
 		}
 	}
 
@@ -1705,11 +1745,9 @@ public partial class CadViewModel : INotifyPropertyChanged
 
 	public void EnterSketchMode(AvaloniaCadEditor.Domain.Features.WorkPlaneFeature wpf)
 	{
+		// No esboço o que existe para marcar são linhas e círculos: o nível Sketch faz o retângulo de
+		// seleção (BoxSelector) pegá-las em vez de sólidos.
 		CurrentMode = EditorMode.SketchEdit;
-		// No esboço o que existe para marcar são linhas e círculos, e o retângulo de seleção
-		// despacha pelo modo (ver BoxSelector): sem isso o arrasto só pegaria sólidos, e seria
-		// preciso apertar F duas vezes antes de poder juntar as arestas de um caminho.
-		CurrentSelectionMode = TargetSelectionMode.Edge;
 		SetActiveWorkPlane(wpf);
 		// By default, when entering sketch mode, grab the Select tool or Line tool
 		if (!(CurrentTool is DrawLineCommand) && !(CurrentTool is DrawCircleCommand) && !(CurrentTool is DrawPolygonCommand) && !(CurrentTool is TrimCommand) && !(CurrentTool is ExtendCommand) && !(CurrentTool is OffsetCommand))
@@ -1723,10 +1761,7 @@ public partial class CadViewModel : INotifyPropertyChanged
 		CurrentMode = EditorMode.Part;
 		// Chanfros/fillets suprimidos são só uma ajuda para desenhar: fora do esboço o modelo volta inteiro.
 		IsFilletSuppressed = false;
-		// O EnterSketchMode troca o tipo de seleção para Edges; sem desfazer isso, sair do esboço
-		// deixava o editor marcando arestas — e o retângulo de seleção, que despacha pelo tipo
-		// (ver BoxSelector), continuava pegando linhas em vez de sólidos.
-		CurrentSelectionMode = TargetSelectionMode.Feature;
+		// Sair do esboço volta o nível (e com ele o tipo de seleção) para o da cena ou da entidade aberta.
 		SelectSelectToolCommand.Execute(null);
 	}
 
@@ -2107,14 +2142,6 @@ public partial class CadViewModel : INotifyPropertyChanged
 			case "V":
 				// Ctrl+V não é atalho de nada, mas cairia aqui: só V puro alterna o modo.
 				if (!isCtrlPressed && !IsCtrlPressed) IsWireframe = !IsWireframe;
-				break;
-			case "F":
-				CurrentSelectionMode = CurrentSelectionMode switch
-				{
-					TargetSelectionMode.Feature => TargetSelectionMode.Face,
-					TargetSelectionMode.Face => TargetSelectionMode.Edge,
-					_ => TargetSelectionMode.Feature
-				};
 				break;
 			case "UP":
 				CurrentTool?.OnKeyDown(Sketch, CadKey.ArrowUp);

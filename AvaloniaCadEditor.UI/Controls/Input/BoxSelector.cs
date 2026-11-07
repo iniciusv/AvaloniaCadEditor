@@ -15,13 +15,13 @@ namespace AvaloniaCadEditor.UI.Controls.Input;
 
 /// <summary>
 /// Aplica a seleção por retângulo arrastado no viewport (ver <see cref="BoxSelectionGeometry"/>
-/// para as regras janela/crossing). O que é selecionado depende só do tipo de seleção
-/// (<see cref="CadViewModel.CurrentSelectionMode"/>), não de estar editando um esboço:
+/// para as regras janela/crossing). O que é selecionado vem do nível
+/// (<see cref="CadViewModel.SelectionLevel"/>, que dá o <see cref="CadViewModel.CurrentSelectionMode"/>):
 /// <list type="bullet">
-/// <item>Volumes: sólidos.</item>
-/// <item>Faces: faces dos sólidos (viram um <see cref="CompoundProfile"/> quando são várias,
-/// igual ao Ctrl+clique).</item>
-/// <item>Edges: linhas e círculos do esboço.</item>
+/// <item>Cena: sólidos inteiros.</item>
+/// <item>Dentro de uma entidade aberta: as faces dela (viram um <see cref="CompoundProfile"/> quando
+/// são várias, igual ao Ctrl+clique).</item>
+/// <item>Esboço: linhas e círculos.</item>
 /// </list>
 /// </summary>
 public static class BoxSelector
@@ -131,9 +131,12 @@ public static class BoxSelector
     private static List<IProfile> PickFaces(CadViewModel vm, Projector projector, Rect rect, bool window)
     {
         var picked = new List<IProfile>();
+        // Faces só se selecionam dentro de uma entidade aberta, e só as dela.
+        var open = vm.OpenEntity;
         foreach (var feature in vm.Sketch.Features.ToList())
         {
             if (!feature.IsVisible || feature is WorkPlaneFeature) continue;
+            if (open != null && feature.Id != open.Id) continue;
 
             var mesh = vm.GetFeatureMesh(feature.Id);
             if (mesh == null || mesh.TriangleCount == 0) continue;

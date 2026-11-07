@@ -781,6 +781,8 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
             }
             // As features são todas novas: o isolamento do H (por nome) é reaplicado sobre elas.
             _cadViewModel.ReapplyIsolation();
+            // A entidade aberta (duplo clique) também é guardada por nome.
+            _cadViewModel.ReapplyOpenEntity();
             // RefreshProfiles já refaz a malha composta e a árvore, uma vez cada.
             _cadViewModel.RefreshProfiles();
             Console.WriteLine($"[Run] avaliação {evaluateMs} ms, geometria/árvore {stopwatch.ElapsedMilliseconds - evaluateMs} ms, {result.Features.Count} feature(s)");

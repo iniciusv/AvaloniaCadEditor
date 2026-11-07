@@ -1,6 +1,6 @@
 # Modelar dentro da peça: duplo clique abre a peça e o Extrude grava no `Build()`, em coordenadas locais
 
-**Status:** Em andamento: entrega 1 implementada (etapas 1 a 4), falta a verificação manual · **Data:** 2026-11-07 · **Branch:** `feature/modelar-na-peca-isolada`
+**Status:** Em andamento: entregas 1 e 2 implementadas, falta a verificação manual (etapa 5) · **Data:** 2026-11-07 · **Branch:** `feature/modelar-na-peca-isolada`
 
 ## Objetivo
 
@@ -147,12 +147,31 @@ Notas da implementação:
 
 ### Entrega 2: seleção por nível
 
-- [ ] No nível da cena, clique e retângulo pegam só sólidos inteiros; o seletor Sólido/Face/Aresta sai
-      da barra.
-- [ ] Dentro de uma entidade aberta: faces e arestas **dela**; o resto do modelo fica visível, esmaecido,
-      sem seleção, mas **com snap**. O H esconde o resto de vez.
-- [ ] O Extrude no nível da cena deixa de pegar faces: é preciso entrar antes.
-- [ ] Sólido solto aberto: mesma seleção, referencial do mundo (decisão 3).
+- [x] No nível da cena, clique e retângulo pegam só sólidos inteiros. O seletor Sólido/Face/Aresta e a
+      tecla F saíram; no lugar do seletor, a barra lateral mostra o nível ("Cena: sólidos inteiros",
+      "Dentro de X: faces e vazios", "Esboço: linhas"). O tipo de seleção é derivado
+      (`CadViewModel.SelectionLevel` → `CurrentSelectionMode`).
+- [x] Dentro de uma entidade aberta: faces **dela** e os vazios dela; um vazio ganha do corpo mesmo atrás
+      dele. O resto do modelo fica visível, esmaecido (opaco, sem transparência), sem seleção e **com
+      snap**. Entrar ou sair limpa a seleção. O H, dentro de uma entidade, isola a própria entidade.
+- [x] O Extrude no nível da cena deixa de pegar faces (fica com as regiões do esboço); dentro, só o
+      corpo da entidade, nunca um vazio.
+- [x] Sólido solto e booleana abrem com duplo clique (decisão 3): mesma seleção, referencial do mundo,
+      letreiro "Editando sólido:" / "Editando grupo booleano:".
+- [x] Raio de **referência** (`CadViewModel.RaycastReference`) separado do de seleção: o duplo clique (passar
+      de uma entidade aberta direto para outra), o plano de trabalho tirado de uma face e o `BooleanTool`
+      continuam vendo a cena toda.
+- [x] Se a entidade aberta some numa reexecução (apagada ou renomeada no código), volta ao nível da cena
+      (`ReapplyOpenEntity`).
+- [x] Testes: `SelectionLevelsTests` (regra pura) e `OpenEntityTests` (pelas ViewModels, inclusive o Extrude
+      da entrega 1 de ponta a ponta, com projeto em disco).
+
+Notas:
+- A regra pura mora em `Application/EditContext/SelectionLevels.cs`; o `CadViewModel` só a consulta.
+- A **booleana** com uma entidade aberta ainda escolhe sólidos da cena, como antes: levá-la para dentro da
+  peça é a próxima fatia.
+- Mover/girar uma **face** selecionada dentro da entidade não foi tratado (as ferramentas de transformação
+  continuam agindo sobre sólidos e vazios).
 
 ### Entrega 3: níveis aninhados (depois)
 

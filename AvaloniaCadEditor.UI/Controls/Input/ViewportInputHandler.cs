@@ -92,30 +92,16 @@ public sealed class ViewportInputHandler
 
                 if (e.ClickCount == 2)
                 {
-                    var hit = viewModel.Raycast3D(ray);
-                    if (hit.HasValue && hit.Value.FeatureId.HasValue)
-                    {
-                        var feature = viewModel.Sketch.Features.FirstOrDefault(f => f.Id == hit.Value.FeatureId.Value)
-                                      ?? viewModel.ActiveToolFeatures.FirstOrDefault(f => f.Id == hit.Value.FeatureId.Value);
-                        if (feature is AvaloniaCadEditor.Domain.Features.BooleanFeature bf)
-                        {
-                            viewModel.ActiveBooleanGroupName = bf.Name;
-                        }
-                        else if (feature is AvaloniaCadEditor.Domain.Features.PartInstance instance)
-                        {
-                            // Qualquer peça abre, com ou sem vazios: aberta, as ferramentas gravam no
-                            // Build() dela (CadViewModel.EditContext).
-                            viewModel.ActiveBooleanGroupName = instance.Name;
-                        }
-                        else
-                        {
-                            viewModel.ActiveBooleanGroupName = null;
-                        }
-                    }
-                    else
-                    {
-                        viewModel.ActiveBooleanGroupName = null;
-                    }
+                    // Entra na entidade sob o mouse: peça (as ferramentas passam a gravar no Build() dela),
+                    // booleana ou sólido solto. O raio é o de referência, que vê a cena toda, para dar para
+                    // passar de uma entidade aberta direto para outra; no vazio, volta ao nível da cena.
+                    // Os vazios ficam dentro do corpo, então duplo clique neles acerta a própria entidade.
+                    var hit = viewModel.RaycastReference(ray);
+                    var feature = hit?.FeatureId is Guid featureId
+                        ? viewModel.Sketch.Features.FirstOrDefault(f => f.Id == featureId)
+                        : null;
+                    viewModel.ActiveBooleanGroupName =
+                        feature is null or AvaloniaCadEditor.Domain.Features.WorkPlaneFeature ? null : feature.Name;
                     requestRender();
                     return;
                 }
@@ -139,7 +125,9 @@ public sealed class ViewportInputHandler
                 // Tools 3D: BooleanTool e FilletTool operam por seleção de feature via 3D raycast
                 if (viewModel.CurrentTool is Application.Commands.BooleanTool booleanTool)
                 {
-                    var hit = viewModel.Raycast3D(ray);
+                    // Booleana ainda opera sobre sólidos da cena, em qualquer nível (levá-la para dentro
+                    // de uma peça aberta é uma próxima fatia do plano de 2026-11-07).
+                    var hit = viewModel.RaycastReference(ray);
                     if (hit.HasValue && hit.Value.FeatureId.HasValue)
                     {
                         // Explicitly give the tool the sketch before triggering selection events
@@ -184,7 +172,9 @@ public sealed class ViewportInputHandler
                 {
                     if (viewModel.CurrentTool is Application.Commands.SetWorkPlaneCommand)
                     {
-                        var hit = viewModel.Raycast3D(ray);
+                        // Plano de trabalho a partir de uma face é referência: vale qualquer sólido da
+                        // cena, mesmo com uma entidade aberta.
+                        var hit = viewModel.RaycastReference(ray);
                         if (hit.HasValue)
                         {
                             var plane = GetStableWorkPlane(viewModel, hit.Value);
@@ -198,7 +188,10 @@ public sealed class ViewportInputHandler
                         var hit = viewModel.Raycast3D(ray);
                         if (hit.HasValue && hit.Value.FeatureId.HasValue)
                         {
-                            if (viewModel.CurrentSelectionMode == CadViewModel.TargetSelectionMode.Feature)
+                            // Um vazio da entidade aberta é selecionado inteiro (para mover, girar, ver o
+                            // código), mesmo com faces sendo o que se seleciona lá dentro.
+                            if (viewModel.CurrentSelectionMode == CadViewModel.TargetSelectionMode.Feature
+                                || viewModel.IsOpenEntityToolHit(hit))
                             {
                                 // Ctrl+clique acumula vários sólidos marcados (ex.: para abrir Cut/Fuse
                                 // com várias bases de uma vez); só faz sentido no SelectTool - o
@@ -293,7 +286,9 @@ public sealed class ViewportInputHandler
                     }
                     if (viewModel.CurrentTool is Application.Commands.ExtrudeCommand extCmd)
                     {
-                        if (!extCmd.IsDefiningHeight)
+                        // Face de sólido só dentro de uma entidade aberta: na cena, o Extrude fica com as
+                        // regiões do esboço (tratadas acima, pelo 2D).
+                        if (!extCmd.IsDefiningHeight && viewModel.OpenEntity != null)
                         {
                             var hit = viewModel.Raycast3D(ray);
                             if (hit.HasValue && hit.Value.FeatureId.HasValue)
