@@ -190,7 +190,9 @@ public sealed class ViewportInputHandler
                         {
                             // Um vazio da entidade aberta é selecionado inteiro (para mover, girar, ver o
                             // código), mesmo com faces sendo o que se seleciona lá dentro.
-                            if (viewModel.CurrentSelectionMode == CadViewModel.TargetSelectionMode.Feature
+                            // O nível dos sólidos, não o do esboço: no esboço, um clique que não pegou linha
+                            // nem região (o 2D acima) pega o que a cena ou a entidade aberta pegaria.
+                            if (viewModel.SolidSelectionMode == CadViewModel.TargetSelectionMode.Feature
                                 || viewModel.IsOpenEntityToolHit(hit))
                             {
                                 // Ctrl+clique acumula vários sólidos marcados (ex.: para abrir Cut/Fuse
@@ -228,7 +230,7 @@ public sealed class ViewportInputHandler
                                 }
                                 requestRender();
                             }
-                            else if (viewModel.CurrentSelectionMode == CadViewModel.TargetSelectionMode.Face)
+                            else if (viewModel.SolidSelectionMode == CadViewModel.TargetSelectionMode.Face)
                             {
                                 var selectedProfile = BuildFaceProfile(viewModel, hit.Value);
                                 if (selectedProfile != null)

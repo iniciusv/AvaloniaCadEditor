@@ -75,6 +75,91 @@ public class OpenEntityTests
 
         vm.CurrentMode = EditorMode.SketchEdit;
         vm.CurrentSelectionMode.Should().Be(CadViewModel.TargetSelectionMode.Edge, "o esboço ganha da entidade aberta");
+        vm.SolidSelectionMode.Should().Be(CadViewModel.TargetSelectionMode.Face,
+            "por baixo das linhas, o clique nos sólidos continua pegando as faces da entidade aberta");
+    }
+
+    // ---------------------------------------------------------------- Esboço por cima do nível
+
+    /// <summary>A face de cima do bloco aberto, como o clique a selecionaria.</summary>
+    private static IProfile SelectTopFace(CadViewModel vm)
+    {
+        var hit = vm.Raycast3D(RayDown());
+        hit.Should().NotBeNull();
+        var owner = vm.Sketch.Features.Single(f => f.Id == hit!.Value.FeatureId);
+        var face = new FaceProfile(owner, new WorkPlane(Vector3D.UnitZ, new Point3D(100, 0, 10)), vm.GetFeatureMesh(owner.Id)!);
+        vm.SelectionService.SelectProfile(face);
+        return face;
+    }
+
+    [Fact]
+    public void FaceSelecionada_L_Esc_Esc_VoltaParaAEntidadePegandoFaces()
+    {
+        var (vm, _, _) = Scene();
+        vm.ActiveBooleanGroupName = "bloco_1";
+        var face = SelectTopFace(vm);
+
+        vm.OnKeyDown("L");
+        vm.IsSketchEditing.Should().BeTrue();
+        vm.ActiveWorkPlane.Should().Be(face.Plane, "o esboço é no plano da face");
+
+        vm.OnKeyDown("Escape"); // larga a linha, fica no esboço
+        vm.IsSketchEditing.Should().BeTrue();
+        vm.CurrentTool.Should().BeOfType<SelectTool>();
+
+        vm.OnKeyDown("Escape"); // sai do esboço (a face serviu para o plano e já não está marcada)
+
+        vm.IsSketchEditing.Should().BeFalse("o Esc sai um nível, do esboço para a entidade aberta");
+        vm.IsEditingBooleanGroup.Should().BeTrue("a entidade continua aberta: sair dela é o próximo Esc");
+        vm.SelectionLevel.Should().Be(SelectionLevel.Entity);
+        vm.CurrentSelectionMode.Should().Be(CadViewModel.TargetSelectionMode.Face);
+
+        vm.OnKeyDown("Escape");
+        vm.IsEditingBooleanGroup.Should().BeFalse("o Esc seguinte sai da entidade");
+    }
+
+    [Fact]
+    public void NoEsboco_AFaceDaEntidadeAbertaContinuaAlcancavel()
+    {
+        var (vm, bloco, _) = Scene();
+        vm.ActiveBooleanGroupName = "bloco_1";
+        SelectTopFace(vm);
+        vm.OnKeyDown("L");
+        vm.OnKeyDown("Escape");
+
+        vm.IsSketchEditing.Should().BeTrue();
+        vm.Raycast3D(RayDown())!.Value.FeatureId.Should().Be(bloco.Id, "o raio de seleção não muda no esboço");
+        vm.SolidSelectionMode.Should().Be(CadViewModel.TargetSelectionMode.Face);
+    }
+
+    [Fact]
+    public void EntrarEmOutraEntidade_SaiDoEsboco()
+    {
+        var (vm, _, _) = Scene();
+        vm.ActiveBooleanGroupName = "bloco_1";
+        SelectTopFace(vm);
+        vm.OnKeyDown("L");
+        vm.IsSketchEditing.Should().BeTrue();
+
+        vm.ActiveBooleanGroupName = "tampa";
+
+        vm.IsSketchEditing.Should().BeFalse("trocar de entidade é trocar de nível");
+        vm.SelectionLevel.Should().Be(SelectionLevel.Entity);
+        vm.CurrentSelectionMode.Should().Be(CadViewModel.TargetSelectionMode.Face);
+        vm.CurrentTool.Should().BeOfType<SelectTool>();
+    }
+
+    [Fact]
+    public void NaCena_L_Esc_Esc_VoltaASelecionarSolidos()
+    {
+        var (vm, _, _) = Scene();
+
+        vm.OnKeyDown("L");
+        vm.OnKeyDown("Escape");
+        vm.OnKeyDown("Escape");
+
+        vm.IsSketchEditing.Should().BeFalse();
+        vm.CurrentSelectionMode.Should().Be(CadViewModel.TargetSelectionMode.Feature);
     }
 
     [Fact]

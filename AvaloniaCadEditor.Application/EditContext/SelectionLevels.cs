@@ -17,7 +17,11 @@ public enum SelectionLevel
     /// <summary>Dentro de uma entidade aberta com duplo clique: as faces dela e os vazios (ferramentas das booleanas).</summary>
     Entity,
 
-    /// <summary>Editando um esboço: as linhas e círculos do plano de trabalho.</summary>
+    /// <summary>
+    /// Editando um esboço: as linhas, círculos e regiões do plano de trabalho. Um clique que não pega nenhum
+    /// deles cai no nível de baixo (<see cref="SelectionLevels.Beneath"/>): o esboço é uma camada por cima da
+    /// cena ou da entidade aberta, e não a troca por outra coisa.
+    /// </summary>
     Sketch
 }
 
@@ -32,6 +36,13 @@ public static class SelectionLevels
         isSketchEditing ? SelectionLevel.Sketch
         : isEntityOpen ? SelectionLevel.Entity
         : SelectionLevel.Scene;
+
+    /// <summary>
+    /// O nível que decide o que se pega nos SÓLIDOS: o da entidade aberta ou o da cena. No esboço, é o que vale
+    /// para um clique fora das linhas e regiões; fora do esboço, é o próprio nível.
+    /// </summary>
+    public static SelectionLevel Beneath(bool isEntityOpen) =>
+        isEntityOpen ? SelectionLevel.Entity : SelectionLevel.Scene;
 
     /// <summary>
     /// O alvo de um clique, a partir de todos os acertos do raio (do mais perto ao mais longe).
@@ -83,7 +94,9 @@ public static class SelectionLevels
     /// <summary>Texto curto do nível para a barra lateral (o lugar do antigo seletor).</summary>
     public static string Describe(SelectionLevel level, string? openEntityName) => level switch
     {
-        SelectionLevel.Sketch => "Esboço: linhas",
+        SelectionLevel.Sketch => openEntityName == null
+            ? "Esboço: linhas e regiões (fora delas, sólidos)"
+            : $"Esboço em {openEntityName}: linhas e regiões (fora delas, faces)",
         SelectionLevel.Entity => $"Dentro de {openEntityName}: faces e vazios",
         _ => "Cena: sólidos inteiros"
     };

@@ -126,7 +126,7 @@ public partial class CadViewModel : INotifyPropertyChanged
 	}
 
 	/// <summary>Faces são selecionáveis só dentro de uma entidade aberta (inclusive para o Extrude).</summary>
-	private bool IsFacePickMode() => CurrentSelectionMode == TargetSelectionMode.Face;
+	private bool IsFacePickMode() => SolidSelectionMode == TargetSelectionMode.Face;
 
 	private Ray? _lastHoverRay;
 	private Avalonia.Threading.DispatcherTimer? _hoverTimer;
@@ -866,6 +866,17 @@ public partial class CadViewModel : INotifyPropertyChanged
 		_ => TargetSelectionMode.Feature
 	};
 
+	/// <summary>
+	/// O que um clique pega nos sólidos: faces com uma entidade aberta, sólidos inteiros na cena. No esboço, vale
+	/// para o clique que não acerta linha nem região (o esboço fica por cima do nível, não o substitui); fora
+	/// dele, é igual ao <see cref="CurrentSelectionMode"/>.
+	/// </summary>
+	public TargetSelectionMode SolidSelectionMode =>
+		AvaloniaCadEditor.Application.EditContext.SelectionLevels.Beneath(OpenEntity != null)
+			== AvaloniaCadEditor.Application.EditContext.SelectionLevel.Entity
+			? TargetSelectionMode.Face
+			: TargetSelectionMode.Feature;
+
 	/// <summary>O nível atual por extenso, no lugar do antigo seletor da barra lateral.</summary>
 	public string SelectionLevelText =>
 		AvaloniaCadEditor.Application.EditContext.SelectionLevels.Describe(SelectionLevel, _activeBooleanGroupName);
@@ -874,6 +885,7 @@ public partial class CadViewModel : INotifyPropertyChanged
 	{
 		OnPropertyChanged(nameof(SelectionLevel));
 		OnPropertyChanged(nameof(CurrentSelectionMode));
+		OnPropertyChanged(nameof(SolidSelectionMode));
 		OnPropertyChanged(nameof(SelectionLevelText));
 	}
 
@@ -1320,6 +1332,9 @@ public partial class CadViewModel : INotifyPropertyChanged
 			if (_activeBooleanGroupName != value)
 			{
 				_activeBooleanGroupName = value;
+				// Entrar em outra entidade (ou voltar à cena) é trocar de nível: o esboço em que se estava fica para
+				// trás, senão ele continuaria por cima e a entidade nova abriria pegando linhas em vez de faces.
+				if (IsSketchEditing) ExitSketchMode();
 				HighlightedToolId = null;
 				SelectedPartSolid = null;
 				// Entrar ou sair muda o que é selecionável: o que estava marcado no nível anterior (um sólido
@@ -2128,6 +2143,12 @@ public partial class CadViewModel : INotifyPropertyChanged
 				else if (_selectionService.SelectedObject != null || _selectionService.SelectedId != null)
 				{
 					_selectionService.ClearSelection(Sketch);
+				}
+				else if (IsSketchEditing)
+				{
+					// Sai um nível: do esboço para a entidade aberta ou para a cena. Sem isto, as ferramentas de
+					// desenho (L, C, G, T, X, O, S) deixavam o editor preso no esboço, pegando só linhas.
+					ExitSketchMode();
 				}
 				else if (IsEditingBooleanGroup)
 				{

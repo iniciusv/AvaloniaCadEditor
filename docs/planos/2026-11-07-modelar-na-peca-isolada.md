@@ -176,6 +176,16 @@ Notas da implementação:
 - [x] Testes: `SelectionLevelsTests` (regra pura) e `OpenEntityTests` (pelas ViewModels, inclusive o Extrude
       da entrega 1 de ponta a ponta, com projeto em disco).
 
+- [x] **Correção depois do primeiro uso (2026-11-07):** com uma face selecionada, o L (e as outras
+      ferramentas de desenho) punha o editor em esboço, e só uma extrusão concluída ou o botão do plano o
+      tiravam de lá. O Esc só trocava a ferramenta. Preso no nível `Sketch`, nenhum clique pegava face,
+      nem depois de entrar em outra entidade. Ficou assim:
+  - o Esc sai um nível: ferramenta → seleção → esboço → entidade → plano XY;
+  - entrar em outra entidade (ou voltar à cena) sai do esboço;
+  - o esboço fica **por cima** do nível de baixo: o clique que não pega linha nem região cai no que a
+    cena ou a entidade aberta pegariam (`SelectionLevels.Beneath`, `CadViewModel.SolidSelectionMode`).
+      Testes em `OpenEntityTests` (seção "Esboço por cima do nível").
+
 Notas:
 - A regra pura mora em `Application/EditContext/SelectionLevels.cs`; o `CadViewModel` só a consulta.
 - A **booleana** com uma entidade aberta ainda escolhe sólidos da cena, como antes: levá-la para dentro da
