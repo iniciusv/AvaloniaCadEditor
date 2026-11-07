@@ -61,10 +61,19 @@
                 </Grid>
             </Border>
 
-            <!-- Settings panel (perfis de endpoint, prompt e opções do chat — persistidos entre execuções) -->
-            <Border Grid.Row="1" Background="#232323" BorderBrush="#333333" BorderThickness="0,0,0,1"
-                    Padding="10" IsVisible="{Binding IsSettingsOpen}">
-                <StackPanel Spacing="6">
+            <!-- Settings panel (perfis de endpoint, prompt e opções do chat — persistidos entre execuções).
+                 Cobre a área das mensagens em vez de ocupar uma linha Auto: assim recebe altura finita e rola
+                 numa tela pequena. A largura fica presa à do painel (sem rolagem horizontal: textos quebram)
+                 e a barra do Save fica fixa embaixo, sempre visível. -->
+            <Grid Grid.Row="2" ZIndex="1" RowDefinitions="*,Auto" Background="#232323"
+                  IsVisible="{Binding IsSettingsOpen}">
+                <Grid.Styles>
+                    <Style Selector="CheckBox /template/ ContentPresenter">
+                        <Setter Property="TextWrapping" Value="Wrap" />
+                    </Style>
+                </Grid.Styles>
+                <ScrollViewer Grid.Row="0" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="6" Margin="10,10,10,6">
                     <TextBlock Text="AI endpoint settings" FontWeight="Bold" Foreground="#DDDDDD" FontSize="11" />
 
                     <StackPanel Spacing="2">
@@ -169,15 +178,18 @@
                     <CheckBox IsChecked="{Binding KeepHistoryInput}" FontSize="11" Foreground="#DDDDDD"
                               Content="Manter histórico (multi-round)"
                               ToolTip.Tip="Ligado: a IA lembra dos turnos anteriores. Desligado: cada envio é independente (só o estado atual dos arquivos), mais barato e sem versões antigas acumuladas." />
+                </StackPanel>
+                </ScrollViewer>
 
-                    <Grid ColumnDefinitions="*,Auto" Margin="0,4,0,0">
+                <Border Grid.Row="1" BorderBrush="#333333" BorderThickness="0,1,0,1" Padding="10,6">
+                    <Grid ColumnDefinitions="*,Auto">
                         <TextBlock Grid.Column="0" Text="Saved locally in %AppData%\AvaloniaCadEditor\ai_settings.json"
-                                   Foreground="#777777" FontSize="9" TextWrapping="Wrap" VerticalAlignment="Center" />
+                                   Foreground="#777777" FontSize="9" TextWrapping="Wrap" VerticalAlignment="Center" Margin="0,0,6,0" />
                         <Button Grid.Column="1" Content="Save" Command="{Binding SaveSettingsCommand}"
                                 Background="#007ACC" Foreground="White" FontWeight="Bold" FontSize="11" Padding="10,4" />
                     </Grid>
-                </StackPanel>
-            </Border>
+                </Border>
+            </Grid>
 
             <!-- Config error (chave de API não configurada) -->
             <Border Grid.Row="2" Background="#3A2020" CornerRadius="4" Padding="12" Margin="8" VerticalAlignment="Top"
