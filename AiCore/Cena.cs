@@ -405,32 +405,82 @@ var tuboTravessa = Add(tuboTravessaPeca, at: Placement.At(xCentroGantry - tuboTr
 // Um espaçador sob cada extrusão Y, na mesma faixa em Y do tubo.
 var espacadorTuboTravessaA = Add(espacadorTuboTravessaPeca, at: Placement.At(cantoExtrusaoYA.X, yFaceTrasTuboTravessa, zTopoTuboTravessa), name: "espacador_tubo_travessa_a", color: "#00CC6A");
 var espacadorTuboTravessaB = Add(espacadorTuboTravessaPeca, at: Placement.At(cantoExtrusaoYB.X - espacadorTuboTravessaPeca.Largura, yFaceTrasTuboTravessa, zTopoTuboTravessa), name: "espacador_tubo_travessa_b", color: "#00CC6A");
-// --- Motores NEMA17 do eixo Y (movem carrinhoYA e carrinhoYB), em pé ao lado de cada extrusão Y ---
-// Cada motor fica no vão entre a extrusão Y e a estrutura, com o eixo para cima, encostado (com folga) na
-// face externa da extrusão Y. Em Z a base fica logo acima do tubo travessa, abaixo do trilho Y. A polia, no
+// --- Suporte em U impresso que prende cada carrinho Z no tubo travessa ---
+// Em pé, com o Z da peça para cima como foi desenhada, só girada 90° em torno de Z: a face de trás da
+// parede de fundo encosta no topo do carrinho (voltado para +Y) e o vão do U abre para o tubo. Os 4 M4
+// atravessam o fundo e casam com a malha 26 × 26 do carrinho: a origem da peça (centro em Y e em Z) vai
+// no centro da malha, sobre o topo do carrinho. A e B são iguais (a peça é simétrica no Y local).
+// Os 35 mm da peça em Y passam do vão de vaoCarrinhoZTubo e entram no tubo, na faixa de altura dele.
+var suporteUCarrinhoZPeca = new SuporteUCarrinhoZ();
+var centroTopoCarrinhoZA = carrinhoZA.ToWorld(new Point3D(carrinhoZPeca.Largura / 2, carrinhoZPeca.Comprimento / 2, carrinhoZPeca.Altura));
+var centroTopoCarrinhoZB = carrinhoZB.ToWorld(new Point3D(carrinhoZPeca.Largura / 2, carrinhoZPeca.Comprimento / 2, carrinhoZPeca.Altura));
+var girarSuporteUCarrinhoZ = Placement.Rotation(Vector3D.UnitZ, 90);
+var suporteUCarrinhoZA = Add(suporteUCarrinhoZPeca, at: girarSuporteUCarrinhoZ.Then(Placement.Translate(new Vector3D(centroTopoCarrinhoZA.X, centroTopoCarrinhoZA.Y + suporteUCarrinhoZPeca.EspessuraFundo, centroTopoCarrinhoZA.Z))), name: "suporte_u_carrinho_z_a", color: "#00CC6A");
+var suporteUCarrinhoZB = Add(suporteUCarrinhoZPeca, at: girarSuporteUCarrinhoZ.Then(Placement.Translate(new Vector3D(centroTopoCarrinhoZB.X, centroTopoCarrinhoZB.Y + suporteUCarrinhoZPeca.EspessuraFundo, centroTopoCarrinhoZB.Z))), name: "suporte_u_carrinho_z_b", color: "#00CC6A");
+// --- Motores NEMA17 do eixo Y (movem carrinhoYA e carrinhoYB), de ponta-cabeça ao lado de cada extrusão Y ---
+// Cada motor fica no vão entre a extrusão Y e a estrutura, com o eixo para baixo, encostado (com folga) na
+// face externa da extrusão Y. A polia, no
 // eixo, cai na faixa de altura da garra da correia (bloco_ficacao_belt_vao_correia), e a correia corre em
 // Y, de pé (eixo da polia vertical).
-// Atrás da ponta das extrusões Y, a polia fica fora do alcance da garra, que não passaria por ela: o
-// curso para −Y continua limitado pelo motor X (139,3 mm).
-// Todas as folgas são folgaMotorY. O corpo invade 0,8 mm a faixa em Y da travessa X do fundo, e no topo do
-// curso Z encosta na travessa de cima ~11 mm antes do fim dos trilhos Z.
-// Ainda falta o suporte que prende cada motor ao gantry.
+// Ficam junto à ponta traseira (−Y) das extrusões Y, como antes, mas de ponta-cabeça: o eixo aponta para
+// baixo e a polia fica embaixo do motor. A polia continua na mesma faixa de altura de quando o motor
+// estava em pé (logo acima do tubo travessa), alinhada com a garra da correia; o corpo do motor sobe
+// acima dela. Atrás da ponta das extrusões Y, a polia fica fora do alcance da garra, que não passaria
+// por ela: o curso para −Y continua limitado pelo motor X (139,3 mm).
+// Todas as folgas em X e Y são folgaMotorY. Ainda falta o suporte que prende cada motor ao gantry.
 const double folgaMotorY = 1;
-var zBaseMotoresY = zTopoTuboTravessa + folgaMotorY;
+const double folgaPoliaBossMotorY = 1;
+var poliaYPeca = new PoliaGt2(Dentes: 24, Altura: 20, AlturaCubo: 7);
 var meioLadoMotorY = motorNema17Peca.Lado / 2;
+// Faixa da polia: a mesma de quando o motor ficava em pé com a base folgaMotorY acima do tubo travessa.
+var zBaixoPoliaY = zTopoTuboTravessa + folgaMotorY + motorNema17Peca.Comprimento + motorNema17Peca.AlturaBoss + folgaPoliaBossMotorY;
+// Distância, no eixo do motor, da base traseira do corpo até a face do cubo da polia.
+var alturaBasePoliaYNoMotor = motorNema17Peca.Comprimento + motorNema17Peca.AlturaBoss + folgaPoliaBossMotorY;
+// De ponta-cabeça: a base traseira do corpo (origem local) fica em cima, a face do cubo da polia embaixo dela.
+var zBaseMotoresY = zBaixoPoliaY + poliaYPeca.Altura + alturaBasePoliaYNoMotor;
+var inverterMotorY = Placement.Rotation(Vector3D.UnitX, 180);
+// Em X os motores ficam aproximacaoMotorYExtrusao mais perto da extrusão Y do que a folga folgaMotorY daria.
+const double aproximacaoMotorYExtrusao = 5;
 // Referência em Y da face da frente de cada motor: onde ficava a face de trás do trilho Z, quando ele era
 // preso nas verticais externas (RecuoTrilho à frente do canto de referência).
 var yFundoTrilhoZA = cantoExtrusaoYA.Y + carrinhoZPeca.RecuoTrilho;
 var yFundoTrilhoZB = cantoExtrusaoYB.Y + carrinhoZPeca.RecuoTrilho;
-var motorYA = Add(motorNema17Peca, at: Placement.At(cantoExtrusaoYA.X - folgaMotorY - meioLadoMotorY, yFundoTrilhoZA - folgaMotorY - meioLadoMotorY, zBaseMotoresY), name: "motor_nema17_y_a");
-var motorYB = Add(motorNema17Peca, at: Placement.At(cantoExtrusaoYB.X + folgaMotorY + meioLadoMotorY, yFundoTrilhoZB - folgaMotorY - meioLadoMotorY, zBaseMotoresY), name: "motor_nema17_y_b");
+var motorYA = Add(motorNema17Peca, at: inverterMotorY.Then(Placement.At(cantoExtrusaoYA.X - folgaMotorY - meioLadoMotorY + aproximacaoMotorYExtrusao, yFundoTrilhoZA - folgaMotorY - meioLadoMotorY, zBaseMotoresY)), name: "motor_nema17_y_a");
+var motorYB = Add(motorNema17Peca, at: inverterMotorY.Then(Placement.At(cantoExtrusaoYB.X + folgaMotorY + meioLadoMotorY - aproximacaoMotorYExtrusao, yFundoTrilhoZB - folgaMotorY - meioLadoMotorY, zBaseMotoresY)), name: "motor_nema17_y_b");
+// Um suporte_motor_nema17 em cada motor Y, invertido junto com ele: a face de baixo da placa encosta na
+// face frontal do motor (agora voltada para baixo) e a placa desce dela; o eixo e a polia passam pelo furo
+// de alívio. A face da frente do suporte (a das fixações laterais com porca M3) fica voltada para a
+// extrusão Y ao lado, girando −90° (A, extrusão em +X) ou +90° (B, extrusão em −X) em Z depois de
+// inverter. A fixação do suporte no gantry ainda vai ser feita com outras peças.
+var faceFrontalMotorYNoMotor = new Point3D(0, 0, motorNema17Peca.Comprimento);
+var suporteMotorYA = Add(suporteMotorNema17Peca, at: inverterMotorY.Then(Placement.At(motorYA.ToWorld(faceFrontalMotorYNoMotor), rotationZDegrees: -90)), name: "suporte_motor_nema17_y_a", color: "#00CC6A");
+var suporteMotorYB = Add(suporteMotorNema17Peca, at: inverterMotorY.Then(Placement.At(motorYB.ToWorld(faceFrontalMotorYNoMotor), rotationZDegrees: 90)), name: "suporte_motor_nema17_y_b", color: "#00CC6A");
+// Cada suporte de motor Y vai na extrusão Y por duas peças, no fim dela onde o trilho já acabou, todas as
+// fixações na estrutura em Z: o pedestal_motor_y_2020 assenta no topo da extrusão (2 M3 de cima no canal) e
+// sustenta o suporte; a trava_suporte_motor_y encosta na face da frente do suporte (2 M3 em X nas porcas
+// laterais dele, apertados na bancada) e é presa no topo do pedestal por 2 M3 verticais. As duas têm o
+// comprimento do suporte em Y. AlturaApoio e AvancoSuporte saem da posição do suporte: a face de cima dele (de
+// ponta-cabeça, a de encosto no motor fica em cima) menos a espessura, e quanto a face da frente passa da face
+// de fora da extrusão. As do B são as mesmas peças giradas 180°.
+var zTopoExtrusoesY = zBaseExtrusoesY + extrusaoSobTrilhoYPeca.Altura;
+var faceFrenteSuporteMotorYA = suporteMotorYA.ToWorld(new Point3D(0, -suporteMotorNema17Peca.ComprimentoFrente, suporteMotorNema17Peca.Espessura));
+var alturaApoioMotorY = faceFrenteSuporteMotorYA.Z - zTopoExtrusoesY;
+var avancoSuporteMotorY = faceFrenteSuporteMotorYA.X - cantoExtrusaoYA.X;
+var pedestalMotorYPeca = new PedestalMotorY2020(AlturaApoio: alturaApoioMotorY, AvancoSuporte: avancoSuporteMotorY, Comprimento: suporteMotorNema17Peca.Largura);
+var travaSuporteMotorYPeca = new TravaSuporteMotorY(AvancoSuporte: avancoSuporteMotorY, Espessura: suporteMotorNema17Peca.Espessura, Comprimento: suporteMotorNema17Peca.Largura);
+var xCentroExtrusaoYA = cantoExtrusaoYA.X + extrusaoSobTrilhoYPeca.Largura / 2;
+var xCentroExtrusaoYB = cantoExtrusaoYB.X - extrusaoSobTrilhoYPeca.Largura / 2;
+var yEixoMotorYA = motorYA.ToWorld(new Point3D(0, 0, 0)).Y;
+var yEixoMotorYB = motorYB.ToWorld(new Point3D(0, 0, 0)).Y;
+var pedestalMotorYA = Add(pedestalMotorYPeca, at: Placement.At(xCentroExtrusaoYA, yEixoMotorYA, zTopoExtrusoesY), name: "pedestal_motor_y_2020_a", color: "#00CC6A");
+var pedestalMotorYB = Add(pedestalMotorYPeca, at: Placement.At(xCentroExtrusaoYB, yEixoMotorYB, zTopoExtrusoesY, rotationZDegrees: 180), name: "pedestal_motor_y_2020_b", color: "#00CC6A");
+var travaSuporteMotorYA = Add(travaSuporteMotorYPeca, at: Placement.At(xCentroExtrusaoYA, yEixoMotorYA, zTopoExtrusoesY + alturaApoioMotorY), name: "trava_suporte_motor_y_a", color: "#00CC6A");
+var travaSuporteMotorYB = Add(travaSuporteMotorYPeca, at: Placement.At(xCentroExtrusaoYB, yEixoMotorYB, zTopoExtrusoesY + alturaApoioMotorY, rotationZDegrees: 180), name: "trava_suporte_motor_y_b", color: "#00CC6A");
 // --- Polias GT2 de 24 dentes do eixo Y: 20 mm, com cubo de 7 mm voltado para o motor (correia de 10 mm) ---
-// No eixo de cada motor, folgaPoliaBossMotorY acima do boss.
-const double folgaPoliaBossMotorY = 1;
-var poliaYPeca = new PoliaGt2(Dentes: 24, Altura: 20, AlturaCubo: 7);
-var basePoliaYNoMotor = new Point3D(0, 0, motorNema17Peca.Comprimento + motorNema17Peca.AlturaBoss + folgaPoliaBossMotorY);
-var poliaYA = Add(poliaYPeca, at: Placement.At(motorYA.ToWorld(basePoliaYNoMotor)), name: "polia_gt2_y_a");
-var poliaYB = Add(poliaYPeca, at: Placement.At(motorYB.ToWorld(basePoliaYNoMotor)), name: "polia_gt2_y_b");
+// No eixo de cada motor, folgaPoliaBossMotorY abaixo do boss, também de ponta-cabeça (cubo para cima).
+var basePoliaYNoMotor = new Point3D(0, 0, alturaBasePoliaYNoMotor);
+var poliaYA = Add(poliaYPeca, at: inverterMotorY.Then(Placement.At(motorYA.ToWorld(basePoliaYNoMotor))), name: "polia_gt2_y_a");
+var poliaYB = Add(poliaYPeca, at: inverterMotorY.Then(Placement.At(motorYB.ToWorld(basePoliaYNoMotor))), name: "polia_gt2_y_b");
 // --- Eixo Z: motor NEMA17 no chão, fuso T8 atrás do tubo travessa e porca no suporte_fuso_z ---
 // O motor fica na estrutura fixa, em pé (eixo em +Z), com a base no chão: a face de baixo das extrusões
 // da base (extrusao_2020_base_y_*), uma altura de perfil abaixo da ponta de baixo das
@@ -503,8 +553,3 @@ AddFeature(chapa_mdf_mesa);
 // A face +X fica encostada na extrusao_2020_trilho_z_b (X = 180,11); o espaçador cresce dela para −X.
 var espacadorPeca = new Espacador();
 var espacador = Add(espacadorPeca, at: Placement.At(180.11328 - espacadorPeca.EspessuraAba - espacadorPeca.Espessura, -205.5, 20), name: "espacador");
-// --- Suporte em C (abas de 10 x 6 com dois furos Ø4 cada, alma de 5 mm no lado +X) ---
-// A origem local fica no centro da abertura do C (meio da altura): aumentar a Altura engrossa as abas
-// igualmente para +Z e para −Z, sem mexer no vão interno nem nos furos. O centro fica 16 mm (meia altura
-// padrão de 32) acima de onde era a base da peça (z = 35,6), então o suporte não sai do lugar.
-var suporte_c = Add(new SuporteC(), at: Placement.At(142.1118, -212.5, 51.6), name: "suporte_c");
