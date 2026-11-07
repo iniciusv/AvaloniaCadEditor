@@ -34,8 +34,20 @@ public static class TestUtils
             selService,
             settingsProvider);
             
-        vm.ScriptEditor = new SceneScriptViewModel(vm, new AvaloniaCadEditor.Infrastructure.Scripting.RoslynSceneEvaluator(), null);
+        // Última cena em memória: o provedor de verdade grava no %APPDATA% do usuário, e cada teste que abre
+        // um projeto numa pasta temporária (apagada no fim) sobrescrevia ali a cena real dele, sumindo com o
+        // "Última" do app.
+        vm.ScriptEditor = new SceneScriptViewModel(vm, new AvaloniaCadEditor.Infrastructure.Scripting.RoslynSceneEvaluator(), null,
+            lastSceneProvider: new InMemoryLastSceneProvider());
         return vm;
+    }
+
+    /// <summary>"Última cena" que só vive no teste, sem tocar nas configurações do usuário.</summary>
+    public sealed class InMemoryLastSceneProvider : AvaloniaCadEditor.Application.Interfaces.ILastSceneProvider
+    {
+        private string? _path;
+        public string? GetLastScenePath() => _path;
+        public void SetLastScenePath(string folderPath) => _path = folderPath;
     }
 
     /// <summary>
