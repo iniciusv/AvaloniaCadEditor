@@ -1686,6 +1686,59 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         return null;
     }
 
+    /// <summary>
+    /// Grava no <c>Build()</c> da peça aberta um sólido gerado por uma ferramenta em modo autônomo (ver
+    /// <see cref="AvaloniaCadEditor.Application.EditContext.PartSolidInserter"/>). Antes de gravar, o arquivo
+    /// da peça vira o ativo no editor: é dele o histórico do Ctrl+Z, e assim a extrusão tem desfazer. Se a
+    /// peça não aceitar o sólido, ele vai solto para a cena, como antes, e o motivo vai para o status.
+    /// </summary>
+    public async Task InsertSolidIntoPartAsync(
+        AvaloniaCadEditor.Application.EditContext.PartEditContext context, string solidCode, PartMergeMode mode)
+    {
+        string? refusal;
+        if (_sceneEvaluator == null)
+        {
+            refusal = "Evaluator não configurado.";
+        }
+        else
+        {
+            var inserter = new AvaloniaCadEditor.Application.EditContext.PartSolidInserter(_sceneEvaluator, _partMerger);
+            var insertion = await inserter.InsertAsync(CurrentDocuments(), EntryFile, solidCode, context, mode);
+            refusal = insertion.Refusal;
+
+            if (refusal == null)
+            {
+                var partFile = insertion.Changes[^1].FilePath;
+                if (_project != null && !string.Equals(_activeFile, partFile, StringComparison.OrdinalIgnoreCase))
+                {
+                    SwitchActiveFile(partFile);
+                }
+
+                await ApplyExternalChangesAsync(insertion.Changes);
+                if (HasErrors)
+                {
+                    _cadViewModel.StatusText = $"✗ {ErrorSummary}";
+                    return;
+                }
+
+                string what = mode == PartMergeMode.SubtractAsTool ? "Corte" : "Extrusão";
+                string status = $"✓ {what} {insertion.InsertedName} gravado em {context.PartTypeName} ({partFile})";
+                if (!insertion.GeometryVerified) status += " — a cena executa, mas esta geometria não pôde ser comparada com a original";
+                if (insertion.Warnings.Count > 0) status += " ⚠ " + string.Join(" ", insertion.Warnings);
+                _cadViewModel.StatusText = status;
+                return;
+            }
+        }
+
+        // A peça não aceitou: o sólido (válido também solto, só com literais) vai para a cena.
+        AppendCode(solidCode + "\n");
+        await RunCodeAsync();
+        if (!HasErrors)
+        {
+            _cadViewModel.StatusText = $"✗ Não deu para gravar em {context.PartTypeName}: {refusal} O sólido ficou solto na cena.";
+        }
+    }
+
     // ---------------------------------------------------------------- Edições geradas pelo app
 
     public void AppendCode(string codeSnippet)

@@ -27,6 +27,19 @@ public class ExtrudeCommand : ICommandTool
 
 	public event EventHandler<string>? CodeGenerated;
 
+	/// <summary>
+	/// Com uma peça aberta (duplo clique), o sólido é gerado autônomo e vai para o <c>Build()</c> dela por
+	/// <see cref="SolidForPartRequested"/>; na cena (<see cref="AvaloniaCadEditor.Application.Services.ExtrusionTarget.Scene"/>),
+	/// pelo <see cref="CodeGenerated"/> de sempre.
+	/// </summary>
+	public AvaloniaCadEditor.Application.Services.ExtrusionTarget Target { get; set; } = AvaloniaCadEditor.Application.Services.ExtrusionTarget.Scene;
+
+	/// <summary>
+	/// Sólido autônomo (só literais, em coordenadas do mundo) para gravar na peça aberta. <c>IsCut</c> é a
+	/// altura negativa: o sólido entra no material e vira um corte; positiva, ele é unido.
+	/// </summary>
+	public event EventHandler<(string Code, bool IsCut)>? SolidForPartRequested;
+
 	public void OnMouseDown(Sketch sketch, Point3D point)
 	{
 		if (_currentState == State.SelectingProfile)
@@ -45,9 +58,7 @@ public class ExtrudeCommand : ICommandTool
 			if (_selectedProfile != null)
 			{
 				double height = Math.Abs(CurrentHeight) < 1e-3 ? 20.0 : CurrentHeight;
-				string code = GenerateExtrusionCode(_selectedProfile, height, sketch);
-				CodeGenerated?.Invoke(this, code);
-				IsFinished = true;
+				Commit(_selectedProfile, height, sketch);
 			}
 			Cancel();
 		}
@@ -183,16 +194,24 @@ public class ExtrudeCommand : ICommandTool
 
 		if (_selectedProfile != null)
 		{
-			string code = GenerateExtrusionCode(_selectedProfile, value, sketch);
-			CodeGenerated?.Invoke(this, code);
-			IsFinished = true;
+			Commit(_selectedProfile, value, sketch);
 		}
 		Cancel();
 	}
 
-	private string GenerateExtrusionCode(IProfile profile, double height, Sketch? sketch)
+	private void Commit(IProfile profile, double height, Sketch sketch)
 	{
-		return AvaloniaCadEditor.Application.Services.FeatureCodeGenerator.GenerateExtrusionCode(profile, height, sketch);
+		if (Target == AvaloniaCadEditor.Application.Services.ExtrusionTarget.Standalone && SolidForPartRequested != null)
+		{
+			string solid = AvaloniaCadEditor.Application.Services.FeatureCodeGenerator.GenerateExtrusionCode(
+				profile, height, sketch, AvaloniaCadEditor.Application.Services.ExtrusionTarget.Standalone);
+			SolidForPartRequested(this, (solid, height < 0));
+		}
+		else
+		{
+			CodeGenerated?.Invoke(this, AvaloniaCadEditor.Application.Services.FeatureCodeGenerator.GenerateExtrusionCode(profile, height, sketch));
+		}
+		IsFinished = true;
 	}
 
 	public string GetMeasurementText()

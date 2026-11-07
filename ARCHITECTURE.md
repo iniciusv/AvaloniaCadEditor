@@ -122,6 +122,13 @@ clique na viewport
   → RunCodeAsync()                             → volta ao fluxo 3.1
 ```
 
+**Com uma peça aberta** (duplo clique numa instância, `CadViewModel.EditContext`), o Extrude desvia: gera
+o sólido autônomo (`ExtrusionTarget.Standalone`, só literais) e o entrega por `SolidForPartRequested` a
+`SceneScriptViewModel.InsertSolidIntoPartAsync`. O `PartSolidInserter` compõe o trecho com a cena só em
+memória, usa o `IPartMerger` para levá-lo ao `Build()` em coordenadas locais e o `PartMergeCheck` para
+conferir. Só o arquivo da peça muda, e ele vira o ativo no editor para o Ctrl+Z valer. Se a peça recusar, o
+sólido vai solto para a cena, como antes.
+
 Só 4 das 14 ferramentas emitem código (Extrude, Sweep, Boolean, Fillet). As ferramentas de
 sketch (linha, círculo, polígono, trim, extend, offset, move, rotate, select, workplane)
 declaram o evento `CodeGenerated` mas nunca o disparam — daí os 20 avisos CS0067 no build.
@@ -172,6 +179,7 @@ de todo o resto. Falha segura: fingerprint `null` = sem cache, nunca cache errad
 | Mudar o chanfro/arredondamento (`FilletFeature`) | `Infrastructure/OpenCascade/OcctFilletBuilder.cs`, `Domain/Mesh/ArcEdgeFinder.cs` | o wrapper OCCT não tem chanfro B-Rep: fora de caixa e cilindro, o caminho é **por malha**. Arcos reconhecidos (boca de furo, ressalto, canto arredondado) viram um anel revolvido cada, cortados em lote; as retas, um prisma cada, até `MaxEdgeCuts` (acima disso o sólido sai sem chanfro, com aviso em `BuildProblems`). Toda booleana passa pela conferência de caixa e volume de `TryCutKeepingSolid`, com as duas caixas medidas sobre a tesselação (o OCCT mede pelo polígono quando há triângulos); aresta que fica sem corte vira aviso |
 | Mudar a tesselação / arestas | `Infrastructure/OpenCascade/OcctTessellator.cs`, `Domain/Settings/TessellationSettings.cs` | settings novos entram em `GeometryKey()` |
 | Mudar o código gerado pelas ferramentas | `Application/Services/FeatureCodeGenerator.cs` | respeite a regra de sólidos rastreáveis (§5.2) |
+| Mudar o que as ferramentas gravam dentro de uma peça aberta (duplo clique) | `Application/EditContext/PartSolidInserter.cs`, `Application/EditContext/PartEditContext.cs`, `CadViewModel.EditContext` | o sólido chega no mundo e só com literais (`ExtrusionTarget.Standalone`: nada de `Push/Pull` nem `LinkedWorkPlane`, que leem variáveis da cena). A reescrita mundo → local é a do `IPartMerger`; não crie outra. Plano: `docs/planos/2026-11-07-modelar-na-peca-isolada.md` |
 | Editar o fonte da cena a partir da UI | `Application/Scenes/PartSourceEditor.cs` ou um `Roslyn*` em `Application/Services/` | edição sintática pontual, nunca reescrita do arquivo |
 | Mudar como a cena é compilada e executada | `Infrastructure/Scripting/RoslynSceneEvaluator.cs`, `Infrastructure/Scripting/ScenePartsLibrary.cs` | as peças compilam à parte, em cache pelo conteúdo, e a cena (`CadScene_Entry`) as enxerga por `InternalsVisibleTo`. Na dúvida (erro, peça que usa tipo da cena, CS0436), compila tudo junto como antes: o resultado tem de ser o mesmo da compilação única. Campo estático de peça sobrevive entre execuções |
 | Mudar a conversão de sólido solto em peça | `Infrastructure/Scripting/RoslynPartConverter.cs` (atrás de `IPartConverter`), `Application/Scenes/PartConversionCheck.cs` | puro: não grava nem executa. O `SceneScriptViewModel.ConvertToPartAsync` avalia a cena convertida e só aplica se o `FeatureFingerprint` do sólido não mudar. Literais continuam literais; só variáveis que ficam na cena viram parâmetros |

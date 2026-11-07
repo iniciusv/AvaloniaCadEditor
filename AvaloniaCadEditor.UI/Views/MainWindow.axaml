@@ -234,8 +234,8 @@
                         CornerRadius="4" Padding="10,5" Margin="10"
                         HorizontalAlignment="Center" VerticalAlignment="Top">
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                        <TextBlock Text="Editando Grupo Booleano:" Foreground="White" FontWeight="Bold" VerticalAlignment="Center"/>
-                        <TextBlock Text="{Binding ActiveBooleanGroupName}" Foreground="White" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding ActiveGroupTitle}" Foreground="White" FontWeight="Bold" VerticalAlignment="Center"/>
+                        <TextBlock Text="{Binding ActiveGroupDetail}" Foreground="White" VerticalAlignment="Center"/>
                         <Button Content="✕" Command="{Binding ExitBooleanEditModeCommand}" 
                                 Background="Transparent" Foreground="White" BorderThickness="0" 
                                 Padding="4,0" VerticalAlignment="Center" Cursor="Hand" />

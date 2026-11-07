@@ -11,6 +11,23 @@ using AvaloniaCadEditor.Domain.ValueObjects;
 
 namespace AvaloniaCadEditor.Application.Services;
 
+/// <summary>Para onde vai o código de uma extrusão: o que muda é se ele pode ler variáveis da cena.</summary>
+public enum ExtrusionTarget
+{
+    /// <summary>
+    /// Cena: empurrar a face de um sólido solto vira <c>Push/Pull</c> sobre a variável dele, e o prisma
+    /// pode se prender à face (<c>LinkedWorkPlane</c>).
+    /// </summary>
+    Scene,
+
+    /// <summary>
+    /// Sólido autônomo, só com literais, que vai ser levado para dentro do <c>Build()</c> de uma peça
+    /// (ver <c>PartSolidInserter</c>): lá não existe a variável da cena, então nada pode lê-la. Quem
+    /// decide se o sólido une ou corta é quem o insere, e não um <c>Push/Pull</c>.
+    /// </summary>
+    Standalone
+}
+
 public static class FeatureCodeGenerator
 {
     private static double Clean(double v)
@@ -171,16 +188,21 @@ public static class FeatureCodeGenerator
         return $", upReference: new Vector3D({F(u.X)}, {F(u.Y)}, {F(u.Z)})";
     }
 
-    public static string GenerateExtrusionCode(IProfile profile, double height, Sketch? sketch)
+    public static string GenerateExtrusionCode(IProfile profile, double height, Sketch? sketch,
+        ExtrusionTarget target = ExtrusionTarget.Scene)
     {
         var sb = new StringBuilder();
         string id = Guid.NewGuid().ToString("N").Substring(0, 4);
         string heightStr = F(height);
+        bool standalone = target == ExtrusionTarget.Standalone;
 
         // Face genérica (de malha) retangular: extruda como BoxFeature em vez de cair no prisma.
         if (profile is FaceProfile rectFace && TryGetRectangle(rectFace) is { } rectFromFace)
             profile = rectFromFace;
 
+        // ParametricBoxFace/ParametricCylinderFace (abaixo) continuam gerando Push/Pull mesmo no modo
+        // autônomo: elas só existem em caixa e cilindro SOLTOS, nunca na face de uma peça. Se chegarem
+        // aqui, o merger recusa o trecho (lê variável da cena) e ele fica solto, como antes.
         if (profile is ParametricBoxFace boxFace)
         {
             string parentId = string.IsNullOrEmpty(boxFace.ParentBox.Name)
@@ -216,7 +238,7 @@ public static class FeatureCodeGenerator
             foreach (var sub in compoundProfile.SubProfiles)
             {
                 // Recursive call without sketch to avoid deleting sketch entities yet
-                string subCode = GenerateExtrusionCode(sub, height, null);
+                string subCode = GenerateExtrusionCode(sub, height, null, target);
                 
                 // Extract the variable name added to AddFeature(varName) using Roslyn
                 var tree = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(subCode);
@@ -297,6 +319,15 @@ public static class FeatureCodeGenerator
             }
             sb.AppendLine($"AddFeature({boxVar});");
         }
+        else if (standalone && profile is FaceProfile circleFace && TryGetCircle(circleFace, out var standaloneCenter, out var standaloneRadius))
+        {
+            // Só o cilindro: altura negativa entra no material (o kernel extruda em normal × altura).
+            string cylVar = $"cylinder_{id}";
+            var normal = CleanV(circleFace.Normal);
+            var c = CleanP(standaloneCenter);
+            sb.AppendLine($"var {cylVar} = new CylinderFeature(globalBaseCenter: new Point3D({F(c.X)}, {F(c.Y)}, {F(c.Z)}), globalDirection: new Vector3D({F(normal.X)}, {F(normal.Y)}, {F(normal.Z)}), radius: {F(standaloneRadius)}, height: {heightStr}) {{ Name = \"{cylVar}\" }};");
+            sb.AppendLine($"AddFeature({cylVar});");
+        }
         else if (profile is FaceProfile faceProfile && TryGetCircle(faceProfile, out var center, out var radius))
         {
             string parentId = string.IsNullOrEmpty(faceProfile.BaseFeature.Name)
@@ -323,7 +354,12 @@ public static class FeatureCodeGenerator
                 string prismVar = $"prism_{id}";
 
                 var planeToUse = profile.Plane;
-                if (!(planeToUse is LinkedWorkPlane) && sketch != null)
+                if (standalone && planeToUse is LinkedWorkPlane)
+                {
+                    // O plano preso à face lê a variável do sólido (FindFace); autônomo, só o plano literal.
+                    planeToUse = new WorkPlane(planeToUse.Origin, planeToUse.Normal, planeToUse.XAxis);
+                }
+                else if (!(planeToUse is LinkedWorkPlane) && sketch != null && !standalone)
                 {
                     var inferenceService = new GeometricInferenceService();
                     var inferredPlane = inferenceService.InferLinkedPlane(sketch, planeToUse) 

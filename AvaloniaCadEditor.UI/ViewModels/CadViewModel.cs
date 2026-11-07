@@ -215,6 +215,10 @@ public partial class CadViewModel : INotifyPropertyChanged
 					oldFillet.PartFilletRequested -= FilletTool_PartFilletRequested;
 					oldFillet.FilletBeforeCutRequested -= FilletTool_FilletBeforeCutRequested;
 				}
+				if (_currentTool is ExtrudeCommand oldExtrude)
+				{
+					oldExtrude.SolidForPartRequested -= ExtrudeTool_SolidForPartRequested;
+				}
 				_currentTool.Cancel();
 			}
 
@@ -247,7 +251,12 @@ public partial class CadViewModel : INotifyPropertyChanged
 					newFillet.PartFilletRequested += FilletTool_PartFilletRequested;
 					newFillet.FilletBeforeCutRequested += FilletTool_FilletBeforeCutRequested;
 				}
+				if (_currentTool is ExtrudeCommand newExtrude)
+				{
+					newExtrude.SolidForPartRequested += ExtrudeTool_SolidForPartRequested;
+				}
 			}
+			ApplyEditContextToTool();
 
 			VcbService.Clear();
 
@@ -616,6 +625,30 @@ public partial class CadViewModel : INotifyPropertyChanged
 		{
 			StatusText = $"✓ {args.FilletVar} aplicado em {args.BaseVar}, antes dos furos de {args.CutVar} (as bocas dos furos ficam vivas)";
 		}
+	}
+
+	/// <summary>
+	/// Extrusão com uma peça aberta: o sólido vai para o <c>Build()</c> dela, em coordenadas locais (ver
+	/// <see cref="SceneScriptViewModel.InsertSolidIntoPartAsync"/>). Altura negativa corta; positiva une
+	/// depois dos cortes, para os furos que a peça já tem não apagarem o material novo.
+	/// </summary>
+	private async void ExtrudeTool_SolidForPartRequested(object? sender, (string Code, bool IsCut) request)
+	{
+		var context = EditContext;
+		CurrentTool = new SelectTool(_geometryEngine, _selectionService);
+		if (context == null)
+		{
+			// A peça foi fechada entre o clique e o evento: grava na cena, como sempre.
+			ScriptEditor.AppendCode(request.Code + "\n");
+			await ScriptEditor.RunCodeAsync();
+			return;
+		}
+
+		StatusText = $"Gravando em {context.PartTypeName}...";
+		var mode = request.IsCut
+			? AvaloniaCadEditor.Application.Interfaces.PartMergeMode.SubtractAsTool
+			: AvaloniaCadEditor.Application.Interfaces.PartMergeMode.UnionAfterCuts;
+		await ScriptEditor.InsertSolidIntoPartAsync(context, request.Code, mode);
 	}
 
 	private void CurrentTool_CodeGenerated(object? sender, string codeSnippet)
@@ -1311,7 +1344,53 @@ public partial class CadViewModel : INotifyPropertyChanged
 				OnPropertyChanged();
 				OnPropertyChanged(nameof(IsEditingBooleanGroup));
 				OnPropertyChanged(nameof(ActiveBooleanGroup));
+				OnPropertyChanged(nameof(EditContext));
+				OnPropertyChanged(nameof(ActiveGroupTitle));
+				OnPropertyChanged(nameof(ActiveGroupDetail));
+				ApplyEditContextToTool();
 			}
+		}
+	}
+
+	/// <summary>
+	/// A peça aberta com duplo clique, se o grupo aberto for uma instância de peça: as ferramentas que criam
+	/// geometria gravam no <c>Build()</c> dela. Achada pelo nome a cada leitura, porque cada execução da cena
+	/// recria as instâncias.
+	/// </summary>
+	public AvaloniaCadEditor.Application.EditContext.PartEditContext? EditContext =>
+		string.IsNullOrEmpty(_activeBooleanGroupName)
+			? null
+			: AvaloniaCadEditor.Application.EditContext.PartEditContext.For(
+				Sketch.Features.FirstOrDefault(f => f.Name == _activeBooleanGroupName), Sketch.Features);
+
+	/// <summary>Título do letreiro do grupo aberto.</summary>
+	public string ActiveGroupTitle => EditContext != null ? "Editando peça:" : "Editando Grupo Booleano:";
+
+	/// <summary>
+	/// Nome do grupo aberto; numa peça, também o tipo e, com mais de uma instância, o aviso de que todas
+	/// mudam juntas — visível enquanto a peça está aberta, não só depois de gravar.
+	/// </summary>
+	public string? ActiveGroupDetail
+	{
+		get
+		{
+			var context = EditContext;
+			if (context == null) return _activeBooleanGroupName;
+			string detail = $"{context.InstanceName} ({context.PartTypeName})";
+			return context.InstanceCount > 1
+				? $"{detail} · {context.InstanceCount} instâncias: todas mudam"
+				: detail;
+		}
+	}
+
+	/// <summary>Com uma peça aberta, o Extrude gera o sólido autônomo que vai para o <c>Build()</c> dela.</summary>
+	private void ApplyEditContextToTool()
+	{
+		if (_currentTool is ExtrudeCommand extrude)
+		{
+			extrude.Target = EditContext != null
+				? AvaloniaCadEditor.Application.Services.ExtrusionTarget.Standalone
+				: AvaloniaCadEditor.Application.Services.ExtrusionTarget.Scene;
 		}
 	}
 
@@ -1485,8 +1564,17 @@ public partial class CadViewModel : INotifyPropertyChanged
 			return MeshManager.Raycast3D(Sketch, ray);
 		}
 
-		var tools = ActiveToolFeatures;
 		var groupId = Sketch.Features.FirstOrDefault(f => f.Name == _activeBooleanGroupName)?.Id;
+
+		// Extrudar dentro da peça aberta: o alvo são as faces DELA, e não os vazios nem o resto da cena.
+		if (CurrentTool is ExtrudeCommand && EditContext != null)
+		{
+			return MeshManager.RaycastAll3D(Sketch, ray)
+				.Cast<RaycastHit?>()
+				.FirstOrDefault(h => h!.Value.FeatureId == groupId);
+		}
+
+		var tools = ActiveToolFeatures;
 		return MeshManager.RaycastAll3D(Sketch, ray, f => tools.Contains(f), ExtraToolFeatures(tools))
 			.Cast<RaycastHit?>()
 			.FirstOrDefault(h => h!.Value.FeatureId != groupId);
@@ -1877,6 +1965,14 @@ public partial class CadViewModel : INotifyPropertyChanged
 	{
 		string toolInstruction = CurrentTool?.GetStatusText() ?? "";
 		string prefix = string.IsNullOrEmpty(toolInstruction) ? "" : $"{toolInstruction} | ";
+		if (EditContext is { } context)
+		{
+			// Peça aberta: as coordenadas são as do Build() dela, as mesmas que vão para o código.
+			var local = context.ToLocal(snapped);
+			StatusText = $"{prefix}{context.PartTypeName} (local) X: {local.X:F2}, Y: {local.Y:F2}, Z: {local.Z:F2}";
+			OnPropertyChanged(nameof(VcbText));
+			return;
+		}
 		StatusText = $"{prefix}X: {snapped.X:F2}, Y: {snapped.Y:F2}";
 
 		OnPropertyChanged(nameof(VcbText)); // Force update

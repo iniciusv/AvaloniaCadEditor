@@ -101,9 +101,10 @@ public sealed class ViewportInputHandler
                         {
                             viewModel.ActiveBooleanGroupName = bf.Name;
                         }
-                        else if (feature is AvaloniaCadEditor.Domain.Features.PartInstance instance
-                                 && CadViewModel.CollectToolFeatures(instance.Definition).Count > 0)
+                        else if (feature is AvaloniaCadEditor.Domain.Features.PartInstance instance)
                         {
+                            // Qualquer peça abre, com ou sem vazios: aberta, as ferramentas gravam no
+                            // Build() dela (CadViewModel.EditContext).
                             viewModel.ActiveBooleanGroupName = instance.Name;
                         }
                         else
