@@ -269,6 +269,22 @@ public class PartSolidInserterTests
 
         insertion.Refusal.Should().BeNull();
         insertion.Warnings.Should().Contain(w => w.Contains("bloco_2"));
+        insertion.Warnings.Should().NotContain(w => w.Contains("diferente"), "as duas têm as mesmas medidas");
+    }
+
+    [Fact]
+    public async Task DuasInstanciasComMedidasDiferentes_AvisaQueOSolidoNaoAcompanha()
+    {
+        const string scene = BlocoScene + "\n" + """var bloco_2 = Add(new Bloco(Largura: 60), at: Placement.At(-100, 0, 0), name: "bloco_2");""";
+        var documents = Docs(scene);
+        var context = await ContextFor(documents);
+        context.DifferingParameters.Should().Equal(new[] { "Largura" }, "o letreiro avisa enquanto a peça está aberta");
+        string code = FeatureCodeGenerator.GenerateExtrusionCode(TopSquare(new BoxFeature(Point3D.Origin, 1, 1, 1)), 5, null, ExtrusionTarget.Standalone);
+
+        var insertion = await Insert(documents, code, context);
+
+        insertion.Refusal.Should().BeNull();
+        insertion.Warnings.Should().Contain(w => w.Contains("Largura diferente") && w.Contains("(bloco)"));
     }
 
     [Fact]

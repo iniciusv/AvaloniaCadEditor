@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using AvaloniaCadEditor.Application.Scenes;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.ValueObjects;
 
@@ -16,7 +17,13 @@ namespace AvaloniaCadEditor.Application.EditContext;
 /// <param name="PartTypeName">O record que recebe as edições (ex.: "PlacaSuporteCarrinhoY").</param>
 /// <param name="Placement">Placement da instância na última execução: leva o local da peça ao mundo.</param>
 /// <param name="InstanceCount">Quantas instâncias de topo da cena usam o mesmo record (todas mudam juntas).</param>
-public sealed record PartEditContext(string InstanceName, string PartTypeName, Placement Placement, int InstanceCount)
+/// <param name="DifferingParameters">
+/// Parâmetros em que as outras instâncias diferem desta (ex.: Comprimento): o sólido gravado com as medidas desta
+/// não acompanha as delas. Null ou vazio quando todas são iguais.
+/// </param>
+public sealed record PartEditContext(
+    string InstanceName, string PartTypeName, Placement Placement, int InstanceCount,
+    IReadOnlyList<string>? DifferingParameters = null)
 {
     /// <summary>O contexto de uma instância de topo da cena; null para qualquer outra coisa.</summary>
     public static PartEditContext? For(IFeature? feature, IEnumerable<IFeature> sceneFeatures)
@@ -24,8 +31,9 @@ public sealed record PartEditContext(string InstanceName, string PartTypeName, P
         ArgumentNullException.ThrowIfNull(sceneFeatures);
         if (feature is not PartInstance instance) return null;
 
-        int count = sceneFeatures.OfType<PartInstance>().Count(i => i.PartTypeName == instance.PartTypeName);
-        return new PartEditContext(instance.Name, instance.PartTypeName, instance.Placement, Math.Max(count, 1));
+        var sameType = sceneFeatures.OfType<PartInstance>().Where(i => i.PartTypeName == instance.PartTypeName).ToList();
+        return new PartEditContext(instance.Name, instance.PartTypeName, instance.Placement, Math.Max(sameType.Count, 1),
+            PartMergeWarnings.DifferingParameters(instance, sameType));
     }
 
     /// <summary>Um ponto do mundo nas coordenadas do <c>Build()</c> da peça.</summary>

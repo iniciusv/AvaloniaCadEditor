@@ -1,6 +1,6 @@
 # Modelar dentro da peça: duplo clique abre a peça e o Extrude grava no `Build()`, em coordenadas locais
 
-**Status:** Em andamento: entregas 1 e 2 implementadas, falta a verificação manual (etapa 5) · **Data:** 2026-11-07 · **Branch:** `feature/modelar-na-peca-isolada`
+**Status:** Em andamento: entregas 1 e 2 implementadas e conferidas por teste na cena real, falta só a verificação no app (etapa 5) · **Data:** 2026-11-07 · **Branch:** `feature/modelar-na-peca-isolada`
 
 ## Objetivo
 
@@ -131,11 +131,21 @@ duplo clique numa PartInstance
       grupo com o Extrude ativo; letreiro "Editando peça: Tipo · n instâncias"; coordenadas locais na
       barra de status; arquivo da peça ativo antes de gravar.
 - [x] **4. Documentação:** `ARCHITECTURE.md` (§3.2 e §4) e status no `docs/README.md`.
-- [ ] **5. Verificação manual** (pedir permissão antes de abrir o app): abrir
-      `placa_suporte_carrinho_y_a` (girada 180°), extrudar uma face para fora e para dentro, `Ctrl+Z`;
-      repetir numa extrusão vertical (girada 90° em X); medir o tempo.
+- [ ] **5. Verificação.** A parte sem janela já foi feita, em
+      `Tests/Scenes/PartSolidInserterAiCoreTests.cs`, sobre a cena AiCore em memória:
+  - [x] `placa_suporte_carrinho_y_a` (girada 180° em Z): para fora e para dentro, com as medidas locais certas;
+  - [x] `extrusao_2020_trilho_z_a` (deitada 90° em X): idem;
+  - [x] tempo: avaliação da cena entre 0,13 e 0,26 s, já aquecida (2,5 s na primeira); inserção entre 0,65
+        e 1,65 s. Depois vem a reexecução normal, `RunCodeAsync`. Aceitável para uma extrusão; não é
+        preciso otimizar antes de ampliar para outras ferramentas;
+  - [ ] no app (pedir permissão antes de abrir): o clique de verdade na face, o `Ctrl+Z` e o letreiro.
 
 Notas da implementação:
+- A sondagem na AiCore mostrou que a `Extrusao2020` tem 19 instâncias, cada uma com seu `Comprimento`. Um
+  sólido gravado no topo de uma delas fica fora do lugar nas outras. O aviso passou a dizer quais
+  parâmetros diferem (`PartMergeWarnings.DifferingParameters`), tanto depois de gravar quanto no letreiro,
+  com a peça aberta ("19 instâncias: todas mudam, mas com Comprimento diferente"). O espelho por parâmetro
+  continua com aviso próprio.
 - A peça girada 90° em X não entrou nos testes automáticos; a rotação em Z sim, e a reescrita em
   qualquer eixo é a do merger (`CaixaComPecaGirada90_GanhaDirecoes`, `WorkPlaneDeDoisArgumentos_...`).
   Fica para a verificação manual.

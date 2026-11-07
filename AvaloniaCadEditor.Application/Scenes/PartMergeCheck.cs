@@ -172,16 +172,22 @@ public static class PartMergeWarnings
     {
         var warnings = new List<string>();
 
-        var others = sceneFeatures.OfType<PartInstance>()
+        var otherInstances = sceneFeatures.OfType<PartInstance>()
             .Where(i => !ReferenceEquals(i, target) && i.PartTypeName == target.PartTypeName)
-            .Select(i => i.Name)
             .ToList();
-        if (others.Count > 0)
-            warnings.Add($"O sólido também vai aparecer em {string.Join(", ", others)}: todas as instâncias de {target.PartTypeName} compartilham o Build().");
+        if (otherInstances.Count > 0)
+            warnings.Add($"O sólido também vai aparecer em {string.Join(", ", otherInstances.Select(i => i.Name))}: todas as instâncias de {target.PartTypeName} compartilham o Build().");
 
-        var mirrors = target.Part.GetParameters()
-            .Where(p => p.Type == typeof(bool) && p.Name.StartsWith("Espelhad", StringComparison.OrdinalIgnoreCase))
-            .ToList();
+        var parameters = target.Part.GetParameters();
+        var mirrors = parameters.Where(IsMirrorFlag).ToList();
+
+        // As outras instâncias com medidas diferentes (ex.: Extrusao2020 de comprimentos variados): o sólido entra
+        // com coordenadas fixas, medidas nesta instância, e não acompanha a medida das outras. O espelho tem
+        // aviso próprio, logo abaixo.
+        var differing = DifferingParameters(target, otherInstances);
+        if (differing.Count > 0)
+            warnings.Add($"Outras instâncias de {target.PartTypeName} têm {string.Join(", ", differing)} diferente; o sólido usa as medidas desta ({target.Name}) e pode ficar fora do lugar nelas.");
+
         if (mirrors.Count > 0)
         {
             string flags = string.Join(", ", mirrors.Select(p => $"{p.Name} = {((bool?)p.Value == true ? "true" : "false")}"));
@@ -189,4 +195,24 @@ public static class PartMergeWarnings
         }
         return warnings;
     }
+
+    /// <summary>
+    /// Os parâmetros (fora os de espelho) em que alguma das <paramref name="others"/> difere da
+    /// <paramref name="target"/>: o que um sólido de coordenadas fixas no <c>Build()</c> não acompanha.
+    /// </summary>
+    public static IReadOnlyList<string> DifferingParameters(PartInstance target, IEnumerable<PartInstance> others)
+    {
+        var otherParameters = others
+            .Where(o => !ReferenceEquals(o, target) && o.PartTypeName == target.PartTypeName)
+            .Select(o => o.Part.GetParameters())
+            .ToList();
+        return target.Part.GetParameters()
+            .Where(p => !IsMirrorFlag(p))
+            .Where(p => otherParameters.Any(list => !Equals(list.FirstOrDefault(q => q.Name == p.Name)?.Value, p.Value)))
+            .Select(p => p.Name)
+            .ToList();
+    }
+
+    private static bool IsMirrorFlag(PartParameter p) =>
+        p.Type == typeof(bool) && p.Name.StartsWith("Espelhad", StringComparison.OrdinalIgnoreCase);
 }

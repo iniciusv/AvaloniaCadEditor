@@ -1369,8 +1369,10 @@ public partial class CadViewModel : INotifyPropertyChanged
 			var context = EditContext;
 			if (context == null) return _activeBooleanGroupName;
 			string detail = $"{context.InstanceName} ({context.PartTypeName})";
-			return context.InstanceCount > 1
-				? $"{detail} · {context.InstanceCount} instâncias: todas mudam"
+			if (context.InstanceCount <= 1) return detail;
+			detail = $"{detail} · {context.InstanceCount} instâncias: todas mudam";
+			return context.DifferingParameters is { Count: > 0 } differing
+				? $"{detail}, mas com {string.Join(", ", differing)} diferente"
 				: detail;
 		}
 	}
