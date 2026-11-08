@@ -46,6 +46,16 @@ namespace AvaloniaCadEditor.Application.Commands;
 public class SweepCommand : ICommandTool, IGeometryPickingTool
 {
     public event EventHandler<string>? CodeGenerated;
+
+    /// <summary>
+    /// Disparado, em vez de <see cref="CodeGenerated"/>, quando <see cref="IntoPart"/> está ligado: o tubo vai
+    /// para o <c>Build()</c> da peça aberta. O código da varredura já é só de literais no mundo, então serve
+    /// tanto solto quanto incorporado.
+    /// </summary>
+    public event EventHandler<string>? SolidForPartRequested;
+
+    /// <summary>Uma peça está aberta (duplo clique): o tubo é gravado nela.</summary>
+    public bool IntoPart { get; set; }
     public string Name => "Sweep";
 
     /// <summary>
@@ -310,7 +320,10 @@ public class SweepCommand : ICommandTool, IGeometryPickingTool
         // e o que foi consumido não pode reaparecer.
         ConsumeSketchGeometry(sketch);
 
-        CodeGenerated?.Invoke(this, code);
+        if (IntoPart && SolidForPartRequested != null)
+            SolidForPartRequested.Invoke(this, code);
+        else
+            CodeGenerated?.Invoke(this, code);
         Cancel();
         return true;
     }

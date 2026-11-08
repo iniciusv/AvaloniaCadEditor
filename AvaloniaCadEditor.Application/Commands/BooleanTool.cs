@@ -22,6 +22,23 @@ public class BooleanTool : ICommandTool, IDisposable
     /// </summary>
     public event EventHandler<(string BooleanVar, IReadOnlyList<string> ToolVars, string FallbackCode)>? OperandAppendRequested;
 
+    /// <summary>
+    /// Disparado, em vez de gerar código, quando <see cref="IntoPart"/> está ligado: os operandos (pelo nome de
+    /// topo na cena) vão para o <c>Build()</c> da peça aberta (ver
+    /// <see cref="AvaloniaCadEditor.Application.EditContext.PartBooleanOperation"/>).
+    /// </summary>
+    public event EventHandler<(IReadOnlyList<string> Operands, BooleanOperationType Operation)>? OperandsForPartRequested;
+
+    /// <summary>
+    /// A base travada: a entidade aberta com duplo clique. Com ela, não se escolhe base; cada clique é um
+    /// operando. Consultada a cada uso (e comparada pelo nome), porque cada execução da cena recria as features.
+    /// Null, ou devolvendo null, é o modo de sempre: escolhe-se a base e depois as ferramentas.
+    /// </summary>
+    public Func<IFeature?>? LockedBase { get; set; }
+
+    /// <summary>A base travada é uma peça: os operandos vão para o <c>Build()</c> dela pelo <see cref="OperandsForPartRequested"/>.</summary>
+    public bool IntoPart { get; set; }
+
     private readonly BooleanOperationType _operationType;
     private readonly ISelectionService _selectionService;
     private Sketch? _sketch;
@@ -82,6 +99,12 @@ public class BooleanTool : ICommandTool, IDisposable
     {
         if (feature == null || feature is WorkPlaneFeature) return;
 
+        if (LockedBase?.Invoke() is { } locked)
+        {
+            if (feature.Name == locked.Name) return; // a base não é operando dela mesma
+            _currentState = State.SelectingTool;
+        }
+
         if (_currentState == State.SelectingBase)
         {
             if (_bases.Contains(feature))
@@ -128,6 +151,19 @@ public class BooleanTool : ICommandTool, IDisposable
 
     private void Execute(Sketch sketch)
     {
+        if (LockedBase?.Invoke() is { } locked)
+        {
+            if (_tools.Count == 0) return;
+            if (IntoPart && OperandsForPartRequested != null)
+            {
+                OperandsForPartRequested.Invoke(this, (_tools.Select(t => t.Name).ToList(), _operationType));
+                Cancel();
+                return;
+            }
+            _bases.Clear();
+            _bases.Add(locked);
+        }
+
         if (_bases.Count == 0) return;
 
         bool pureUnionOfBases = _operationType == BooleanOperationType.Union && _tools.Count == 0 && _bases.Count >= 2;
@@ -185,7 +221,12 @@ public class BooleanTool : ICommandTool, IDisposable
         }
         else if (key == CadKey.Enter)
         {
-            if (_currentState == State.SelectingBase && _bases.Count > 0)
+            if (LockedBase?.Invoke() != null)
+            {
+                _sketch ??= sketch;
+                Execute(sketch);
+            }
+            else if (_currentState == State.SelectingBase && _bases.Count > 0)
             {
                 _currentState = State.SelectingTool;
             }
@@ -205,6 +246,8 @@ public class BooleanTool : ICommandTool, IDisposable
     {
         string opName = _operationType == BooleanOperationType.Subtract ? "Subtrair (Corte)" : "Unir";
         const string hint = "Ctrl+clique acumula/remove · Enter confirma · Esc cancela";
+        if (LockedBase?.Invoke() is { } locked)
+            return $"Operação {opName} em {locked.Name}: clique o(s) sólido(s) para {opName.ToLowerInvariant()} ({_tools.Count} escolhido(s)) — {hint}";
         return _currentState switch
         {
             State.SelectingBase => $"Operação {opName}: selecione a(s) BASE(s) ({_bases.Count} escolhida(s)) — {hint}",

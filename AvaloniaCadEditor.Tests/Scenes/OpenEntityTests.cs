@@ -332,6 +332,88 @@ public class OpenEntityTests
         vm.IsEditingBooleanGroup.Should().BeTrue("a peça continua aberta depois de gravar");
     }
 
+    // ---------------------------------------------------------------- Booleana dentro da entidade aberta
+
+    private static async Task<string> WaitFor(SceneTestFolder folder, string file, Func<string, bool> condition)
+    {
+        string text = File.ReadAllText(folder.FullPath(file));
+        for (int i = 0; i < 200 && !condition(text); i++)
+        {
+            await Task.Delay(50);
+            text = File.ReadAllText(folder.FullPath(file));
+        }
+        return text;
+    }
+
+    [Fact]
+    public async Task CortarNaPecaAberta_ConsomeOSolidoSolto_ECtrlZDesfazOsDoisArquivos()
+    {
+        using var folder = new SceneTestFolder();
+        folder.CreateScene();
+        folder.Write("Pecas/Bloco.cs", BlocoRecord);
+        folder.Write("Cena.cs", BlocoScene + "\n" + """
+            var rasgo = new BoxFeature(new Point3D(85, 60, 25), 10, 5, 10) { Name = "rasgo" };
+            AddFeature(rasgo);
+            """);
+
+        var vm = CreateViewModel();
+        await vm.ScriptEditor.OpenProjectAsync(folder.Root);
+        vm.ScriptEditor.HasErrors.Should().BeFalse(vm.ScriptEditor.ErrorSummary);
+        string sceneBefore = File.ReadAllText(folder.FullPath("Cena.cs"));
+        string partBefore = File.ReadAllText(folder.FullPath("Pecas/Bloco.cs"));
+
+        vm.ActiveBooleanGroupName = "bloco";
+        vm.SelectBooleanCutCommand.Execute(null);
+        var tool = vm.CurrentTool.Should().BeOfType<BooleanTool>().Subject;
+        tool.IntoPart.Should().BeTrue();
+        tool.GetStatusText().Should().Contain("em bloco", "a base é a peça aberta, sem escolher");
+
+        tool.OnMouseDown(vm.Sketch, Point3D.Origin);
+        tool.PickFeature(vm.Sketch.Features.Single(f => f.Name == "rasgo"), additive: false);
+
+        string part = await WaitFor(folder, "Pecas/Bloco.cs", t => t.Contains("rasgo"));
+        part.Should().Contain("rasgo.IsTransientTool = true;");
+        File.ReadAllText(folder.FullPath("Cena.cs")).Should().NotContain("rasgo", "o sólido solto foi consumido");
+        vm.ScriptEditor.ActiveFile.Should().Be("Pecas/Bloco.cs");
+        vm.StatusText.Should().StartWith("✓");
+        vm.IsEditingBooleanGroup.Should().BeTrue();
+
+        vm.OnKeyDown("Z", isCtrlPressed: true);
+
+        (await WaitFor(folder, "Cena.cs", t => t == sceneBefore)).Should().Be(sceneBefore, "o Ctrl+Z devolve o sólido à cena");
+        File.ReadAllText(folder.FullPath("Pecas/Bloco.cs")).Should().Be(partBefore, "e tira da peça, no mesmo passo");
+    }
+
+    [Fact]
+    public async Task CortarNumSolidoSoltoAberto_OResultadoFicaAberto()
+    {
+        using var folder = new SceneTestFolder();
+        folder.CreateScene();
+        folder.Write("Cena.cs", """
+            var tampa = new BoxFeature(new Point3D(0, 0, 0), 30, 30, 5) { Name = "tampa" };
+            AddFeature(tampa);
+            var furo = new CylinderFeature(new Point3D(15, 15, -1), Vector3D.UnitZ, 3, 7) { Name = "furo" };
+            AddFeature(furo);
+            """);
+
+        var vm = CreateViewModel();
+        await vm.ScriptEditor.OpenProjectAsync(folder.Root);
+        vm.ScriptEditor.HasErrors.Should().BeFalse(vm.ScriptEditor.ErrorSummary);
+
+        vm.ActiveBooleanGroupName = "tampa";
+        vm.SelectBooleanCutCommand.Execute(null);
+        var tool = (BooleanTool)vm.CurrentTool!;
+        tool.IntoPart.Should().BeFalse("um sólido solto não é peça: a booleana é a de sempre, na cena");
+        tool.OnMouseDown(vm.Sketch, Point3D.Origin);
+        tool.PickFeature(vm.Sketch.Features.Single(f => f.Name == "furo"), additive: false);
+
+        await WaitFor(folder, "Cena.cs", t => t.Contains("BooleanFeature"));
+        for (int i = 0; i < 100 && vm.ActiveBooleanGroupName == "tampa"; i++) await Task.Delay(50);
+
+        vm.ActiveBooleanGroup.Should().NotBeNull("a entidade aberta passa a ser o resultado da booleana");
+        vm.ActiveBooleanGroup!.BaseFeatures.Should().ContainSingle(f => f.Name == "tampa");
+    }
+
     private static System.Collections.Generic.IEnumerable<IFeature> Leaves(IFeature feature) => feature switch
     {
         BooleanFeature b => b.BaseFeatures.Concat(b.ToolFeatures).SelectMany(Leaves),

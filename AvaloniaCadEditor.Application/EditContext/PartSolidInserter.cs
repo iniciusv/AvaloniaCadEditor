@@ -99,31 +99,46 @@ public sealed class PartSolidInserter
         return new PartSolidInsertion(changes, null, warnings, merge.InsertedName, verdict.GeometryVerified);
     }
 
-    private sealed record Registration(string Variable, int Position);
+    internal sealed record Registration(string Variable, int Position);
 
     /// <summary>
-    /// O último <c>AddFeature(x)</c> do código (a raiz do sólido gerado), ou o último de uma variável dada.
+    /// O último <c>AddFeature(x)</c> (ou <c>AddFeature(x.Transformed(...))</c>) do código, ou o último de uma
+    /// variável dada.
     /// </summary>
-    private static Registration? FindRegistration(string code, string? variable)
+    internal static Registration? FindRegistration(string code, string? variable)
     {
         var root = CSharpSyntaxTree.ParseText(code).GetRoot();
-        var call = root.DescendantNodes().OfType<InvocationExpressionSyntax>()
-            .LastOrDefault(i => i.Expression is IdentifierNameSyntax { Identifier.ValueText: "AddFeature" } &&
-                                i.ArgumentList.Arguments.Count == 1 &&
-                                i.ArgumentList.Arguments[0].Expression is IdentifierNameSyntax argument &&
-                                (variable == null || argument.Identifier.ValueText == variable));
-        if (call == null) return null;
-        var name = ((IdentifierNameSyntax)call.ArgumentList.Arguments[0].Expression).Identifier.ValueText;
-        return new Registration(name, call.SpanStart);
+        foreach (var call in root.DescendantNodes().OfType<InvocationExpressionSyntax>().Reverse())
+        {
+            if (call.Expression is not IdentifierNameSyntax { Identifier.ValueText: "AddFeature" } || call.ArgumentList.Arguments.Count != 1)
+                continue;
+            string? name = call.ArgumentList.Arguments[0].Expression switch
+            {
+                IdentifierNameSyntax argument => argument.Identifier.ValueText,
+                InvocationExpressionSyntax
+                {
+                    Expression: MemberAccessExpressionSyntax { Name.Identifier.ValueText: "Transformed", Expression: IdentifierNameSyntax moved }
+                } => moved.Identifier.ValueText,
+                _ => null
+            };
+            if (name != null && (variable == null || name == variable)) return new Registration(name, call.SpanStart);
+        }
+        return null;
     }
+
+    /// <summary>Linha (a partir de 1) do registro de <paramref name="variable"/> no código; 0 se não houver.</summary>
+    internal static int RegistrationLine(string code, string variable) =>
+        FindRegistration(code, variable) is { } registration
+            ? SourceText.From(code).Lines.GetLineFromPosition(registration.Position).LineNumber + 1
+            : 0;
 
     private static IReadOnlyList<ScriptDocument> Replace(IReadOnlyList<ScriptDocument> documents, string file, string text) =>
         documents.Select(d => SamePath(d.FilePath, file) ? d with { Text = text } : d).ToList();
 
-    private static string FirstError(SceneEvaluationResult result) =>
+    internal static string FirstError(SceneEvaluationResult result) =>
         result.Diagnostics.FirstOrDefault(d => d.Severity == ScriptDiagnosticSeverity.Error)?.ToString()
         ?? result.ErrorMessage ?? "erro desconhecido";
 
-    private static bool SamePath(string a, string b) =>
+    internal static bool SamePath(string a, string b) =>
         string.Equals(a.Replace('\\', '/'), b.Replace('\\', '/'), StringComparison.OrdinalIgnoreCase);
 }

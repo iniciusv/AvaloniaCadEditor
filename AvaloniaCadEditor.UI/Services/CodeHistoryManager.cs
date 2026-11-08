@@ -22,6 +22,15 @@ public class CodeHistoryManager
         }
     }
 
+    /// <summary>
+    /// Descarta o último estado guardado se ele for <paramref name="state"/>: quem desfez a mudança por outro
+    /// caminho (o desfazer de vários arquivos) não deixa um passo repetido no histórico do arquivo.
+    /// </summary>
+    public void DiscardLastIf(string state)
+    {
+        if (_undoStack.Count > 0 && _undoStack.Peek() == state) _undoStack.Pop();
+    }
+
     public bool TryUndo(string currentState, out string previousState)
     {
         if (_undoStack.Count > 0)

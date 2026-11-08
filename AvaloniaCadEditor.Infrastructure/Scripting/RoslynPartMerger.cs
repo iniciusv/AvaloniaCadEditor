@@ -257,6 +257,17 @@ public sealed class RoslynPartMerger : IPartMerger
         {
             if (transform.IsIdentity) return new Result(Array.Empty<TextChange>(), null, null);
 
+            // Sub-peça copiada (uma peça usada como operando de outra): "var x = new Tipo(...).Instance("x");". Ela não
+            // tem coordenadas para reescrever; todo o posicionamento vai para o at: da instância, no referencial local.
+            if (InstanceWithoutPlacement(scene, slice, root) is { } instanceCall)
+            {
+                return new Result(new[]
+                {
+                    new TextChange(new TextSpan(instanceCall.ArgumentList.CloseParenToken.SpanStart, 0),
+                        $", at: {AvaloniaCadEditor.Application.Scenes.PlacementSource.Code(transform)}")
+                }, null, null);
+            }
+
             var rewriter = new CoordinateRewriter(scene, slice, transform);
             string? reason = rewriter.TryRewrite();
             if (reason == null) return new Result(rewriter._changes, null, null);
@@ -277,6 +288,22 @@ public sealed class RoslynPartMerger : IPartMerger
             return new Result(changes, reason, null);
         }
 
+        /// <summary>
+        /// A chamada <c>.Instance("nome")</c> quando o recorte é só ela (uma peça copiada como sub-peça, sem
+        /// <c>at:</c>); null em qualquer outro caso.
+        /// </summary>
+        private static InvocationExpressionSyntax? InstanceWithoutPlacement(SceneStatements scene, SceneSlice slice, ILocalSymbol root)
+        {
+            if (slice.Statements.Count != 1 || !scene.Declarations.TryGetValue(root, out var statement)) return null;
+            if (!ReferenceEquals(slice.Statements[0], statement)) return null;
+            if (statement is not LocalDeclarationStatementSyntax declaration) return null;
+            if (declaration.Declaration.Variables[0].Initializer?.Value is not InvocationExpressionSyntax call) return null;
+            if (scene.Model.GetSymbolInfo(call).Symbol is not IMethodSymbol { Name: "Instance" } method) return null;
+            if (method.ContainingType?.Name != "PartExtensions" || !IsDomainType(method.ContainingType)) return null;
+            if (call.ArgumentList.Arguments.Count != 1 || call.ArgumentList.Arguments[0].NameColon != null) return null;
+            return call;
+        }
+
         /// <summary>Faz as trocas; devolve por que não foi possível (e então nada vale), ou null.</summary>
         private string? TryRewrite()
         {
@@ -291,7 +318,7 @@ public sealed class RoslynPartMerger : IPartMerger
             {
                 var type = TypeOf(creation);
                 if (!IsFeature(type)) continue;
-                if (type!.Name is not ("BoxFeature" or "CylinderFeature" or "ConeFeature" or "PrismFeature" or "BooleanFeature"))
+                if (type!.Name is not ("BoxFeature" or "CylinderFeature" or "ConeFeature" or "PrismFeature" or "BooleanFeature" or "SweepFeature"))
                     return $"'{type.Name}' não tem as coordenadas reescritas automaticamente";
                 if (type.Name == "PrismFeature" && !HasExplicitArgument(creation, "plane"))
                     return "um PrismFeature não informa o plane (o plano padrão não acompanharia a rotação)";
@@ -414,11 +441,26 @@ public sealed class RoslynPartMerger : IPartMerger
         private Role RoleOf(ArgumentSyntax argument)
         {
             if (_scene.Model.GetOperation(argument) is not IArgumentOperation { Parameter: { } parameter }) return Role.Unknown;
-            if (parameter.ContainingSymbol is not IMethodSymbol { MethodKind: MethodKind.Constructor } constructor) return Role.Unknown;
-            if (!IsDomainType(constructor.ContainingType)) return Role.Unknown;
+            if (parameter.ContainingSymbol is not IMethodSymbol method || !IsDomainType(method.ContainingType)) return Role.Unknown;
 
-            return (constructor.ContainingType.Name, parameter.Name) switch
+            if (method.MethodKind != MethodKind.Constructor)
             {
+                // Os caminhos de varredura são montados por fábricas estáticas.
+                if (!method.IsStatic || method.ContainingType.Name != "SweepPath") return Role.Unknown;
+                return (method.Name, parameter.Name) switch
+                {
+                    ("FromPolyline", "points") => Role.Point,
+                    ("FullCircle", "center") => Role.Point,
+                    ("FullCircle", "axis") => Role.Direction,
+                    ("Arc", "start") => Role.Point,
+                    ("Arc", "startTangent" or "bendDirection") => Role.Direction,
+                    _ => Role.Unknown
+                };
+            }
+
+            return (method.ContainingType.Name, parameter.Name) switch
+            {
+                ("SweepFeature", "upReference") => Role.Direction,
                 ("CylinderFeature" or "ConeFeature", "globalBaseCenter") => Role.Point,
                 ("CylinderFeature" or "ConeFeature", "globalDirection") => Role.Direction,
                 ("WorkPlane", "origin") => Role.Point,
@@ -436,7 +478,8 @@ public sealed class RoslynPartMerger : IPartMerger
             switch (container.Parent)
             {
                 case ArgumentSyntax argument:
-                    return RoleOf(argument) == Role.PlaneLocal ? Role.PlaneLocal : Role.Unknown;
+                    // Vértices de prisma (no plano dele) ou pontos de um caminho de varredura (no mundo).
+                    return RoleOf(argument) is var role && role is Role.PlaneLocal or Role.Point ? role : Role.Unknown;
                 case EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax declarator }
                     when _scene.Model.GetDeclaredSymbol(declarator) is ILocalSymbol local:
                     var uses = _slice.Statements

@@ -199,6 +199,11 @@ public partial class CadViewModel : INotifyPropertyChanged
 				if (_currentTool is BooleanTool oldBoolean)
 				{
 					oldBoolean.OperandAppendRequested -= BooleanTool_OperandAppendRequested;
+					oldBoolean.OperandsForPartRequested -= BooleanTool_OperandsForPartRequested;
+				}
+				if (_currentTool is SweepCommand oldSweep)
+				{
+					oldSweep.SolidForPartRequested -= SweepTool_SolidForPartRequested;
 				}
 				if (_currentTool is FilletTool oldFillet)
 				{
@@ -235,6 +240,11 @@ public partial class CadViewModel : INotifyPropertyChanged
 				if (_currentTool is BooleanTool newBoolean)
 				{
 					newBoolean.OperandAppendRequested += BooleanTool_OperandAppendRequested;
+					newBoolean.OperandsForPartRequested += BooleanTool_OperandsForPartRequested;
+				}
+				if (_currentTool is SweepCommand newSweep)
+				{
+					newSweep.SolidForPartRequested += SweepTool_SolidForPartRequested;
 				}
 				if (_currentTool is FilletTool newFillet)
 				{
@@ -641,14 +651,68 @@ public partial class CadViewModel : INotifyPropertyChanged
 		await ScriptEditor.InsertSolidIntoPartAsync(context, request.Code, mode);
 	}
 
+	/// <summary>
+	/// Cortar/Unir com uma peça aberta: os operandos vão para o <c>Build()</c> dela (ver
+	/// <see cref="SceneScriptViewModel.ApplyBooleanToPartAsync"/>).
+	/// </summary>
+	private async void BooleanTool_OperandsForPartRequested(object? sender,
+		(System.Collections.Generic.IReadOnlyList<string> Operands, AvaloniaCadEditor.Domain.Features.BooleanOperationType Operation) request)
+	{
+		var context = EditContext;
+		CurrentTool = new SelectTool(_geometryEngine, _selectionService);
+		if (context == null) return; // a peça foi fechada no meio: nada a gravar
+
+		StatusText = $"Gravando em {context.PartTypeName}...";
+		await ScriptEditor.ApplyBooleanToPartAsync(context, request.Operands, request.Operation);
+	}
+
+	/// <summary>Varredura com uma peça aberta: o tubo vai para o <c>Build()</c> dela, unido depois dos cortes.</summary>
+	private async void SweepTool_SolidForPartRequested(object? sender, string code)
+	{
+		var context = EditContext;
+		CurrentTool = new SelectTool(_geometryEngine, _selectionService);
+		if (context == null)
+		{
+			ScriptEditor.AppendCode(code + "\n");
+			await ScriptEditor.RunCodeAsync();
+			return;
+		}
+
+		StatusText = $"Gravando em {context.PartTypeName}...";
+		await ScriptEditor.InsertSolidIntoPartAsync(context, code,
+			AvaloniaCadEditor.Application.Interfaces.PartMergeMode.UnionAfterCuts, "Varredura");
+	}
+
+	/// <summary>
+	/// A booleana feita dentro de uma entidade aberta que não é peça (sólido solto, booleana): o resultado é uma
+	/// feature nova na cena, e é ela que fica aberta depois da execução, em vez de voltar ao nível da cena.
+	/// </summary>
+	private string? _reopenEntityAfterRun;
+
 	private void CurrentTool_CodeGenerated(object? sender, string codeSnippet)
 	{
+		if (sender is BooleanTool && OpenEntity != null &&
+			System.Text.RegularExpressions.Regex.Match(codeSnippet, @"var\s+(\w+)\s*=\s*new\s+BooleanFeature") is { Success: true } created)
+		{
+			_reopenEntityAfterRun = created.Groups[1].Value;
+		}
+
 		ScriptEditor.AppendCode(codeSnippet + "\n");
 		ScriptEditor.RunCodeCommand.Execute(null);
 
 		// Return to SelectTool after an operation is committed
 		CurrentTool = new SelectTool(_geometryEngine, _selectionService);
 	}
+
+	/// <summary>
+	/// Cut/Fuse. Na cena, os sólidos já marcados entram como bases. Com uma entidade aberta, a base é ela
+	/// (travada, achada pelo nome a cada uso) e cada clique é um operando; numa peça, os operandos vão para o
+	/// <c>Build()</c> (<see cref="BooleanTool.IntoPart"/>, ligado em <see cref="ApplyEditContextToTool"/>).
+	/// </summary>
+	private BooleanTool CreateBooleanTool(BooleanOperationType operation) =>
+		OpenEntity != null
+			? new BooleanTool(operation, _selectionService) { LockedBase = () => OpenEntity }
+			: new BooleanTool(operation, _selectionService, PreSelectedSolids());
 
 	/// <summary>Sólidos já marcados no viewport/árvore (Ctrl+clique) antes de abrir Cut/Fuse - entram
 	/// direto como bases da operação (ver <see cref="BooleanTool"/>).</summary>
@@ -1147,8 +1211,8 @@ public partial class CadViewModel : INotifyPropertyChanged
 			sweepCmd.TryStartFromSelection(Sketch);
 			UpdateStatusText(CurrentSnappedPoint);
 		});
-		SelectBooleanCutCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Subtract, _selectionService, PreSelectedSolids()));
-		SelectBooleanFuseCommand = new RelayCommand(() => CurrentTool = new BooleanTool(BooleanOperationType.Union, _selectionService, PreSelectedSolids()));
+		SelectBooleanCutCommand = new RelayCommand(() => CurrentTool = CreateBooleanTool(BooleanOperationType.Subtract));
+		SelectBooleanFuseCommand = new RelayCommand(() => CurrentTool = CreateBooleanTool(BooleanOperationType.Union));
 		ExitBooleanEditModeCommand = new RelayCommand(() => ActiveBooleanGroupName = null);
 		SelectFilletToolCommand = new RelayCommand<string>((modeStr) =>
 		{
@@ -1399,6 +1463,15 @@ public partial class CadViewModel : INotifyPropertyChanged
 	/// </summary>
 	public void ReapplyOpenEntity()
 	{
+		if (_reopenEntityAfterRun is { } reopen)
+		{
+			_reopenEntityAfterRun = null;
+			if (Sketch.Features.Any(f => f.Name == reopen))
+			{
+				ActiveBooleanGroupName = reopen;
+				return;
+			}
+		}
 		if (!IsEditingBooleanGroup) return;
 		if (OpenEntity == null)
 		{
@@ -1415,11 +1488,20 @@ public partial class CadViewModel : INotifyPropertyChanged
 	/// <summary>Com uma peça aberta, o Extrude gera o sólido autônomo que vai para o <c>Build()</c> dela.</summary>
 	private void ApplyEditContextToTool()
 	{
+		bool intoPart = EditContext != null;
 		if (_currentTool is ExtrudeCommand extrude)
 		{
-			extrude.Target = EditContext != null
+			extrude.Target = intoPart
 				? AvaloniaCadEditor.Application.Services.ExtrusionTarget.Standalone
 				: AvaloniaCadEditor.Application.Services.ExtrusionTarget.Scene;
+		}
+		else if (_currentTool is BooleanTool boolean)
+		{
+			boolean.IntoPart = intoPart;
+		}
+		else if (_currentTool is SweepCommand sweep)
+		{
+			sweep.IntoPart = intoPart;
 		}
 	}
 

@@ -52,6 +52,7 @@ a IA ou em `~/.claude/plans/`, onde se perdem.
 | 2026-10-23 | [Exportar a cena para o SketchUp (COLLADA `.dae`, componentes por peça)](planos/2026-10-23-exportar-collada-sketchup.md) | Implementado (v1), falta importar no SketchUp |
 | 2026-11-01 | [Código editável por padrão: modelos simples, recursos avançados só sob pedido](planos/2026-11-01-codigo-editavel-por-padrao.md) | Em andamento: etapas 1 a 4 implementadas, falta medir |
 | 2026-11-07 | [Modelar dentro da peça: duplo clique abre a peça e o Extrude grava no `Build()`](planos/2026-11-07-modelar-na-peca-isolada.md) | Em andamento: entregas 1 e 2 implementadas, falta verificar no app |
+| 2026-11-07 | [Booleana e Sweep dentro da peça aberta](planos/2026-11-07-booleana-e-sweep-na-peca-aberta.md) | Implementado, falta verificar no app |
 
 ### Histórico (planos do modo de planejamento do Claude Code)
 

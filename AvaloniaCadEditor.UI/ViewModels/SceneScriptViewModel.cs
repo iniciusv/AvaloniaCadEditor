@@ -1677,7 +1677,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         if (verdict.Problem != null) return verdict.Problem;
 
         var warnings = merge.Warnings.Concat(PartMergeWarnings.For(target, featuresBefore)).ToList();
-        await ApplyExternalChangesAsync(merge.Changes);
+        await ApplyCrossFileChangesAsync(merge.Changes);
         if (HasErrors) return ErrorSummary;
         SelectFeatureByName(target.Name);
 
@@ -1695,7 +1695,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
     /// peça não aceitar o sólido, ele vai solto para a cena, como antes, e o motivo vai para o status.
     /// </summary>
     public async Task InsertSolidIntoPartAsync(
-        AvaloniaCadEditor.Application.EditContext.PartEditContext context, string solidCode, PartMergeMode mode)
+        AvaloniaCadEditor.Application.EditContext.PartEditContext context, string solidCode, PartMergeMode mode, string? label = null)
     {
         string? refusal;
         if (_sceneEvaluator == null)
@@ -1723,7 +1723,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
                     return;
                 }
 
-                string what = mode == PartMergeMode.SubtractAsTool ? "Corte" : "Extrusão";
+                string what = label ?? (mode == PartMergeMode.SubtractAsTool ? "Corte" : "Extrusão");
                 string status = $"✓ {what} {insertion.InsertedName} gravado em {context.PartTypeName} ({partFile})";
                 if (!insertion.GeometryVerified) status += " — a cena executa, mas esta geometria não pôde ser comparada com a original";
                 if (insertion.Warnings.Count > 0) status += " ⚠ " + string.Join(" ", insertion.Warnings);
@@ -1739,6 +1739,51 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         {
             _cadViewModel.StatusText = $"✗ Não deu para gravar em {context.PartTypeName}: {refusal} O sólido ficou solto na cena.";
         }
+    }
+
+    /// <summary>
+    /// Cortar/Unir com uma peça aberta (ver <see cref="AvaloniaCadEditor.Application.EditContext.PartBooleanOperation"/>):
+    /// sólido solto é consumido (sai da cena), outra peça é copiada como sub-peça. Tudo ou nada; na recusa, nada
+    /// muda e o motivo vai para o status. O arquivo da peça vira o ativo, e o Ctrl+Z desfaz a cena junto quando
+    /// ela também mudou.
+    /// </summary>
+    public async Task ApplyBooleanToPartAsync(
+        AvaloniaCadEditor.Application.EditContext.PartEditContext context, IReadOnlyList<string> operands,
+        AvaloniaCadEditor.Domain.Features.BooleanOperationType operation)
+    {
+        string what = operation == AvaloniaCadEditor.Domain.Features.BooleanOperationType.Subtract ? "Corte" : "União";
+        if (_sceneEvaluator == null)
+        {
+            _cadViewModel.StatusText = "✗ Evaluator não configurado.";
+            return;
+        }
+
+        var result = await new AvaloniaCadEditor.Application.EditContext.PartBooleanOperation(_sceneEvaluator, _partMerger)
+            .ApplyAsync(CurrentDocuments(), EntryFile, context, operands, operation);
+        if (result.Refusal != null)
+        {
+            _cadViewModel.StatusText = $"✗ {what} em {context.PartTypeName} não aplicado: {result.Refusal}";
+            return;
+        }
+
+        var partFile = result.Changes.First(c => !string.Equals(c.FilePath, EntryFile, StringComparison.OrdinalIgnoreCase)).FilePath;
+        if (_project != null && !string.Equals(_activeFile, partFile, StringComparison.OrdinalIgnoreCase))
+        {
+            SwitchActiveFile(partFile);
+        }
+
+        await ApplyCrossFileChangesAsync(result.Changes);
+        if (HasErrors)
+        {
+            _cadViewModel.StatusText = $"✗ {ErrorSummary}";
+            return;
+        }
+
+        string status = $"✓ {what} com {string.Join(", ", result.InsertedNames)} gravado em {context.PartTypeName} ({partFile})";
+        if (result.ChangesScene(EntryFile)) status += "; o sólido solto saiu da cena (Ctrl+Z desfaz os dois arquivos)";
+        if (!result.GeometryVerified) status += " — a cena executa, mas esta geometria não pôde ser comparada com a original";
+        if (result.Warnings.Count > 0) status += " ⚠ " + string.Join(" ", result.Warnings);
+        _cadViewModel.StatusText = status;
     }
 
     // ---------------------------------------------------------------- Edições geradas pelo app
@@ -1874,8 +1919,79 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         await RunCodeAsync();
     }
 
+    // ---------------------------------------------------------------- Desfazer de vários arquivos
+
+    /// <summary>
+    /// Uma mudança do app em mais de um arquivo (o sólido que sai da cena e entra numa peça). O histórico
+    /// comum é do arquivo ativo; esta pilha desfaz os arquivos todos de uma vez, enquanto eles estiverem
+    /// exatamente como a mudança os deixou.
+    /// </summary>
+    private sealed record CrossFileEdit(IReadOnlyDictionary<string, string> Before, IReadOnlyDictionary<string, string> After);
+
+    private readonly Stack<CrossFileEdit> _crossFileUndo = new();
+    private readonly Stack<CrossFileEdit> _crossFileRedo = new();
+
+    /// <summary>Como <see cref="ApplyExternalChangesAsync"/>, mas com um Ctrl+Z que desfaz os arquivos todos juntos.</summary>
+    public async Task ApplyCrossFileChangesAsync(IReadOnlyList<ScriptDocument> changes)
+    {
+        if (_project != null && changes.Count > 1)
+        {
+            SyncActiveDocument();
+            var before = changes.ToDictionary(c => c.FilePath, c => _documents.TryGetValue(c.FilePath, out var t) ? t : string.Empty,
+                StringComparer.OrdinalIgnoreCase);
+            var after = changes.ToDictionary(c => c.FilePath, c => c.Text, StringComparer.OrdinalIgnoreCase);
+            _crossFileUndo.Push(new CrossFileEdit(before, after));
+            _crossFileRedo.Clear();
+        }
+        await ApplyExternalChangesAsync(changes);
+    }
+
+    private bool DocumentsAre(IReadOnlyDictionary<string, string> texts)
+    {
+        SyncActiveDocument();
+        return texts.All(kv => _documents.TryGetValue(kv.Key, out var current) && current == kv.Value);
+    }
+
+    private bool TryUndoCrossFile()
+    {
+        if (_project == null || !_crossFileUndo.TryPeek(out var edit) || !DocumentsAre(edit.After)) return false;
+        _crossFileUndo.Pop();
+        foreach (var (file, text) in edit.Before)
+        {
+            _documents[file] = text;
+            if (string.Equals(file, _activeFile, StringComparison.OrdinalIgnoreCase))
+            {
+                // O passo que a mudança deixou no histórico do arquivo ativo sai junto, para não sobrar um Ctrl+Z vazio.
+                _history.DiscardLastIf(text);
+                GeneratedCSharpCode = text;
+            }
+        }
+        _crossFileRedo.Push(edit);
+        RunCodeCommand.Execute(null);
+        return true;
+    }
+
+    private bool TryRedoCrossFile()
+    {
+        if (_project == null || !_crossFileRedo.TryPeek(out var edit) || !DocumentsAre(edit.Before)) return false;
+        _crossFileRedo.Pop();
+        foreach (var (file, text) in edit.After)
+        {
+            if (string.Equals(file, _activeFile, StringComparison.OrdinalIgnoreCase))
+            {
+                _history.SaveState(GeneratedCSharpCode);
+                GeneratedCSharpCode = text;
+            }
+            _documents[file] = text;
+        }
+        _crossFileUndo.Push(edit);
+        RunCodeCommand.Execute(null);
+        return true;
+    }
+
     public void Undo()
     {
+        if (TryUndoCrossFile()) return;
         if (_history.TryUndo(GeneratedCSharpCode, out var previousCode))
         {
             GeneratedCSharpCode = previousCode;
@@ -1885,6 +2001,7 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
 
     public void Redo()
     {
+        if (TryRedoCrossFile()) return;
         if (_history.TryRedo(GeneratedCSharpCode, out var nextCode))
         {
             GeneratedCSharpCode = nextCode;
