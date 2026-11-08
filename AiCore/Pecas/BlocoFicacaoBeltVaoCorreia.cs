@@ -30,7 +30,10 @@ public sealed record BlocoFicacaoBeltVaoCorreia(
     double RasgoMeiaAltura = 4.0,
     double RaioChanfro = 1.0) : Part
 {
-    private static readonly GarraCorreia Garra = new GarraCorreia();
+    private static readonly GarraCorreia GarraPadrao = new GarraCorreia();
+
+    /// <summary>A garra da correia Y (10 mm), para a cena achar o canal por onde a correia entra.</summary>
+    public GarraCorreia Garra => GarraPadrao;
 
     public double Altura => Garra.Altura;
 

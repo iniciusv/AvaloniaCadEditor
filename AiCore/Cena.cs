@@ -499,6 +499,75 @@ var travaSuporteMotorYB = Add(travaSuporteMotorYPeca, at: Placement.At(xCentroEx
 var basePoliaYNoMotor = new Point3D(0, 0, alturaBasePoliaYNoMotor);
 var poliaYA = Add(poliaYPeca, at: inverterMotorY.Then(Placement.At(motorYA.ToWorld(basePoliaYNoMotor))), name: "polia_gt2_y_a");
 var poliaYB = Add(poliaYPeca, at: inverterMotorY.Then(Placement.At(motorYB.ToWorld(basePoliaYNoMotor))), name: "polia_gt2_y_b");
+// --- Retorno da correia Y, na ponta +Y de cada extrusão Y ---
+// A correia de 10 mm sai da polia, entra numa ponta da garra do bloco_ficacao_belt_vao_correia, sai pela
+// outra, dá a volta nos rolamentos de retorno e volta pela polia, passando por fora da garra. Os rolamentos
+// ficam num suporte_rolamentos_correia, o mesmo C do eixo X, preso pelo rasgo da parede de um
+// suporte_retorno_correia_y_2020, que é a mesma conexão da parede do bloco.
+//  - Três 623 empilhados, F623 embaixo e em cima com as flanges para fora e um 623 sem flange no meio:
+//    10 mm entre flanges, como os dois F623 do eixo X dão os 6 mm daquela correia.
+//  - Altura: centrados na faixa dos dentes da polia Y. A garra é aberta em cima e a correia corre na faixa
+//    da polia, que tem flanges.
+//  - Em X: no meio entre a linha do canal da garra (onde a correia entra, encostada na parede da garra) e o
+//    ramo de retorno que sai da polia por fora. Os dois ramos ficam a menos de 1,1 mm dessas linhas.
+//  - Em Y: além do ponto mais avançado da garra com o carrinho no fim do trilho, com os braços do C a
+//    folgaRetornoGarraY dela. O curso do carrinho continua o do trilho.
+const double espessuraCorreiaY = 1.2;
+const double folgaRetornoGarraY = 1;
+var rolamento623Peca = new Rolamento();   // 623ZZ: 3 × 10 × 4, sem flange
+var alturaRolamentosRetornoY = rolamentoF623Peca.Largura + rolamento623Peca.Largura + rolamentoF623Peca.Largura;
+var zCentroCorreiaY = poliaYA.ToWorld(new Point3D(0, 0, poliaYPeca.AlturaCubo + poliaYPeca.EspessuraFlange + poliaYPeca.LarguraDentes / 2)).Z;
+var zBaseRolamentosRetornoY = zCentroCorreiaY - alturaRolamentosRetornoY / 2;
+// O C do Y é mais curto (cabe entre o fim do curso e a travessa da frente) e a haste desce até a base dele,
+// porque aqui não há cabeça de parafuso embaixo; o parafuso do rasgo fica no meio da pilha.
+var suporteRolamentosYBase = new SuporteRolamentosCorreia(DistanciaEixo: 17.5, AlturaRolamentos: alturaRolamentosRetornoY, AlturaParafuso: alturaRolamentosRetornoY / 2);
+var suporteRolamentosYPeca = suporteRolamentosYBase with { AlturaHaste = suporteRolamentosYBase.ZBase };
+var raioCorreiaPoliaY = poliaYPeca.DiametroExterno / 2 + espessuraCorreiaY / 2;
+var garraCorreiaY = blocoFicacaoBeltVaoCorreiaPeca.Garra;
+// Quanto o carrinho Y ainda avança até a ponta dele chegar na ponta do trilho.
+var cursoRestanteCarrinhoYA = trilhoYA.ToWorld(new Point3D(0, trilhoYPeca.Comprimento, 0)).Y - carrinhoYA.ToWorld(new Point3D(0, carrinhoYPeca.Comprimento, 0)).Y;
+var cursoRestanteCarrinhoYB = trilhoYB.ToWorld(new Point3D(0, trilhoYPeca.Comprimento, 0)).Y - carrinhoYB.ToWorld(new Point3D(0, carrinhoYPeca.Comprimento, 0)).Y;
+// Ponta +Y da garra hoje (a garra vai de −Comprimento/2 a +Comprimento/2 no X local; o giro decide qual fica em +Y).
+var yPontaGarraA = Math.Max(blocoFicacaoBeltVaoCorreiaA.ToWorld(new Point3D(garraCorreiaY.Comprimento / 2, 0, 0)).Y, blocoFicacaoBeltVaoCorreiaA.ToWorld(new Point3D(-garraCorreiaY.Comprimento / 2, 0, 0)).Y);
+var yPontaGarraB = Math.Max(blocoFicacaoBeltVaoCorreiaB.ToWorld(new Point3D(garraCorreiaY.Comprimento / 2, 0, 0)).Y, blocoFicacaoBeltVaoCorreiaB.ToWorld(new Point3D(-garraCorreiaY.Comprimento / 2, 0, 0)).Y);
+// Linha do canal: a camada da correia que entra, encostada na parede do canal (y local = YParede da garra).
+var xCanalGarraA = blocoFicacaoBeltVaoCorreiaA.ToWorld(new Point3D(0, garraCorreiaY.YParede + espessuraCorreiaY / 2, 0)).X;
+var xCanalGarraB = blocoFicacaoBeltVaoCorreiaB.ToWorld(new Point3D(0, garraCorreiaY.YParede + espessuraCorreiaY / 2, 0)).X;
+// Ramo de retorno: sai da polia pelo lado de fora (−X na A, +X na B).
+var xRetornoPoliaA = poliaYA.ToWorld(Point3D.Origin).X - raioCorreiaPoliaY;
+var xRetornoPoliaB = poliaYB.ToWorld(Point3D.Origin).X + raioCorreiaPoliaY;
+var eixoRetornoYA = new Point3D((xCanalGarraA + xRetornoPoliaA) / 2, yPontaGarraA + cursoRestanteCarrinhoYA + suporteRolamentosYPeca.AlemEixo + folgaRetornoGarraY, zBaseRolamentosRetornoY);
+var eixoRetornoYB = new Point3D((xCanalGarraB + xRetornoPoliaB) / 2, yPontaGarraB + cursoRestanteCarrinhoYB + suporteRolamentosYPeca.AlemEixo + folgaRetornoGarraY, zBaseRolamentosRetornoY);
+// O C abre para −Y (os dois ramos saem por ali) e a haste vai para +Y até a parede: girado −90° em Z, o
+// +X local (da parede para o eixo) aponta para −Y. É simétrico no Y local, então A e B são iguais.
+var suporteRolamentosYA = Add(suporteRolamentosYPeca, at: Placement.At(eixoRetornoYA.X, eixoRetornoYA.Y + suporteRolamentosYPeca.DistanciaEixo, eixoRetornoYA.Z, rotationZDegrees: -90), name: "suporte_rolamentos_correia_y_a", color: "#00CC6A");
+var suporteRolamentosYB = Add(suporteRolamentosYPeca, at: Placement.At(eixoRetornoYB.X, eixoRetornoYB.Y + suporteRolamentosYPeca.DistanciaEixo, eixoRetornoYB.Z, rotationZDegrees: -90), name: "suporte_rolamentos_correia_y_b", color: "#00CC6A");
+var rolamentoRetornoYAInferior = Add(rolamentoF623Peca, at: Placement.At(eixoRetornoYA), name: "rolamento_f623_retorno_y_a_inferior");
+var rolamentoRetornoYAMeio = Add(rolamento623Peca, at: Placement.At(eixoRetornoYA.X, eixoRetornoYA.Y, eixoRetornoYA.Z + rolamentoF623Peca.Largura), name: "rolamento_623_retorno_y_a_meio");
+var rolamentoRetornoYASuperior = Add(rolamentoF623Peca with { FlangeNoTopo = true }, at: Placement.At(eixoRetornoYA.X, eixoRetornoYA.Y, eixoRetornoYA.Z + rolamentoF623Peca.Largura + rolamento623Peca.Largura), name: "rolamento_f623_retorno_y_a_superior");
+var rolamentoRetornoYBInferior = Add(rolamentoF623Peca, at: Placement.At(eixoRetornoYB), name: "rolamento_f623_retorno_y_b_inferior");
+var rolamentoRetornoYBMeio = Add(rolamento623Peca, at: Placement.At(eixoRetornoYB.X, eixoRetornoYB.Y, eixoRetornoYB.Z + rolamentoF623Peca.Largura), name: "rolamento_623_retorno_y_b_meio");
+var rolamentoRetornoYBSuperior = Add(rolamentoF623Peca with { FlangeNoTopo = true }, at: Placement.At(eixoRetornoYB.X, eixoRetornoYB.Y, eixoRetornoYB.Z + rolamentoF623Peca.Largura + rolamento623Peca.Largura), name: "rolamento_f623_retorno_y_b_superior");
+// O suporte na extrusão é um L de 6 mm: origem na aresta de baixo da face externa, na ponta +Y. A aba da
+// extrusão fica abaixo do topo dela (o carrinho Y passa por cima) e a aba do rasgo fica além do fim do curso
+// do carrinho, então nenhuma das duas entra no caminho dele. As medidas saem do C: a aba do rasgo encosta
+// na haste e o rasgo fica centrado no parafuso dela, com curso para ajustar a altura.
+var pontaExtrusaoYA = extrusaoSobTrilhoYA.ToWorld(new Point3D(0, extrusaoSobTrilhoYPeca.Comprimento, 0));
+var pontaExtrusaoYB = extrusaoSobTrilhoYB.ToWorld(new Point3D(extrusaoSobTrilhoYPeca.Largura, extrusaoSobTrilhoYPeca.Comprimento, 0));
+var suporteRetornoCorreiaYPeca = new SuporteRetornoCorreiaY2020(
+    ForaEixo: pontaExtrusaoYA.X - eixoRetornoYA.X,
+    YParede: eixoRetornoYA.Y + suporteRolamentosYPeca.DistanciaEixo - pontaExtrusaoYA.Y,
+    ZRasgo: zBaseRolamentosRetornoY + suporteRolamentosYPeca.AlturaParafuso - pontaExtrusaoYA.Z,
+    Espessura: 6);
+// O B é a imagem do A pelo plano X = 0, com as medidas do lado dele (a estrutura não é simétrica ao décimo).
+var suporteRetornoCorreiaYPecaB = suporteRetornoCorreiaYPeca with
+{
+    EspelhadoNoEixoX = true,
+    ForaEixo = eixoRetornoYB.X - pontaExtrusaoYB.X,
+    YParede = eixoRetornoYB.Y + suporteRolamentosYPeca.DistanciaEixo - pontaExtrusaoYB.Y
+};
+var suporteRetornoCorreiaYA = Add(suporteRetornoCorreiaYPeca, at: Placement.At(pontaExtrusaoYA), name: "suporte_retorno_correia_y_2020_a", color: "#00CC6A");
+var suporteRetornoCorreiaYB = Add(suporteRetornoCorreiaYPecaB, at: Placement.At(pontaExtrusaoYB), name: "suporte_retorno_correia_y_2020_b", color: "#00CC6A");
 // --- Eixo Z: motor NEMA17 no chão, fuso T8 atrás do tubo travessa e porca no suporte_fuso_z ---
 // O motor fica na estrutura fixa, em pé (eixo em +Z), com a base no chão: a face de baixo das extrusões
 // da base (extrusao_2020_base_y_*), uma altura de perfil abaixo da ponta de baixo das
