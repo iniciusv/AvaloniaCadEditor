@@ -222,6 +222,33 @@ public class PartBooleanOperationTests
         part.Should().Contain("new Point3D(10, 20, 10)");
     }
 
+    // ---------------------------------------------------------------- O que o app grava passa no lint da IA
+
+    /// <summary>
+    /// A IA lê e edita o que o app grava no Build(): as operações na peça aberta não podem deixar código que o
+    /// lint de editabilidade derrubaria (CAD0200) se a IA o tivesse escrito.
+    /// </summary>
+    [Theory]
+    [InlineData("rasgo", "Placement.At(100, 50, 20, rotationZDegrees: 90)")]
+    [InlineData("pino", "Placement.At(100, 50, 20, rotationZDegrees: 90)")]
+    [InlineData("pino", "Placement.Rotation(new Vector3D(1, 1, 0), 30).Then(Placement.Translate(new Vector3D(100, 50, 20)))")]
+    public async Task OCodigoGravadoNaPeca_NaoTemErroDeEditabilidade(string operand, string blocoAt)
+    {
+        var documents = Docs(blocoAt: blocoAt);
+        var (context, _) = await Open(documents);
+
+        var result = await Apply(documents, context, BooleanOperationType.Subtract, operand);
+        result.Refusal.Should().BeNull();
+
+        var report = AvaloniaCadEditor.Application.Ai.CadScriptEditabilityLint.Analyze(result.Changes.Single(c => c.FilePath == BlocoFile).Text);
+        _output.WriteLine(string.Join("\n", report.Findings.Select(f => $"{f.Severity} {f.RuleId} L{f.Line}: {f.Message}")));
+        report.Findings.Where(f => f.Severity == AvaloniaCadEditor.Application.Ai.EditabilitySeverity.Error).Should().BeEmpty();
+    }
+
+    private readonly Xunit.Abstractions.ITestOutputHelper _output;
+
+    public PartBooleanOperationTests(Xunit.Abstractions.ITestOutputHelper output) => _output = output;
+
     // ---------------------------------------------------------------- Código do Placement
 
     [Fact]

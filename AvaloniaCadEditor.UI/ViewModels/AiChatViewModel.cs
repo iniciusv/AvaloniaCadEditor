@@ -312,7 +312,9 @@ public class AiChatViewModel : INotifyPropertyChanged
         _cadViewModel.Sketch.Features.Where(f => f.IsSelected).ToList(),
         _scriptEditor.IsProjectOpen,
         _scriptEditor.ToSceneRelativePath,
-        _contextAdjustments);
+        _contextAdjustments,
+        _cadViewModel.OpenEntity,
+        _cadViewModel.OpenEntity != null ? _cadViewModel.SelectionService.SelectedObject as AvaloniaCadEditor.Domain.Profiles.IProfile : null);
 
     /// <summary>Recalcula os chips a partir da seleção, do arquivo ativo e dos ajustes manuais.</summary>
     private void RefreshContextFiles()

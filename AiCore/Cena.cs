@@ -285,25 +285,48 @@ var poliaX = Add(poliaXPeca, at: Placement.At(xMotorNema17, yMotorSuporte, zBase
 // --- Rolamentos da correia do eixo X ---
 // Os rolamentos que desviam a correia ficam centrados nela, sempre aos pares costas com costas
 // (flanges para fora), para a correia de 6 mm correr entre as duas flanges:
-//  - nas placas de suporte A e B, no furo porca_inferior_2: arruela do topo da placa até dois
-//    F623ZZ (8 mm, 6 mm entre flanges). O M3 desce por eles e pela placa até a porca alojada na
-//    face inferior;
+//  - nas pontas, um par de F623ZZ (8 mm, 6 mm entre flanges) no C de cada suporte_rolamentos_correia,
+//    preso pelo rasgo da parede do bloco_ficacao_belt_vao_correia do mesmo lado (ver abaixo);
 //  - nos dois espaçadores do suporte do motor: dois F686ZZ (10 mm, 7,8 mm entre flanges) sobre o
 //    corpo Ø5,9 do espaçador, apoiados numa arruela no topo do suporte — um só deixava 3,9 mm
 //    acima da flange. Como o furo do espaçador é excêntrico, girá-lo pelo sextavado desloca os
 //    rolamentos e tensiona a correia.
 var rolamentoF623Peca = Rolamento.F623ZZ;
 var zBaseRolamentosPlaca = zCentroCorreiaX - rolamentoF623Peca.Largura;
-// porca_inferior_2 fica em (−4,5·sx, 10) local da placa; z = 5,5 é o topo dela.
-var topoPorcaInferior2PlacaA = placaSuporteYA.ToWorld(new Point3D(-4.5 * (placaSuporteYA.Part.EspelhadoNoEixoY ? -1.0 : 1.0), 10, 5.5));
-var topoPorcaInferior2PlacaB = placaSuporteYB.ToWorld(new Point3D(-4.5 * (placaSuporteYB.Part.EspelhadoNoEixoY ? -1.0 : 1.0), 10, 5.5));
-var arruelaRolamentoPlacaPeca = new ArruelaEspacadora(Altura: zBaseRolamentosPlaca - topoPorcaInferior2PlacaA.Z);
-var arruelaRolamentoPlacaA = Add(arruelaRolamentoPlacaPeca, at: Placement.At(topoPorcaInferior2PlacaA), name: "arruela_rolamento_placa_a", color: "#00CC6A");
-var arruelaRolamentoPlacaB = Add(arruelaRolamentoPlacaPeca, at: Placement.At(topoPorcaInferior2PlacaB), name: "arruela_rolamento_placa_b", color: "#00CC6A");
-var rolamentoPlacaAInferior = Add(rolamentoF623Peca, at: Placement.At(topoPorcaInferior2PlacaA.X, topoPorcaInferior2PlacaA.Y, zBaseRolamentosPlaca), name: "rolamento_f623_placa_a_inferior");
-var rolamentoPlacaASuperior = Add(rolamentoF623Peca with { FlangeNoTopo = true }, at: Placement.At(topoPorcaInferior2PlacaA.X, topoPorcaInferior2PlacaA.Y, zBaseRolamentosPlaca + rolamentoF623Peca.Largura), name: "rolamento_f623_placa_a_superior");
-var rolamentoPlacaBInferior = Add(rolamentoF623Peca, at: Placement.At(topoPorcaInferior2PlacaB.X, topoPorcaInferior2PlacaB.Y, zBaseRolamentosPlaca), name: "rolamento_f623_placa_b_inferior");
-var rolamentoPlacaBSuperior = Add(rolamentoF623Peca with { FlangeNoTopo = true }, at: Placement.At(topoPorcaInferior2PlacaB.X, topoPorcaInferior2PlacaB.Y, zBaseRolamentosPlaca + rolamentoF623Peca.Largura), name: "rolamento_f623_placa_b_superior");
+// --- Conexão da correia às placas A e B: garra de correia + parede + fixação superior ---
+// A face de apoio da peça (y = 0 local) encosta na face externa da placa e o topo da garra fica
+// rente ao topo da placa. O plano de simetria da garra (x = 0 local) fica no eixo da fixacao_x_6
+// da placa (y = 2 local da placa), que atravessa a garra; os furos da fixação superior caem sobre
+// furo_fixacao_carrinho_1 e furo_fixacao_carrinho_2. O +Y local (para fora da garra) aponta para
+// longe da placa: girado 90° em Z na A (−X do mundo) e −90° na B (+X).
+// A placa B é a imagem da A pelo plano X = 0, e o bloco também: a única coisa assimétrica nele é o
+// DeslocamentoFurosFixacao (furos e rasgos), que troca de sinal.
+var sxPlacaSuporteYA = placaSuporteYA.Part.EspelhadoNoEixoY ? -1.0 : 1.0;
+var sxPlacaSuporteYB = placaSuporteYB.Part.EspelhadoNoEixoY ? -1.0 : 1.0;
+var topoPlacaSuporteYA = placaSuporteYA.ToWorld(new Point3D(0, 0, 5.5));
+var blocoFicacaoBeltVaoCorreiaPeca = new BlocoFicacaoBeltVaoCorreia();
+var blocoFicacaoBeltVaoCorreiaPecaB = blocoFicacaoBeltVaoCorreiaPeca with { DeslocamentoFurosFixacao = -blocoFicacaoBeltVaoCorreiaPeca.DeslocamentoFurosFixacao };
+var fixacaoX6PlacaA = placaSuporteYA.ToWorld(new Point3D(16 * sxPlacaSuporteYA, 2, 0));
+var fixacaoX6PlacaB = placaSuporteYB.ToWorld(new Point3D(16 * sxPlacaSuporteYB, 2, 0));
+var zBlocoFicacaoBeltVaoCorreia = topoPlacaSuporteYA.Z - blocoFicacaoBeltVaoCorreiaPeca.Altura;
+var blocoFicacaoBeltVaoCorreiaA = Add(blocoFicacaoBeltVaoCorreiaPeca, at: Placement.At(fixacaoX6PlacaA.X, fixacaoX6PlacaA.Y, zBlocoFicacaoBeltVaoCorreia, rotationZDegrees: 90), name: "bloco_ficacao_belt_vao_correia_a", color: "#00CC6A");
+var blocoFicacaoBeltVaoCorreiaB = Add(blocoFicacaoBeltVaoCorreiaPecaB, at: Placement.At(fixacaoX6PlacaB.X, fixacaoX6PlacaB.Y, zBlocoFicacaoBeltVaoCorreia, rotationZDegrees: -90), name: "bloco_ficacao_belt_vao_correia_b", color: "#00CC6A");
+// --- Suportes em C dos rolamentos das pontas ---
+// A haste encosta na face interna da parede do bloco, no rasgo do lado dos rolamentos (rasgo_1 na A,
+// rasgo_2 na B, que é a imagem dele), e avança sobre a placa até o C. Um M3 vem de fora da parede,
+// passa pelo rasgo e rosqueia na porca da haste. O suporte fica na altura da correia: o parafuso cai
+// em z local AlturaParafuso, dentro do curso do rasgo (ZRasgo ± RasgoMeiaAltura).
+var suporteRolamentosCorreiaPeca = new SuporteRolamentosCorreia(AlturaRolamentos: 2 * rolamentoF623Peca.Largura);
+var rasgoRolamentosA = blocoFicacaoBeltVaoCorreiaA.ToWorld(new Point3D(blocoFicacaoBeltVaoCorreiaPeca.XRasgo1, 0, 0));
+var rasgoRolamentosB = blocoFicacaoBeltVaoCorreiaB.ToWorld(new Point3D(blocoFicacaoBeltVaoCorreiaPecaB.XRasgo2, 0, 0));
+var suporteRolamentosCorreiaA = Add(suporteRolamentosCorreiaPeca, at: Placement.At(rasgoRolamentosA.X, rasgoRolamentosA.Y, zBaseRolamentosPlaca), name: "suporte_rolamentos_correia_a", color: "#00CC6A");
+var suporteRolamentosCorreiaB = Add(suporteRolamentosCorreiaPeca, at: Placement.At(rasgoRolamentosB.X, rasgoRolamentosB.Y, zBaseRolamentosPlaca, rotationZDegrees: 180), name: "suporte_rolamentos_correia_b", color: "#00CC6A");
+var eixoRolamentosPlacaA = suporteRolamentosCorreiaA.ToWorld(suporteRolamentosCorreiaPeca.EixoRolamentos);
+var eixoRolamentosPlacaB = suporteRolamentosCorreiaB.ToWorld(suporteRolamentosCorreiaPeca.EixoRolamentos);
+var rolamentoPlacaAInferior = Add(rolamentoF623Peca, at: Placement.At(eixoRolamentosPlacaA), name: "rolamento_f623_placa_a_inferior");
+var rolamentoPlacaASuperior = Add(rolamentoF623Peca with { FlangeNoTopo = true }, at: Placement.At(eixoRolamentosPlacaA.X, eixoRolamentosPlacaA.Y, eixoRolamentosPlacaA.Z + rolamentoF623Peca.Largura), name: "rolamento_f623_placa_a_superior");
+var rolamentoPlacaBInferior = Add(rolamentoF623Peca, at: Placement.At(eixoRolamentosPlacaB), name: "rolamento_f623_placa_b_inferior");
+var rolamentoPlacaBSuperior = Add(rolamentoF623Peca with { FlangeNoTopo = true }, at: Placement.At(eixoRolamentosPlacaB.X, eixoRolamentosPlacaB.Y, eixoRolamentosPlacaB.Z + rolamentoF623Peca.Largura), name: "rolamento_f623_placa_b_superior");
 // Rolamento do espaçador: coaxial com o CORPO do espaçador (a origem dele), não com o furo.
 var rolamentoF686Peca = Rolamento.F686ZZ;
 var zBaseRolamentosEspacador = zCentroCorreiaX - rolamentoF686Peca.Largura;
@@ -343,11 +366,11 @@ var caminhoCorreiaX = SweepPath.AroundCircles(pontaCorreiaXA, new[]
 {
     new SweepWrap(NaGarraBelt(-garraBelt.NarizX, garraBelt.NarizY), raioCorreiaNarizGarra, Clockwise: true),
     new SweepWrap(NaGarraBelt(garraBelt.DistanciaParafuso, garraBelt.ParafusoY), raioCorreiaParafusoGarra, Clockwise: false),
-    new SweepWrap(NoPlanoCorreiaX(topoPorcaInferior2PlacaA), raioCorreiaF623, Clockwise: false),
+    new SweepWrap(NoPlanoCorreiaX(eixoRolamentosPlacaA), raioCorreiaF623, Clockwise: false),
     new SweepWrap(NoPlanoCorreiaX(centroEspacadorMotor2), raioCorreiaF686, Clockwise: true),
     new SweepWrap(NoPlanoCorreiaX(poliaX.ToWorld(Point3D.Origin)), raioCorreiaPoliaX, Clockwise: false),
     new SweepWrap(NoPlanoCorreiaX(centroEspacadorMotor1), raioCorreiaF686, Clockwise: true),
-    new SweepWrap(NoPlanoCorreiaX(topoPorcaInferior2PlacaB), raioCorreiaF623, Clockwise: false),
+    new SweepWrap(NoPlanoCorreiaX(eixoRolamentosPlacaB), raioCorreiaF623, Clockwise: false),
     new SweepWrap(NaGarraBelt(-garraBelt.DistanciaParafuso, garraBelt.ParafusoY), raioCorreiaParafusoGarra, Clockwise: false),
     new SweepWrap(NaGarraBelt(garraBelt.NarizX, garraBelt.NarizY), raioCorreiaNarizGarra, Clockwise: true),
 }, pontaCorreiaXB, Vector3D.UnitZ);
@@ -365,20 +388,6 @@ var xChapaFurosBelt = (furoVerticalBeltA.X + furoVerticalBeltB.X) / 2.0 - chapaF
 var yChapaFurosBelt = (furoVerticalBeltA.Y + furoVerticalBeltB.Y) / 2.0 - chapaFurosBeltPeca.ComprimentoY / 2.0;
 var zChapaFurosBelt = alturaTopoCarrinhosY + carrinhoXPeca.Altura + blocoFixacaoBeltPeca.AlturaCorpo;
 var chapaFurosBelt = Add(chapaFurosBeltPeca, at: Placement.At(xChapaFurosBelt, yChapaFurosBelt, zChapaFurosBelt), name: "chapa_furos_belt", color: "#00CC6A");
-// Referências da placa A para posicionar a conexão da correia (a placa B é a espelhada, por isso sx).
-var sxPlacaSuporteYA = placaSuporteYA.Part.EspelhadoNoEixoY ? -1.0 : 1.0;
-var topoPlacaSuporteYA = placaSuporteYA.ToWorld(new Point3D(0, 0, 5.5));
-// --- Conexão da correia à placa A: garra de correia + parede + fixação superior ---
-// A face de apoio da peça (y = 0 local) encosta na face externa da placa A e o topo da garra fica
-// rente ao topo da placa. O plano de simetria da garra (x = 0 local) fica no eixo da fixacao_x_6
-// da placa (y = 2 local da placa), que atravessa a garra; os furos da fixação superior caem sobre
-// furo_fixacao_carrinho_1 e furo_fixacao_carrinho_2. Girada 90° em Z: o +Y local (para fora da
-// garra) aponta para −X do mundo, para longe da placa.
-var blocoFicacaoBeltVaoCorreiaPeca = new BlocoFicacaoBeltVaoCorreia();
-var xFaceExternaPlacaA = placaSuporteYA.ToWorld(new Point3D(16 * sxPlacaSuporteYA, 0, 0)).X;
-var yFixacaoX6PlacaA = placaSuporteYA.ToWorld(new Point3D(16 * sxPlacaSuporteYA, 2, 0)).Y;
-var zBlocoFicacaoBeltVaoCorreia = topoPlacaSuporteYA.Z - blocoFicacaoBeltVaoCorreiaPeca.Altura;
-var blocoFicacaoBeltVaoCorreia = Add(blocoFicacaoBeltVaoCorreiaPeca, at: Placement.At(xFaceExternaPlacaA, yFixacaoX6PlacaA, zBlocoFicacaoBeltVaoCorreia, rotationZDegrees: 90), name: "bloco_ficacao_belt_vao_correia", color: "#00CC6A");
 // --- Tubo retangular 50 x 30 (parede 2, quinas R2) de aço, preso sob as extrusões Y ---
 // O tubo real tem 280 mm e fica centrado entre as extrusões. Em Y a face de trás fica vaoCarrinhoZTubo à
 // frente do topo do carrinho Z mais avançado (o B, 0,45 mm à frente do A), espaço para a fixação do
@@ -432,8 +441,14 @@ const double folgaMotorY = 1;
 const double folgaPoliaBossMotorY = 1;
 var poliaYPeca = new PoliaGt2(Dentes: 24, Altura: 20, AlturaCubo: 7);
 var meioLadoMotorY = motorNema17Peca.Lado / 2;
-// Faixa da polia: a mesma de quando o motor ficava em pé com a base folgaMotorY acima do tubo travessa.
-var zBaixoPoliaY = zTopoTuboTravessa + folgaMotorY + motorNema17Peca.Comprimento + motorNema17Peca.AlturaBoss + folgaPoliaBossMotorY;
+// Elevação do conjunto do motor Y (motor e polia): quem levanta é a TravaSuporteMotorY, que ganhou uma sola de
+// Elevacao milímetros — ela assenta no topo do pedestal e o suporte passa a apoiar sobre essa sola. O suporte é
+// reaproveitado como está (já impresso, espessura de 10) e o pedestal fica com a altura de antes: o AlturaApoio
+// dele desconta esta elevação.
+const double elevacaoMotoresY = 5;
+// Faixa da polia: a mesma de quando o motor ficava em pé com a base folgaMotorY acima do tubo travessa,
+// deslocada elevacaoMotoresY para cima com o motor (a polia está no eixo dele).
+var zBaixoPoliaY = zTopoTuboTravessa + folgaMotorY + motorNema17Peca.Comprimento + motorNema17Peca.AlturaBoss + folgaPoliaBossMotorY + elevacaoMotoresY;
 // Distância, no eixo do motor, da base traseira do corpo até a face do cubo da polia.
 var alturaBasePoliaYNoMotor = motorNema17Peca.Comprimento + motorNema17Peca.AlturaBoss + folgaPoliaBossMotorY;
 // De ponta-cabeça: a base traseira do corpo (origem local) fica em cima, a face do cubo da polia embaixo dela.
@@ -457,17 +472,20 @@ var suporteMotorYA = Add(suporteMotorNema17Peca, at: inverterMotorY.Then(Placeme
 var suporteMotorYB = Add(suporteMotorNema17Peca, at: inverterMotorY.Then(Placement.At(motorYB.ToWorld(faceFrontalMotorYNoMotor), rotationZDegrees: 90)), name: "suporte_motor_nema17_y_b", color: "#00CC6A");
 // Cada suporte de motor Y vai na extrusão Y por duas peças, no fim dela onde o trilho já acabou, todas as
 // fixações na estrutura em Z: o pedestal_motor_y_2020 assenta no topo da extrusão (2 M3 de cima no canal) e
-// sustenta o suporte; a trava_suporte_motor_y encosta na face da frente do suporte (2 M3 em X nas porcas
-// laterais dele, apertados na bancada) e é presa no topo do pedestal por 2 M3 verticais. As duas têm o
-// comprimento do suporte em Y. AlturaApoio e AvancoSuporte saem da posição do suporte: a face de cima dele (de
-// ponta-cabeça, a de encosto no motor fica em cima) menos a espessura, e quanto a face da frente passa da face
-// de fora da extrusão. As do B são as mesmas peças giradas 180°.
+// sustenta a trava; a trava_suporte_motor_y encosta na face da frente do suporte (2 M3 em X nas porcas
+// laterais dele, apertados na bancada), tem uma sola de Elevacao onde o suporte apoia e é presa no topo do
+// pedestal por 2 M3 verticais. As duas têm o comprimento do suporte em Y. AlturaApoio, AvancoSuporte e a
+// elevação saem da posição do suporte: a face de cima dele (de ponta-cabeça, a de encosto no motor fica em
+// cima) menos a espessura, menos a sola da trava, e quanto a face da frente passa da face de fora da extrusão.
+// As do B são as mesmas peças giradas 180°.
 var zTopoExtrusoesY = zBaseExtrusoesY + extrusaoSobTrilhoYPeca.Altura;
 var faceFrenteSuporteMotorYA = suporteMotorYA.ToWorld(new Point3D(0, -suporteMotorNema17Peca.ComprimentoFrente, suporteMotorNema17Peca.Espessura));
-var alturaApoioMotorY = faceFrenteSuporteMotorYA.Z - zTopoExtrusoesY;
+// Altura do pedestal: da face de baixo do suporte até o topo da extrusão, descontada a elevação que a trava
+// acrescenta (o suporte fica elevacaoMotoresY acima do topo do pedestal, apoiado na sola da trava).
+var alturaApoioMotorY = faceFrenteSuporteMotorYA.Z - zTopoExtrusoesY - elevacaoMotoresY;
 var avancoSuporteMotorY = faceFrenteSuporteMotorYA.X - cantoExtrusaoYA.X;
 var pedestalMotorYPeca = new PedestalMotorY2020(AlturaApoio: alturaApoioMotorY, AvancoSuporte: avancoSuporteMotorY, Comprimento: suporteMotorNema17Peca.Largura);
-var travaSuporteMotorYPeca = new TravaSuporteMotorY(AvancoSuporte: avancoSuporteMotorY, Espessura: suporteMotorNema17Peca.Espessura, Comprimento: suporteMotorNema17Peca.Largura);
+var travaSuporteMotorYPeca = new TravaSuporteMotorY(AvancoSuporte: avancoSuporteMotorY, Espessura: suporteMotorNema17Peca.Espessura, Elevacao: elevacaoMotoresY, Comprimento: suporteMotorNema17Peca.Largura);
 var xCentroExtrusaoYA = cantoExtrusaoYA.X + extrusaoSobTrilhoYPeca.Largura / 2;
 var xCentroExtrusaoYB = cantoExtrusaoYB.X - extrusaoSobTrilhoYPeca.Largura / 2;
 var yEixoMotorYA = motorYA.ToWorld(new Point3D(0, 0, 0)).Y;

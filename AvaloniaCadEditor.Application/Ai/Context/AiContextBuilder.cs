@@ -5,6 +5,7 @@ using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Application.Scenes;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.Scripting;
+using AvaloniaCadEditor.Domain.ValueObjects;
 
 namespace AvaloniaCadEditor.Application.Ai.Context;
 
@@ -50,6 +51,11 @@ public sealed record AiContextScope(IReadOnlyList<AiContextFile> Files)
 /// <param name="IsProjectOpen">False = cena de arquivo único: a IA edita só esse arquivo.</param>
 /// <param name="ToRelative">Normaliza <see cref="SourceOrigin.FilePath"/> para o formato de <paramref name="Documents"/>.</param>
 /// <param name="Adjustments">Arquivos fixados/excluídos pelo usuário.</param>
+/// <param name="OpenEntity">
+/// A entidade aberta com duplo clique, se houver. Lá dentro o que se seleciona são faces, então sem isto a IA
+/// não saberia em que peça o usuário está: ela entra como seleção, com o aviso de que está aberta.
+/// </param>
+/// <param name="SelectedFace">A face selecionada dentro da entidade aberta, se houver.</param>
 public sealed record AiContextRequest(
     IReadOnlyList<ScriptDocument> Documents,
     string EntryFile,
@@ -57,7 +63,14 @@ public sealed record AiContextRequest(
     IReadOnlyList<IFeature> Selected,
     bool IsProjectOpen = true,
     Func<string, string>? ToRelative = null,
-    AiContextAdjustments? Adjustments = null);
+    AiContextAdjustments? Adjustments = null,
+    IFeature? OpenEntity = null,
+    AvaloniaCadEditor.Domain.Profiles.IProfile? SelectedFace = null)
+{
+    /// <summary>A seleção mais a entidade aberta (se não estava selecionada), que é o que a IA trata como selecionado.</summary>
+    public IReadOnlyList<IFeature> SelectedWithOpenEntity =>
+        OpenEntity == null || Selected.Any(f => f.Name == OpenEntity.Name) ? Selected : Selected.Append(OpenEntity).ToList();
+}
 
 /// <summary>Monta o que a IA recebe a partir do estado do editor.</summary>
 public interface IAiContextBuilder
@@ -83,7 +96,7 @@ public sealed class AiContextBuilder : IAiContextBuilder
     public CadScriptContext Build(AiContextRequest request)
     {
         string activeFile = request.ActiveFile ?? request.EntryFile;
-        string? primarySelection = request.Selected.FirstOrDefault()?.Name;
+        string? primarySelection = request.SelectedWithOpenEntity.FirstOrDefault()?.Name;
 
         if (!request.IsProjectOpen)
         {
@@ -103,7 +116,7 @@ public sealed class AiContextBuilder : IAiContextBuilder
         var multiFile = new MultiFileScope(
             scope.Files.Select(f => index.Find(f.FilePath)!).ToList(),
             kinds,
-            request.Selected.Select(f => DescribeSelected(f, toRelative)).ToList());
+            DescribeSelection(request, toRelative));
 
         var partSummaries = index.PartTypes
             .Where(t => !scope.Contains(t.FilePath))
@@ -137,7 +150,7 @@ public sealed class AiContextBuilder : IAiContextBuilder
         Include(request.EntryFile, AiContextReason.Entry);
         Include(request.ActiveFile, AiContextReason.Active);
 
-        foreach (var hit in SelectionFileResolver.Resolve(request.Selected, index, request.ToRelative ?? DefaultToRelative))
+        foreach (var hit in SelectionFileResolver.Resolve(request.SelectedWithOpenEntity, index, request.ToRelative ?? DefaultToRelative))
         {
             Include(hit.FilePath, AiContextReason.Selection, hit.Detail);
         }
@@ -156,6 +169,49 @@ public sealed class AiContextBuilder : IAiContextBuilder
     }
 
     private static string DefaultToRelative(string path) => path.Replace('\\', '/');
+
+    /// <summary>
+    /// As linhas de "SÓLIDOS SELECIONADOS": cada sólido, a entidade aberta marcada como tal (e, numa peça, que o
+    /// Build() é local) e a face selecionada dentro dela, nas coordenadas em que o código está escrito.
+    /// </summary>
+    private static IReadOnlyList<string> DescribeSelection(AiContextRequest request, Func<string, string> toRelative)
+    {
+        var lines = new List<string>();
+        foreach (var feature in request.SelectedWithOpenEntity)
+        {
+            string text = DescribeSelected(feature, toRelative);
+            if (request.OpenEntity != null && feature.Name == request.OpenEntity.Name)
+            {
+                text += feature is PartInstance instance
+                    ? $" · ABERTA para edição: o usuário está modelando dentro de {instance.PartTypeName}; o que ele pedir vai no Build() dela, em coordenadas locais"
+                    : " · ABERTA para edição: o usuário está modelando dentro deste sólido";
+            }
+            lines.Add(text);
+        }
+
+        if (request.SelectedFace is { } face && request.OpenEntity is { } open)
+            lines.Add(DescribeFace(face, open));
+        return lines;
+    }
+
+    /// <summary>
+    /// Ex.: "face de bloco: normal (0, 0, 1), centro (20, 15, 10), local de Bloco". Numa peça, nas coordenadas do
+    /// Build(); num sólido solto, nas do mundo, que é onde o código dele está.
+    /// </summary>
+    internal static string DescribeFace(AvaloniaCadEditor.Domain.Profiles.IProfile face, IFeature openEntity)
+    {
+        var toCode = openEntity is PartInstance instance ? instance.Placement.Inverse() : Placement.Identity;
+        var vertices = face.GetVertices(32);
+        var center = vertices.Count == 0
+            ? face.Plane.Origin
+            : new Point3D(vertices.Average(v => v.X), vertices.Average(v => v.Y), vertices.Average(v => v.Z));
+        var c = toCode.Apply(center);
+        var n = toCode.ApplyVector(face.Plane.Normal);
+        string frame = openEntity is PartInstance part ? $"local de {part.PartTypeName}" : "mundo";
+        return $"face de {openEntity.Name}: normal ({N(n.X)}, {N(n.Y)}, {N(n.Z)}), centro ({N(c.X)}, {N(c.Y)}, {N(c.Z)}), {frame}";
+
+        static string N(double v) => AvaloniaCadEditor.Application.Scenes.PlacementSource.Number(Math.Round(v, 3));
+    }
 
     /// <summary>Ex.: "trilho_mgn15_y_a (peça TrilhoMgn15) — Cena.cs, linha 23".</summary>
     private static string DescribeSelected(IFeature feature, Func<string, string> toRelative)

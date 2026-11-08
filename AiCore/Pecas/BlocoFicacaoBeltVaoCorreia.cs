@@ -34,6 +34,14 @@ public sealed record BlocoFicacaoBeltVaoCorreia(
 
     public double Altura => Garra.Altura;
 
+    /// <summary>X local do meio do rasgo_1 (o de −X) e do rasgo_2: é por eles que o
+    /// <see cref="SuporteRolamentosCorreia"/> se prende na parede.</summary>
+    public double XRasgo1 => DeslocamentoFurosFixacao - DistanciaRasgos;
+    public double XRasgo2 => DeslocamentoFurosFixacao + DistanciaRasgos;
+
+    /// <summary>Z local do meio dos rasgos; o curso vai RasgoMeiaAltura para cada lado.</summary>
+    public double ZRasgo => Garra.Altura + AlturaRasgo;
+
     protected override IFeature Build()
     {
         var metadeX = Garra.Comprimento / 2.0;
@@ -62,9 +70,9 @@ public sealed record BlocoFicacaoBeltVaoCorreia(
 
         // Rasgos verticais (stadium) na parede, atravessando-a em Y: a caixa dá o trecho reto e os
         // dois cilindros arredondam as pontas.
-        var xRasgo1 = DeslocamentoFurosFixacao - DistanciaRasgos;
-        var xRasgo2 = DeslocamentoFurosFixacao + DistanciaRasgos;
-        var zRasgo = topoGarra + AlturaRasgo;
+        var xRasgo1 = XRasgo1;
+        var xRasgo2 = XRasgo2;
+        var zRasgo = ZRasgo;
         var rasgo_1 = new BoxFeature(new Point3D(xRasgo1 - raioFuro, -1.0, zRasgo - RasgoMeiaAltura), DiametroFuro, yParede + 2.0, 2.0 * RasgoMeiaAltura) { Name = "rasgo_1", IsTransientTool = true };
         var cilindro_rasgo_superior_1 = new CylinderFeature(new Point3D(xRasgo1, -1.0, zRasgo + RasgoMeiaAltura), Vector3D.UnitY, raioFuro, yParede + 2.0) { Name = "cilindro_rasgo_superior_1", IsTransientTool = true };
         var cilindro_rasgo_inferior_1 = new CylinderFeature(new Point3D(xRasgo1, -1.0, zRasgo - RasgoMeiaAltura), Vector3D.UnitY, raioFuro, yParede + 2.0) { Name = "cilindro_rasgo_inferior_1", IsTransientTool = true };

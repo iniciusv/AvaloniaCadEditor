@@ -43,6 +43,12 @@ locais, como o Extrude já faz.
 - [x] **6. Testes:** `Tests/Scenes/PartBooleanOperationTests.cs` (sólido consumido, peça copiada em peça girada
       em qualquer eixo, dois operandos, recusas, Sweep, `PlacementSource`) e `OpenEntityTests` (corte de
       ponta a ponta com Ctrl+Z dos dois arquivos; resultado reaberto numa entidade solta).
+- [x] **6b. O que a IA vê com uma entidade aberta** (`AiContextRequest.OpenEntity`/`SelectedFace`): lá dentro
+      só se selecionam faces, então a IA não sabia em que peça o usuário estava, e o arquivo dela podia nem ir
+      no contexto. Agora a entidade aberta entra como seleção, marcada "ABERTA" (numa peça, com o aviso de que
+      o pedido vai no `Build()` em coordenadas locais), e a face selecionada vai com normal e centro nas
+      coordenadas do código. O lint de editabilidade não acusa nada no que as operações gravam
+      (`PartBooleanOperationTests.OCodigoGravadoNaPeca_NaoTemErroDeEditabilidade`).
 - [ ] **7. Verificação no app** (pedir permissão): cortar o motor na placa, `Ctrl+Z`, Sweep dentro da peça.
 
 ## Limites conhecidos

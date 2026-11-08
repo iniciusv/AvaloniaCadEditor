@@ -129,4 +129,39 @@ public class AiContextBuilderTests
         context.Kind.Should().Be(CadFileKind.StandaloneScript);
         _builder.ResolveScope(request).Files.Should().BeEmpty();
     }
+
+    // ---------------------------------------------------------------- Entidade aberta (duplo clique)
+
+    [Fact]
+    public async Task PecaAberta_EntraComoSelecao_ComOAvisoDeQueEstaAberta_EAFaceEmCoordenadasLocais()
+    {
+        var docs = ContextTestScene.Documents();
+        var features = await ContextTestScene.EvaluateAsync(docs);
+        var open = features.Single(f => f.Name == "c_1");
+        // O topo de c_1 (caixa 10 x 10 x 10 em x = 100), como o clique numa face o vê no mundo.
+        var mesh = new AvaloniaCadEditor.Domain.Mesh.TriangleMesh(
+            new float[] { 100, 0, 10, 110, 0, 10, 110, 10, 10, 100, 10, 10 },
+            new float[] { 0, 0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1 },
+            new uint[] { 0, 1, 2, 0, 2, 3 });
+        var face = new AvaloniaCadEditor.Domain.Profiles.FaceProfile(open,
+            new AvaloniaCadEditor.Domain.ValueObjects.WorkPlane(AvaloniaCadEditor.Domain.ValueObjects.Vector3D.UnitZ,
+                new AvaloniaCadEditor.Domain.ValueObjects.Point3D(100, 0, 10)), mesh);
+        var request = new AiContextRequest(docs, "Cena.cs", "Cena.cs", Array.Empty<IFeature>(), OpenEntity: open, SelectedFace: face);
+
+        Paths(_builder.ResolveScope(request)).Should().Contain("Pecas/PecaC.cs", "a peça aberta vai inteira para a IA, mesmo sem sólido marcado");
+        var selected = _builder.Build(request).Scope!.SelectedFeatures;
+        selected.Should().Contain(l => l.StartsWith("c_1 (peça PecaC)") && l.Contains("ABERTA") && l.Contains("coordenadas locais"));
+        selected.Should().Contain("face de c_1: normal (0, 0, 1), centro (5, 5, 10), local de PecaC");
+    }
+
+    [Fact]
+    public async Task SemEntidadeAberta_NadaMuda()
+    {
+        var docs = ContextTestScene.Documents();
+        var features = await ContextTestScene.EvaluateAsync(docs);
+
+        var selected = _builder.Build(Request(docs, features.Where(f => f.Name == "a_1"))).Scope!.SelectedFeatures;
+
+        selected.Should().ContainSingle().Which.Should().NotContain("ABERTA");
+    }
 }
