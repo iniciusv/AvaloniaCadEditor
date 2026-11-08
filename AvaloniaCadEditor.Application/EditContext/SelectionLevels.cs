@@ -48,9 +48,9 @@ public static class SelectionLevels
     /// O alvo de um clique, a partir de todos os acertos do raio (do mais perto ao mais longe).
     /// <list type="bullet">
     /// <item>Sem entidade aberta: o acerto mais perto.</item>
-    /// <item>Com entidade aberta: só ela e os vazios dela contam; o resto da cena não é selecionável. Um vazio
-    /// ganha do corpo mesmo atrás dele (os vazios ficam dentro do corpo, e senão nunca seriam alcançados),
-    /// exceto com <paramref name="bodyOnly"/>, para quem quer a face do corpo (o Extrude).</item>
+    /// <item>Com entidade aberta: só ela e os vazios dela contam; o resto da cena não é selecionável. Entre o
+    /// corpo e um vazio, o que estiver na frente; rente um ao outro (a boca de um furo), o vazio. Com
+    /// <paramref name="bodyOnly"/>, só o corpo, para quem quer a face dele (o Extrude).</item>
     /// </list>
     /// </summary>
     /// <param name="hits">Acertos do raio, do mais perto ao mais longe.</param>
@@ -65,20 +65,22 @@ public static class SelectionLevels
 
         if (openEntityId == null) return hits.Count > 0 ? hits[0] : null;
 
-        if (!bodyOnly)
-        {
-            foreach (var hit in hits)
-            {
-                if (hit.FeatureId is Guid id && openEntityToolIds.Contains(id)) return hit;
-            }
-        }
-
+        RaycastHit? body = null, tool = null;
         foreach (var hit in hits)
         {
-            if (hit.FeatureId == openEntityId) return hit;
+            if (body == null && hit.FeatureId == openEntityId) body = hit;
+            else if (tool == null && !bodyOnly && hit.FeatureId is Guid id && openEntityToolIds.Contains(id)) tool = hit;
         }
-        return null;
+
+        // O que se vê é o que se pega: o vazio só ganha quando aparece na frente do corpo, ou rente a ele (a boca
+        // de um furo, cuja parede coincide com a do vazio). Vazio escondido atrás de uma face continua alcançável
+        // pelo TAB (Selectable) e pela árvore, mas não rouba o clique de quem mirou a face.
+        if (tool is { } t && (body is not { } b || t.Distance <= b.Distance + CoincidentDistance)) return tool;
+        return body;
     }
+
+    /// <summary>Folga (mm) para tratar como na mesma superfície um vazio e o corpo atingidos à mesma distância.</summary>
+    public const float CoincidentDistance = 0.01f;
 
     /// <summary>Os acertos que podem ser selecionados no nível atual (para o ciclo do TAB).</summary>
     public static IReadOnlyList<RaycastHit> Selectable(IReadOnlyList<RaycastHit> hits, Guid? openEntityId,

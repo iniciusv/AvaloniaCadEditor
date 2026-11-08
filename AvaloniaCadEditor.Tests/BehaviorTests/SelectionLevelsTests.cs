@@ -43,9 +43,27 @@ public class SelectionLevelsTests
     }
 
     [Fact]
-    public void DentroDaEntidade_OVazioGanhaDoCorpoMesmoAtrasDele()
+    public void DentroDaEntidade_AFaceNaFrente_GanhaDoVazioAtrasDela()
     {
         var hits = new[] { Hit(1, Body), Hit(2, Tool) };
+
+        SelectionLevels.Pick(hits, Body, new[] { Tool })!.Value.FeatureId.Should().Be(Body,
+            "quem clica numa face quer a face, não o vazio escondido atrás dela");
+    }
+
+    [Fact]
+    public void DentroDaEntidade_OVazioNaFrente_Ganha()
+    {
+        var hits = new[] { Hit(1, Tool), Hit(2, Body) };
+
+        SelectionLevels.Pick(hits, Body, new[] { Tool })!.Value.FeatureId.Should().Be(Tool);
+    }
+
+    [Fact]
+    public void DentroDaEntidade_VazioRenteAoCorpo_Ganha()
+    {
+        // A boca de um furo: a parede do vazio coincide com a do corpo.
+        var hits = new[] { Hit(5f, Body), Hit(5.005f, Tool) };
 
         SelectionLevels.Pick(hits, Body, new[] { Tool })!.Value.FeatureId.Should().Be(Tool);
     }
