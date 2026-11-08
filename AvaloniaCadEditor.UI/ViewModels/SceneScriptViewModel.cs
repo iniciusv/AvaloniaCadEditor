@@ -767,6 +767,8 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
             // Só as que vão aparecer: o resto continua sob demanda, como antes, mas sem perder a geometria
             // que já tem (com a peça isolada, sair do H não reconstrói o modelo inteiro).
             _cadViewModel.StatusText = "Construindo geometria...";
+            // Antes da troca, com a cena anterior ainda no sketch: o que nasceu agora fica fora do isolamento do H.
+            _cadViewModel.NoteFeaturesBornWhileIsolated(result.Features);
             var visible = _cadViewModel.FeaturesVisibleAfterRun(result.Features);
             var hidden = result.Features.Except(visible).ToList();
             var prepare = _cadViewModel.MeshManager.PrepareSceneAsync(visible, cancellation, hidden);

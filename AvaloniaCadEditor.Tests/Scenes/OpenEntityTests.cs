@@ -10,6 +10,7 @@ using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.Profiles;
 using AvaloniaCadEditor.Domain.ValueObjects;
 using AvaloniaCadEditor.Infrastructure.OpenCascade;
+using AvaloniaCadEditor.UI.Controls;
 using AvaloniaCadEditor.UI.Controls.Rendering;
 using AvaloniaCadEditor.UI.ViewModels;
 using FluentAssertions;
@@ -178,6 +179,82 @@ public class OpenEntityTests
 
         vm.Raycast3D(RayDown())!.Value.FeatureId.Should().Be(bloco.Id, "a tampa na frente é de fora da entidade aberta");
         vm.RaycastReference(RayDown())!.Value.FeatureId.Should().Be(tampa.Id, "referência (plano de trabalho, duplo clique) vê a cena toda");
+    }
+
+    // ---------------------------------------------------------------- Workplane (W)
+
+    [Fact]
+    public void Workplane_NaCena_RealcaAFaceENaoOSolido()
+    {
+        var (vm, _, tampa) = Scene();
+        vm.OnKeyDown("W");
+        vm.CurrentTool.Should().BeOfType<SetWorkPlaneCommand>();
+
+        vm.HoverNow(RayDown());
+
+        vm.HoveredFeatureId.Should().BeNull("o plano sai de uma face, não do sólido inteiro");
+        vm.HoveredFaceProfile.Should().NotBeNull();
+        vm.HoveredFaceProfile!.Plane.Normal.Z.Should().BeApproximately(1, 1e-6, "é a face de cima da tampa");
+        vm.HoveredFaceProfile.Plane.Origin.Z.Should().BeApproximately(25, 1e-6);
+        vm.RaycastWorkPlaneTarget(RayDown())!.Value.FeatureId.Should().Be(tampa.Id);
+    }
+
+    [Fact]
+    public void Workplane_CliqueNaFace_CriaOPlanoEEntraNoEsbocoNele()
+    {
+        var (vm, _, _) = Scene();
+        vm.OnKeyDown("W");
+        var topoDaTampa = new WorkPlane(Vector3D.UnitZ, new Point3D(95, -5, 25));
+
+        vm.EnterSketchOnFacePlane(topoDaTampa);
+
+        vm.ActiveWorkPlane.Should().Be(topoDaTampa);
+        vm.Sketch.WorkPlanes.Should().ContainSingle(w => !w.IsBasePlane && w.Plane.Equals(topoDaTampa) && w.Name == "Plano 1");
+        vm.IsSketchEditing.Should().BeTrue("a grade só gira no esboço: sem ele, o plano novo não aparece até o L");
+        vm.CurrentTool.Should().BeOfType<SelectTool>();
+
+        vm.OnKeyDown("Escape");
+        vm.IsSketchEditing.Should().BeFalse("o Esc sai do esboço, de volta à cena");
+        vm.ActiveWorkPlane.Should().Be(topoDaTampa, "o plano continua ativo para o próximo esboço");
+    }
+
+    [Fact]
+    public void RealceDeFace_PedeUmQuadroNovoAViewport()
+    {
+        // O hover é aplicado pelo timer, com o mouse parado: sem isto a face fica marcada e não aparece.
+        SilkViewportControl.RequiresRedraw(nameof(CadViewModel.HoveredFaceProfile)).Should().BeTrue();
+        SilkViewportControl.RequiresRedraw(nameof(CadViewModel.HoveredFeatureId)).Should().BeTrue();
+    }
+
+    [Fact]
+    public void Workplane_ComPecaAberta_RealcaAFaceDaFrenteMesmoForaDaPeca()
+    {
+        var (vm, _, tampa) = Scene();
+        vm.ActiveBooleanGroupName = "bloco_1";
+        vm.OnKeyDown("W");
+
+        vm.HoverNow(RayDown());
+
+        vm.HoveredFaceProfile.Should().NotBeNull();
+        vm.HoveredFaceProfile!.Plane.Origin.Z.Should().BeApproximately(25, 1e-6,
+            "o realce mostra a face que o clique vai usar, e o clique do Workplane vê a cena toda");
+        vm.RaycastWorkPlaneTarget(RayDown())!.Value.FeatureId.Should().Be(tampa.Id);
+    }
+
+    [Fact]
+    public void Workplane_TabAlternaAFaceEOCliqueUsaAEscolhida()
+    {
+        var (vm, bloco, tampa) = Scene();
+        vm.OnKeyDown("W");
+        vm.HoverNow(RayDown());
+
+        vm.CycleHoveredFeature(); // a tampa, da frente
+        vm.CycleHoveredFeature(); // o bloco, atrás dela
+
+        vm.HoveredFaceProfile.Should().NotBeNull();
+        vm.HoveredFaceProfile!.Plane.Origin.Z.Should().BeApproximately(10, 1e-6, "a face de cima do bloco");
+        vm.RaycastWorkPlaneTarget(RayDown())!.Value.FeatureId.Should().Be(bloco.Id, "o clique segue a escolha do TAB");
+        vm.RaycastWorkPlaneTarget(RayDown())!.Value.FeatureId.Should().Be(tampa.Id, "a escolha vale para um clique só");
     }
 
     [Fact]

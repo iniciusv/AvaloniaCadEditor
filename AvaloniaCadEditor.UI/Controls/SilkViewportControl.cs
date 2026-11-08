@@ -99,16 +99,25 @@ public class SilkViewportControl : OpenGlControlBase
 
     private void ViewModel_PropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(CadViewModel.SolidMesh) || 
-            e.PropertyName == nameof(CadViewModel.Profiles) || 
-            e.PropertyName == nameof(CadViewModel.HoveredProfile) ||
-            e.PropertyName == nameof(CadViewModel.HoveredFeatureId) ||
-            e.PropertyName == nameof(CadViewModel.IsWireframe) ||
-            e.PropertyName == nameof(CadViewModel.ProjectedPlaneReferences))
+        if (RequiresRedraw(e.PropertyName))
         {
             RequestNextFrameRendering();
         }
     }
+
+    /// <summary>
+    /// Propriedades do <see cref="CadViewModel"/> que mudam o que a viewport desenha. O realce do hover é
+    /// aplicado por um timer depois que o mouse para, quando nenhum evento de mouse vai pedir um quadro: o que
+    /// ficar fora daqui muda no ViewModel e não aparece na tela.
+    /// </summary>
+    public static bool RequiresRedraw(string? propertyName) => propertyName is
+        nameof(CadViewModel.SolidMesh) or
+        nameof(CadViewModel.Profiles) or
+        nameof(CadViewModel.HoveredProfile) or
+        nameof(CadViewModel.HoveredFeatureId) or
+        nameof(CadViewModel.HoveredFaceProfile) or
+        nameof(CadViewModel.IsWireframe) or
+        nameof(CadViewModel.ProjectedPlaneReferences);
 
     protected override void OnOpenGlInit(GlInterface gl)
     {

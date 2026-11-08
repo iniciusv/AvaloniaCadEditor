@@ -173,13 +173,11 @@ public sealed class ViewportInputHandler
                     if (viewModel.CurrentTool is Application.Commands.SetWorkPlaneCommand)
                     {
                         // Plano de trabalho a partir de uma face é referência: vale qualquer sólido da
-                        // cena, mesmo com uma entidade aberta.
-                        var hit = viewModel.RaycastReference(ray);
+                        // cena, mesmo com uma entidade aberta. A face escolhida com TAB ganha da da frente.
+                        var hit = viewModel.RaycastWorkPlaneTarget(ray);
                         if (hit.HasValue)
                         {
-                            var plane = GetStableWorkPlane(viewModel, hit.Value);
-                            viewModel.ActiveWorkPlane = plane;
-                            viewModel.SelectSelectToolCommand.Execute(null);
+                            viewModel.EnterSketchOnFacePlane(GetStableWorkPlane(viewModel, hit.Value));
                             requestRender();
                         }
                     }

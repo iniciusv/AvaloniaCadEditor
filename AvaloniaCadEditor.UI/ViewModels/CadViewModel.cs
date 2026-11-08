@@ -163,7 +163,7 @@ public partial class CadViewModel : INotifyPropertyChanged
 				_hoverTimer.Stop();
 				if (_lastHoverRay.HasValue)
 				{
-					ApplyHover(RaycastScene(_lastHoverRay.Value));
+					HoverNow(_lastHoverRay.Value);
 				}
 			};
 		}
@@ -727,6 +727,13 @@ public partial class CadViewModel : INotifyPropertyChanged
 	/// isolamento reexibe exatamente estes.</summary>
 	private System.Collections.Generic.List<AvaloniaCadEditor.Domain.Features.IFeature> _isolationHidden = new();
 
+	/// <summary>
+	/// Nomes de sólidos que nasceram com o isolamento ligado (ex.: uma extrusão feita sobre a peça isolada).
+	/// Ficam à vista junto com ela, nesta e nas próximas execuções, mas não mudam o referencial: o
+	/// isolamento continua sendo da peça escolhida no H.
+	/// </summary>
+	private System.Collections.Generic.HashSet<string> _bornWhileIsolated = new();
+
 	public bool IsIsolating => _isolatedNames.Count > 0;
 
 	/// <summary>A feature de topo isolada quando o isolamento é de uma peça só; senão <c>null</c>.
@@ -767,6 +774,7 @@ public partial class CadViewModel : INotifyPropertyChanged
 
 			_isolationHidden = new();
 			_isolatedNames = new();
+			_bornWhileIsolated = new();
 			IsolatedFeature = null;
 			DisplayFrame = null;
 			OnPropertyChanged(nameof(IsIsolating));
@@ -788,6 +796,7 @@ public partial class CadViewModel : INotifyPropertyChanged
 		}
 
 		_isolatedNames = selected.Select(f => f.Name).ToHashSet();
+		_bornWhileIsolated = new();
 		ApplyIsolation();
 		OnPropertyChanged(nameof(IsIsolating));
 		RefreshProfiles();
@@ -807,6 +816,7 @@ public partial class CadViewModel : INotifyPropertyChanged
 		if (!Sketch.Features.Any(f => _isolatedNames.Contains(f.Name)))
 		{
 			_isolatedNames = new();
+			_bornWhileIsolated = new();
 			IsolatedFeature = null;
 			DisplayFrame = null;
 			OnPropertyChanged(nameof(IsIsolating));
@@ -823,9 +833,30 @@ public partial class CadViewModel : INotifyPropertyChanged
 		bool isolating = IsIsolating && features.Any(f => _isolatedNames.Contains(f.Name));
 		return features
 			.Where(f => f.IsVisible &&
-				(!isolating || _isolatedNames.Contains(f.Name) || f is AvaloniaCadEditor.Domain.Features.WorkPlaneFeature))
+				(!isolating || StaysVisibleWhileIsolated(f) || f is AvaloniaCadEditor.Domain.Features.WorkPlaneFeature))
 			.ToList();
 	}
+
+	/// <summary>
+	/// Chamado com as features de uma execução antes de elas entrarem na cena (a cena anterior ainda está no
+	/// sketch): com o H ligado, o que não existia antes nasceu agora e fica à vista junto com a peça isolada. Sem
+	/// isto, a extrusão feita sobre a peça isolada nasceria escondida pelo próprio isolamento.
+	/// </summary>
+	public void NoteFeaturesBornWhileIsolated(System.Collections.Generic.IReadOnlyList<IFeature> features)
+	{
+		if (!IsIsolating) return;
+
+		var existing = Sketch.Features.Select(f => f.Name).ToHashSet();
+		foreach (var feature in features)
+		{
+			if (feature is AvaloniaCadEditor.Domain.Features.WorkPlaneFeature) continue;
+			if (string.IsNullOrEmpty(feature.Name) || existing.Contains(feature.Name)) continue;
+			_bornWhileIsolated.Add(feature.Name);
+		}
+	}
+
+	private bool StaysVisibleWhileIsolated(IFeature feature) =>
+		_isolatedNames.Contains(feature.Name) || _bornWhileIsolated.Contains(feature.Name);
 
 	/// <summary>Sólidos da cena na tela ficaram prontos em segundo plano (ver <c>SceneScriptViewModel.RunCodeAsync</c>):
 	/// entram na malha composta e, se um deles é a peça isolada, o referencial dela sai da malha agora completa.</summary>
@@ -849,7 +880,7 @@ public partial class CadViewModel : INotifyPropertyChanged
 				continue;
 			}
 
-			if (feature is AvaloniaCadEditor.Domain.Features.WorkPlaneFeature)
+			if (feature is AvaloniaCadEditor.Domain.Features.WorkPlaneFeature || _bornWhileIsolated.Contains(feature.Name))
 			{
 				continue;
 			}
@@ -1696,6 +1727,33 @@ public partial class CadViewModel : INotifyPropertyChanged
 	/// </summary>
 	public RaycastHit? RaycastReference(Ray ray) => MeshManager.Raycast3D(Sketch, ray);
 
+	/// <summary>
+	/// A face que o clique do Workplane vai usar: a escolhida com TAB, se houver, senão a do sólido visível mais
+	/// perto (<see cref="RaycastReference"/>). O hover mostra exatamente esta.
+	/// </summary>
+	public RaycastHit? RaycastWorkPlaneTarget(Ray ray)
+	{
+		if (_pickOverride.HasValue)
+		{
+			var over = _pickOverride.Value;
+			_pickOverride = null;
+			_pickCandidates = null;
+			return over;
+		}
+
+		return RaycastReference(ray);
+	}
+
+	/// <summary>O Workplane tira o plano de uma face, de qualquer sólido da cena, em qualquer nível.</summary>
+	private bool IsPickingWorkPlaneFace => CurrentTool is SetWorkPlaneCommand;
+
+	/// <summary>Realça já o que está sob o raio (o timer do hover chama isto depois da pausa do mouse).</summary>
+	public void HoverNow(Ray ray)
+	{
+		_lastHoverRay = ray; // o TAB alterna a partir deste raio
+		ApplyHover(IsPickingWorkPlaneFace ? RaycastReference(ray) : RaycastScene(ray));
+	}
+
 	/// <summary>True se o acerto é num vazio (ferramenta) da entidade aberta, e não no corpo dela.</summary>
 	public bool IsOpenEntityToolHit(RaycastHit? hit) =>
 		hit?.FeatureId is Guid id && ActiveToolFeatures.Any(t => t.Id == id);
@@ -1721,12 +1779,20 @@ public partial class CadViewModel : INotifyPropertyChanged
 
 		if (_pickCandidates == null)
 		{
-			// Só o que é selecionável no nível atual: com uma entidade aberta, ela e os vazios dela.
-			var tools = ActiveToolFeatures;
-			var hits = MeshManager.RaycastAll3D(Sketch, ray, f => tools.Contains(f), ExtraToolFeatures(tools));
-			_pickCandidates = AvaloniaCadEditor.Application.EditContext.SelectionLevels
-				.Selectable(hits, OpenEntity?.Id, tools.Select(t => t.Id).ToList())
-				.ToList();
+			if (IsPickingWorkPlaneFace)
+			{
+				// Referência, não seleção: qualquer sólido visível sob o raio, como o clique do Workplane.
+				_pickCandidates = MeshManager.RaycastAll3D(Sketch, ray).ToList();
+			}
+			else
+			{
+				// Só o que é selecionável no nível atual: com uma entidade aberta, ela e os vazios dela.
+				var tools = ActiveToolFeatures;
+				var hits = MeshManager.RaycastAll3D(Sketch, ray, f => tools.Contains(f), ExtraToolFeatures(tools));
+				_pickCandidates = AvaloniaCadEditor.Application.EditContext.SelectionLevels
+					.Selectable(hits, OpenEntity?.Id, tools.Select(t => t.Id).ToList())
+					.ToList();
+			}
 			_pickCandidateIndex = -1;
 		}
 
@@ -1742,7 +1808,7 @@ public partial class CadViewModel : INotifyPropertyChanged
 	/// <summary>
 	/// Realce do que está sob o mouse, pelo nível: dentro de uma entidade, a face do corpo (ou o vazio
 	/// inteiro); na cena, o sólido. O Extrude na cena não pega faces de sólido (é preciso entrar antes),
-	/// então ali nada é realçado.
+	/// então ali nada é realçado. O Workplane realça sempre a face, porque é dela que o plano sai.
 	/// </summary>
 	private void ApplyHover(RaycastHit? hit)
 	{
@@ -1753,7 +1819,8 @@ public partial class CadViewModel : INotifyPropertyChanged
 			return;
 		}
 
-		if (hit?.FeatureId != null && IsFacePickMode() && !IsOpenEntityToolHit(hit))
+		bool showFace = IsPickingWorkPlaneFace || (IsFacePickMode() && !IsOpenEntityToolHit(hit));
+		if (hit?.FeatureId != null && showFace)
 		{
 			HoveredFeatureId = null;
 			HoveredFaceProfile = AvaloniaCadEditor.UI.Controls.Input.ViewportInputHandler.BuildFaceProfile(this, hit.Value);
@@ -1867,6 +1934,21 @@ public partial class CadViewModel : INotifyPropertyChanged
 	public void SetActiveWorkPlane(AvaloniaCadEditor.Domain.Features.WorkPlaneFeature wpf)
 	{
 		ActiveWorkPlane = wpf.Plane;
+	}
+
+	/// <summary>
+	/// O clique do Workplane numa face: cria o plano dela (se ainda não existe) e entra em esboço nele, como os
+	/// planos de origem. Só trocar o <see cref="ActiveWorkPlane"/> não basta: a grade só gira no esboço, e sem
+	/// ela nada na viewport mostra o plano novo até a próxima ferramenta de desenho.
+	/// </summary>
+	public void EnterSketchOnFacePlane(WorkPlane plane)
+	{
+		ActiveWorkPlane = plane;
+		var wpf = Sketch.WorkPlanes.FirstOrDefault(w => w.Plane.Equals(plane));
+		if (wpf != null)
+		{
+			EnterSketchMode(wpf);
+		}
 	}
 
 	public WorkPlane ActiveWorkPlane

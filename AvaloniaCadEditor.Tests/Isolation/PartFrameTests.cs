@@ -263,6 +263,61 @@ public class PartFrameTests
     }
 
     [Fact]
+    public void Isolamento_SolidoQueNasceComOHLigado_NasceVisivel_ESemMudarOReferencial()
+    {
+        var vm = TestUtils.CreateCadViewModel(
+            new Mock<AvaloniaCadEditor.Domain.Interfaces.IGeometryEngine>().Object,
+            new Mock<IOSnapService>().Object,
+            null,
+            new OpenCascadeGeometryKernel());
+
+        var peca = new PartInstance<PecaDeTeste>(new PecaDeTeste(), Corpo(), Placement.At(100, 0, 0)) { Name = "peca" };
+        var outra = new BoxFeature(new Point3D(300, 0, 0), 10, 10, 10) { Name = "outra" };
+        vm.Sketch.AddFeature(peca);
+        vm.Sketch.AddFeature(outra);
+        peca.IsSelected = true;
+        vm.OnKeyDown("H", false);
+
+        // Execução com uma extrusão nova, feita sobre a peça isolada, na ordem do RunCodeAsync.
+        IFeature[] Executar(params IFeature[] features)
+        {
+            vm.NoteFeaturesBornWhileIsolated(features);
+            var visiveis = vm.FeaturesVisibleAfterRun(features);
+            vm.Sketch.ClearFeatures();
+            foreach (var f in features) vm.Sketch.AddFeature(f);
+            vm.ReapplyIsolation();
+            return visiveis.ToArray();
+        }
+
+        var extrusao = new BoxFeature(new Point3D(100, 0, 20), 5, 5, 5) { Name = "extrusao_1" };
+        var outraNova = new BoxFeature(new Point3D(300, 0, 0), 10, 10, 10) { Name = "outra" };
+        var visiveis = Executar(
+            new PartInstance<PecaDeTeste>(new PecaDeTeste(), Corpo(), Placement.At(100, 0, 0)) { Name = "peca" },
+            outraNova, extrusao);
+
+        extrusao.IsVisible.Should().BeTrue("o que nasce com o H ligado nasce à vista, junto com a peça isolada");
+        visiveis.Should().Contain(extrusao, "a malha dela é construída antes da troca de cena, como a da peça");
+        outraNova.IsVisible.Should().BeFalse("o resto do modelo continua escondido");
+        vm.IsolatedFeature!.Name.Should().Be("peca", "o isolamento continua sendo da peça escolhida no H");
+        vm.DisplayFrame!.Origin.Should().Be(new Point3D(80, 10, 0), "o referencial não pula para a extrusão");
+
+        // Na execução seguinte (ex.: editar a altura da extrusão), ela já existia e continua à vista.
+        var extrusaoDeNovo = new BoxFeature(new Point3D(100, 0, 20), 5, 5, 8) { Name = "extrusao_1" };
+        var outraDeNovo = new BoxFeature(new Point3D(300, 0, 0), 10, 10, 10) { Name = "outra" };
+        Executar(
+            new PartInstance<PecaDeTeste>(new PecaDeTeste(), Corpo(), Placement.At(100, 0, 0)) { Name = "peca" },
+            outraDeNovo, extrusaoDeNovo);
+
+        extrusaoDeNovo.IsVisible.Should().BeTrue();
+        outraDeNovo.IsVisible.Should().BeFalse();
+
+        // Sair do H reexibe o resto; a extrusão nunca foi escondida.
+        vm.OnKeyDown("H", false);
+        outraDeNovo.IsVisible.Should().BeTrue();
+        extrusaoDeNovo.IsVisible.Should().BeTrue();
+    }
+
+    [Fact]
     public void Isolamento_PecaRemovidaDoCodigo_EncerraOIsolamento()
     {
         var vm = TestUtils.CreateCadViewModel(
