@@ -540,7 +540,7 @@ var eixoRetornoYB = new Point3D((xCanalGarraB + xRetornoPoliaB) / 2, pontaExtrus
 // O C abre para −Y (os dois ramos saem por ali) e a haste vai para +Y até a parede: girado −90° em Z, o
 // +X local (da parede para o eixo) aponta para −Y. É simétrico no Y local, então A e B são iguais.
 var suporteRolamentosYA = Add(suporteRolamentosYPeca, at: Placement.At(eixoRetornoYA.X, eixoRetornoYA.Y + suporteRolamentosYPeca.DistanciaEixo, eixoRetornoYA.Z, rotationZDegrees: -90), name: "suporte_rolamentos_correia_y_a", color: "#00CC6A");
-var suporteRolamentosYB = Add(suporteRolamentosYPeca, at: Placement.At(eixoRetornoYB.X, eixoRetornoYB.Y + suporteRolamentosYPeca.DistanciaEixo, eixoRetornoYB.Z, rotationZDegrees: -90), name: "suporte_rolamentos_correia_y_b", color: "#00CC6A");
+var suporteRolamentosYB = Add(suporteRolamentosYPeca with { AlturaRolamentos = 15 }, at: Placement.At(eixoRetornoYB.X, eixoRetornoYB.Y + suporteRolamentosYPeca.DistanciaEixo, eixoRetornoYB.Z, rotationZDegrees: -90), name: "suporte_rolamentos_correia_y_b", color: "#00CC6A");
 var rolamentoRetornoYAInferior = Add(rolamentoF623Peca, at: Placement.At(eixoRetornoYA), name: "rolamento_f623_retorno_y_a_inferior");
 var rolamentoRetornoYAMeio = Add(rolamento623Peca, at: Placement.At(eixoRetornoYA.X, eixoRetornoYA.Y, eixoRetornoYA.Z + rolamentoF623Peca.Largura), name: "rolamento_623_retorno_y_a_meio");
 var rolamentoRetornoYASuperior = Add(rolamentoF623Peca with { FlangeNoTopo = true }, at: Placement.At(eixoRetornoYA.X, eixoRetornoYA.Y, eixoRetornoYA.Z + rolamentoF623Peca.Largura + rolamento623Peca.Largura), name: "rolamento_f623_retorno_y_a_superior");
@@ -641,3 +641,8 @@ AddFeature(chapa_mdf_mesa);
 // A face +X fica encostada na extrusao_2020_trilho_z_b (X = 180,11); o espaçador cresce dela para −X.
 var espacadorPeca = new Espacador();
 var espacador = Add(espacadorPeca, at: Placement.At(180.11328 - espacadorPeca.EspessuraAba - espacadorPeca.Espessura, -205.5, 20), name: "espacador");
+var box_0e7e = new BoxFeature(baseCorner: new Point3D(65.1118, -265.5, 40), width: 30, length: 20, height: 20)
+{
+    Name = "box_0e7e"
+};
+AddFeature(box_0e7e);

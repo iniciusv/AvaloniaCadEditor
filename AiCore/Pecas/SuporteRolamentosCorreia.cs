@@ -27,7 +27,7 @@ public sealed record SuporteRolamentosCorreia(
     double FolgaRolamento = 7.5,      // do eixo à face interna das costas (flange r 5,75, correia r 6,2)
     double AlemEixo = 6.0,            // dos braços além do eixo
     double Largura = 12.0,            // Y
-    double EspessuraBraco = 5.0,
+    double EspessuraBraco = 5.5,
     double EspessuraCostas = 4.0,
     double AlturaHaste = 2.0,         // face de baixo da haste (acima da cabeça do parafuso do bloco)
     double AlturaParafuso = 7.5,      // eixo do parafuso do rasgo
