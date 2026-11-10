@@ -358,3 +358,178 @@ public class LeverAlignedVerticesTests
             .Should().BeEquivalentTo("perfil · pontos 6 e 1", "perfil · pontos 2 e 3");
     }
 }
+
+/// <summary>
+/// A largura de uma peça simétrica. Uma aresta só tira o corpo do plano de simetria; a opção que vem
+/// primeiro move as duas, em sentidos contrários, e a peça continua simétrica.
+/// </summary>
+public class LeverSymmetricWidthTests
+{
+    // Placa de 32 x 20 centrada em x = 0, com dois furos espelhados: o plano x = 0 é da peça inteira.
+    private const string Contorno = """
+        public sealed record Placa() : Part
+        {
+            protected override IFeature Build()
+            {
+                var perfil = new PolygonProfile(new System.Collections.Generic.List<Point3D>
+                {
+                    new Point3D(16, -10, 0),
+                    new Point3D(16, 10, 0),
+                    new Point3D(-16, 10, 0),
+                    new Point3D(-16, -10, 0)
+                });
+                var corpo = new ExtrudeFeature(perfil, 5, new Vector3D(0, 0, 5), "corpo");
+                var furo_dir = new CylinderFeature(new Point3D(FuroX, 0, 0), new Vector3D(0, 0, 1), 1.7, 5) { Name = "furo_dir", IsTransientTool = true };
+                var furo_esq = new CylinderFeature(new Point3D(-10, 0, 0), new Vector3D(0, 0, 1), 1.7, 5) { Name = "furo_esq", IsTransientTool = true };
+                return BooleanFeature.CreateDifference("p", corpo, furo_dir, furo_esq);
+            }
+        }
+        """;
+
+    private const string Caixa = """
+        public sealed record Placa() : Part
+        {
+            protected override IFeature Build()
+            {
+                var corpo = new BoxFeature(new Point3D(-16, -10, 0), 32, 20, 5) { Name = "corpo" };
+                var furo_dir = new CylinderFeature(new Point3D(FuroX, 0, 0), new Vector3D(0, 0, 1), 1.7, 5) { Name = "furo_dir", IsTransientTool = true };
+                var furo_esq = new CylinderFeature(new Point3D(-10, 0, 0), new Vector3D(0, 0, 1), 1.7, 5) { Name = "furo_esq", IsTransientTool = true };
+                return BooleanFeature.CreateDifference("p", corpo, furo_dir, furo_esq);
+            }
+        }
+        """;
+
+    private static ScriptDocument[] Documents(string record, double furoX = 10) => new[]
+    {
+        new ScriptDocument(ScriptDocument.DefaultSceneFile, "Add(new Placa(), name: \"p\");"),
+        new ScriptDocument("Pecas/Placa.cs", record.Replace("FuroX", furoX.ToString(System.Globalization.CultureInfo.InvariantCulture)))
+    };
+
+    private static async Task<(LeverStudy Study, DimensionGauge Largura)> Estudo(ScriptDocument[] documents)
+    {
+        var result = await new RoslynSceneEvaluator().EvaluateAsync(documents);
+        result.Success.Should().BeTrue(result.ErrorMessage);
+        var sheet = DraftingAnalyzer.Analyze(new DraftingInput(
+            [AnalysisSubject.For(result.Features.Single(f => f.Name == "p"), Placement.Identity)],
+            StandardView.Top, new Point3D(-16, -10, 0), new Point3D(16, 10, 5)))!;
+        var largura = DimensionFactory.Linear(sheet.FindAnchor("peca.esq_inf")!, sheet.FindAnchor("peca.dir_sup")!, DimensionKind.Horizontal, -5);
+        largura.Value.Should().BeApproximately(32, 1e-9);
+
+        var study = LeverStudy.Run(new RoslynLeverProbeFactory().Create(documents, "Placa")!, "p", Placement.Identity)!;
+        return (study, DimensionGauge.For(sheet, largura)!);
+    }
+
+    private static readonly LeverRelation Centrado = new(LeverRelationKind.Centered, "corpo", "x = 0", FrameAxis.X);
+
+    [Fact]
+    public async Task Contorno_ALarguraMoveAsDuasArestas_EOCorpoContinuaNoCentro()
+    {
+        var documents = Documents(Contorno);
+        var (study, largura) = await Estudo(documents);
+        using var _ = study;
+
+        var options = LeverOptionFinder.Find(study, largura.Measure).Where(o => o.IsDirect).ToList();
+
+        var simetrica = options[0];
+        simetrica.Shares.Select(s => (s.Lever.Label, Math.Round(s.Weight, 6))).Should().BeEquivalentTo(new[]
+        {
+            ("perfil · ponto 1 · x", 1.0), ("perfil · ponto 2 · x", 1.0),
+            ("perfil · ponto 3 · x", -1.0), ("perfil · ponto 4 · x", -1.0)
+        });
+        Math.Abs(simetrica.Rate).Should().BeApproximately(2, 1e-6, "cada aresta anda 1 para fora");
+        simetrica.Keeps.Should().Contain(Centrado);
+        simetrica.Keeps.Where(k => k.Kind == LeverRelationKind.Aligned).Select(k => k.Fact)
+            .Should().BeEquivalentTo("perfil · pontos 1 e 2", "perfil · pontos 3 e 4");
+        simetrica.Breaks.Should().BeEmpty();
+        simetrica.Moved.Should().BeEmpty("o corpo só cresce, sem sair do lugar");
+        simetrica.Resized.Should().Contain("corpo");
+
+        options.Where(o => o.IsGroup && o.Shares.Count == 4).Should().ContainSingle("a esquerda com a direita é o mesmo movimento que a direita com a esquerda");
+
+        var umLado = options.Where(o => o.Shares.Count == 2 && o.Keeps.Any(k => k.Kind == LeverRelationKind.Aligned)).ToList();
+        umLado.Should().HaveCount(2, "cada aresta sozinha continua oferecida");
+        umLado.Should().OnlyContain(o => o.Breaks.Contains(Centrado));
+
+        var solution = LeverSolver.Solve(simetrica, 40, study.Evaluate, largura.Measure)!;
+        solution.Achieved.Should().BeApproximately(40, 1e-3);
+        LeverSourceEditor.Apply(documents, solution.Changes)!.Single().Text
+            .Should().Contain("new Point3D(20, -10, 0)").And.Contain("new Point3D(20, 10, 0)")
+            .And.Contain("new Point3D(-20, 10, 0)").And.Contain("new Point3D(-20, -10, 0)")
+            .And.Contain("new Point3D(-10, 0, 0)", "os furos não mudam");
+    }
+
+    [Fact]
+    public async Task Caixa_ALarguraCresceEAOrigemRecuaAMetade()
+    {
+        var documents = Documents(Caixa);
+        var (study, largura) = await Estudo(documents);
+        using var _ = study;
+
+        var simetrica = LeverOptionFinder.Find(study, largura.Measure).Where(o => o.IsDirect).First();
+
+        simetrica.Shares.Select(s => (s.Lever.Label, Math.Round(s.Weight, 6))).Should().Equal(
+            ("corpo · width", 1.0), ("corpo · baseCorner.x", -0.5));
+        simetrica.Rate.Should().BeApproximately(1, 1e-6);
+        simetrica.Keeps.Should().Equal(Centrado);
+        simetrica.Breaks.Should().BeEmpty();
+
+        var solution = LeverSolver.Solve(simetrica, 40, study.Evaluate, largura.Measure)!;
+        LeverSourceEditor.Apply(documents, solution.Changes)!.Single().Text
+            .Should().Contain("new BoxFeature(new Point3D(-20, -10, 0), 40, 20, 5)");
+    }
+
+    // Dois rasgos espelhados em x = 0, cada um uma caixa de 8 de largura (de 6 a 14 e de -14 a -6).
+    private const string Rasgos = """
+        public sealed record Placa() : Part
+        {
+            protected override IFeature Build()
+            {
+                var corpo = new BoxFeature(new Point3D(-16, -10, 0), 32, 20, 5) { Name = "corpo" };
+                var rasgo_dir = new BoxFeature(new Point3D(6, -3, 0), 8, 6, 5) { Name = "rasgo_dir", IsTransientTool = true };
+                var rasgo_esq = new BoxFeature(new Point3D(-14, -3, 0), 8, 6, 5) { Name = "rasgo_esq", IsTransientTool = true };
+                return BooleanFeature.CreateDifference("p", corpo, rasgo_dir, rasgo_esq);
+            }
+        }
+        """;
+
+    private static double? LarguraDoRasgo(IReadOnlyList<PrimitiveFact> facts) =>
+        facts.FirstOrDefault(f => f.Name == "rasgo_dir") is { } f ? f.BoundsMax.X - f.BoundsMin.X : null;
+
+    [Fact]
+    public void RasgoEspelhado_CresceComOOutro_QuePrecisaDaLarguraEDoCanto()
+    {
+        var documents = Documents(Rasgos);
+        using var study = LeverStudy.Run(new RoslynLeverProbeFactory().Create(documents, "Placa")!, "p", Placement.Identity)!;
+
+        var options = LeverOptionFinder.Find(study, LarguraDoRasgo).Where(o => o.IsDirect).ToList();
+
+        var sozinho = options.Single(o => !o.IsGroup && o.Primary.Label == "rasgo_dir · width");
+        sozinho.Breaks.Should().ContainSingle(r => r.Kind == LeverRelationKind.Symmetry && r.Fact == "rasgo_esq",
+            "o outro rasgo continua com 8: os dois deixam de ser o espelho um do outro, mesmo sem o rasgo_dir sair do lugar dele");
+
+        var espelhado = options[0];
+        espelhado.Shares.Select(s => (s.Lever.Label, Math.Round(s.Weight, 6))).Should().BeEquivalentTo(new[]
+        {
+            ("rasgo_dir · width", 1.0), ("rasgo_esq · width", 1.0), ("rasgo_esq · baseCorner.x", -1.0)
+        }, "o rasgo da esquerda cresce para a esquerda, como o da direita cresce para a direita");
+        espelhado.Keeps.Should().ContainSingle(r => r.Kind == LeverRelationKind.Symmetry && r.Fact == "rasgo_esq");
+        espelhado.Breaks.Should().BeEmpty();
+
+        var solution = LeverSolver.Solve(espelhado, 10, study.Evaluate, LarguraDoRasgo)!;
+        LeverSourceEditor.Apply(documents, solution.Changes)!.Single().Text
+            .Should().Contain("new BoxFeature(new Point3D(6, -3, 0), 10, 6, 5)")
+            .And.Contain("new BoxFeature(new Point3D(-16, -3, 0), 10, 6, 5)");
+    }
+
+    [Fact]
+    public async Task PecaQueNaoEhSimetrica_AArestaNaoQuebraNada()
+    {
+        var (study, largura) = await Estudo(Documents(Contorno, furoX: 8));
+        using var _ = study;
+
+        var options = LeverOptionFinder.Find(study, largura.Measure);
+
+        options.SelectMany(o => o.Breaks.Concat(o.Keeps)).Should().NotContain(r => r.Kind == LeverRelationKind.Centered);
+        options.Should().NotContain(o => o.Shares.Count == 4);
+    }
+}

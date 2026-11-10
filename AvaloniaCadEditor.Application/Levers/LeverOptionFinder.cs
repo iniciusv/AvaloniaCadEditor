@@ -16,7 +16,14 @@ public enum LeverRelationKind
     /// plano do contorno). Aqui <c>Fact</c> são os pontos ("perfil_base · pontos 1 e 2") e <c>Partner</c>
     /// é a coordenada que eles têm em comum ("x").
     /// </summary>
-    Aligned
+    Aligned,
+
+    /// <summary>
+    /// Um elemento centrado no plano de simetria da peça inteira (o corpo de uma placa simétrica). Aqui
+    /// <c>Fact</c> é o elemento e <c>Partner</c> é o plano ("x = 0"). Uma aresta só do corpo que anda tira o
+    /// corpo do centro: a peça deixa de ser simétrica.
+    /// </summary>
+    Centered
 }
 
 /// <summary>
@@ -89,7 +96,9 @@ public sealed record LeverOption(
 /// Para cada número que sozinho quebraria uma relação (coaxial, simetria), procura os números que movem o
 /// elemento parceiro na mesma direção e propõe o grupo. O mesmo vale para os vértices de um contorno: os
 /// pontos seguidos com a mesma coordenada (uma aresta reta) ganham um grupo que os move juntos, porque
-/// mudar um só entorta a aresta. As opções saem ordenadas: medidas antes das
+/// mudar um só entorta a aresta. Numa peça simétrica, a aresta de um lado ganha um grupo com a do outro,
+/// em sentido contrário: a largura muda e o corpo continua centrado no plano de simetria
+/// (<see cref="LeverRelationKind.Centered"/>). As opções saem ordenadas: medidas antes das
 /// indiretas (<see cref="LeverCaveat"/>), depois menos relações quebradas, menos elementos movidos, menos
 /// cotas afetadas, controle direto (1 mm no número = 1 mm na cota).
 ///
@@ -136,7 +145,25 @@ public static class LeverOptionFinder
         foreach (var edge in study.Runs)
         {
             foreach (var lever in edge.Levers) runs[lever.Id] = edge.Levers;
-            if (AlignedGroup(study, edge, measure, baseValue, watched, watchedBase) is { } together) options.Add(together);
+        }
+
+        // Quem pode acompanhar um elemento num grupo: uma aresta inteira, ou um número que não é ponto de
+        // aresta (um ponto só entortaria a aresta dele).
+        var companions = study.Runs.Select(r => new Mover(r.Levers, r.Effect))
+            .Concat(study.Effects.Where(e => !runs.ContainsKey(e.Lever.Id)).Select(e => new Mover([e.Lever], e)))
+            .ToList();
+        var context = new GroupContext(study, measure, baseValue, watched, watchedBase, companions);
+
+        foreach (var edge in study.Runs)
+        {
+            if (AlignedGroup(study, edge, measure, baseValue, watched, watchedBase) is not { } together) continue;
+            options.Add(together);
+
+            var requirements = Requirements(together.Changes, study.Relations);
+            if (requirements.Count > 0 && Group(context, new Mover(edge.Levers, edge.Effect), requirements, runs) is { } group)
+            {
+                options.Add(group);
+            }
         }
 
         foreach (var effect in study.Effects)
@@ -158,7 +185,7 @@ public static class LeverOptionFinder
                 Gain = gain
             });
 
-            if (requirements.Count > 0 && Group(study, effect, requirements, rates, watched, watchedBase) is { } group)
+            if (requirements.Count > 0 && Group(context, new Mover([effect.Lever], effect), requirements, runs) is { } group)
             {
                 options.Add(group);
             }
@@ -173,6 +200,16 @@ public static class LeverOptionFinder
             .ThenBy(o => o.Primary.Label, StringComparer.Ordinal)
             .ThenBy(o => o.Shares.Count)
             .ToList();
+
+        // A aresta direita com a esquerda em sentido contrário é o mesmo movimento que a esquerda com a
+        // direita: fica a primeira.
+        var distinct = new List<LeverOption>();
+        foreach (var option in ordered)
+        {
+            if (!distinct.Any(d => SameMotion(d, option))) distinct.Add(option);
+        }
+        ordered = distinct;
+
         return ordered.Where(o => o.IsDirect).Take(maxOptions)
             .Concat(ordered.Where(o => !o.IsDirect).Take(maxOptions))
             .ToList();
@@ -253,18 +290,27 @@ public static class LeverOptionFinder
         return MeasureGains.Any(g => Math.Abs(gain - g) <= GainTolerance * g);
     }
 
-    /// <summary>O que um elemento precisa fazer para manter uma relação com outro que se moveu.</summary>
-    private sealed record Requirement(LeverRelation Relation, Vector3D Translation);
+    /// <summary>
+    /// O que um elemento precisa fazer, a mais, para manter uma relação com outro que mudou.
+    /// </summary>
+    /// <param name="Size">A mudança de tamanho que ele também precisa ter; <c>null</c> quando o tamanho é
+    /// livre (o furo e a porca coaxial têm tamanhos diferentes; o corpo centrado pode crescer).</param>
+    private sealed record Requirement(LeverRelation Relation, Vector3D Translation, Vector3D? Size = null);
 
     /// <summary>
     /// As relações que os deslocamentos de <paramref name="perUnit"/> quebram: um membro de um conjunto
-    /// coaxial que sai do eixo sem os outros, ou um lado de um par simétrico que anda sem o outro.
+    /// coaxial que sai do eixo sem os outros, um lado de um par simétrico que não é mais o espelho do
+    /// outro (andou ou mudou de tamanho sozinho), ou um elemento que sai do plano de simetria da peça (o
+    /// corpo, quando só uma aresta anda).
     /// </summary>
     private static IReadOnlyList<Requirement> Requirements(IReadOnlyList<FactChange> perUnit, ModelRelations relations)
     {
         var moved = perUnit.Where(c => c.Moves).ToDictionary(c => c.Name, c => c.Translation, StringComparer.Ordinal);
+        var changed = perUnit.Where(c => c.Kind is not (FactChangeKind.Appeared or FactChangeKind.Vanished))
+            .ToDictionary(c => c.Name, c => (c.Translation, Size: c.SizeChange), StringComparer.Ordinal);
         var result = new List<Requirement>();
         var claimed = new HashSet<string>(StringComparer.Ordinal);
+        var centered = new HashSet<string>(StringComparer.Ordinal);
 
         foreach (var set in relations.CoaxialSets)
         {
@@ -290,91 +336,237 @@ public static class LeverOptionFinder
             var normal = FrameAxes.Unit(plane.Normal);
             foreach (var pair in plane.Pairs)
             {
-                bool aMoved = moved.ContainsKey(pair.A.Name);
-                bool bMoved = moved.ContainsKey(pair.B.Name);
-                if (aMoved == bMoved) continue;
+                // O espelho num plano do referencial inverte o deslocamento na normal e mantém o tamanho.
+                // Quem mudou é o modelo; o outro precisa fazer a diferença.
+                bool aChanged = changed.TryGetValue(pair.A.Name, out var a);
+                bool bChanged = changed.TryGetValue(pair.B.Name, out var b);
+                if (!aChanged && !bChanged) continue;
 
-                var (mover, other) = aMoved ? (pair.A, pair.B) : (pair.B, pair.A);
-                var translation = moved[mover.Name];
-                var mirrored = translation - normal * (2 * translation.DotProduct(normal));
+                var (mover, other, m, o) = aChanged ? (pair.A, pair.B, a, b) : (pair.B, pair.A, b, a);
+                var mirrored = m.Translation - normal * (2 * m.Translation.DotProduct(normal));
+                var translation = mirrored - o.Translation;
+                var size = m.Size - o.Size;
+                if (translation.Length < MotionTolerance && size.Length < MotionTolerance) continue;
+
                 if (claimed.Add(other.Name))
                 {
-                    result.Add(new Requirement(new LeverRelation(LeverRelationKind.Symmetry, other.Name, mover.Name, plane.Normal), mirrored));
+                    result.Add(new Requirement(new LeverRelation(LeverRelationKind.Symmetry, other.Name, mover.Name, plane.Normal), translation, size));
                 }
+            }
+
+            // O que estava sobre o plano de uma peça simétrica precisa continuar nele. Só o plano da peça
+            // inteira: num plano local (um grupo de furos), o que calha de estar no meio não é uma regra.
+            if (!plane.IsGlobal) continue;
+            foreach (var fact in plane.OnPlane)
+            {
+                if (!moved.TryGetValue(fact.Name, out var translation)) continue;
+                double across = translation.DotProduct(normal);
+                if (Math.Abs(across) < MotionTolerance || !centered.Add(fact.Name)) continue;
+
+                result.Add(new Requirement(new LeverRelation(LeverRelationKind.Centered, fact.Name, PlaneText(plane), plane.Normal), normal * -across));
             }
         }
 
         return result;
     }
 
+    /// <summary>"x = 0".</summary>
+    private static string PlaneText(SymmetryPlane plane) =>
+        $"{plane.Normal.ToString().ToLowerInvariant()} = {plane.Coordinate.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture)}";
+
+    /// <summary>Um jeito de mover: um número, ou os números de uma aresta inteira, com o efeito medido.</summary>
+    private sealed record Mover(IReadOnlyList<CodeLever> Levers, LeverEffect Effect);
+
+    /// <summary>O que toda busca de grupo usa da mesma pergunta.</summary>
+    private sealed record GroupContext(
+        LeverStudy Study,
+        Func<IReadOnlyList<PrimitiveFact>, double?> Measure,
+        double BaseValue,
+        IReadOnlyList<Func<IReadOnlyList<PrimitiveFact>, double?>> Watched,
+        IReadOnlyList<double?> WatchedBase,
+        IReadOnlyList<Mover> Companions);
+
     /// <summary>
-    /// O grupo do número de <paramref name="primary"/> com, para cada elemento que precisa acompanhar, o
-    /// número que o move na direção certa e mexe em menos coisas. <c>null</c> se algum não tiver número.
+    /// O grupo de <paramref name="primary"/> com, para cada elemento que precisa acompanhar, o companheiro
+    /// (um número ou uma aresta) que o move na direção certa e mexe em menos coisas. O grupo é executado de
+    /// verdade: a taxa e o que muda vêm dessa execução, e o que ela ainda quebra fica em
+    /// <see cref="LeverOption.Breaks"/> (um elemento sem companheiro, ou um que o companheiro tirou do
+    /// lugar). <c>null</c> se nenhum elemento tiver companheiro.
     /// </summary>
+    /// <param name="runs">A aresta de cada número que é ponto de uma.</param>
     private static LeverOption? Group(
-        LeverStudy study,
-        LeverEffect primary,
+        GroupContext context,
+        Mover primary,
         IReadOnlyList<Requirement> requirements,
-        IReadOnlyDictionary<int, double> rates,
-        IReadOnlyList<Func<IReadOnlyList<PrimitiveFact>, double?>> watched,
-        IReadOnlyList<double?> watchedBase)
+        IReadOnlyDictionary<int, IReadOnlyList<CodeLever>> runs)
     {
-        var shares = new List<(LeverEffect Effect, double Weight)> { (primary, 1) };
+        var shares = new List<(Mover Mover, double Weight)> { (primary, 1) };
 
         foreach (var requirement in requirements)
         {
-            (LeverEffect Effect, double Weight)? best = null;
-            foreach (var effect in study.Effects)
-            {
-                if (effect.Lever.Id == primary.Lever.Id) continue;
-                var change = effect.Changes.FirstOrDefault(c => c.Name == requirement.Relation.Fact && c.Moves);
-                if (change == null) continue;
+            if (Companions(context.Companions, primary, requirement) is not { } best) continue; // fica quebrada; a execução abaixo a acusa
 
-                var perUnit = change.Translation * (1 / effect.Step);
-                if (!Parallel(perUnit, requirement.Translation)) continue;
-                double weight = requirement.Translation.DotProduct(perUnit) / perUnit.DotProduct(perUnit);
-                if (best == null || effect.Changes.Count < best.Value.Effect.Changes.Count) best = (effect, weight);
-            }
-            if (best == null) return null;
-
-            int existing = shares.FindIndex(s => s.Effect.Lever.Id == best.Value.Effect.Lever.Id);
-            if (existing < 0)
+            foreach (var (mover, weight) in best)
             {
-                shares.Add(best.Value);
-            }
-            else if (Math.Abs(shares[existing].Weight - best.Value.Weight) > 1e-6 * Math.Max(1, Math.Abs(best.Value.Weight)))
-            {
-                return null; // o mesmo número precisaria andar duas medidas diferentes
+                int existing = shares.FindIndex(s => ReferenceEquals(s.Mover, mover));
+                if (existing < 0)
+                {
+                    shares.Add((mover, weight));
+                }
+                else if (Math.Abs(shares[existing].Weight - weight) > 1e-6 * Math.Max(1, Math.Abs(weight)))
+                {
+                    return null; // o mesmo número precisaria andar duas medidas diferentes
+                }
             }
         }
+        if (shares.Count == 1) return null;
 
-        double rate = shares.Sum(s => s.Weight * (rates.TryGetValue(s.Effect.Lever.Id, out var r) ? r : 0));
+        var study = context.Study;
+        double step = primary.Effect.Step;
+        var values = new Dictionary<int, double>();
+        foreach (var (mover, weight) in shares)
+        {
+            foreach (var lever in mover.Levers) values[lever.Id] = lever.Value + weight * step;
+        }
+        if (study.Evaluate(values) is not { } after || context.Measure(after) is not { } value) return null;
+
+        double rate = (value - context.BaseValue) / step;
         if (Math.Abs(rate) < RateTolerance) return null;
 
-        var changes = Combine(shares.Select(s => (Scale(s.Effect.Changes, 1 / s.Effect.Step), s.Weight)));
-        double step = primary.Step;
-        var values = shares.ToDictionary(s => s.Effect.Lever.Id, s => s.Effect.Lever.Value + s.Weight * step);
-        var after = study.Evaluate(values);
+        var changes = Scale(FactMotion.Compare(study.Baseline, after), 1 / step);
+        var breaks = Requirements(changes, study.Relations).Select(r => r.Relation).ToList();
+        if (primary.Levers.Count == 1 && runs.TryGetValue(primary.Levers[0].Id, out var run)) breaks.Add(Alignment(run));
 
-        var (caveat, gain) = CaveatOf(shares.Select(s => s.Effect.Lever).ToList(), shares.Select(s => s.Effect).ToList());
+        var keeps = requirements.Select(r => r.Relation)
+            .Where(k => !breaks.Any(b => b.Kind == k.Kind && b.Fact == k.Fact))
+            .Concat(shares.Where(s => s.Mover.Levers.Count > 1).Select(s => Alignment(s.Mover.Levers)))
+            .ToList();
+        if (keeps.Count == 0) return null;
+
+        var (caveat, gain) = CaveatOf(shares.SelectMany(s => s.Mover.Levers).ToList(), shares.Select(s => s.Mover.Effect).ToList());
         return new LeverOption(
-            shares.Select(s => new LeverShare(s.Effect.Lever, s.Weight)).ToList(),
+            shares.SelectMany(s => s.Mover.Levers.Select(l => new LeverShare(l, s.Weight))).ToList(),
             rate,
             changes,
-            requirements.Select(r => r.Relation).ToList(),
-            Array.Empty<LeverRelation>(),
-            after == null ? 0 : CountChanged(watched, watchedBase, after))
+            keeps,
+            breaks,
+            CountChanged(context.Watched, context.WatchedBase, after))
         {
             Caveat = caveat,
             Gain = gain
         };
     }
 
-    private static bool Parallel(Vector3D a, Vector3D b)
+    /// <summary>Os mesmos números, andando na mesma proporção entre si (o sinal e a escala não importam).</summary>
+    private static bool SameMotion(LeverOption a, LeverOption b)
     {
-        double la = a.Length, lb = b.Length;
-        if (la < MotionTolerance || lb < MotionTolerance) return false;
-        return a.CrossProduct(b).Length <= ParallelTolerance * la * lb && a.DotProduct(b) != 0;
+        if (a.Shares.Count != b.Shares.Count) return false;
+        var weights = a.Shares.ToDictionary(s => s.Lever.Id, s => s.Weight);
+        if (b.Shares.Any(s => !weights.ContainsKey(s.Lever.Id))) return false;
+
+        double k = b.Shares[0].Weight / weights[b.Shares[0].Lever.Id];
+        return b.Shares.All(s => Math.Abs(s.Weight - k * weights[s.Lever.Id]) <= 1e-6 * Math.Max(1, Math.Abs(s.Weight)));
+    }
+
+    /// <summary>
+    /// Quem faz o elemento de <paramref name="requirement"/> cumprir o pedido, e quanto cada um anda: um
+    /// companheiro, ou dois quando nenhum sozinho serve (a caixa espelhada precisa da largura e do canto
+    /// para crescer para o lado de fora). Entre os que servem, o que mexe em menos coisas. <c>null</c> se
+    /// ninguém serve.
+    /// </summary>
+    private static IReadOnlyList<(Mover Mover, double Weight)>? Companions(IReadOnlyList<Mover> companions, Mover primary, Requirement requirement)
+    {
+        var wanted = Wanted(requirement);
+        var able = new List<(Mover Mover, double[] Does)>();
+        foreach (var candidate in companions)
+        {
+            if (candidate.Levers.Any(l => primary.Levers.Any(p => p.Id == l.Id))) continue;
+            var change = candidate.Effect.Changes.FirstOrDefault(c => c.Name == requirement.Relation.Fact
+                && c.Kind is not (FactChangeKind.Appeared or FactChangeKind.Vanished));
+            if (change != null) able.Add((candidate, Does(change, candidate.Effect.Step, requirement)));
+        }
+
+        IReadOnlyList<(Mover, double)>? best = null;
+        int bestCost = int.MaxValue;
+        foreach (var (mover, does) in able)
+        {
+            if (Fit([does], wanted) is not { } w || mover.Effect.Changes.Count >= bestCost) continue;
+            best = [(mover, w[0])];
+            bestCost = mover.Effect.Changes.Count;
+        }
+        if (best != null) return best;
+
+        for (int i = 0; i < able.Count; i++)
+        {
+            for (int j = i + 1; j < able.Count; j++)
+            {
+                int cost = able[i].Mover.Effect.Changes.Count + able[j].Mover.Effect.Changes.Count;
+                if (cost >= bestCost || Fit([able[i].Does, able[j].Does], wanted) is not { } w) continue;
+                best = [(able[i].Mover, w[0]), (able[j].Mover, w[1])];
+                bestCost = cost;
+            }
+        }
+        return best;
+    }
+
+    /// <summary>O pedido como vetor: o deslocamento e, quando ele conta, o tamanho.</summary>
+    private static double[] Wanted(Requirement requirement)
+    {
+        var t = requirement.Translation;
+        return requirement.Size is { } size ? [t.X, t.Y, t.Z, size.X, size.Y, size.Z] : [t.X, t.Y, t.Z];
+    }
+
+    /// <summary>O que o companheiro faz com o elemento, por unidade, no mesmo formato de <see cref="Wanted"/>.</summary>
+    private static double[] Does(FactChange change, double step, Requirement requirement)
+    {
+        var t = change.Translation * (1 / step);
+        if (requirement.Size is null) return [t.X, t.Y, t.Z];
+        var s = change.SizeChange * (1 / step);
+        return [t.X, t.Y, t.Z, s.X, s.Y, s.Z];
+    }
+
+    /// <summary>
+    /// Os pesos que somam <paramref name="parts"/> (um ou dois) em <paramref name="wanted"/>, por mínimos
+    /// quadrados, ou <c>null</c> se a soma não chega lá (o que sobra passa da tolerância) ou se um deles não
+    /// ajuda (peso zero, ou os dois fazem a mesma coisa).
+    /// </summary>
+    private static double[]? Fit(IReadOnlyList<double[]> parts, double[] wanted)
+    {
+        double ww = Dot(wanted, wanted);
+        if (ww < MotionTolerance * MotionTolerance) return null;
+
+        double[] weights;
+        if (parts.Count == 1)
+        {
+            double gg = Dot(parts[0], parts[0]);
+            if (gg < MotionTolerance * MotionTolerance) return null;
+            weights = [Dot(parts[0], wanted) / gg];
+        }
+        else
+        {
+            double a = Dot(parts[0], parts[0]), b = Dot(parts[0], parts[1]), c = Dot(parts[1], parts[1]);
+            double det = a * c - b * b;
+            if (det <= ParallelTolerance * a * c) return null; // os dois fazem (quase) a mesma coisa
+            double p = Dot(parts[0], wanted), q = Dot(parts[1], wanted);
+            weights = [(c * p - b * q) / det, (a * q - b * p) / det];
+        }
+        if (weights.Any(w => Math.Abs(w) < 1e-9)) return null;
+
+        double residual = 0;
+        for (int i = 0; i < wanted.Length; i++)
+        {
+            double sum = 0;
+            for (int k = 0; k < parts.Count; k++) sum += weights[k] * parts[k][i];
+            residual += (wanted[i] - sum) * (wanted[i] - sum);
+        }
+        return residual <= ParallelTolerance * ParallelTolerance * ww ? weights : null;
+    }
+
+    private static double Dot(double[] a, double[] b)
+    {
+        double sum = 0;
+        for (int i = 0; i < a.Length; i++) sum += a[i] * b[i];
+        return sum;
     }
 
     private static int CountChanged(
@@ -394,41 +586,4 @@ public static class LeverOptionFinder
 
     private static IReadOnlyList<FactChange> Scale(IReadOnlyList<FactChange> changes, double factor) =>
         changes.Select(c => c with { Translation = c.Translation * factor, SizeChange = c.SizeChange * factor }).ToList();
-
-    /// <summary>Soma ponderada das mudanças de vários números, por elemento.</summary>
-    private static IReadOnlyList<FactChange> Combine(IEnumerable<(IReadOnlyList<FactChange> Changes, double Weight)> parts)
-    {
-        var order = new List<string>();
-        var byName = new Dictionary<string, (Vector3D Translation, Vector3D Size, bool Resized, FactChangeKind? Special)>(StringComparer.Ordinal);
-        foreach (var (changes, weight) in parts)
-        {
-            foreach (var change in changes)
-            {
-                if (!byName.TryGetValue(change.Name, out var sum))
-                {
-                    order.Add(change.Name);
-                    sum = (new Vector3D(0, 0, 0), new Vector3D(0, 0, 0), false, null);
-                }
-                bool special = change.Kind is FactChangeKind.Appeared or FactChangeKind.Vanished;
-                byName[change.Name] = (
-                    sum.Translation + change.Translation * weight,
-                    sum.Size + change.SizeChange * weight,
-                    sum.Resized || change.Kind is FactChangeKind.Resized or FactChangeKind.MovedAndResized,
-                    special ? change.Kind : sum.Special);
-            }
-        }
-
-        var result = new List<FactChange>();
-        foreach (var name in order)
-        {
-            var (translation, size, resized, special) = byName[name];
-            bool moves = translation.Length > MotionTolerance;
-            var kind = special ?? (moves && resized ? FactChangeKind.MovedAndResized
-                : moves ? FactChangeKind.Moved
-                : resized ? FactChangeKind.Resized
-                : (FactChangeKind?)null);
-            if (kind != null) result.Add(new FactChange(name, kind.Value, translation, size));
-        }
-        return result;
-    }
 }

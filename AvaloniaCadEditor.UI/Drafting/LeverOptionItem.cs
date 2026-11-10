@@ -135,6 +135,7 @@ public sealed class LeverOptionItem(LeverOption option, LeverScope? scope = null
     {
         LeverRelationKind.Coaxial => $"{relation.Fact} continua coaxial com {relation.Partner}",
         LeverRelationKind.Aligned => $"{relation.Fact} continuam alinhados em {relation.Partner}",
+        LeverRelationKind.Centered => $"{relation.Fact} continua centrado no plano de simetria {relation.Partner}",
         _ => $"{relation.Fact} continua simétrico a {relation.Partner} em {relation.Axis}"
     };
 
@@ -142,6 +143,7 @@ public sealed class LeverOptionItem(LeverOption option, LeverScope? scope = null
     {
         LeverRelationKind.Coaxial => $"{relation.Fact} deixa de ser coaxial com {relation.Partner}",
         LeverRelationKind.Aligned => $"{relation.Fact} deixam de estar alinhados em {relation.Partner}: a aresta entorta",
+        LeverRelationKind.Centered => $"{relation.Fact} sai do plano de simetria {relation.Partner}: a peça deixa de ser simétrica",
         _ => $"{relation.Fact} deixa de ser simétrico a {relation.Partner} em {relation.Axis}"
     };
 }

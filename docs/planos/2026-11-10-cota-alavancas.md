@@ -1,6 +1,6 @@
 # Selecionar uma cota: o que ela mede, o que a move e mudar o valor por ela
 
-**Status:** Implementado com a segunda rodada (qualidade das opções, prévia), falta verificar no app · **Data:** 2026-11-10 · **Branch:** `feature/modelar-na-peca-isolada`
+**Status:** Implementado com a terceira rodada (simetria ao mudar uma largura), falta verificar no app · **Data:** 2026-11-10 · **Branch:** `feature/modelar-na-peca-isolada`
 
 ## Objetivo
 
@@ -77,6 +77,7 @@ Application não conhece Drafting nem Infrastructure, e a UI compõe.
 - [x] ARCHITECTURE.md §4
 - [x] Segunda rodada: medidas e indiretas, `const`, arestas, alcance, prévia, escolha lembrada (+ testes
   pelo ViewModel com a cena executada)
+- [x] Terceira rodada: a largura de uma peça simétrica anda dos dois lados; par espelhado com o mesmo tamanho (+ testes)
 - [ ] Verificar no app (com permissão): o painel, o fantasma tracejado e o botão "no código"
 
 Medido na `PlacaSuporteCarrinhoY` (vista de topo): todas as cotas são remedidas pela sonda com o valor do
@@ -111,9 +112,27 @@ Próximos passos, fora desta entrega:
 - literais em variáveis locais da cena que alimentam `new Peca(...)`;
 - conferir a geometria da peça (OCCT) na prévia: a sonda só cria features, então um furo que sai do
   corpo só aparece depois de gravar;
-- manter a simetria da própria peça ao mudar uma largura (hoje a aresta anda de um lado só);
 - o estudo só enxerga o efeito de aumentar o número: um `Math.Max` que só responde para baixo não vira
   opção.
+
+## Terceira rodada (2026-11-10): a largura de uma peça simétrica
+
+Antes, a aresta da largura andava de um lado só, e o grupo de simetria só conferia o deslocamento: no
+`SuporteRolamentosCorreia`, `braco_inferior · width` vinha com `braco_superior · baseCorner.x` como "mantém
+a simetria" (um braço engordava, o outro só andava), e o colar de cima encolhia quando o de baixo crescia.
+
+| Caso | O que mudou |
+|---|---|
+| Corpo centrado no plano de simetria da peça inteira (`SymmetryPlane.IsGlobal`) e uma aresta só anda | Nova relação `Centered`: a opção de um lado avisa que a peça deixa de ser simétrica, e o grupo com a aresta do outro lado (sentido contrário) a mantém. Numa `BoxFeature`, o grupo é a largura com o canto andando metade |
+| Par espelhado em que um muda de tamanho | O espelho exige o mesmo tamanho, não só a posição espelhada. O pedido ao parceiro é deslocamento e tamanho juntos |
+| O parceiro precisa de dois números (a caixa espelhada cresce para fora: largura e canto) | A busca tenta um companheiro e, se nenhum serve, dois, por mínimos quadrados |
+| Uma aresta inteira como companheira, ou como número principal de um grupo | Companheiro é uma aresta inteira ou um número que não é ponto de aresta |
+| O grupo dizia que mantinha tudo o que pediu | O grupo é executado. A taxa, o que muda e o que ainda quebra vêm dessa execução, e o par direita+esquerda e esquerda+direita vira uma opção só |
+
+Limite: só o plano **global** pede o centro. A simetria vem do `RelationAnalyzer`, que precisa de pelo menos um
+par de elementos espelhados. Uma placa lisa sem furos não tem plano, e a largura continua andando de um lado.
+Quando o parceiro depende de uma conta (o colar de cima do `SuporteRolamentosCorreia` fica em
+`AlturaRolamentos`), não há grupo e a opção avisa a quebra. O padrão `FolgaColar`, que muda os dois, vem antes.
 
 ## Riscos
 

@@ -149,9 +149,17 @@ public sealed class DimensionLeversViewModelTests : IDisposable
         drafting.OnLabelClicked(total);
         await Settle(drafting.Levers);
 
-        var argumento = drafting.Levers.Options.Single(o => o.Option.Primary.Kind == CodeLeverKind.Argument);
+        var argumento = drafting.Levers.Options.Single(o => o.Option.Primary.Kind == CodeLeverKind.Argument && !o.Option.IsGroup);
         argumento.NarrowScope.Should().Contain("só esta instância");
         argumento.WideScope.Should().BeEmpty();
+
+        // O Bloco é simétrico em x = 0: a opção que o mantém centrado também recua o canto do corpo, que é
+        // literal da peça. Esse número vale para as duas instâncias, e o painel avisa.
+        var centrado = drafting.Levers.Options.Single(o => o.Option.Primary.Kind == CodeLeverKind.Argument && o.Option.IsGroup);
+        centrado.Option.Keeps.Should().ContainSingle(r => r.Kind == LeverRelationKind.Centered && r.Fact == "corpo");
+        centrado.NarrowScope.Should().BeEmpty();
+        centrado.WideScope.Should().Contain("2 instâncias de Bloco");
+        argumento.Option.Breaks.Should().ContainSingle(r => r.Kind == LeverRelationKind.Centered);
         drafting.Levers.Options.Should().NotContain(o => o.Option.Primary.Kind == CodeLeverKind.Default,
             "esta instância passa a Largura: o padrão não a muda");
     }
