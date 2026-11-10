@@ -1,6 +1,6 @@
 # Selecionar uma cota: o que ela mede, o que a move e mudar o valor por ela
 
-**Status:** Implementado com a terceira rodada (simetria ao mudar uma largura), falta verificar no app · **Data:** 2026-11-10 · **Branch:** `feature/modelar-na-peca-isolada`
+**Status:** Congelado (ARCHITECTURE.md §9.1): funciona e fica no app, sem extensão até haver controle sobre o que a cota arrasta · **Data:** 2026-11-10 · **Branch:** `feature/modelar-na-peca-isolada`
 
 ## Objetivo
 
@@ -63,6 +63,20 @@ Application não conhece Drafting nem Infrastructure, e a UI compõe.
 | UI | `Drafting/DimensionLeversViewModel` | seleção da cota, estudo em segundo plano, opções, prévia e aplicação |
 | Application | `Levers/LeverVertexRuns` (2ª rodada) | puro: os pontos seguidos de um contorno com a mesma coordenada (uma aresta) |
 | UI | `Drafting/LeverOptionItem`, `LeverPreviewItem` (2ª rodada) | puro: os textos de cada opção (alcance, avisos) e a prévia montada da solução da sonda |
+
+## Por que está congelado (2026-11-10)
+
+No uso, a tela agradou, mas mudar uma dimensão não dá controle sobre **o que se move junto**: as opções vêm
+de sondar os literais do código, e o que cada número arrasta depende de como o modelo foi escrito. E o
+formato do código gerado pelos modelos pode mudar, o que mudaria as respostas da sonda. Até haver um jeito
+de dizer o que a dimensão deve arrastar (e não só escolher entre o que a sonda achou), a funcionalidade fica
+como está: funciona, não é estendida, e quem trabalha em outra coisa não a lê (regra em ARCHITECTURE.md §9).
+
+Para retomar, os pontos de partida são o "Mapa técnico" abaixo e os "Próximos passos" da segunda rodada.
+
+## Mapa técnico (era a linha da §4 do ARCHITECTURE.md)
+
+a resposta vem de **sondar**, não do rastreio estático: cada literal `double` da peça (corpo do record, argumentos de `new Peca(...)` na cena, valor padrão) vira `L(id, valor)` numa compilação em memória, executada uma vez por número (`FactMotion` diz o que mudou). Literal e parâmetro são a mesma coisa para a sonda. O `const double` do record também entra: **só na cópia** ele deixa de ser `const` (local vira variável, campo privado vira propriedade estática), menos quando algum uso exige constante; se a cópia não compilar, a sonda cai para a versão sem isso. **Nem todo número é medida.** O instrumentador dá o papel pela sintaxe (`CodeLeverRole`: divisor, componente de direção) e o estudo dá a resposta da peça (`LeverEffect.Gain`: uma medida mexe 1, 2 ou 0,5 por unidade; um multiplicador, o valor do que multiplica). O que não é medida sai como opção **indireta** (`LeverCaveat`), só a pedido e nunca escolhida de antemão. Opções que quebrariam uma relação (coaxial, simetria) ganham um grupo que move o parceiro junto, e os vértices seguidos de um contorno com a mesma coordenada andam como aresta, medida numa execução própria (`LeverStudy.Runs`), não somada dos pontos. Numa peça simétrica, a aresta de um lado anda com a do outro para o corpo continuar no plano (`Centered`), e o par espelhado precisa ter o mesmo tamanho, não só a posição espelhada. O parceiro pode precisar de dois números (largura e canto de uma caixa). O grupo é executado de verdade, e o que ele ainda quebra é o que a execução mostra. O painel avisa quantas instâncias mudam, calcula a **prévia** na sonda antes de gravar (`LeverPreviewItem`: números, outras cotas, o que some, fantasma tracejado) e reencontra a cota depois de aplicar pelo que ela mede, porque a chave pode mudar. Gravar é edição pontual do token e recusa se o texto mudou desde a sonda. A sonda é uma cena compilada e carregada: o `LeverStudy` só fica dono dela quando `Run` o devolve (em qualquer outra saída, `Run` a descarta), e o ViewModel **cancela** o estudo que descarta, em vez de deixá-lo rodar até o fim.
 
 ## Etapas
 

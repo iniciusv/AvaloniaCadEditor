@@ -11,6 +11,8 @@ reescreve o fonte em vez de mexer num modelo em memória.
 3. Feature nova toca **7 lugares** (§5.1). Esquecer um não dá erro, a feature só some.
 4. O detalhe de cada projeto fica no README dele (AiCore, Harness, PromptEval). Comece pelo mapa e
    abra o README depois.
+5. Funcionalidade **congelada** (§9 do mapa, por exemplo as cotas que editam o código) não se lê
+   nem se estende ao trabalhar em outra coisa. Se quebrar a compilação, ajuste o mínimo.
 
 **Cena ≠ app.** Para editar uma *cena* (`AiCore/Cena.cs`, `AiCore/Pecas/**`, pastas de cena), as
 regras são as do CadScript: `AGENTS.md` da cena e `.cad/api.md`. Este arquivo é para o *app*.

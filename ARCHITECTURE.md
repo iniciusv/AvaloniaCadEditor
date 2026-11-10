@@ -207,7 +207,7 @@ de todo o resto. Falha segura: fingerprint `null` = sem cache, nunca cache errad
 | Mudar as relações inferidas (simetria, padrões, coaxiais, alinhamentos) | `AvaloniaCadEditor.Analysis/RelationAnalyzer.cs` | 3D e sem vista; serve ao desenho **e** às guias. Simetria exige pares de mesmo tipo e tamanho |
 | Mudar quais cotas o desenho escolhe | `AvaloniaCadEditor.Drafting/DimensionPlanner.cs` (hierarquia: 1 cadeias e tamanhos, 2 localização, 3 totais) e `DimensionLayout.cs` (fileiras por intervalos) | as medidas vêm dos **parâmetros** das features, não da malha: o OCCT não expõe arestas analíticas e furos são prismas de 32 lados |
 | Mudar como as cotas aparecem / o modo "Cotar" | `UI/Drafting/` (`DraftingViewModel`, `DraftingRenderPass`, `DraftingLabelsOverlay`) | cotas manuais vivem só na sessão, por Id de âncora (`furo_x.centro`); só desenham com câmera ortho na vista escolhida |
-| Mudar o que acontece ao selecionar uma cota (o que ela mede, os números do código que a mudam, aplicar um valor novo) | `Application/Levers/` (`LeverStudy`, `LeverOptionFinder`, `LeverVertexRuns`, `LeverSolver`, `LeverSourceEditor`), porta `Application/Interfaces/ILeverProbe.cs`, `Infrastructure/Scripting/RoslynLeverInstrumenter.cs` e `RoslynLeverProbeFactory.cs`, `Drafting/DimensionGauge.cs`, `UI/Drafting/DimensionLeversViewModel.cs` e `UI/Drafting/LeverOptionItem.cs` | a resposta vem de **sondar**, não do rastreio estático: cada literal `double` da peça (corpo do record, argumentos de `new Peca(...)` na cena, valor padrão) vira `L(id, valor)` numa compilação em memória, executada uma vez por número (`FactMotion` diz o que mudou). Literal e parâmetro são a mesma coisa para a sonda. O `const double` do record também entra: **só na cópia** ele deixa de ser `const` (local vira variável, campo privado vira propriedade estática), menos quando algum uso exige constante; se a cópia não compilar, a sonda cai para a versão sem isso. **Nem todo número é medida.** O instrumentador dá o papel pela sintaxe (`CodeLeverRole`: divisor, componente de direção) e o estudo dá a resposta da peça (`LeverEffect.Gain`: uma medida mexe 1, 2 ou 0,5 por unidade; um multiplicador, o valor do que multiplica). O que não é medida sai como opção **indireta** (`LeverCaveat`), só a pedido e nunca escolhida de antemão. Opções que quebrariam uma relação (coaxial, simetria) ganham um grupo que move o parceiro junto, e os vértices seguidos de um contorno com a mesma coordenada andam como aresta, medida numa execução própria (`LeverStudy.Runs`), não somada dos pontos. Numa peça simétrica, a aresta de um lado anda com a do outro para o corpo continuar no plano (`Centered`), e o par espelhado precisa ter o mesmo tamanho, não só a posição espelhada. O parceiro pode precisar de dois números (largura e canto de uma caixa). O grupo é executado de verdade, e o que ele ainda quebra é o que a execução mostra. O painel avisa quantas instâncias mudam, calcula a **prévia** na sonda antes de gravar (`LeverPreviewItem`: números, outras cotas, o que some, fantasma tracejado) e reencontra a cota depois de aplicar pelo que ela mede, porque a chave pode mudar. Gravar é edição pontual do token e recusa se o texto mudou desde a sonda. A sonda é uma cena compilada e carregada: o `LeverStudy` só fica dono dela quando `Run` o devolve (em qualquer outra saída, `Run` a descarta), e o ViewModel **cancela** o estudo que descarta, em vez de deixá-lo rodar até o fim. Plano: `docs/planos/2026-11-10-cota-alavancas.md` |
+| Mudar o que acontece ao selecionar uma cota (o que ela mede, os números do código que a mudam, aplicar um valor novo) | `Application/Levers/` e os arquivos listados na §9 | **funcionalidade congelada (§9)**: não leia nem estenda ao trabalhar em outra coisa. Como funciona e onde retomar: `docs/planos/2026-11-10-cota-alavancas.md` |
 | Mudar quando o desenho esconde cotas (densidade) | `AvaloniaCadEditor.Drafting/DensityPolicy.cs` (limites em `DraftingOptions`), `DimensionCrossings.cs` | esconde por lado: localização (nível 2) primeiro, depois as cadeias que mais cruzam; totais, chamadas e níveis forçados pela legenda (`UI/Drafting/DraftingLegend`) nunca |
 | Mudar como peças aninhadas aparecem no desenho | `Analysis/FactExtractor` (marca `PrimitiveFact.Component`), `RelationAnalyzer.Components`, `Drafting/DimensionPlanner` (`ComponentMarks`, `ComponentCallouts`) | toda `.Instance(...)` é caixa-preta: cotada pelo eixo, com chamada pelo `Part.DrawingLabel` (ou tipo + enums); as medidas internas são da sub-peça |
 | Mudar as guias de referência | `Application/ReferenceGuides/ReferenceGuideService.cs` | é só apresentação sobre `Analysis`: a análise em si muda no `RelationAnalyzer` |
@@ -355,8 +355,7 @@ ferramenta, isolamento de seleção, a entidade aberta com duplo clique (`EditCo
 seleção, para onde as ferramentas gravam), work plane, export STL e dispatch de teclado.
 `SceneScriptViewModel` (2037) acumula projeto em disco, watcher, abas, undo/redo (inclusive o de
 vários arquivos), navegação F12/F2, parâmetros de peça, a gravação na peça aberta e o run. Os dois
-crescem a cada feature: as regras novas já nascem fora deles (`Application/EditContext/`,
-`Application/Levers/`), mas a coordenação continua entrando aqui. Extrações candidatas:
+crescem a cada feature: as regras novas já nascem fora deles (`Application/EditContext/`), mas a coordenação continua entrando aqui. Extrações candidatas:
 `HoverPickController`, `SceneProjectSession` e um controlador da entidade aberta.
 
 ### 6.4 Restos da arquitetura antiga
@@ -449,3 +448,48 @@ Estes testes funcionam como travas de arquitetura e devem continuar passando:
   Infrastructure nem UI; AiCore não referencia nada; Application não referencia Drafting.
 - `ArchitectureDocTests` — todo caminho citado em backticks neste arquivo existe, e todo projeto da `.slnx`
   aparece na tabela da §2. Mapa velho falha o teste em vez de mandar alguém para um arquivo que não existe.
+
+---
+
+## 9. Funcionalidades congeladas
+
+Código que funciona e fica no app, mas está **parado**: ninguém o estende agora e ele não deve ser lido
+ao trabalhar em outra coisa. Cada uma diz por que parou, de que arquivos é feita e onde ela encosta no
+resto. O plano dela é o ponto de retomada.
+
+**A regra.** Ao trabalhar em outra coisa, não abra estes arquivos nem os cite como exemplo. Se uma mudança
+num tipo compartilhado quebrar a compilação deles, ajuste o mínimo para compilar, sem refatorar. Se um
+teste deles quebrar por isso e o conserto não for imediato, marque com `[Fact(Skip = "...")]`, diga o
+motivo e anote no plano. Mudar a funcionalidade em si só a pedido.
+
+### 9.1 Cotas que editam o código (selecionar uma cota, ver os números que a mudam, aplicar um valor)
+
+**Por que parou:** a tela é boa, mas quem muda a dimensão não controla o que se move junto: a resposta vem de
+sondar os literais do código, e o código gerado pelos modelos ainda pode mudar de forma. Retomar quando
+houver um jeito de dizer o que a dimensão deve arrastar.
+Plano, mapa técnico e limites vistos no uso: `docs/planos/2026-11-10-cota-alavancas.md`.
+
+Arquivos só dela:
+
+- `AvaloniaCadEditor.Application/Levers/` (`CodeLever`, `LeverStudy`, `LeverOptionFinder`, `LeverVertexRuns`, `LeverSolver`, `LeverSourceEditor`)
+- `AvaloniaCadEditor.Application/Interfaces/ILeverProbe.cs`
+- `AvaloniaCadEditor.Infrastructure/Scripting/RoslynLeverInstrumenter.cs`, `AvaloniaCadEditor.Infrastructure/Scripting/RoslynLeverProbeFactory.cs`
+- `AvaloniaCadEditor.Analysis/FactMotion.cs`, `AvaloniaCadEditor.Drafting/DimensionGauge.cs`
+- `AvaloniaCadEditor.UI/Drafting/DimensionLeversViewModel.cs`, `AvaloniaCadEditor.UI/Drafting/LeverOptionItem.cs`
+- Testes: `AvaloniaCadEditor.Tests/Drafting/DimensionLeverTests.cs`, `AvaloniaCadEditor.Tests/Drafting/LeverMeasureTests.cs`, `AvaloniaCadEditor.Tests/Drafting/DimensionLeversViewModelTests.cs`
+
+Onde encosta no resto (o que remover se um dia sair, e o que ajustar se quebrar):
+
+| Arquivo | O que tem dela |
+|---|---|
+| `UI/App.axaml.cs` | passa `RoslynLeverProbeFactory` ao `DraftingViewModel` |
+| `UI/Drafting/DraftingViewModel.cs` | a propriedade `Levers`, `Levers.Update` e `Levers.Toggle` no clique da cota |
+| `UI/Drafting/DraftingRenderPass.cs` | cor da cota selecionada, contornos do que ela mede e do que a opção move, fantasma da prévia (`AddOutlines`) |
+| `UI/Drafting/DraftingLabelsOverlay.cs` | cor do texto da cota selecionada e a dica do clique |
+| `UI/Drafting/DraftingLegend.axaml` | o painel de opções, valor novo e Aplicar |
+| `UI/Views/MainWindow.axaml.cs` | Esc tira a seleção da cota |
+| `UI/ViewModels/SceneScriptViewModel.cs` | `RevealLocation` e `ApplySourceEditAsync` (genéricos; hoje só ela os usa) |
+| `Analysis/Facts.cs` | `AnalysisSubject.For`, que o desenho também usa: fica mesmo sem ela |
+
+Se a funcionalidade sair do app, guarde-a antes numa tag (`arquivo/cota-alavancas`) e tire os arquivos e os
+pontos de contato acima.
