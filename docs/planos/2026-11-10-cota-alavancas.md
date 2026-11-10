@@ -1,6 +1,6 @@
 # Selecionar uma cota: o que ela mede, o que a move e mudar o valor por ela
 
-**Status:** Em andamento · **Data:** 2026-11-10 · **Branch:** `feature/modelar-na-peca-isolada`
+**Status:** Implementado com a segunda rodada (qualidade das opções, prévia), falta verificar no app · **Data:** 2026-11-10 · **Branch:** `feature/modelar-na-peca-isolada`
 
 ## Objetivo
 
@@ -39,7 +39,8 @@ Que números entram:
 | `Default` | valor padrão de um parâmetro do record (`double Largura = 80`) | o padrão é constante e não pode virar chamada: cada `new Peca(...)` que **não** passa o parâmetro ganha `Largura: L(id, 80)`. Editar o padrão é exatamente isso |
 
 Ficam de fora: literal que não é `double` depois da conversão (contagem `int`, divisão inteira),
-`const`, atributos e literais de outras peças (sub-peça é caixa-preta).
+atributos e literais de outras peças (sub-peça é caixa-preta). O `const double` entrava nessa lista e
+saiu dela na segunda rodada (abaixo).
 
 ## Arquitetura
 
@@ -59,7 +60,9 @@ Application não conhece Drafting nem Infrastructure, e a UI compõe.
 | Application | `Levers/LeverSourceEditor` | puro: grava os valores novos com edição pontual; recusa se o texto mudou desde a sonda |
 | Infrastructure | `Scripting/RoslynLeverInstrumenter` | puro: árvores → árvores instrumentadas + alavancas |
 | Infrastructure | `Scripting/RoslynLeverProbeFactory` | compila a cena instrumentada, carrega num contexto colecionável e executa |
-| UI | `Drafting/DimensionLeversViewModel` | seleção da cota, estudo em segundo plano, opções e aplicação |
+| UI | `Drafting/DimensionLeversViewModel` | seleção da cota, estudo em segundo plano, opções, prévia e aplicação |
+| Application | `Levers/LeverVertexRuns` (2ª rodada) | puro: os pontos seguidos de um contorno com a mesma coordenada (uma aresta) |
+| UI | `Drafting/LeverOptionItem`, `LeverPreviewItem` (2ª rodada) | puro: os textos de cada opção (alcance, avisos) e a prévia montada da solução da sonda |
 
 ## Etapas
 
@@ -72,15 +75,45 @@ Application não conhece Drafting nem Infrastructure, e a UI compõe.
 - [x] UI: seleção pelo texto da cota, destaque (ciano: o que mede; magenta: o que a opção move), painel de
   opções na legenda, valor novo + Aplicar (Enter), ESC tira a seleção
 - [x] ARCHITECTURE.md §4
-- [ ] Verificar no app (com permissão)
+- [x] Segunda rodada: medidas e indiretas, `const`, arestas, alcance, prévia, escolha lembrada (+ testes
+  pelo ViewModel com a cena executada)
+- [ ] Verificar no app (com permissão): o painel, o fantasma tracejado e o botão "no código"
 
 Medido na `PlacaSuporteCarrinhoY` (vista de topo): todas as cotas são remedidas pela sonda com o valor do
 desenho; as que ficam sem opção são o diâmetro de uma sub-peça (caixa-preta) e uma medida que vem de conta.
 
+## Segunda rodada (2026-11-10): que números oferecer, e ver antes de gravar
+
+Medido na `PlacaSuporteCarrinhoY` depois da primeira entrega: 27 de 29 cotas tinham opções, mas a
+primeira, que vinha escolhida e o Enter aplicava, podia ser um número estrutural, e a medida com
+nome ficava de fora.
+
+| Problema visto na peça | O que mudou |
+|---|---|
+| Cota 18: a única opção era o `1.0` de `var sx = Espelhado ? -1.0 : 1.0;`. Digitar 20 gravava `1.1111` no sinal e escalava 22 elementos | Só **medidas** na lista padrão. O papel vem da sintaxe (`CodeLeverRole`: divisor, componente de direção) e da resposta da peça (`LeverEffect.Gain`: uma medida mexe 1, 2 ou 0,5 por unidade; o sinal da placa mexe 32). O resto é **indireta** (`LeverCaveat`): a pedido, com aviso, nunca escolhida de antemão |
+| Cota 3,5: a primeira opção era o divisor de `passoFixacao / 2` | Divisor é `Factor` pela sintaxe |
+| `3× Ø3,4` sem opção: o raio é `const double raioFuro = 1.7` (55 `const` em 14 das 41 peças) | Na cópia instrumentada o `const double` deixa de ser `const` quando nenhum uso exige constante. O fonte continua com o `const`: gravar troca só o literal |
+| Cotas 32 e 48: duas opções com o mesmo rótulo, uma por vértice; aplicar uma entortava o contorno | Vértices seguidos com a mesma coordenada andam como aresta (`LeverVertexRuns`), medida numa execução própria. O rótulo ganhou "ponto N" |
+| A placa tem 2 instâncias e o painel não dizia que o literal muda as duas | Cada opção diz o alcance |
+| Só se via o resultado depois de gravar | Prévia na sonda: números, outras cotas (antes → depois), o que some, fantasma tracejado |
+| A opção escolhida voltava para a primeira a cada reexecução, e aplicar podia fechar o painel | Escolha lembrada pela chave dos números; a cota é reencontrada depois de aplicar pelo que mede |
+
+Depois disso, na mesma peça: `3× Ø3,4` oferece `raioFuro`; as cotas da malha de furos oferecem
+`passoFixacao`; a cota 18 oferece a aresta esquerda do contorno; o sinal do espelho, os divisores e as
+direções só aparecem como indiretas.
+
+O multiplicador não se decide pela sintaxe: `16 * sx` (medida vezes sinal) e `2 * raio` (fator vezes
+medida) são iguais. Quem os separa é o `Gain`, e ele erra quando o que o fator multiplica vale
+exatamente 1, 2 ou 0,5: aí o fator passa por medida. É o limite de quem só sonda.
+
 Próximos passos, fora desta entrega:
-- fantasma tracejado da posição nova antes de aplicar;
 - sólido solto da cena (os literais ficam na `Cena.cs`; a sonda é a mesma, só muda o alvo);
-- literais em variáveis locais da cena que alimentam `new Peca(...)`.
+- literais em variáveis locais da cena que alimentam `new Peca(...)`;
+- conferir a geometria da peça (OCCT) na prévia: a sonda só cria features, então um furo que sai do
+  corpo só aparece depois de gravar;
+- manter a simetria da própria peça ao mudar uma largura (hoje a aresta anda de um lado só);
+- o estudo só enxerga o efeito de aumentar o número: um `Math.Max` que só responde para baixo não vira
+  opção.
 
 ## Riscos
 

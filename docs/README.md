@@ -53,7 +53,7 @@ a IA ou em `~/.claude/plans/`, onde se perdem.
 | 2026-11-01 | [Código editável por padrão: modelos simples, recursos avançados só sob pedido](planos/2026-11-01-codigo-editavel-por-padrao.md) | Em andamento: etapas 1 a 4 implementadas, falta medir |
 | 2026-11-07 | [Modelar dentro da peça: duplo clique abre a peça e o Extrude grava no `Build()`](planos/2026-11-07-modelar-na-peca-isolada.md) | Em andamento: entregas 1 e 2 implementadas, falta verificar no app |
 | 2026-11-07 | [Booleana e Sweep dentro da peça aberta](planos/2026-11-07-booleana-e-sweep-na-peca-aberta.md) | Implementado, falta verificar no app |
-| 2026-11-10 | [Selecionar uma cota: o que ela mede, o que a move (literais e parâmetros) e mudar o valor por ela](planos/2026-11-10-cota-alavancas.md) | Em andamento |
+| 2026-11-10 | [Selecionar uma cota: o que ela mede, o que a move (literais e parâmetros) e mudar o valor por ela](planos/2026-11-10-cota-alavancas.md) | Implementado com a segunda rodada (só medidas, `const`, arestas, prévia), falta verificar no app |
 
 ### Histórico (planos do modo de planejamento do Claude Code)
 
