@@ -192,4 +192,30 @@ public class SketchRegionsWithCirclesTests
         PaintedArea(new PolygonProfile(horario)).Should().BeApproximately(175, 1e-9);
         PolygonTriangulator.Triangulate(l).Should().HaveCount(3 * 4);
     }
+
+    /// <summary>
+    /// A pintura das regiões pede a triangulação a cada quadro: com os mesmos vértices ela é a guardada, e
+    /// qualquer mudança (um vértice trocado no lugar, ou a lista inteira) a refaz.
+    /// </summary>
+    [Fact]
+    public void Triangulacao_FicaGuardadaEnquantoOsVerticesNaoMudam_ERefazQuandoMudam()
+    {
+        var perfil = new PolygonProfile(new[]
+        {
+            new Point3D(0, 0), new Point3D(20, 0), new Point3D(20, 5),
+            new Point3D(5, 5), new Point3D(5, 20), new Point3D(0, 20)
+        });
+
+        var guardada = perfil.GetTessellatedFace().Indices;
+        perfil.GetTessellatedFace().Indices.Should().BeSameAs(guardada, "os vértices não mudaram");
+        PaintedArea(perfil).Should().BeApproximately(175, 1e-9);
+
+        perfil.Vertices[3] = new Point3D(10, 10); // mesmo número de vértices, outro contorno
+        perfil.GetTessellatedFace().Indices.Should().NotBeSameAs(guardada);
+        PaintedArea(perfil).Should().BeApproximately(250, 1e-9);
+
+        perfil.Vertices = new() { new Point3D(0, 0), new Point3D(20, 0), new Point3D(20, 20), new Point3D(0, 20) };
+        perfil.GetTessellatedFace().Indices.Should().HaveCount(3 * 2);
+        PaintedArea(perfil).Should().BeApproximately(400, 1e-9);
+    }
 }

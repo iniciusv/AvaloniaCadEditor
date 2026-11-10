@@ -70,22 +70,37 @@ public class PolygonProfile : IProfile
         return (verts, TriangleIndices());
     }
 
-    private Point3D[]? _triangulatedVertices;
-    private uint[] _triangleIndices = Array.Empty<uint>();
+    /// <summary>Os vértices triangulados e os índices deles: um par só, trocado por inteiro.</summary>
+    private sealed record Triangulation(Point3D[] Vertices, uint[] Indices);
+
+    private Triangulation? _triangulation;
 
     /// <summary>
     /// Triângulos do contorno por corte de orelhas (a região pode ser côncava, como um quadrado mordido
     /// por um círculo). Guardados enquanto os vértices não mudam: a pintura das regiões pede isto a cada
-    /// quadro.
+    /// quadro, então conferir se mudaram não pode alocar. O par é trocado de uma vez, e não campo a campo,
+    /// para quem lê em outra thread nunca ver os índices de um contorno com os vértices de outro.
     /// </summary>
     private uint[] TriangleIndices()
     {
-        if (_triangulatedVertices == null || !_triangulatedVertices.AsSpan().SequenceEqual(Vertices.ToArray()))
+        var cached = _triangulation;
+        if (cached == null || !SameVertices(cached.Vertices, Vertices))
         {
-            _triangulatedVertices = Vertices.ToArray();
-            _triangleIndices = PolygonTriangulator.Triangulate(_triangulatedVertices).Select(i => (uint)i).ToArray();
+            var snapshot = Vertices.ToArray();
+            cached = new Triangulation(snapshot, PolygonTriangulator.Triangulate(snapshot).Select(i => (uint)i).ToArray());
+            _triangulation = cached;
         }
-        return _triangleIndices;
+        return cached.Indices;
+    }
+
+    private static bool SameVertices(Point3D[] triangulated, List<Point3D> current)
+    {
+        if (triangulated.Length != current.Count) return false;
+        for (int i = 0; i < triangulated.Length; i++)
+        {
+            if (!triangulated[i].Equals(current[i])) return false;
+        }
+        return true;
     }
 
     public bool ContainsPoint(Point3D point)
