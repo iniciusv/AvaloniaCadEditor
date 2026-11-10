@@ -147,4 +147,34 @@ public class DraftingViewModelTests
         cad.OnKeyDown("H", false);
         drafting.Dimensions.Should().NotContain(d => d.IsManual, "cotas manuais são só da sessão de isolamento");
     }
+
+    [Fact]
+    public void CliqueNoTexto_SelecionaACotaEDestacaOQueElaMede_OutroCliqueTira()
+    {
+        var (_, drafting, _) = Isolado();
+        var entreFuros = drafting.Dimensions.Single(d => d.Kind == DimensionKind.Horizontal && d.Value == 20);
+
+        drafting.OnLabelClicked(entreFuros);
+
+        drafting.Levers.Selected!.Key.Should().Be(entreFuros.Key);
+        drafting.Levers.MeasuredSources.Should().BeEquivalentTo("furo_a", "furo_b");
+        drafting.Levers.TargetText.Should().Be("20");
+
+        drafting.OnLabelClicked(entreFuros);
+        drafting.Levers.HasSelection.Should().BeFalse();
+        drafting.Levers.Clear().Should().BeFalse("sem seleção, o ESC segue a cascata normal");
+    }
+
+    [Fact]
+    public void CotaSelecionada_SobreviveATrocaDeFolha_PelaChave()
+    {
+        var (_, drafting, _) = Isolado();
+        var total = drafting.Dimensions.Single(d => d.Kind == DimensionKind.Horizontal && d.Value == 40);
+        drafting.OnLabelClicked(total);
+
+        drafting.SetView(StandardView.Front);
+
+        drafting.Levers.Selected!.Key.Should().Be(total.Key);
+        drafting.Levers.MeasuredSources.Should().BeEquivalentTo("corpo");
+    }
 }

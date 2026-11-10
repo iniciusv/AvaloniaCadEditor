@@ -16,7 +16,8 @@ namespace AvaloniaCadEditor.UI.Drafting;
 /// <summary>
 /// Textos das cotas sobre a viewport (como o <see cref="GuideLabelsOverlay"/>). Os textos são
 /// clicáveis — o canvas não tem fundo, então só eles recebem o clique e o resto passa para a
-/// viewport: no modo "Cotar" o clique esconde/remove a cota; fora dele, mostra o sólido no código.
+/// viewport: no modo "Cotar" o clique esconde/remove a cota; fora dele, seleciona a cota e mostra o sólido
+/// no código.
 /// Alt+clique, em qualquer modo, copia como texto a cadeia (fileira) da cota.
 /// </summary>
 public sealed class DraftingLabelsOverlay : Canvas
@@ -67,13 +68,17 @@ public sealed class DraftingLabelsOverlay : Canvas
                 ? $"{dimension.Text} · {hint}"
                 : dimension.Text;
 
+            bool selected = dimension.Key == drafting.Levers.Selected?.Key;
             var block = new TextBlock
             {
                 Text = text,
                 FontSize = 11,
                 Padding = new Thickness(2, 0),
-                Foreground = dimension.IsManual ? Brushes.Gold : new SolidColorBrush(Color.FromRgb(140, 215, 255)),
-                Background = new SolidColorBrush(Color.FromArgb(190, 20, 20, 20)),
+                Foreground = selected ? Brushes.White
+                    : dimension.IsManual ? Brushes.Gold : new SolidColorBrush(Color.FromRgb(140, 215, 255)),
+                Background = selected
+                    ? new SolidColorBrush(Color.FromArgb(230, 200, 110, 20))
+                    : new SolidColorBrush(Color.FromArgb(190, 20, 20, 20)),
                 Cursor = new Cursor(StandardCursorType.Hand)
             };
             if (graphics.Placement == LabelPlacement.LeftRotated)
@@ -82,7 +87,7 @@ public sealed class DraftingLabelsOverlay : Canvas
                 block.RenderTransformOrigin = RelativePoint.Center;
             }
             var sources = dimension.SourceNames.Count > 0 ? string.Join(", ", dimension.SourceNames) : "peça";
-            ToolTip.SetTip(block, $"{sources}\nAlt+clique: copiar a cadeia");
+            ToolTip.SetTip(block, $"{sources}\nClique: selecionar (o que a cota mede e os números que a mudam)\nAlt+clique: copiar a cadeia");
 
             var captured = dimension;
             block.PointerPressed += (_, e) =>

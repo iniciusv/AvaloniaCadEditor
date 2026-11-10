@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 using Avalonia;
 using Avalonia.Threading;
+using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Domain.Entities;
 using AvaloniaCadEditor.Domain.Features;
 using AvaloniaCadEditor.Domain.ValueObjects;
@@ -43,9 +44,13 @@ public sealed class DraftingViewModel : INotifyPropertyChanged
 
     private int _hintGeneration;
 
-    public DraftingViewModel(CadViewModel cad)
+    /// <param name="leverProbes">A sonda dos números do código (ver <see cref="DimensionLeversViewModel"/>);
+    /// sem ela, selecionar uma cota só a destaca.</param>
+    public DraftingViewModel(CadViewModel cad, ILeverProbeFactory? leverProbes = null)
     {
         _cad = cad ?? throw new ArgumentNullException(nameof(cad));
+        Levers = new DimensionLeversViewModel(cad, leverProbes);
+        Levers.Changed += RaiseChanged;
         _cad.PropertyChanged += (_, e) =>
         {
             if (e.PropertyName == nameof(CadViewModel.DisplayFrame))
@@ -64,6 +69,9 @@ public sealed class DraftingViewModel : INotifyPropertyChanged
 
     /// <summary>Disparado quando o que é desenhado muda (folha, cotas, pendências, visibilidade).</summary>
     public event Action? Changed;
+
+    /// <summary>A cota selecionada: o que ela mede, o que a muda e a aplicação de um valor novo.</summary>
+    public DimensionLeversViewModel Levers { get; }
 
     private bool _isVisible;
     /// <summary>Toggle "Cotas" da toolbar.</summary>
@@ -194,6 +202,7 @@ public sealed class DraftingViewModel : INotifyPropertyChanged
         {
             Dimensions = Array.Empty<DraftDimension>();
             RefreshLegend();
+            Levers.Update(null, Dimensions);
             RaiseChanged();
             return;
         }
@@ -212,6 +221,7 @@ public sealed class DraftingViewModel : INotifyPropertyChanged
 
         Dimensions = list;
         RefreshLegend();
+        Levers.Update(Sheet, Dimensions);
         RaiseChanged();
     }
 
@@ -387,7 +397,7 @@ public sealed class DraftingViewModel : INotifyPropertyChanged
     }
 
     /// <summary>Clique no texto de uma cota: no modo "Cotar" esconde (automática) ou remove
-    /// (manual); fora dele, mostra no código o sólido que a cota mede.</summary>
+    /// (manual); fora dele, seleciona a cota (ver <see cref="Levers"/>) e mostra no código o sólido que ela mede.</summary>
     public void OnLabelClicked(DraftDimension dimension)
     {
         if (CurrentKey is not { } key) return;
@@ -407,6 +417,7 @@ public sealed class DraftingViewModel : INotifyPropertyChanged
             return;
         }
 
+        Levers.Toggle(dimension);
         if (_cad.IsolatedFeature is PartInstance instance && dimension.SourceNames.Count > 0)
         {
             _cad.ScriptEditor?.RevealPartTool(instance.PartTypeName, SolidName(dimension.SourceNames[0]));

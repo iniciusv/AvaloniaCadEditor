@@ -123,6 +123,13 @@ public partial class MainWindow : Window
                 return;
             }
 
+            // ESC com uma cota selecionada tira a seleção antes de sair de um nível.
+            if (e.Key == Avalonia.Input.Key.Escape && vm.Drafting?.Levers.Clear() == true)
+            {
+                ViewportControl.RequestNextFrameRendering();
+                return;
+            }
+
             bool isCtrl = e.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Control);
             vm.OnKeyDown(e.Key.ToString(), isCtrl);
             if (e.Key == Avalonia.Input.Key.Tab) e.Handled = true;

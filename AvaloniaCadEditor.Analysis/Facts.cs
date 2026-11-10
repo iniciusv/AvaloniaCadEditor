@@ -11,7 +11,27 @@ namespace AvaloniaCadEditor.Analysis;
 /// <param name="Name">Nome do sujeito (ex.: a instância "bloco_fixacao_belt"); não entra no nome dos fatos.</param>
 /// <param name="OwnerId">Feature de topo da cena que o sujeito representa (para destacar a seleção); por
 /// padrão, a própria <paramref name="Feature"/>.</param>
-public sealed record AnalysisSubject(IFeature Feature, Placement ToFrame, string Name = "", Guid? OwnerId = null);
+public sealed record AnalysisSubject(IFeature Feature, Placement ToFrame, string Name = "", Guid? OwnerId = null)
+{
+    /// <summary>
+    /// O sujeito de uma feature de topo da cena: a árvore de dentro (a <c>Definition</c> de uma peça, a
+    /// <c>Source</c> de um <c>Transformed</c>) com o posicionamento dela, levada por
+    /// <paramref name="worldToFrame"/> para o referencial da análise.
+    /// </summary>
+    public static AnalysisSubject For(IFeature feature, Placement worldToFrame)
+    {
+        ArgumentNullException.ThrowIfNull(feature);
+        ArgumentNullException.ThrowIfNull(worldToFrame);
+
+        var (root, rootToWorld) = feature switch
+        {
+            PartInstance instance => (instance.Definition, instance.Placement),
+            TransformedFeature transformed => (transformed.Source, transformed.Placement),
+            _ => (feature, Placement.Identity)
+        };
+        return new AnalysisSubject(root, rootToWorld.Then(worldToFrame), feature.Name, feature.Id);
+    }
+}
 
 /// <summary>
 /// Peça aninhada (uma <see cref="PartInstance"/> dentro do <c>Build()</c> do sujeito, como

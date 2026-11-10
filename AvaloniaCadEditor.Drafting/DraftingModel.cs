@@ -170,13 +170,6 @@ public sealed record DraftingInput(
         ArgumentNullException.ThrowIfNull(frame);
         if (worldPositions is null || worldPositions.Length < 3) return null;
 
-        var (root, rootToWorld) = feature switch
-        {
-            PartInstance instance => (instance.Definition, instance.Placement),
-            TransformedFeature transformed => (transformed.Source, transformed.Placement),
-            _ => (feature, Placement.Identity)
-        };
-
         double minX = double.MaxValue, minY = double.MaxValue, minZ = double.MaxValue;
         double maxX = double.MinValue, maxY = double.MinValue, maxZ = double.MinValue;
         for (int i = 0; i + 2 < worldPositions.Length; i += 3)
@@ -186,7 +179,7 @@ public sealed record DraftingInput(
             maxX = Math.Max(maxX, p.X); maxY = Math.Max(maxY, p.Y); maxZ = Math.Max(maxZ, p.Z);
         }
 
-        var subject = new AnalysisSubject(root, rootToWorld.Then(frame.WorldToFrame), feature.Name, feature.Id);
+        var subject = AnalysisSubject.For(feature, frame.WorldToFrame);
         return new DraftingInput([subject], view, new Point3D(minX, minY, minZ), new Point3D(maxX, maxY, maxZ));
     }
 }

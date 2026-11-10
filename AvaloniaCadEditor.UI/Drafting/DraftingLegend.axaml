@@ -32,6 +32,49 @@
                     </DataTemplate>
                 </ItemsControl.ItemTemplate>
             </ItemsControl>
+
+            <!-- Cota selecionada (clique no texto dela): o que mede e como mudá-la pelo código. -->
+            <StackPanel DataContext="{Binding Levers}" x:DataType="drafting:DimensionLeversViewModel"
+                        IsVisible="{Binding HasSelection}" Spacing="4" MaxWidth="340">
+                <Border Height="1" Background="#555" Margin="0,4"/>
+                <DockPanel>
+                    <Button DockPanel.Dock="Right" Content="✕" FontSize="10" Padding="5,0" MinHeight="0"
+                            ToolTip.Tip="Tirar a seleção (Esc)" Command="{Binding ClearCommand}"/>
+                    <TextBlock Text="{Binding Title}" FontWeight="SemiBold" Foreground="#FFB347" FontSize="12" VerticalAlignment="Center"/>
+                </DockPanel>
+                <TextBlock Text="{Binding MeasuredText}" Foreground="#40FFF2" FontSize="10" TextWrapping="Wrap"/>
+                <TextBlock Text="{Binding Status}" Foreground="#AAA" FontSize="10" FontStyle="Italic" TextWrapping="Wrap"/>
+
+                <ListBox ItemsSource="{Binding Options}" SelectedItem="{Binding SelectedOption, Mode=TwoWay}"
+                         Background="Transparent" MaxHeight="260" Padding="0"
+                         IsVisible="{Binding HasOptions}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate x:DataType="drafting:LeverOptionItem">
+                            <StackPanel Spacing="1" ToolTip.Tip="{Binding Where}">
+                                <TextBlock Text="{Binding Title}" Foreground="#EEE" FontSize="11" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding Companions}" Foreground="#DDD" FontSize="10" TextWrapping="Wrap"
+                                           IsVisible="{Binding HasCompanions}"/>
+                                <TextBlock Text="{Binding Effect}" Foreground="#FF7AD9" FontSize="10" TextWrapping="Wrap"/>
+                                <TextBlock Text="{Binding Keeps}" Foreground="#7CDB7C" FontSize="10" TextWrapping="Wrap"
+                                           IsVisible="{Binding HasKeeps}"/>
+                                <TextBlock Text="{Binding Breaks}" Foreground="Orange" FontSize="10" TextWrapping="Wrap"
+                                           IsVisible="{Binding HasBreaks}"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+
+                <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasOptions}">
+                    <TextBlock Text="Valor novo" Foreground="#CCC" FontSize="11" VerticalAlignment="Center"/>
+                    <TextBox Text="{Binding TargetText}" Width="80" FontSize="11" MinHeight="0" Padding="4,1">
+                        <TextBox.KeyBindings>
+                            <KeyBinding Gesture="Enter" Command="{Binding ApplyCommand}"/>
+                        </TextBox.KeyBindings>
+                    </TextBox>
+                    <Button Content="Aplicar" FontSize="11" Padding="8,1" MinHeight="0" Command="{Binding ApplyCommand}"
+                            ToolTip.Tip="Calcula os números da opção escolhida, confere numa execução e grava no código (Ctrl+Z desfaz)."/>
+                </StackPanel>
+            </StackPanel>
         </StackPanel>
     </Border>
 </UserControl>

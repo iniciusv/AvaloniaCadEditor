@@ -23,6 +23,9 @@ public sealed class DraftingRenderPass : IRenderPass
     private static readonly (float R, float G, float B) CenterColor = (0.45f, 0.9f, 0.45f);
     private static readonly (float R, float G, float B) AnchorColor = (0.85f, 0.85f, 0.85f);
     private static readonly (float R, float G, float B) PendingColor = (1.0f, 0.5f, 0.1f);
+    private static readonly (float R, float G, float B) SelectedColor = (1.0f, 0.6f, 0.15f);
+    private static readonly (float R, float G, float B) MeasuredColor = (0.25f, 1.0f, 0.95f);
+    private static readonly (float R, float G, float B) AffectedColor = (1.0f, 0.35f, 0.85f);
 
     public void Init(GL gl)
     {
@@ -49,9 +52,11 @@ public sealed class DraftingRenderPass : IRenderPass
         var vertices = new List<float>();
         double arrow = drafting.ArrowSize;
 
+        var levers = drafting.Levers;
         foreach (var dimension in drafting.Dimensions)
         {
-            var color = dimension.IsManual ? ManualColor : AutoColor;
+            var color = dimension.Key == levers.Selected?.Key ? SelectedColor
+                : dimension.IsManual ? ManualColor : AutoColor;
             foreach (var (a, b) in DimensionGraphics.Build(dimension, arrow).Segments)
             {
                 AddSegment(vertices, drafting.ToWorld(a), drafting.ToWorld(b), color);
@@ -63,6 +68,13 @@ public sealed class DraftingRenderPass : IRenderPass
         foreach (var line in sheet.CenterLines)
         {
             AddDashed(vertices, drafting.ToWorld(line.A), drafting.ToWorld(line.B), CenterColor, pattern);
+        }
+
+        if (levers.HasSelection)
+        {
+            // O que a opção move por fora, o que a cota mede por dentro: um elemento pode ser os dois.
+            AddOutlines(vertices, drafting, sheet, levers.AffectedSources, sheet.Gap * 0.16, AffectedColor);
+            AddOutlines(vertices, drafting, sheet, levers.MeasuredSources, sheet.Gap * 0.06, MeasuredColor);
         }
 
         if (drafting.IsPicking)
@@ -103,6 +115,56 @@ public sealed class DraftingRenderPass : IRenderPass
     {
         if (_vao != 0) { gl.DeleteVertexArray(_vao); _vao = 0; }
         if (_vbo != 0) { gl.DeleteBuffer(_vbo); _vbo = 0; }
+    }
+
+    /// <summary>Contorno das primitivas <paramref name="names"/>, afastado <paramref name="inflate"/> mm para
+    /// fora, para não se confundir com as arestas da peça.</summary>
+    private static void AddOutlines(List<float> target, DraftingViewModel drafting, DraftingSheet sheet,
+        IReadOnlyList<string> names, double inflate, (float, float, float) color)
+    {
+        if (names.Count == 0) return;
+        var wanted = new HashSet<string>(names, StringComparer.Ordinal);
+        foreach (var entity in sheet.Entities)
+        {
+            if (!wanted.Contains(entity.SourceName)) continue;
+            switch (entity)
+            {
+                case ViewCircle circle:
+                {
+                    const int segments = 48;
+                    double r = circle.Radius + inflate;
+                    for (int i = 0; i < segments; i++)
+                    {
+                        double a0 = 2 * Math.PI * i / segments, a1 = 2 * Math.PI * (i + 1) / segments;
+                        AddSegment(target,
+                            drafting.ToWorld(new P2(circle.Center.U + r * Math.Cos(a0), circle.Center.V + r * Math.Sin(a0))),
+                            drafting.ToWorld(new P2(circle.Center.U + r * Math.Cos(a1), circle.Center.V + r * Math.Sin(a1))),
+                            color);
+                    }
+                    break;
+                }
+                case ViewPolygon polygon:
+                    for (int i = 0; i < polygon.Points.Count; i++)
+                    {
+                        AddSegment(target, drafting.ToWorld(polygon.Points[i]), drafting.ToWorld(polygon.Points[(i + 1) % polygon.Points.Count]), color);
+                    }
+                    break;
+                default:
+                {
+                    var min = new P2(entity.Min.U - inflate, entity.Min.V - inflate);
+                    var max = new P2(entity.Max.U + inflate, entity.Max.V + inflate);
+                    var p1 = drafting.ToWorld(min);
+                    var p2 = drafting.ToWorld(new P2(max.U, min.V));
+                    var p3 = drafting.ToWorld(max);
+                    var p4 = drafting.ToWorld(new P2(min.U, max.V));
+                    AddSegment(target, p1, p2, color);
+                    AddSegment(target, p2, p3, color);
+                    AddSegment(target, p3, p4, color);
+                    AddSegment(target, p4, p1, color);
+                    break;
+                }
+            }
+        }
     }
 
     private static void AddCross(List<float> target, DraftingViewModel drafting, P2 c, double s, (float, float, float) color)

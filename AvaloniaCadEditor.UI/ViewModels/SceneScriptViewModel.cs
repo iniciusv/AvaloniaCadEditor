@@ -1933,6 +1933,20 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
     private readonly Stack<CrossFileEdit> _crossFileUndo = new();
     private readonly Stack<CrossFileEdit> _crossFileRedo = new();
 
+    /// <summary>
+    /// Edição pontual do app no fonte (o valor novo de uma cota). Num arquivo só, ele vira o ativo, para o
+    /// Ctrl+Z do editor valer; em vários, o Ctrl+Z desfaz todos juntos.
+    /// </summary>
+    public async Task ApplySourceEditAsync(IReadOnlyList<ScriptDocument> changes)
+    {
+        if (changes.Count == 0) return;
+        if (_project != null && changes.Count == 1 && !string.Equals(changes[0].FilePath, _activeFile, StringComparison.OrdinalIgnoreCase))
+        {
+            SwitchActiveFile(changes[0].FilePath);
+        }
+        await ApplyCrossFileChangesAsync(changes);
+    }
+
     /// <summary>Como <see cref="ApplyExternalChangesAsync"/>, mas com um Ctrl+Z que desfaz os arquivos todos juntos.</summary>
     public async Task ApplyCrossFileChangesAsync(IReadOnlyList<ScriptDocument> changes)
     {
