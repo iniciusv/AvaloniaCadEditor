@@ -511,11 +511,17 @@ public sealed class LeverOptionItem(LeverOption option)
         _ => "valor padrão do parâmetro"
     };
 
-    private static string Kept(LeverRelation relation) => relation.Kind == LeverRelationKind.Coaxial
-        ? $"{relation.Fact} continua coaxial com {relation.Partner}"
-        : $"{relation.Fact} continua simétrico a {relation.Partner} em {relation.Axis}";
+    private static string Kept(LeverRelation relation) => relation.Kind switch
+    {
+        LeverRelationKind.Coaxial => $"{relation.Fact} continua coaxial com {relation.Partner}",
+        LeverRelationKind.Aligned => $"{relation.Fact} continuam alinhados em {relation.Partner}",
+        _ => $"{relation.Fact} continua simétrico a {relation.Partner} em {relation.Axis}"
+    };
 
-    private static string Broken(LeverRelation relation) => relation.Kind == LeverRelationKind.Coaxial
-        ? $"{relation.Fact} deixa de ser coaxial com {relation.Partner}"
-        : $"{relation.Fact} deixa de ser simétrico a {relation.Partner} em {relation.Axis}";
+    private static string Broken(LeverRelation relation) => relation.Kind switch
+    {
+        LeverRelationKind.Coaxial => $"{relation.Fact} deixa de ser coaxial com {relation.Partner}",
+        LeverRelationKind.Aligned => $"{relation.Fact} deixam de estar alinhados em {relation.Partner}: a aresta entorta",
+        _ => $"{relation.Fact} deixa de ser simétrico a {relation.Partner} em {relation.Axis}"
+    };
 }

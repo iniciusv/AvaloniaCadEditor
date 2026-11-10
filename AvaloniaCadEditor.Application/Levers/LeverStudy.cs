@@ -24,6 +24,13 @@ public sealed record LeverEffect(CodeLever Lever, double Step, IReadOnlyList<Pri
 }
 
 /// <summary>
+/// O efeito de mover juntos os pontos de uma aresta de um contorno (<see cref="LeverVertexRuns"/>).
+/// </summary>
+/// <param name="Levers">Os números do trecho, na ordem da lista.</param>
+/// <param name="Effect">O que muda com todos acrescidos do mesmo passo (o número do efeito é o primeiro).</param>
+public sealed record LeverRunEffect(IReadOnlyList<CodeLever> Levers, LeverEffect Effect);
+
+/// <summary>
 /// O estudo de uma peça: os fatos como estão no código e, para cada número que a sonda sabe trocar, o que
 /// acontece quando ele muda um pouco. Uma execução da cena por número, feita uma vez; depois disso as
 /// perguntas sobre qualquer cota da peça (<see cref="LeverOptionFinder"/>) só leem o estudo.
@@ -49,8 +56,18 @@ public sealed class LeverStudy : IDisposable
     /// <summary>Os fatos da peça como estão no código, no referencial da folha.</summary>
     public IReadOnlyList<PrimitiveFact> Baseline { get; }
 
+    /// <summary>Todos os números que a sonda sabe trocar, mudem ou não alguma coisa sozinhos.</summary>
+    public IReadOnlyList<CodeLever> Levers => _probe.Levers;
+
     /// <summary>Só os números que mudam alguma coisa na peça estudada.</summary>
     public IReadOnlyList<LeverEffect> Effects { get; private set; } = Array.Empty<LeverEffect>();
+
+    /// <summary>
+    /// As arestas dos contornos movidas inteiras. Medido à parte, e não somado dos efeitos de cada ponto:
+    /// numa borda de baixo, um ponto que sobe sozinho não muda a caixa da peça (o outro continua lá), e os
+    /// dois juntos mudam.
+    /// </summary>
+    public IReadOnlyList<LeverRunEffect> Runs { get; private set; } = Array.Empty<LeverRunEffect>();
 
     /// <summary>Relações da peça como está (coaxiais, simetrias), calculadas na primeira pergunta.</summary>
     public ModelRelations Relations => _relations.Value;
@@ -97,6 +114,20 @@ public sealed class LeverStudy : IDisposable
                 if (changes.Count > 0) effects.Add(new LeverEffect(lever, step, facts, changes));
             }
             study.Effects = effects;
+
+            var runs = new List<LeverRunEffect>();
+            foreach (var run in LeverVertexRuns.Find(probe.Levers))
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                double step = StepFor(run[0].Value);
+                var facts = study.Evaluate(run.ToDictionary(l => l.Id, l => l.Value + step));
+                if (facts == null) continue;
+
+                var changes = FactMotion.Compare(baseline, facts);
+                if (changes.Count > 0) runs.Add(new LeverRunEffect(run, new LeverEffect(run[0], step, facts, changes)));
+            }
+            study.Runs = runs;
             return study;
         }
         catch

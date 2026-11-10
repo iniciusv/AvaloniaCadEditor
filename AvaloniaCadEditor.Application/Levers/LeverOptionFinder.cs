@@ -9,7 +9,14 @@ public sealed record LeverShare(CodeLever Lever, double Weight);
 public enum LeverRelationKind
 {
     Coaxial,
-    Symmetry
+    Symmetry,
+
+    /// <summary>
+    /// Pontos seguidos de um contorno com a mesma coordenada: uma aresta reta (ou, quando são todos, o
+    /// plano do contorno). Aqui <c>Fact</c> são os pontos ("perfil_base · pontos 1 e 2") e <c>Partner</c>
+    /// é a coordenada que eles têm em comum ("x").
+    /// </summary>
+    Aligned
 }
 
 /// <summary>
@@ -80,7 +87,9 @@ public sealed record LeverOption(
 /// <summary>
 /// Responde, sobre um <see cref="LeverStudy"/>, quais números mudam uma medida e o que cada um arrasta.
 /// Para cada número que sozinho quebraria uma relação (coaxial, simetria), procura os números que movem o
-/// elemento parceiro na mesma direção e propõe o grupo. As opções saem ordenadas: medidas antes das
+/// elemento parceiro na mesma direção e propõe o grupo. O mesmo vale para os vértices de um contorno: os
+/// pontos seguidos com a mesma coordenada (uma aresta reta) ganham um grupo que os move juntos, porque
+/// mudar um só entorta a aresta. As opções saem ordenadas: medidas antes das
 /// indiretas (<see cref="LeverCaveat"/>), depois menos relações quebradas, menos elementos movidos, menos
 /// cotas afetadas, controle direto (1 mm no número = 1 mm na cota).
 ///
@@ -121,17 +130,28 @@ public static class LeverOptionFinder
             if (measure(effect.Facts) is { } value) rates[effect.Lever.Id] = (value - baseValue) / effect.Step;
         }
 
+        // As arestas dos contornos, cada uma inteira, e a que aresta cada número pertence.
         var options = new List<LeverOption>();
+        var runs = new Dictionary<int, IReadOnlyList<CodeLever>>();
+        foreach (var edge in study.Runs)
+        {
+            foreach (var lever in edge.Levers) runs[lever.Id] = edge.Levers;
+            if (AlignedGroup(study, edge, measure, baseValue, watched, watchedBase) is { } together) options.Add(together);
+        }
+
         foreach (var effect in study.Effects)
         {
+            runs.TryGetValue(effect.Lever.Id, out var run);
             if (!rates.TryGetValue(effect.Lever.Id, out double rate) || Math.Abs(rate) < RateTolerance) continue;
 
             var perUnit = Scale(effect.Changes, 1 / effect.Step);
             var requirements = Requirements(perUnit, study.Relations);
-            var (caveat, gain) = CaveatOf([effect]);
+            var breaks = requirements.Select(r => r.Relation).ToList();
+            if (run != null) breaks.Add(Alignment(run));
+            var (caveat, gain) = CaveatOf([effect.Lever], [effect]);
             options.Add(new LeverOption(
                 [new LeverShare(effect.Lever, 1)], rate, perUnit,
-                Array.Empty<LeverRelation>(), requirements.Select(r => r.Relation).ToList(),
+                Array.Empty<LeverRelation>(), breaks,
                 CountChanged(watched, watchedBase, effect.Facts))
             {
                 Caveat = caveat,
@@ -164,21 +184,64 @@ public static class LeverOptionFinder
     /// unidade no elemento que mais muda, e um multiplicador mexe o valor do que ele multiplica. Quando
     /// esse valor calha de ser 1 ou 2, o multiplicador passa por medida: é o limite de quem só sonda.
     /// </summary>
-    private static (LeverCaveat Caveat, double Gain) CaveatOf(IEnumerable<LeverEffect> effects)
+    /// <param name="levers">Os números da opção.</param>
+    /// <param name="effects">O que eles fazem: um efeito por número, ou o efeito do grupo inteiro.</param>
+    private static (LeverCaveat Caveat, double Gain) CaveatOf(IReadOnlyList<CodeLever> levers, IReadOnlyList<LeverEffect> effects)
     {
-        LeverEffect? first = null;
-        foreach (var effect in effects)
+        double gain = effects.Count > 0 ? effects[0].Gain : 0;
+
+        if (levers.Any(l => l.Role == CodeLeverRole.Factor)) return (LeverCaveat.Factor, gain);
+        if (levers.Any(l => l.Role == CodeLeverRole.Direction)) return (LeverCaveat.Direction, gain);
+
+        var scaled = effects.FirstOrDefault(e => !RespondsAsMeasure(e));
+        return scaled == null ? (LeverCaveat.None, gain) : (LeverCaveat.Scaled, scaled.Gain);
+    }
+
+    // ------------------------------------------------------------------ vértices alinhados
+
+    /// <summary>"perfil_base · pontos 1 e 2" alinhados em "x".</summary>
+    private static LeverRelation Alignment(IReadOnlyList<CodeLever> run)
+    {
+        var points = run.Select(l => (l.Vertex!.Index + 1).ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
+        string list = points.Count == 2
+            ? $"{points[0]} e {points[1]}"
+            : string.Join(", ", points.Take(points.Count - 1)) + " e " + points[^1];
+        return new LeverRelation(LeverRelationKind.Aligned, $"{run[0].Owner} · pontos {list}", run[0].Path);
+    }
+
+    /// <summary>
+    /// Os pontos de uma aresta movidos juntos. O efeito é o que o estudo mediu numa execução com todos
+    /// trocados, e não a soma dos efeitos de cada um: numa aresta que é a borda da peça, cada ponto sozinho
+    /// já leva a borda (a taxa de cada um é 1, e a dos dois juntos também é 1, não 2), ou não leva nada
+    /// (a borda de baixo, quando só um ponto sobe).
+    /// </summary>
+    private static LeverOption? AlignedGroup(
+        LeverStudy study,
+        LeverRunEffect edge,
+        Func<IReadOnlyList<PrimitiveFact>, double?> measure,
+        double baseValue,
+        IReadOnlyList<Func<IReadOnlyList<PrimitiveFact>, double?>> watched,
+        IReadOnlyList<double?> watchedBase)
+    {
+        var effect = edge.Effect;
+        if (measure(effect.Facts) is not { } value) return null;
+
+        double rate = (value - baseValue) / effect.Step;
+        if (Math.Abs(rate) < RateTolerance) return null;
+
+        var perUnit = Scale(effect.Changes, 1 / effect.Step);
+        var (caveat, gain) = CaveatOf(edge.Levers, [effect]);
+        return new LeverOption(
+            edge.Levers.Select(l => new LeverShare(l, 1)).ToList(),
+            rate,
+            perUnit,
+            [Alignment(edge.Levers)],
+            Requirements(perUnit, study.Relations).Select(r => r.Relation).ToList(),
+            CountChanged(watched, watchedBase, effect.Facts))
         {
-            first ??= effect;
-            var caveat = effect.Lever.Role switch
-            {
-                CodeLeverRole.Factor => LeverCaveat.Factor,
-                CodeLeverRole.Direction => LeverCaveat.Direction,
-                _ => RespondsAsMeasure(effect) ? LeverCaveat.None : LeverCaveat.Scaled
-            };
-            if (caveat != LeverCaveat.None) return (caveat, effect.Gain);
-        }
-        return (LeverCaveat.None, first?.Gain ?? 0);
+            Caveat = caveat,
+            Gain = gain
+        };
     }
 
     private static bool RespondsAsMeasure(LeverEffect effect)
@@ -293,7 +356,7 @@ public static class LeverOptionFinder
         var values = shares.ToDictionary(s => s.Effect.Lever.Id, s => s.Effect.Lever.Value + s.Weight * step);
         var after = study.Evaluate(values);
 
-        var (caveat, gain) = CaveatOf(shares.Select(s => s.Effect));
+        var (caveat, gain) = CaveatOf(shares.Select(s => s.Effect.Lever).ToList(), shares.Select(s => s.Effect).ToList());
         return new LeverOption(
             shares.Select(s => new LeverShare(s.Effect.Lever, s.Weight)).ToList(),
             rate,

@@ -237,3 +237,124 @@ public class LeverMeasureTests
         sem.Levers.Select(l => l.Label).Should().NotContain("raioFuro").And.NotContain("Espessura");
     }
 }
+
+/// <summary>
+/// Os vértices de um contorno. Dois pontos seguidos com a mesma coordenada são uma aresta reta: a cota da
+/// largura oferece primeiro os dois juntos, porque mudar um só entorta a aresta.
+/// </summary>
+public class LeverAlignedVerticesTests
+{
+    // Um "L": x = 30 nos pontos 1 e 2, y = 0 nos pontos 6 e 1 (o último é vizinho do primeiro).
+    private const string Record = """
+        public sealed record Chapa() : Part
+        {
+            protected override IFeature Build()
+            {
+                var perfil = new PolygonProfile(new System.Collections.Generic.List<Point3D>
+                {
+                    new Point3D(30, 0, 0),
+                    new Point3D(30, 20, 0),
+                    new Point3D(10, 20, 0),
+                    new Point3D(10, 8, 0),
+                    new Point3D(0, 8, 0),
+                    new Point3D(0, 0, 0)
+                });
+                return new ExtrudeFeature(perfil, 5, new Vector3D(0, 0, 5), "corpo");
+            }
+        }
+        """;
+
+    private static readonly ScriptDocument[] Documents =
+    {
+        new(ScriptDocument.DefaultSceneFile, "Add(new Chapa(), name: \"p\");"),
+        new("Pecas/Chapa.cs", Record)
+    };
+
+    private static async Task<(LeverStudy Study, DimensionGauge Largura)> Estudo()
+    {
+        var result = await new RoslynSceneEvaluator().EvaluateAsync(Documents);
+        result.Success.Should().BeTrue(result.ErrorMessage);
+        var peca = result.Features.Single(f => f.Name == "p");
+        var sheet = DraftingAnalyzer.Analyze(new DraftingInput(
+            [AnalysisSubject.For(peca, Placement.Identity)], StandardView.Top, new Point3D(0, 0, 0), new Point3D(30, 20, 5)))!;
+        var largura = DimensionFactory.Linear(sheet.FindAnchor("peca.esq_inf")!, sheet.FindAnchor("peca.dir_sup")!, DimensionKind.Horizontal, -5);
+        largura.Value.Should().BeApproximately(30, 1e-9);
+
+        var study = LeverStudy.Run(new RoslynLeverProbeFactory().Create(Documents, "Chapa")!, "p", Placement.Identity)!;
+        return (study, DimensionGauge.For(sheet, largura)!);
+    }
+
+    [Fact]
+    public void Sonda_DizOndeCadaCoordenadaFicaNaLista_EORotuloDizOPonto()
+    {
+        using var probe = new RoslynLeverProbeFactory().Create(Documents, "Chapa")!;
+
+        var xs = probe.Levers.Where(l => l.Vertex != null && l.Path == "x").OrderBy(l => l.Vertex!.Index).ToList();
+        xs.Select(l => (l.Vertex!.Index, l.Vertex.Count, l.Vertex.Coordinate)).Should().Equal(
+            (0, 6, "30"), (1, 6, "30"), (2, 6, "10"), (3, 6, "10"), (4, 6, "0"), (5, 6, "0"));
+        xs.Select(l => l.Vertex!.ListId).Distinct().Should().ContainSingle();
+        xs[0].Label.Should().Be("perfil · ponto 1 · x");
+        xs[1].Label.Should().Be("perfil · ponto 2 · x", "sem o ponto, os dois teriam o mesmo rótulo");
+    }
+
+    [Fact]
+    public async Task Largura_OfereceAArestaInteiraAntesDeUmPontoSo()
+    {
+        var (study, largura) = await Estudo();
+        using var _ = study;
+
+        var options = LeverOptionFinder.Find(study, largura.Measure).Where(o => o.IsDirect).ToList();
+
+        var aresta = options[0];
+        aresta.Shares.Select(s => (s.Lever.Label, s.Weight)).Should().Equal(
+            ("perfil · ponto 1 · x", 1.0), ("perfil · ponto 2 · x", 1.0));
+        aresta.Rate.Should().BeApproximately(1, 1e-6, "os dois juntos levam a borda 1 para 1: a taxa não é a soma das duas");
+        aresta.Keeps.Should().ContainSingle().Which.Should().Be(new LeverRelation(LeverRelationKind.Aligned, "perfil · pontos 1 e 2", "x"));
+        aresta.Breaks.Should().BeEmpty();
+
+        var sozinhos = options.Where(o => !o.IsGroup).ToList();
+        sozinhos.Select(o => o.Primary.Label).Should().BeEquivalentTo("perfil · ponto 1 · x", "perfil · ponto 2 · x");
+        sozinhos.Should().OnlyContain(o => o.Breaks.Any(b => b.Kind == LeverRelationKind.Aligned), "um ponto só entorta a aresta");
+
+        // A outra forma de mudar a largura é a borda esquerda (x = 0, pontos 5 e 6). Um ponto dela que anda
+        // sozinho para dentro não muda a caixa da peça, porque o outro continua em x = 0: só a aresta
+        // inteira aparece, e é por isso que o estudo a mede à parte.
+        var esquerda = options.Where(o => o.IsGroup).Should().HaveCount(2, "cada aresta aparece uma vez, não uma por ponto").And.Subject.Last();
+        esquerda.Keeps.Single().Fact.Should().Be("perfil · pontos 5 e 6");
+        esquerda.Rate.Should().BeApproximately(-1, 1e-6);
+    }
+
+    [Fact]
+    public async Task Aresta_ResolvidaEGravada_MudaOsDoisPontos()
+    {
+        var (study, largura) = await Estudo();
+        using var _ = study;
+        var aresta = LeverOptionFinder.Find(study, largura.Measure).First(o => o.IsGroup);
+
+        var solution = LeverSolver.Solve(aresta, 36, study.Evaluate, largura.Measure)!;
+
+        solution.Achieved.Should().BeApproximately(36, 1e-3);
+        var text = LeverSourceEditor.Apply(Documents, solution.Changes)!.Single().Text;
+        text.Should().Contain("new Point3D(36, 0, 0)").And.Contain("new Point3D(36, 20, 0)")
+            .And.Contain("new Point3D(10, 20, 0)", "o resto do contorno não muda");
+    }
+
+    [Fact]
+    public async Task UltimoEPrimeiroPonto_SaoVizinhos()
+    {
+        var (study, _) = await Estudo();
+        using var __ = study;
+        var result = await new RoslynSceneEvaluator().EvaluateAsync(Documents);
+        var sheet = DraftingAnalyzer.Analyze(new DraftingInput(
+            [AnalysisSubject.For(result.Features.Single(f => f.Name == "p"), Placement.Identity)],
+            StandardView.Top, new Point3D(0, 0, 0), new Point3D(30, 20, 5)))!;
+        var altura = DimensionGauge.For(sheet, DimensionFactory.Linear(
+            sheet.FindAnchor("peca.esq_inf")!, sheet.FindAnchor("peca.dir_sup")!, DimensionKind.Vertical, -5))!;
+
+        var grupos = LeverOptionFinder.Find(study, altura.Measure).Where(o => o.IsGroup).ToList();
+
+        // y = 0 fica nos pontos 6 e 1; y = 20, nos pontos 2 e 3.
+        grupos.SelectMany(o => o.Keeps).Select(r => r.Fact)
+            .Should().BeEquivalentTo("perfil · pontos 6 e 1", "perfil · pontos 2 e 3");
+    }
+}
