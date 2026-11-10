@@ -10,14 +10,15 @@
 /// - haste: de x = 0 até as costas, de AlturaHaste para cima. Embaixo dela fica a fixação superior do
 ///   bloco com a cabeça do parafuso furo_fixacao_1, por isso ela começa acima dessa cabeça.
 /// - fixacao_parede: M3 horizontal que vem de fora da parede do bloco, atravessa o rasgo e rosqueia
-///   numa porca inserida pelo canal aberto no topo da haste. O rasgo é vertical: a altura do parafuso
-///   pode variar no curso dele, e o suporte é posto na altura da correia.
+///   numa porca inserida pelo canal aberto no topo da haste. O furo vaza pela face interna das costas
+///   (o parafuso pode ser mais longo que a haste). O rasgo é vertical: a altura do parafuso pode variar
+///   no curso dele, e o suporte é posto na altura da correia.
 /// - costas, braco_superior e braco_inferior: o C. As costas ficam a FolgaRolamento do eixo, longe da
 ///   flange e da correia enrolada no rolamento.
 /// - colar_inferior e colar_superior: anéis estreitos em que só o anel interno dos rolamentos encosta
 ///   (o anel externo gira com a correia), como o colar da <see cref="ArruelaEspacadora"/>.
-/// - fixacao_eixo: o M3 dos rolamentos desce do topo do braço de cima e rosqueia na porca alojada por
-///   baixo do braço de baixo.
+/// - fixacao_eixo: o parafuso dos rolamentos (RoscaEixo, M4) desce do topo do braço de cima e rosqueia
+///   na porca alojada por baixo do braço de baixo.
 /// O contorno externo leva um chanfro de RaioChanfro, cortado antes dos colares e dos furos.
 /// </summary>
 public sealed record SuporteRolamentosCorreia(
@@ -33,7 +34,8 @@ public sealed record SuporteRolamentosCorreia(
     double ProfundidadePorcaParede = 4.0,
     double FolgaColar = 0.5,          // altura dos colares
     double DiametroColar = 5.0,
-    double RaioChanfro = 1.0) : Part
+    double RaioChanfro = 1.0,
+    Rosca RoscaEixo = Rosca.M4) : Part
 {
     /// <summary>Centro da face de baixo do rolamento de baixo (a origem dele).</summary>
     public Point3D EixoRolamentos => new Point3D(DistanciaEixo, 0, 0);
@@ -85,18 +87,18 @@ public sealed record SuporteRolamentosCorreia(
         var colar_superior = new CylinderFeature(new Point3D(DistanciaEixo, 0, AlturaRolamentos), Vector3D.UnitZ, DiametroColar / 2.0, FolgaColar + 0.5) { Name = "colar_superior" };
         var corpo = BooleanFeature.CreateUnion("corpo", corpo_externo, colar_inferior, colar_superior);
 
-        // M3 dos rolamentos: a porca entra pela face de baixo (alojamento de 4 mm a partir de 1 mm fora dela)
+        // Parafuso dos rolamentos (RoscaEixo): a porca entra pela face de baixo (alojamento de 4 mm a partir de 1 mm fora dela)
         // e o furo sai 1 mm acima do topo do braço de cima.
         const double espessuraAlojamentoEixo = 4.0;
         var zEntradaEixo = zBase - 1.0;
         var fixacao_eixo = new FuroPorca(new Point3D(DistanciaEixo, 0, zEntradaEixo), Vector3D.UnitZ, 0,
-            Insercao: InsercaoPorca.Axial, EspessuraAlojamento: espessuraAlojamentoEixo,
+            Rosca: RoscaEixo, Insercao: InsercaoPorca.Axial, EspessuraAlojamento: espessuraAlojamentoEixo,
             FolgaDepois: zTopo + 1.0 - (zEntradaEixo + espessuraAlojamentoEixo)).Instance("fixacao_eixo");
 
-        // M3 do rasgo: entra pela face de apoio, porca no canal aberto no topo da haste. O furo termina
-        // dentro das costas (FolgaDepois), sem chegar ao vão da correia.
+        // M3 do rasgo: entra pela face de apoio, porca no canal aberto no topo da haste. O furo vaza pela
+        // face interna das costas e sai 1 mm além dela, no vão do C.
         const double espessuraAlojamentoParede = 3.0;
-        var xFimFuroParede = xFaceInternaCostas - 2.0;
+        var xFimFuroParede = xFaceInternaCostas + 1.0;
         var fixacao_parede = new FuroPorca(new Point3D(-1.0, 0, AlturaParafuso), Vector3D.UnitX, ProfundidadePorcaParede,
             Insercao: InsercaoPorca.Lateral, EixoHexagono: Vector3D.UnitZ, ComprimentoCanal: zTopo - AlturaParafuso + 1.0,
             EspessuraAlojamento: espessuraAlojamentoParede,
