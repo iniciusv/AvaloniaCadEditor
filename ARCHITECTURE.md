@@ -335,31 +335,34 @@ encontrar e deve entender antes de "consertar".
 
 ### 6.1 Composição manual com ciclo e `null!`
 
-[`App.axaml.cs:47`](AvaloniaCadEditor.UI/App.axaml.cs#L47) passa `null!` para `scriptEditor` e na
-linha 50 faz `viewModel.ScriptEditor = scriptEditor`: `CadViewModel` ↔ `SceneScriptViewModel` é
+[`App.axaml.cs:48`](AvaloniaCadEditor.UI/App.axaml.cs#L48) passa `null!` para `scriptEditor` e na
+linha 52 faz `viewModel.ScriptEditor = scriptEditor`: `CadViewModel` ↔ `SceneScriptViewModel` é
 circular, resolvido por property setter. `_filePickerService!` e `_reconstructionService!` também
 são null-forgiving — NRE em runtime para quem construir o VM de outro jeito (e os testes constroem).
 Não há container de DI.
 
 ### 6.2 Defaults de construtor furam a camada
 
-[`CadViewModel.cs:645-648`](AvaloniaCadEditor.UI/ViewModels/CadViewModel.cs#L645):
+[`CadViewModel.cs:1148-1149`](AvaloniaCadEditor.UI/ViewModels/CadViewModel.cs#L1148):
 `settingsProvider ?? new JsonTessellationSettingsProvider()` e `stlService ?? new StlService()`.
 O acoplamento UI→Infrastructure fica escondido num valor default, por conveniência de teste —
 o oposto do que a `IGeometryKernel` conquistou.
 
 ### 6.3 Dois god objects
 
-`CadViewModel` (1565 linhas) acumula hover/pick com timer, ciclo TAB entre candidatos, estado de
-ferramenta, isolamento de seleção, modo de edição de grupo booleano, work plane, export STL e
-dispatch de teclado. `SceneScriptViewModel` (1475) acumula projeto em disco, watcher, abas,
-undo/redo, navegação F12/F2, parâmetros de peça e o run. Extrações candidatas:
-`HoverPickController`, `SceneProjectSession`.
+`CadViewModel` (2371 linhas) acumula hover/pick com timer, ciclo TAB entre candidatos, estado de
+ferramenta, isolamento de seleção, a entidade aberta com duplo clique (`EditContext`, nível de
+seleção, para onde as ferramentas gravam), work plane, export STL e dispatch de teclado.
+`SceneScriptViewModel` (2027) acumula projeto em disco, watcher, abas, undo/redo (inclusive o de
+vários arquivos), navegação F12/F2, parâmetros de peça, a gravação na peça aberta e o run. Os dois
+crescem a cada feature: as regras novas já nascem fora deles (`Application/EditContext/`,
+`Application/Levers/`), mas a coordenação continua entrando aqui. Extrações candidatas:
+`HoverPickController`, `SceneProjectSession` e um controlador da entidade aberta.
 
 ### 6.4 Restos da arquitetura antiga
 
 - `GenerateCodeCommand` é um no-op — "O gerador foi castrado. O código agora é a fonte da
-  verdade." ([`SceneScriptViewModel.cs:68`](AvaloniaCadEditor.UI/ViewModels/SceneScriptViewModel.cs#L68)).
+  verdade." ([`SceneScriptViewModel.cs:76`](AvaloniaCadEditor.UI/ViewModels/SceneScriptViewModel.cs#L76)).
   Continua sendo chamado em todo `RefreshSolidMesh` e tem botão na toolbar ("Atualizar código").
 - `MainViewModel` ainda é o "Welcome to Avalonia!" do template.
 - A pasta `AiCore.Avalonia` está vazia e fora do git (sobra local, sem projeto).
