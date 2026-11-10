@@ -210,6 +210,95 @@ public class DimensionLeverTests
     }
 }
 
+/// <summary>
+/// De quem é a sonda. O estudo só fica com ela quando <see cref="LeverStudy.Run"/> o devolve; em qualquer
+/// outra saída (cancelado, erro, peça que não está na cena) ela é descartada ali, porque quem chamou não
+/// tem mais como alcançá-la e a cena compilada ficaria carregada para sempre.
+/// </summary>
+public class LeverStudyLifetimeTests
+{
+    private sealed class FakeProbe(int levers, Func<int, IReadOnlyList<IFeature>?> run) : ILeverProbe
+    {
+        public IReadOnlyList<CodeLever> Levers { get; } = Enumerable.Range(0, levers)
+            .Select(i => new CodeLever(i, CodeLeverKind.Literal, new CodeLocation("Pecas/Bloco.cs", i, 2, 1, i + 1, ""), "10", 10, "corpo", ""))
+            .ToList();
+
+        /// <summary>Quantas vezes a cena foi executada (a primeira é a de base).</summary>
+        public int Runs { get; private set; }
+
+        public bool Disposed { get; private set; }
+
+        public IReadOnlyList<IFeature>? Run(IReadOnlyDictionary<int, double> values) => run(Runs++);
+
+        public void Dispose() => Disposed = true;
+    }
+
+    private static IReadOnlyList<IFeature> Cena() => [new BoxFeature(Point3D.Origin, 40, 16, 17) { Name = "bloco" }];
+
+    [Fact]
+    public void CanceladoNoMeio_ParaDeExecutarEDescartaASonda()
+    {
+        using var cancellation = new System.Threading.CancellationTokenSource();
+        var probe = new FakeProbe(levers: 5, run =>
+        {
+            if (run == 1) cancellation.Cancel(); // durante o primeiro número
+            return Cena();
+        });
+
+        Action act = () => LeverStudy.Run(probe, "bloco", Placement.Identity, cancellation.Token);
+
+        act.Should().Throw<OperationCanceledException>();
+        probe.Runs.Should().Be(2, "a base e o número em que o cancelamento chegou; os outros 4 não executam");
+        probe.Disposed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void JaCancelado_NemExecutaACena()
+    {
+        var probe = new FakeProbe(levers: 3, _ => Cena());
+
+        Action act = () => LeverStudy.Run(probe, "bloco", Placement.Identity, new System.Threading.CancellationToken(canceled: true));
+
+        act.Should().Throw<OperationCanceledException>();
+        probe.Runs.Should().Be(0);
+        probe.Disposed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void SondaQueLanca_DescartaASonda()
+    {
+        var probe = new FakeProbe(levers: 3, run => run == 0 ? Cena() : throw new InvalidOperationException("falhou"));
+
+        Action act = () => LeverStudy.Run(probe, "bloco", Placement.Identity);
+
+        act.Should().Throw<InvalidOperationException>();
+        probe.Disposed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void PecaForaDaCena_DevolveNullEDescartaASonda()
+    {
+        var probe = new FakeProbe(levers: 3, _ => Cena());
+
+        LeverStudy.Run(probe, "outra", Placement.Identity).Should().BeNull();
+        probe.Disposed.Should().BeTrue();
+    }
+
+    [Fact]
+    public void EstudoDevolvido_FicaComASondaAteSerDescartado()
+    {
+        var probe = new FakeProbe(levers: 3, _ => Cena());
+
+        var study = LeverStudy.Run(probe, "bloco", Placement.Identity);
+
+        study.Should().NotBeNull();
+        probe.Runs.Should().Be(4, "a base e uma execução por número");
+        probe.Disposed.Should().BeFalse("o estudo ainda responde perguntas com a sonda");
+        study!.Dispose();
+        probe.Disposed.Should().BeTrue();
+    }
+}
+
 /// <summary>Regras de texto da gravação, sem compilar nada.</summary>
 public class LeverSourceEditorTests
 {

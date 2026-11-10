@@ -85,7 +85,8 @@ Próximos passos, fora desta entrega:
 ## Riscos
 
 - **Custo:** uma execução da cena por alavanca. O estudo roda em segundo plano, uma vez por versão do
-  código, e é descartado quando o código muda.
+  código, e é descartado quando o código muda: se ainda estiver rodando, é cancelado
+  (`DimensionLeversViewModel.DropStudy`), e o `LeverStudy.Run` cancelado descarta a própria sonda.
 - **Não linearidade** (`if`, ângulos): a taxa vale em torno do valor atual. O `LeverSolver` itera e
   confere numa execução real antes de gravar.
 - **Código mudou desde a sonda:** o `LeverSourceEditor` confere o texto de cada literal e recusa.

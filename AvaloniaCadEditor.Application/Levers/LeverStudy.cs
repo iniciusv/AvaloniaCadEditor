@@ -44,37 +44,53 @@ public sealed class LeverStudy : IDisposable
 
     /// <summary>
     /// Estuda a feature de topo <paramref name="subjectName"/> (a peça isolada). <c>null</c> se a cena não
-    /// executar ou a peça não estiver nela; nesse caso a sonda é descartada aqui.
+    /// executar ou a peça não estiver nela.
+    /// <para>
+    /// O estudo só passa a ser dono da sonda quando é devolvido. Em qualquer outra saída (<c>null</c>,
+    /// cancelamento, erro) a sonda é descartada aqui: quem chama não tem mais como alcançá-la, e a cena
+    /// compilada ficaria carregada para sempre.
+    /// </para>
     /// </summary>
     /// <param name="worldToFrame">Leva o mundo para o referencial da folha (o mesmo das cotas).</param>
+    /// <param name="cancellationToken">Conferido antes de cada execução da cena (uma por número).</param>
     public static LeverStudy? Run(ILeverProbe probe, string subjectName, Placement worldToFrame, CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(probe);
-        ArgumentException.ThrowIfNullOrEmpty(subjectName);
-        ArgumentNullException.ThrowIfNull(worldToFrame);
 
-        var baseline = Facts(probe, subjectName, worldToFrame, new Dictionary<int, double>());
-        if (baseline == null)
+        try
         {
-            probe.Dispose();
-            return null;
-        }
-
-        var study = new LeverStudy(probe, subjectName, worldToFrame, baseline);
-        var effects = new List<LeverEffect>();
-        foreach (var lever in probe.Levers)
-        {
+            ArgumentException.ThrowIfNullOrEmpty(subjectName);
+            ArgumentNullException.ThrowIfNull(worldToFrame);
             cancellationToken.ThrowIfCancellationRequested();
 
-            double step = StepFor(lever.Value);
-            var facts = study.Evaluate(new Dictionary<int, double> { [lever.Id] = lever.Value + step });
-            if (facts == null) continue;
+            var baseline = Facts(probe, subjectName, worldToFrame, new Dictionary<int, double>());
+            if (baseline == null)
+            {
+                probe.Dispose();
+                return null;
+            }
 
-            var changes = FactMotion.Compare(baseline, facts);
-            if (changes.Count > 0) effects.Add(new LeverEffect(lever, step, facts, changes));
+            var study = new LeverStudy(probe, subjectName, worldToFrame, baseline);
+            var effects = new List<LeverEffect>();
+            foreach (var lever in probe.Levers)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                double step = StepFor(lever.Value);
+                var facts = study.Evaluate(new Dictionary<int, double> { [lever.Id] = lever.Value + step });
+                if (facts == null) continue;
+
+                var changes = FactMotion.Compare(baseline, facts);
+                if (changes.Count > 0) effects.Add(new LeverEffect(lever, step, facts, changes));
+            }
+            study.Effects = effects;
+            return study;
         }
-        study.Effects = effects;
-        return study;
+        catch
+        {
+            probe.Dispose();
+            throw;
+        }
     }
 
     /// <summary>

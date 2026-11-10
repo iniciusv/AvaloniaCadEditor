@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.Globalization;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using Avalonia.Threading;
@@ -213,6 +214,16 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
             }
             options = await Task.Run(() => LeverOptionFinder.Find(study, gauge.Measure, watched));
         }
+        catch (OperationCanceledException)
+        {
+            // O estudo foi descartado (DropStudy): quem o descartou já cuida do estado novo.
+            if (generation == _generation)
+            {
+                Status = "";
+                IsBusy = false;
+            }
+            return;
+        }
         catch (Exception ex)
         {
             if (generation != _generation) return;
@@ -248,7 +259,12 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
         try
         {
             var study = await Study(studyTarget);
-            if (study == null || generation != _generation) return;
+            if (generation != _generation) return;
+            if (study == null)
+            {
+                Status = "✗ Não consegui executar a cena para sondar os números.";
+                return;
+            }
 
             var solution = await Task.Run(() => LeverSolver.Solve(item.Option, target, study.Evaluate, gauge.Measure));
             if (generation != _generation) return;
@@ -271,6 +287,10 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
             TargetText = DimensionFactory.Format(target);
             await _cad.ScriptEditor.ApplySourceEditAsync(changes);
         }
+        catch (OperationCanceledException)
+        {
+            if (generation == _generation) Status = "";
+        }
         catch (Exception ex)
         {
             Status = $"✗ {ex.Message}";
@@ -289,7 +309,8 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
     /// <summary>O que identifica um estudo: a peça isolada, o referencial e o código naquele momento.</summary>
     private sealed record StudyTarget(string SubjectName, string PartType, Placement WorldToFrame, IReadOnlyList<ScriptDocument> Documents);
 
-    private sealed record StudyHandle(StudyTarget Target, Task<LeverStudy?> Task);
+    /// <param name="Cancellation">Para o estudo quando ele deixa de servir (ver <see cref="DropStudy"/>).</param>
+    private sealed record StudyHandle(StudyTarget Target, Task<LeverStudy?> Task, CancellationTokenSource Cancellation);
 
     private StudyTarget? CurrentTarget()
     {
@@ -303,21 +324,34 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
 
         DropStudy();
         var factory = _factory!;
+        var cancellation = new CancellationTokenSource();
+        var token = cancellation.Token;
         var task = Task.Run(() =>
         {
-            var probe = factory.Create(target.Documents, target.PartType);
-            return probe == null ? null : LeverStudy.Run(probe, target.SubjectName, target.WorldToFrame);
-        });
-        _study = new StudyHandle(target, task);
+            var probe = factory.Create(target.Documents, target.PartType, token);
+            return probe == null ? null : LeverStudy.Run(probe, target.SubjectName, target.WorldToFrame, token);
+        }, token);
+        _study = new StudyHandle(target, task, cancellation);
         return task;
     }
 
-    /// <summary>Descarta o estudo (descarrega a cena compilada) quando ele terminar.</summary>
+    /// <summary>
+    /// Descarta o estudo. Se ainda está rodando, é cancelado: sem isso ele seguiria até o fim em segundo
+    /// plano (uma execução da cena por número) para um código que já mudou, e o <see cref="LeverStudy.Run"/>
+    /// cancelado descarta a própria sonda. Se já terminou, a cena compilada é descarregada aqui.
+    /// </summary>
     private void DropStudy()
     {
         var old = _study;
         _study = null;
-        old?.Task.ContinueWith(t => { if (t.IsCompletedSuccessfully) t.Result?.Dispose(); }, TaskScheduler.Default);
+        if (old == null) return;
+
+        old.Cancellation.Cancel();
+        old.Task.ContinueWith(t =>
+        {
+            if (t.IsCompletedSuccessfully) t.Result?.Dispose();
+            old.Cancellation.Dispose();
+        }, TaskScheduler.Default);
     }
 
     private static bool SameTarget(StudyTarget a, StudyTarget b) =>
