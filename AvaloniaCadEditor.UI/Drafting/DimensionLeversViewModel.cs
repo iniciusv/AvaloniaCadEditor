@@ -35,7 +35,7 @@ namespace AvaloniaCadEditor.UI.Drafting;
 /// o contorno do que se mexe já no lugar novo (<see cref="GhostEntities"/>).
 /// </para>
 /// </summary>
-public sealed class DimensionLeversViewModel : INotifyPropertyChanged
+public sealed class DimensionLeversViewModel : INotifyPropertyChanged, IDisposable
 {
     private readonly CadViewModel _cad;
     private readonly ILeverProbeFactory? _factory;
@@ -222,7 +222,10 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
 
     // ------------------------------------------------------------------ Entrada do desenho
 
-    /// <summary>A folha mudou (outra vista, outra execução, cotas escondidas): reencontra a cota pela chave.</summary>
+    /// <summary>
+    /// A folha mudou (outra vista, outra execução, cotas escondidas): reencontra a cota pela chave ou, logo
+    /// depois de aplicar um valor, pelo que ela mede (<see cref="FollowUp"/>).
+    /// </summary>
     public void Update(DraftingSheet? sheet, IReadOnlyList<DraftDimension> dimensions)
     {
         _sheet = sheet;
@@ -573,11 +576,24 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
         if (old == null) return;
 
         old.Cancellation.Cancel();
-        old.Task.ContinueWith(t =>
-        {
-            if (t.IsCompletedSuccessfully) t.Result?.Dispose();
-            old.Cancellation.Dispose();
-        }, TaskScheduler.Default);
+        if (old.Task.IsCompleted) Release(old);
+        else old.Task.ContinueWith(_ => Release(old), TaskScheduler.Default);
+    }
+
+    private static void Release(StudyHandle handle)
+    {
+        if (handle.Task.IsCompletedSuccessfully) handle.Task.Result?.Dispose();
+        handle.Cancellation.Dispose();
+    }
+
+    /// <summary>
+    /// Tira a seleção e descarta o estudo: a cena compilada da sonda fica carregada enquanto o estudo
+    /// existir, e ninguém mais o alcança depois que o ViewModel sai de uso.
+    /// </summary>
+    public void Dispose()
+    {
+        Clear();
+        DropStudy();
     }
 
     private static bool SameTarget(StudyTarget a, StudyTarget b) =>

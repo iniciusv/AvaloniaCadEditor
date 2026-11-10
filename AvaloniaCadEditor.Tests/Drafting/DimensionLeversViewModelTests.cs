@@ -26,8 +26,17 @@ namespace AvaloniaCadEditor.Tests.Drafting;
 /// cota é clicada, como no app. A sonda é a de produção, menos nos testes de cancelamento, que precisam de
 /// uma que fique parada.
 /// </summary>
-public class DimensionLeversViewModelTests
+public sealed class DimensionLeversViewModelTests : IDisposable
 {
+    private readonly List<DraftingViewModel> _draftings = new();
+
+    /// <summary>O estudo segura a cena compilada da sonda: solto aqui, para os assemblies deste teste não
+    /// ficarem carregados no processo (há teste que conta os assemblies de cena).</summary>
+    public void Dispose()
+    {
+        foreach (var drafting in _draftings) drafting.Levers.Dispose();
+    }
+
     // Duas instâncias da mesma peça; a cota entre os furos mede 20 (de x = -10 a x = 10).
     private const string Cena = """
         Add(new Bloco(), at: Placement.At(100, 50, 26), name: "peca");
@@ -46,7 +55,7 @@ public class DimensionLeversViewModelTests
         }
         """;
 
-    private static async Task<(CadViewModel Cad, DraftingViewModel Drafting)> Isolado(ILeverProbeFactory factory, string cena = Cena)
+    private async Task<(CadViewModel Cad, DraftingViewModel Drafting)> Isolado(ILeverProbeFactory factory, string cena = Cena)
     {
         var cad = TestUtils.CreateCadViewModel(
             new Mock<AvaloniaCadEditor.Domain.Interfaces.IGeometryEngine>().Object,
@@ -55,6 +64,7 @@ public class DimensionLeversViewModelTests
             new OpenCascadeGeometryKernel());
         var drafting = new DraftingViewModel(cad, factory);
         cad.Drafting = drafting;
+        _draftings.Add(drafting);
 
         cad.ScriptEditor.GeneratedCSharpCode = cena;
         await cad.ScriptEditor.RunCodeAsync();
