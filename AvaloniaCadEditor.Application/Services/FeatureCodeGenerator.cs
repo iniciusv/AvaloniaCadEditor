@@ -76,8 +76,14 @@ public static class FeatureCodeGenerator
     public static SweepSectionCode SweepSectionFromProfile(IProfile profile)
     {
         if (profile is CompoundProfile compound)
-            return SweepSectionCode.Failed(
-                $"selecione uma região só como seção (há {compound.SubProfiles.Count} regiões marcadas).");
+        {
+            // Regiões vizinhas formam uma seção só; separadas, não há como varrer as duas juntas.
+            var merged = SketchRegionMerger.MergeAdjacent(compound.SubProfiles);
+            if (merged.Count != 1)
+                return SweepSectionCode.Failed(
+                    $"selecione uma região só como seção (há {merged.Count} regiões separadas marcadas).");
+            profile = merged[0];
+        }
 
         if (profile is FaceProfile or ParametricBoxFace or ParametricCylinderFace)
             return SweepSectionCode.Failed("a seção tem que ser uma região do esboço, não uma face de sólido.");
@@ -234,8 +240,14 @@ public static class FeatureCodeGenerator
         }
         else if (profile is AvaloniaCadEditor.Domain.Profiles.CompoundProfile compoundProfile)
         {
+            // Regiões vizinhas viram uma região só: as duas metades de um quadrado são um BoxFeature, não
+            // duas caixas e uma união de sólidos que só se encostam.
+            var subProfiles = SketchRegionMerger.MergeAdjacent(compoundProfile.SubProfiles);
+            if (subProfiles.Count == 1)
+                return GenerateExtrusionCode(subProfiles[0], height, sketch, target);
+
             var vars = new List<string>();
-            foreach (var sub in compoundProfile.SubProfiles)
+            foreach (var sub in subProfiles)
             {
                 // Recursive call without sketch to avoid deleting sketch entities yet
                 string subCode = GenerateExtrusionCode(sub, height, null, target);

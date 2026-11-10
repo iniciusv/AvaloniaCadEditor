@@ -66,22 +66,26 @@ public class PolygonProfile : IProfile
         if (Vertices == null || Vertices.Count < 3)
             return (Array.Empty<Point3D>(), Array.Empty<uint>());
 
-        var verts = new List<Point3D>(Vertices.Count + 1);
-        var indices = new List<uint>(Vertices.Count * 3);
+        var verts = Vertices.Select(v => Plane.ToWorldSpace(v)).ToList();
+        return (verts, TriangleIndices());
+    }
 
-        verts.Add(Plane.ToWorldSpace(Center));
-        verts.AddRange(Vertices.Select(v => Plane.ToWorldSpace(v)));
+    private Point3D[]? _triangulatedVertices;
+    private uint[] _triangleIndices = Array.Empty<uint>();
 
-        for (int i = 0; i < Vertices.Count; i++)
+    /// <summary>
+    /// Triângulos do contorno por corte de orelhas (a região pode ser côncava, como um quadrado mordido
+    /// por um círculo). Guardados enquanto os vértices não mudam: a pintura das regiões pede isto a cada
+    /// quadro.
+    /// </summary>
+    private uint[] TriangleIndices()
+    {
+        if (_triangulatedVertices == null || !_triangulatedVertices.AsSpan().SequenceEqual(Vertices.ToArray()))
         {
-            uint current = (uint)(i + 1);
-            uint next = (uint)((i + 1) % Vertices.Count + 1);
-            indices.Add(0);
-            indices.Add(current);
-            indices.Add(next);
+            _triangulatedVertices = Vertices.ToArray();
+            _triangleIndices = PolygonTriangulator.Triangulate(_triangulatedVertices).Select(i => (uint)i).ToArray();
         }
-
-        return (verts, indices);
+        return _triangleIndices;
     }
 
     public bool ContainsPoint(Point3D point)

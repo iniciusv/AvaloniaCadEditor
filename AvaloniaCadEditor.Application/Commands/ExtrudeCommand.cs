@@ -112,6 +112,8 @@ public class ExtrudeCommand : ICommandTool
 		_selectedProfile = null;
 		CurrentHeight = 20.0;
 		_previewFeature = null;
+		_profileToBuildSource = null;
+		_profileToBuild = null;
 		IsPreviewDirty = false;
 	}
 
@@ -122,15 +124,16 @@ public class ExtrudeCommand : ICommandTool
 	{
 		if (_currentState == State.DefiningHeight && _selectedProfile != null)
 		{
-			if (_previewFeature == null || _previewFeature.Profile != _selectedProfile)
+			var profile = ProfileToBuild();
+			if (_previewFeature == null || _previewFeature.Profile != profile)
 			{
-				_previewFeature = new ExtrudeFeature(_selectedProfile, CurrentHeight);
+				_previewFeature = new ExtrudeFeature(profile, CurrentHeight);
 				IsPreviewDirty = true; // Force initial build
 			}
 			else
 			{
 				_previewFeature.Height = CurrentHeight;
-				_previewFeature.Direction = _selectedProfile.Normal * CurrentHeight; // Update direction based on height
+				_previewFeature.Direction = profile.Normal * CurrentHeight; // Update direction based on height
 			}
 			return _previewFeature;
 		}
@@ -138,43 +141,76 @@ public class ExtrudeCommand : ICommandTool
 		return null;
 	}
 
+	private IProfile? _profileToBuildSource;
+	private IProfile? _profileToBuild;
+
+	/// <summary>
+	/// O perfil que a prévia mostra: o mesmo que o código vai gerar. Regiões vizinhas marcadas com Ctrl
+	/// são juntadas pelo <see cref="AvaloniaCadEditor.Application.Services.SketchRegionMerger"/>, como no
+	/// <see cref="AvaloniaCadEditor.Application.Services.FeatureCodeGenerator"/>; sem isso a prévia mostraria
+	/// um sólido por região enquanto o código grava um só.
+	/// </summary>
+	private IProfile ProfileToBuild()
+	{
+		if (!ReferenceEquals(_profileToBuildSource, _selectedProfile))
+		{
+			_profileToBuildSource = _selectedProfile;
+			_profileToBuild = _selectedProfile;
+			if (_selectedProfile is CompoundProfile compound)
+			{
+				var merged = AvaloniaCadEditor.Application.Services.SketchRegionMerger.MergeAdjacent(compound.SubProfiles);
+				_profileToBuild = merged.Count == 1 ? merged[0] : new CompoundProfile(merged);
+			}
+		}
+		return _profileToBuild!;
+	}
+
 	public IEnumerable<Entity> GetPreviewEntities()
 	{
 		if (_currentState == State.DefiningHeight && _selectedProfile != null)
 		{
 			var previewLines = new List<Entity>();
-			var baseVerts = _selectedProfile.GetVertices();
-			if (baseVerts.Count == 0) return previewLines; // FaceProfile might not have simple vertices for preview
-
-			var dir = _selectedProfile.Normal * CurrentHeight;
-			var plane = _selectedProfile.Plane;
-
-			for (int i = 0; i < baseVerts.Count; i++)
-			{
-				var p1World = baseVerts[i];
-				var p2World = baseVerts[(i + 1) % baseVerts.Count];
-
-				var top1World = new Point3D(p1World.X + dir.X, p1World.Y + dir.Y, p1World.Z + dir.Z);
-				var top2World = new Point3D(p2World.X + dir.X, p2World.Y + dir.Y, p2World.Z + dir.Z);
-
-				var p1Local = plane.ToLocalSpace(p1World);
-				var top1Local = plane.ToLocalSpace(top1World);
-				var top2Local = plane.ToLocalSpace(top2World);
-
-				previewLines.Add(new LineEntity(top1Local, top2Local) { Plane = plane });
-
-				// For vertical lines, just draw at corners, but maybe all of them?
-				int step = Math.Max(1, baseVerts.Count / 8);
-				if (i % step == 0)
-				{
-					previewLines.Add(new LineEntity(p1Local, top1Local) { Plane = plane });
-				}
-			}
-
+			var profile = ProfileToBuild();
+			// Cada região é um contorno próprio: os vértices do composto são os de todas em fila, e um
+			// laço só feito deles ligaria o fim de uma região ao começo da outra.
+			var outlines = profile is CompoundProfile compound ? compound.SubProfiles : new[] { profile };
+			foreach (var outline in outlines)
+				AddPreviewOutline(previewLines, outline);
 			return previewLines;
 		}
 
 		return Enumerable.Empty<Entity>();
+	}
+
+	private void AddPreviewOutline(List<Entity> previewLines, IProfile outline)
+	{
+		var baseVerts = outline.GetVertices();
+		if (baseVerts.Count == 0) return; // FaceProfile might not have simple vertices for preview
+
+		var dir = outline.Normal * CurrentHeight;
+		var plane = outline.Plane;
+
+		for (int i = 0; i < baseVerts.Count; i++)
+		{
+			var p1World = baseVerts[i];
+			var p2World = baseVerts[(i + 1) % baseVerts.Count];
+
+			var top1World = new Point3D(p1World.X + dir.X, p1World.Y + dir.Y, p1World.Z + dir.Z);
+			var top2World = new Point3D(p2World.X + dir.X, p2World.Y + dir.Y, p2World.Z + dir.Z);
+
+			var p1Local = plane.ToLocalSpace(p1World);
+			var top1Local = plane.ToLocalSpace(top1World);
+			var top2Local = plane.ToLocalSpace(top2World);
+
+			previewLines.Add(new LineEntity(top1Local, top2Local) { Plane = plane });
+
+			// For vertical lines, just draw at corners, but maybe all of them?
+			int step = Math.Max(1, baseVerts.Count / 8);
+			if (i % step == 0)
+			{
+				previewLines.Add(new LineEntity(p1Local, top1Local) { Plane = plane });
+			}
+		}
 	}
 
 	public void OnKeyDown(Sketch sketch, CadKey key)

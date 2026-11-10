@@ -142,10 +142,12 @@ public class BooleanBehaviorTests
         vm.OnKeyDown("E");
         vm.OnKeyDown("D3"); vm.OnKeyDown("D0"); vm.OnKeyDown("Return");
 
-        // Act - Passo 3: Desenhar Círculo 2 (r=10, offset x=15)
+        // Act - Passo 3: Desenhar Círculo 2 (r=5, offset x=3), dentro do primeiro sem tocá-lo: um círculo
+        // que cruzasse o primeiro (que continua no esboço) o dividiria em regiões, e o Extrude sem clique
+        // pegaria uma delas em vez do círculo.
         vm.OnKeyDown("C");
-        vm.OnPointerPressed(new Point3D(15, 0, 0));
-        vm.OnKeyDown("D1"); vm.OnKeyDown("D0"); vm.OnKeyDown("Return");
+        vm.OnPointerPressed(new Point3D(3, 0, 0));
+        vm.OnKeyDown("D5"); vm.OnKeyDown("Return");
 
         // Act - Passo 4: Extrudar Círculo 2 (h=30)
         vm.OnKeyDown("E");

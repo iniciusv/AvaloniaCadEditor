@@ -455,6 +455,9 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
 
     private OcctShape BuildExtrude(ExtrudeFeature extrude, TessellationSettings settings, Placement? transform = null)
     {
+        if (extrude.Profile is AvaloniaCadEditor.Domain.Profiles.CompoundProfile compound)
+            return BuildCompoundExtrude(compound, extrude, settings, transform);
+
         var verticesReadOnly = extrude.Profile.GetVertices(settings.ProfileSegments);
         if (verticesReadOnly == null || verticesReadOnly.Count < 3) return null;
 
@@ -477,6 +480,28 @@ public class OpenCascadeGeometryKernel : IGeometryKernel
         if (Math.Abs(extrude.Height) < 1e-6) return face;
 
         return face.Extrude(vec);
+    }
+
+    /// <summary>
+    /// Várias regiões extrudadas juntas: cada uma é um contorno próprio. Os vértices do composto
+    /// (<c>CompoundProfile.GetVertices</c>) são os de todas as regiões em fila, e uma face só feita deles
+    /// ligaria o fim de uma região ao começo da outra. Os pedaços são novos (não estão no cache), então
+    /// são descartados depois da fusão.
+    /// </summary>
+    private OcctShape BuildCompoundExtrude(AvaloniaCadEditor.Domain.Profiles.CompoundProfile compound,
+        ExtrudeFeature extrude, TessellationSettings settings, Placement? transform)
+    {
+        var parts = new List<OcctShape>();
+        foreach (var sub in compound.SubProfiles)
+        {
+            var part = BuildExtrude(new ExtrudeFeature(sub, extrude.Height, extrude.Direction), settings, transform);
+            if (part != null && !part.IsNull) parts.Add(part);
+        }
+
+        var fused = FuseBalanced(parts);
+        foreach (var part in parts)
+            if (!ReferenceEquals(part, fused)) part.Dispose();
+        return fused;
     }
 
     /// <summary>
