@@ -38,15 +38,26 @@ public class ConexaoYAdaptador5mmTests
         return Path.Combine(dir!.FullName, "AiCore");
     }
 
+    /// <summary>
+    /// A cena deste teste. Não é a <c>Cena.cs</c> do AiCore: ela é a montagem em que se está trabalhando (hoje,
+    /// a impressora) e a conexão pode não estar nela, o que deixava o teste sem peça para conferir. A peça,
+    /// essa sim, vem do disco como está (<c>Pecas/ConexaoYAdaptador5mm.cs</c>).
+    /// </summary>
+    private const string Cena = "Add(new ConexaoYAdaptador5mm(), at: Placement.At(120, 120, 20), name: \"conexao_y_5mm\");";
+
     private static async Task<IFeature> ConstruirPeca()
     {
-        var project = SceneProject.Load(AiCoreFolder());
-        var result = await new RoslynSceneEvaluator().EvaluateAsync(project.ReadDocuments());
+        var documents = SceneProject.Load(AiCoreFolder()).ReadDocuments();
+        string entry = SceneProject.FindEntryFile(documents);
+        documents.Should().Contain(d => d.FilePath == entry, "a pasta AiCore precisa de um arquivo de cena para ser trocado pela cena do teste");
+
+        var result = await new RoslynSceneEvaluator().EvaluateAsync(
+            documents.Select(d => d.FilePath == entry ? d with { Text = Cena } : d).ToList());
 
         result.Success.Should().BeTrue(result.ErrorMessage);
 
         var peca = result.Features.FirstOrDefault(f => f.Name == "conexao_y_5mm");
-        peca.Should().NotBeNull("a peça precisa estar na cena para ser verificada");
+        peca.Should().NotBeNull("a cena do teste cria a peça com este nome");
         return peca!;
     }
 
