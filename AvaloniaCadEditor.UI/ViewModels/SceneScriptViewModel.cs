@@ -1543,6 +1543,16 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
     }
 
     /// <summary>
+    /// Seleciona no editor um trecho do código apontado pelo app (o número que uma cota mudaria), abrindo o
+    /// arquivo dele se for outro. O foco continua onde está.
+    /// </summary>
+    public void RevealLocation(CodeLocation location)
+    {
+        ArgumentNullException.ThrowIfNull(location);
+        NavigateTo(location, takeFocus: false);
+    }
+
+    /// <summary>
     /// Abre o arquivo da ocorrência (numa cena com vários) e seleciona o nome. <paramref
     /// name="takeFocus"/> só para navegação pedida de dentro do editor (F12, lista de referências):
     /// quem chegou aqui por um clique na cena continua com o foco na cena.

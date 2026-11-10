@@ -10,6 +10,7 @@ using System.Threading.Tasks;
 using System.Windows.Input;
 using Avalonia.Threading;
 using AvaloniaCadEditor.Analysis;
+using AvaloniaCadEditor.Application.EditContext;
 using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Application.Levers;
 using AvaloniaCadEditor.Domain.Features;
@@ -28,6 +29,11 @@ namespace AvaloniaCadEditor.UI.Drafting;
 ///
 /// O estudo (uma execução da cena por número) roda em segundo plano, uma vez por versão do código e por
 /// peça; mudar de cota na mesma peça só refaz a escolha das opções.
+/// <para>
+/// Com uma opção escolhida e um valor digitado, a mudança é calculada antes de gravar
+/// (<see cref="Preview"/>): que números mudam e para quanto, que outras cotas mudam junto, o que some, e
+/// o contorno do que se mexe já no lugar novo (<see cref="GhostEntities"/>).
+/// </para>
 /// </summary>
 public sealed class DimensionLeversViewModel : INotifyPropertyChanged
 {
@@ -41,6 +47,27 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
     private StudyHandle? _study;
     private int _generation;
     private IReadOnlyList<LeverOption> _found = Array.Empty<LeverOption>();
+    private IReadOnlyList<(DraftDimension Dimension, DimensionGauge Gauge)> _others = Array.Empty<(DraftDimension, DimensionGauge)>();
+    private LeverScope _scope = LeverScope.Single;
+
+    /// <summary>A opção que o usuário escolheu, para reencontrá-la quando a lista é refeita (o código foi
+    /// reexecutado, a vista mudou). Sem isso cada reexecução voltava para a primeira.</summary>
+    private string? _chosenKey;
+
+    /// <summary>A lista está sendo refeita: quem muda a opção escolhida é o app, não o usuário.</summary>
+    private bool _rebuilding;
+
+    private int _previewGeneration;
+
+    /// <summary>
+    /// A cota que acabou de receber um valor novo. A reexecução refaz a folha, e a cota pode voltar com outra
+    /// chave (a distância entre dois furos simétricos deixa de ser "simétrica" quando só um anda) ou passar
+    /// por uma folha vazia no meio do caminho. Na primeira folha depois de aplicar, ela é reencontrada pelo
+    /// que mede e pelo valor, e continua selecionada com a opção que o usuário tinha escolhido.
+    /// </summary>
+    private sealed record FollowUp(string Key, DimensionKind Kind, IReadOnlyList<string> Sources, double Value, string? ChosenKey);
+
+    private FollowUp? _followUp;
 
     /// <param name="factory">Sem sonda (testes, composição sem Roslyn), a cota ainda é selecionada e destacada,
     /// mas não lista números.</param>
@@ -48,9 +75,10 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
     {
         _cad = cad ?? throw new ArgumentNullException(nameof(cad));
         _factory = factory;
-        ApplyCommand = new RelayCommand(() => _ = ApplyAsync(), () => SelectedOption != null && !IsBusy);
+        ApplyCommand = new RelayCommand(() => Pending = ApplyAsync(), () => SelectedOption != null && !IsBusy);
         ClearCommand = new RelayCommand(() => Clear());
         ToggleIndirectCommand = new RelayCommand(() => ShowIndirect = !ShowIndirect);
+        ShowInCodeCommand = new RelayCommand(ShowInCode, () => SelectedOption != null);
         Options.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasOptions));
     }
 
@@ -60,6 +88,15 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
     public ICommand ApplyCommand { get; }
     public ICommand ClearCommand { get; }
     public ICommand ToggleIndirectCommand { get; }
+
+    /// <summary>Seleciona no editor o número principal da opção escolhida.</summary>
+    public ICommand ShowInCodeCommand { get; }
+
+    /// <summary>
+    /// O trabalho em segundo plano mais recente (a busca das opções ou a prévia). Quem precisa do resultado
+    /// espera por ela; termina sempre sem lançar.
+    /// </summary>
+    public Task Pending { get; private set; } = Task.CompletedTask;
 
     public DraftDimension? Selected { get; private set; }
 
@@ -120,9 +157,11 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
         {
             if (ReferenceEquals(_selectedOption, value)) return;
             _selectedOption = value;
+            if (!_rebuilding && value != null) _chosenKey = value.Key;
             OnPropertyChanged();
             RaiseCanExecute();
             RaiseChanged();
+            SchedulePreview();
         }
     }
 
@@ -132,8 +171,38 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
     public string TargetText
     {
         get => _targetText;
-        set { if (_targetText != value) { _targetText = value; OnPropertyChanged(); } }
+        set
+        {
+            if (_targetText == value) return;
+            _targetText = value;
+            OnPropertyChanged();
+            SchedulePreview();
+        }
     }
+
+    private LeverPreviewItem? _preview;
+
+    /// <summary>
+    /// O que aplicar faria, calculado numa execução da sonda antes de gravar qualquer coisa. <c>null</c>
+    /// enquanto não há opção escolhida, o valor não é um número ou é o que a cota já mede.
+    /// </summary>
+    public LeverPreviewItem? Preview
+    {
+        get => _preview;
+        private set
+        {
+            if (ReferenceEquals(_preview, value)) return;
+            _preview = value;
+            OnPropertyChanged();
+            OnPropertyChanged(nameof(HasPreview));
+            RaiseChanged();
+        }
+    }
+
+    public bool HasPreview => Preview != null;
+
+    /// <summary>O contorno do que a prévia move ou redimensiona, já no lugar novo (o fantasma do desenho).</summary>
+    public IReadOnlyList<ViewEntity> GhostEntities => Preview?.Ghost ?? Array.Empty<ViewEntity>();
 
     private string _status = "";
 
@@ -160,11 +229,31 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
         _dimensions = dimensions ?? Array.Empty<DraftDimension>();
         if (sheet == null) DropStudy();
 
-        if (_selectedKey == null) return;
-        var again = _dimensions.FirstOrDefault(d => d.Key == _selectedKey);
-        if (again == null) Clear();
-        else Select(again);
+        var again = _selectedKey == null ? null : _dimensions.FirstOrDefault(d => d.Key == _selectedKey);
+        if (again == null && sheet != null && _followUp is { } follow)
+        {
+            again = _dimensions.FirstOrDefault(d => d.Key == follow.Key) ?? SameMeasure(sheet, follow);
+            if (again != null)
+            {
+                // É a mesma cota: o Select não a trata como outra, e a escolha do usuário continua valendo.
+                _selectedKey = again.Key;
+                _chosenKey = follow.ChosenKey;
+            }
+        }
+        if (sheet != null) _followUp = null;
+
+        if (again != null) Select(again);
+        else ClearSelection();
     }
+
+    /// <summary>A cota da folha nova que mede as mesmas primitivas, do mesmo jeito, com o valor que foi aplicado.</summary>
+    private DraftDimension? SameMeasure(DraftingSheet sheet, FollowUp follow) =>
+        _dimensions.FirstOrDefault(d =>
+            d.Kind == follow.Kind &&
+            Math.Abs(d.Value - follow.Value) < 5e-3 &&
+            DimensionGauge.For(sheet, d) is { } gauge &&
+            gauge.MeasuredSources.Count == follow.Sources.Count &&
+            gauge.MeasuredSources.All(follow.Sources.Contains));
 
     /// <summary>Clique no texto da cota: seleciona, ou tira a seleção se já era ela.</summary>
     public void Toggle(DraftDimension dimension)
@@ -177,6 +266,12 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
     /// <summary>Tira a seleção. Devolve false se não havia nada selecionado (o ESC segue a cascata).</summary>
     public bool Clear()
     {
+        _followUp = null; // quem tira a seleção de propósito não a quer de volta na próxima folha
+        return ClearSelection();
+    }
+
+    private bool ClearSelection()
+    {
         if (_selectedKey == null) return false;
         _generation++;
         _selectedKey = null;
@@ -184,6 +279,8 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
         Selected = null;
         MeasuredSources = Array.Empty<string>();
         _showIndirect = false;
+        _chosenKey = null;
+        _others = Array.Empty<(DraftDimension, DimensionGauge)>();
         OnPropertyChanged(nameof(ShowIndirect));
         ShowOptions(Array.Empty<LeverOption>());
         Status = "";
@@ -195,13 +292,23 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
     private void Select(DraftDimension dimension)
     {
         bool sameDimension = dimension.Key == _selectedKey;
+        if (!sameDimension)
+        {
+            // Outra cota, outras opções: a escolha e as indiretas à vista eram da anterior.
+            _chosenKey = null;
+            if (_showIndirect)
+            {
+                _showIndirect = false;
+                OnPropertyChanged(nameof(ShowIndirect));
+            }
+        }
         _selectedKey = dimension.Key;
         Selected = dimension;
         _gauge = _sheet == null ? null : DimensionGauge.For(_sheet, dimension);
         MeasuredSources = _gauge?.MeasuredSources ?? dimension.SourceNames;
         if (!sameDimension || string.IsNullOrWhiteSpace(TargetText)) TargetText = DimensionFactory.Format(dimension.Value);
         RaiseSelectionChanged();
-        _ = RefreshOptionsAsync();
+        Pending = RefreshOptionsAsync();
     }
 
     // ------------------------------------------------------------------ Opções
@@ -226,12 +333,14 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
         IsBusy = true;
         Status = "Procurando os números do código que mudam esta cota…";
         var gauge = _gauge;
-        var watched = _dimensions
+        _others = _dimensions
             .Where(d => d.Key != _selectedKey && _sheet != null)
-            .Select(d => DimensionGauge.For(_sheet!, d))
-            .Where(g => g != null)
-            .Select(g => (Func<IReadOnlyList<PrimitiveFact>, double?>)g!.Measure)
+            .Select(d => (Dimension: d, Gauge: DimensionGauge.For(_sheet!, d)))
+            .Where(o => o.Gauge != null)
+            .Select(o => (o.Dimension, o.Gauge!))
             .ToList();
+        var watched = _others.Select(o => (Func<IReadOnlyList<PrimitiveFact>, double?>)o.Gauge.Measure).ToList();
+        _scope = target.Scope;
 
         IReadOnlyList<LeverOption> options;
         try
@@ -290,14 +399,69 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
         bool anyDirect = _found.Any(o => o.IsDirect);
         var visible = _found.Where(o => o.IsDirect || ShowIndirect || !anyDirect).ToList();
 
-        Options.Clear();
-        foreach (var option in visible) Options.Add(new LeverOptionItem(option));
-        SelectedOption = Options.FirstOrDefault(i => ReferenceEquals(i.Option, keep))
-            ?? Options.FirstOrDefault(i => i.Option.IsDirect);
+        _rebuilding = true;
+        try
+        {
+            Options.Clear();
+            foreach (var option in visible) Options.Add(new LeverOptionItem(option, _scope));
+            SelectedOption = Options.FirstOrDefault(i => ReferenceEquals(i.Option, keep))
+                ?? Options.FirstOrDefault(i => _chosenKey != null && i.Key == _chosenKey)
+                ?? Options.FirstOrDefault(i => i.Option.IsDirect);
+        }
+        finally
+        {
+            _rebuilding = false;
+        }
 
         OnPropertyChanged(nameof(IndirectCount));
         OnPropertyChanged(nameof(CanToggleIndirect));
         OnPropertyChanged(nameof(IndirectToggleText));
+    }
+
+    // ------------------------------------------------------------------ Prévia
+
+    /// <summary>
+    /// Recalcula a prévia para a opção e o valor de agora. Cada pedido invalida o anterior: quem digita
+    /// "12,5" passa por "1", "12" e "12," e só o último resultado aparece.
+    /// </summary>
+    private void SchedulePreview()
+    {
+        int generation = ++_previewGeneration;
+        Preview = null;
+
+        if (SelectedOption is not { } item || _gauge is not { } gauge || Selected is not { } dimension || _sheet is not { } sheet) return;
+        if (_study is not { Task.IsCompletedSuccessfully: true } handle || handle.Task.Result is not { } study) return;
+        if (!TryParse(TargetText, out double target)) return;
+        if (TargetText.Trim() == DimensionFactory.Format(dimension.Value) || Math.Abs(target - dimension.Value) < 1e-9) return;
+
+        var others = _others;
+        Pending = PreviewAsync(generation, item.Option, gauge, study, target, sheet.Basis, others);
+    }
+
+    private async Task PreviewAsync(int generation, LeverOption option, DimensionGauge gauge, LeverStudy study, double target,
+        ViewBasis basis, IReadOnlyList<(DraftDimension Dimension, DimensionGauge Gauge)> others)
+    {
+        LeverPreviewItem? preview;
+        try
+        {
+            preview = await Task.Run(() =>
+            {
+                var solution = LeverSolver.Solve(option, target, study.Evaluate, gauge.Measure);
+                return LeverPreviewItem.Build(option, solution, target, study.Baseline, basis, others);
+            });
+        }
+        catch (Exception)
+        {
+            // A prévia é um conforto: se a sonda falhar aqui, o Aplicar diz por quê.
+            preview = null;
+        }
+
+        if (generation == _previewGeneration) Preview = preview;
+    }
+
+    private void ShowInCode()
+    {
+        if (SelectedOption is { } item) _cad.ScriptEditor?.RevealLocation(item.Option.Primary.Location);
     }
 
     // ------------------------------------------------------------------ Aplicar
@@ -344,6 +508,7 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
             _cad.StatusText = $"✓ Cota {dimension.Text} → {DimensionFactory.Format(solution.Achieved)}: " +
                 string.Join(", ", solution.Changes.Select(c => $"{c.Lever.Label} = {c.Text}"));
             TargetText = DimensionFactory.Format(target);
+            _followUp = new FollowUp(dimension.Key, dimension.Kind, gauge.MeasuredSources, solution.Achieved, _chosenKey ?? item.Key);
             await _cad.ScriptEditor.ApplySourceEditAsync(changes);
         }
         catch (OperationCanceledException)
@@ -366,7 +531,7 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
     // ------------------------------------------------------------------ Estudo
 
     /// <summary>O que identifica um estudo: a peça isolada, o referencial e o código naquele momento.</summary>
-    private sealed record StudyTarget(string SubjectName, string PartType, Placement WorldToFrame, IReadOnlyList<ScriptDocument> Documents);
+    private sealed record StudyTarget(string SubjectName, string PartType, Placement WorldToFrame, IReadOnlyList<ScriptDocument> Documents, LeverScope Scope);
 
     /// <param name="Cancellation">Para o estudo quando ele deixa de servir (ver <see cref="DropStudy"/>).</param>
     private sealed record StudyHandle(StudyTarget Target, Task<LeverStudy?> Task, CancellationTokenSource Cancellation);
@@ -374,7 +539,9 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
     private StudyTarget? CurrentTarget()
     {
         if (_cad.IsolatedFeature is not PartInstance instance || _cad.DisplayFrame is not { } frame || _cad.ScriptEditor == null) return null;
-        return new StudyTarget(instance.Name, instance.PartTypeName, frame.WorldToFrame, _cad.ScriptEditor.GetSceneDocuments());
+        int instances = PartEditContext.For(instance, _cad.Sketch.Features)?.InstanceCount ?? 1;
+        return new StudyTarget(instance.Name, instance.PartTypeName, frame.WorldToFrame, _cad.ScriptEditor.GetSceneDocuments(),
+            new LeverScope(instance.PartTypeName, instances));
     }
 
     private Task<LeverStudy?> Study(StudyTarget target)
@@ -430,11 +597,16 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
         RaiseChanged();
     }
 
-    private void RaiseCanExecute() => (ApplyCommand as RelayCommand)?.RaiseCanExecuteChanged();
+    private void RaiseCanExecute()
+    {
+        (ApplyCommand as RelayCommand)?.RaiseCanExecuteChanged();
+        (ShowInCodeCommand as RelayCommand)?.RaiseCanExecuteChanged();
+    }
 
     private void RaiseChanged()
     {
         OnPropertyChanged(nameof(AffectedSources));
+        OnPropertyChanged(nameof(GhostEntities));
         if (Dispatcher.UIThread.CheckAccess()) Changed?.Invoke();
         else Dispatcher.UIThread.Post(() => Changed?.Invoke());
     }
@@ -443,85 +615,4 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
 
     private void OnPropertyChanged([CallerMemberName] string? propertyName = null) =>
         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(propertyName));
-}
-
-/// <summary>Uma opção como aparece no painel: os números, o que se move e as relações.</summary>
-public sealed class LeverOptionItem(LeverOption option)
-{
-    public LeverOption Option { get; } = option;
-
-    /// <summary>"furo_a · globalBaseCenter.x = 10".</summary>
-    public string Title => Describe(Option.Primary);
-
-    /// <summary>"+ porca_a · globalBaseCenter.x = 10" para os outros números do grupo.</summary>
-    public string Companions => string.Join("\n", Option.Shares.Skip(1).Select(s => "+ " + Describe(s.Lever)));
-
-    public bool HasCompanions => Option.IsGroup;
-
-    /// <summary>"move furo_a, porca_a · muda mais 1 cota".</summary>
-    public string Effect
-    {
-        get
-        {
-            var parts = new List<string>();
-            if (Option.Moved.Count > 0) parts.Add("move " + string.Join(", ", Option.Moved));
-            if (Option.Resized.Count > 0) parts.Add("muda o tamanho de " + string.Join(", ", Option.Resized));
-            if (Math.Abs(Math.Abs(Option.Rate) - 1) > 1e-6)
-            {
-                parts.Add($"1 no número = {Option.Rate.ToString("0.##", CultureInfo.GetCultureInfo("pt-BR"))} na cota");
-            }
-            if (Option.OtherDimensionsChanged > 0)
-            {
-                parts.Add(Option.OtherDimensionsChanged == 1 ? "muda mais 1 cota" : $"muda mais {Option.OtherDimensionsChanged} cotas");
-            }
-            return string.Join(" · ", parts);
-        }
-    }
-
-    public string Keeps => string.Join("\n", Option.Keeps.Select(r => "✓ " + Kept(r)));
-
-    public bool HasKeeps => Option.Keeps.Count > 0;
-
-    public string Breaks => string.Join("\n", Option.Breaks.Select(r => "⚠ " + Broken(r)));
-
-    public bool HasBreaks => Option.Breaks.Count > 0;
-
-    /// <summary>Por que a opção é indireta: o aviso que vai junto dela na lista.</summary>
-    public string Caveat => Option.Caveat switch
-    {
-        LeverCaveat.Factor => "⚠ é o divisor de uma conta: muda a escala, e o código deixa de dizer a medida",
-        LeverCaveat.Direction => "⚠ é componente de uma direção: inclina o elemento em vez de deslocá-lo",
-        LeverCaveat.Scaled =>
-            $"⚠ não é uma medida: 1 no número mexe {Option.Gain.ToString("0.##", CultureInfo.GetCultureInfo("pt-BR"))} mm na peça (um multiplicador, um sinal ou um ângulo)",
-        _ => ""
-    };
-
-    public bool HasCaveat => !Option.IsDirect;
-
-    /// <summary>Onde está cada número ("Pecas/Bloco.cs:6"), para a dica.</summary>
-    public string Where => string.Join("\n", Option.Shares.Select(s =>
-        $"{s.Lever.Location.FilePath}:{s.Lever.Location.Line} ({KindText(s.Lever.Kind)})  {s.Lever.Location.LineText}"));
-
-    private static string Describe(CodeLever lever) => $"{lever.Label} = {lever.Text}";
-
-    private static string KindText(CodeLeverKind kind) => kind switch
-    {
-        CodeLeverKind.Literal => "literal da peça",
-        CodeLeverKind.Argument => "argumento na cena",
-        _ => "valor padrão do parâmetro"
-    };
-
-    private static string Kept(LeverRelation relation) => relation.Kind switch
-    {
-        LeverRelationKind.Coaxial => $"{relation.Fact} continua coaxial com {relation.Partner}",
-        LeverRelationKind.Aligned => $"{relation.Fact} continuam alinhados em {relation.Partner}",
-        _ => $"{relation.Fact} continua simétrico a {relation.Partner} em {relation.Axis}"
-    };
-
-    private static string Broken(LeverRelation relation) => relation.Kind switch
-    {
-        LeverRelationKind.Coaxial => $"{relation.Fact} deixa de ser coaxial com {relation.Partner}",
-        LeverRelationKind.Aligned => $"{relation.Fact} deixam de estar alinhados em {relation.Partner}: a aresta entorta",
-        _ => $"{relation.Fact} deixa de ser simétrico a {relation.Partner} em {relation.Axis}"
-    };
 }

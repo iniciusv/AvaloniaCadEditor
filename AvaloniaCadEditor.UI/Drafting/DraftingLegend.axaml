@@ -61,6 +61,11 @@
                                            IsVisible="{Binding HasBreaks}"/>
                                 <TextBlock Text="{Binding Caveat}" Foreground="#FF6B6B" FontSize="10" TextWrapping="Wrap"
                                            IsVisible="{Binding HasCaveat}"/>
+                                <!-- Alcance: um número da peça vale para todas as instâncias dela. -->
+                                <TextBlock Text="{Binding WideScope}" Foreground="Orange" FontSize="10" TextWrapping="Wrap"
+                                           IsVisible="{Binding HasWideScope}"/>
+                                <TextBlock Text="{Binding NarrowScope}" Foreground="#999" FontSize="10" TextWrapping="Wrap"
+                                           IsVisible="{Binding HasNarrowScope}"/>
                             </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
@@ -81,6 +86,20 @@
                     </TextBox>
                     <Button Content="Aplicar" FontSize="11" Padding="8,1" MinHeight="0" Command="{Binding ApplyCommand}"
                             ToolTip.Tip="Calcula os números da opção escolhida, confere numa execução e grava no código (Ctrl+Z desfaz)."/>
+                    <Button Content="no código" FontSize="10" Padding="6,1" MinHeight="0" Command="{Binding ShowInCodeCommand}"
+                            Background="Transparent" Foreground="#AAA"
+                            ToolTip.Tip="Seleciona no editor o número da opção escolhida."/>
+                </StackPanel>
+
+                <!-- Prévia: o que o valor digitado faria, antes de gravar. O contorno tracejado no desenho é o mesmo resultado. -->
+                <StackPanel DataContext="{Binding Preview}" x:DataType="drafting:LeverPreviewItem"
+                            IsVisible="{Binding $parent[StackPanel].((drafting:DimensionLeversViewModel)DataContext).HasPreview}" Spacing="1">
+                    <TextBlock Text="{Binding Edits}" Foreground="#EEE" FontSize="10" FontFamily="Consolas,monospace" TextWrapping="Wrap"
+                               IsVisible="{Binding HasEdits}"/>
+                    <TextBlock Text="{Binding Others}" Foreground="#FF7AD9" FontSize="10" TextWrapping="Wrap"
+                               IsVisible="{Binding HasOthers}"/>
+                    <TextBlock Text="{Binding Warning}" Foreground="#FF6B6B" FontSize="10" TextWrapping="Wrap"
+                               IsVisible="{Binding HasWarning}"/>
                 </StackPanel>
             </StackPanel>
         </StackPanel>

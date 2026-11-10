@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using AvaloniaCadEditor.Domain.ValueObjects;
 using AvaloniaCadEditor.Drafting;
 using AvaloniaCadEditor.UI.Controls.Rendering;
@@ -26,6 +27,7 @@ public sealed class DraftingRenderPass : IRenderPass
     private static readonly (float R, float G, float B) SelectedColor = (1.0f, 0.6f, 0.15f);
     private static readonly (float R, float G, float B) MeasuredColor = (0.25f, 1.0f, 0.95f);
     private static readonly (float R, float G, float B) AffectedColor = (1.0f, 0.35f, 0.85f);
+    private static readonly (float R, float G, float B) GhostColor = (1.0f, 0.75f, 0.95f);
 
     public void Init(GL gl)
     {
@@ -73,8 +75,17 @@ public sealed class DraftingRenderPass : IRenderPass
         if (levers.HasSelection)
         {
             // O que a opção move por fora, o que a cota mede por dentro: um elemento pode ser os dois.
-            AddOutlines(vertices, drafting, sheet, levers.AffectedSources, sheet.Gap * 0.16, AffectedColor);
-            AddOutlines(vertices, drafting, sheet, levers.MeasuredSources, sheet.Gap * 0.06, MeasuredColor);
+            AddOutlines(vertices, drafting, sheet.Entities, levers.AffectedSources, sheet.Gap * 0.16, AffectedColor);
+            AddOutlines(vertices, drafting, sheet.Entities, levers.MeasuredSources, sheet.Gap * 0.06, MeasuredColor);
+
+            // A prévia do valor digitado: o que se mexe, tracejado, já no lugar novo.
+            var ghost = levers.GhostEntities;
+            if (ghost.Count > 0)
+            {
+                double ghostDash = sheet.Gap * 0.22;
+                AddOutlines(vertices, drafting, ghost, ghost.Select(e => e.SourceName).ToList(), 0, GhostColor,
+                    dashes: [ghostDash, ghostDash * 0.6]);
+            }
         }
 
         if (drafting.IsPicking)
@@ -118,13 +129,20 @@ public sealed class DraftingRenderPass : IRenderPass
     }
 
     /// <summary>Contorno das primitivas <paramref name="names"/>, afastado <paramref name="inflate"/> mm para
-    /// fora, para não se confundir com as arestas da peça.</summary>
-    private static void AddOutlines(List<float> target, DraftingViewModel drafting, DraftingSheet sheet,
-        IReadOnlyList<string> names, double inflate, (float, float, float) color)
+    /// fora, para não se confundir com as arestas da peça. Com <paramref name="dashes"/>, tracejado.</summary>
+    private static void AddOutlines(List<float> target, DraftingViewModel drafting, IReadOnlyList<ViewEntity> entities,
+        IReadOnlyList<string> names, double inflate, (float, float, float) color, double[]? dashes = null)
     {
         if (names.Count == 0) return;
         var wanted = new HashSet<string>(names, StringComparer.Ordinal);
-        foreach (var entity in sheet.Entities)
+
+        void AddSegment(List<float> into, Point3D a, Point3D b, (float, float, float) c)
+        {
+            if (dashes == null) DraftingRenderPass.AddSegment(into, a, b, c);
+            else AddDashed(into, a, b, c, dashes);
+        }
+
+        foreach (var entity in entities)
         {
             if (!wanted.Contains(entity.SourceName)) continue;
             switch (entity)
