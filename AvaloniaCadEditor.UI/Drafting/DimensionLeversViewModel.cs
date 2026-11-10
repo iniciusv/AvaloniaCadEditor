@@ -40,6 +40,7 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
     private DimensionGauge? _gauge;
     private StudyHandle? _study;
     private int _generation;
+    private IReadOnlyList<LeverOption> _found = Array.Empty<LeverOption>();
 
     /// <param name="factory">Sem sonda (testes, composição sem Roslyn), a cota ainda é selecionada e destacada,
     /// mas não lista números.</param>
@@ -49,6 +50,7 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
         _factory = factory;
         ApplyCommand = new RelayCommand(() => _ = ApplyAsync(), () => SelectedOption != null && !IsBusy);
         ClearCommand = new RelayCommand(() => Clear());
+        ToggleIndirectCommand = new RelayCommand(() => ShowIndirect = !ShowIndirect);
         Options.CollectionChanged += (_, _) => OnPropertyChanged(nameof(HasOptions));
     }
 
@@ -57,6 +59,7 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
 
     public ICommand ApplyCommand { get; }
     public ICommand ClearCommand { get; }
+    public ICommand ToggleIndirectCommand { get; }
 
     public DraftDimension? Selected { get; private set; }
 
@@ -75,9 +78,38 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
     public IReadOnlyList<string> AffectedSources =>
         SelectedOption == null ? Array.Empty<string>() : SelectedOption.Option.Changes.Select(c => c.Name).ToList();
 
+    /// <summary>
+    /// As opções à vista: as medidas e, a pedido (<see cref="ShowIndirect"/>) ou quando não há medida
+    /// nenhuma, as indiretas (<see cref="LeverOption.IsDirect"/>).
+    /// </summary>
     public ObservableCollection<LeverOptionItem> Options { get; } = new();
 
     public bool HasOptions => Options.Count > 0;
+
+    private bool _showIndirect;
+
+    /// <summary>Mostra também os números que mudam a cota por tabela: divisores, direções, multiplicadores.</summary>
+    public bool ShowIndirect
+    {
+        get => _showIndirect;
+        set
+        {
+            if (_showIndirect == value) return;
+            _showIndirect = value;
+            OnPropertyChanged();
+            RebuildOptions(keep: SelectedOption?.Option);
+        }
+    }
+
+    /// <summary>Quantas opções indiretas a cota tem, à vista ou não.</summary>
+    public int IndirectCount => _found.Count(o => !o.IsDirect);
+
+    /// <summary>Há indiretas escondidas atrás das medidas. Sem medida nenhuma elas já aparecem, e não há o que alternar.</summary>
+    public bool CanToggleIndirect => IndirectCount > 0 && _found.Any(o => o.IsDirect);
+
+    public string IndirectToggleText => ShowIndirect
+        ? "Esconder as indiretas"
+        : IndirectCount == 1 ? "+ 1 indireta (fator, direção ou multiplicador)" : $"+ {IndirectCount} indiretas (fatores, direções, multiplicadores)";
 
     private LeverOptionItem? _selectedOption;
 
@@ -151,8 +183,9 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
         _gauge = null;
         Selected = null;
         MeasuredSources = Array.Empty<string>();
-        Options.Clear();
-        SelectedOption = null;
+        _showIndirect = false;
+        OnPropertyChanged(nameof(ShowIndirect));
+        ShowOptions(Array.Empty<LeverOption>());
         Status = "";
         IsBusy = false;
         RaiseSelectionChanged();
@@ -176,8 +209,7 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
     private async Task RefreshOptionsAsync()
     {
         int generation = ++_generation;
-        Options.Clear();
-        SelectedOption = null;
+        ShowOptions(Array.Empty<LeverOption>());
 
         if (_gauge == null)
         {
@@ -233,12 +265,39 @@ public sealed class DimensionLeversViewModel : INotifyPropertyChanged
         }
 
         if (generation != _generation) return;
-        foreach (var option in options) Options.Add(new LeverOptionItem(option));
-        SelectedOption = Options.FirstOrDefault();
-        Status = Options.Count == 0
+        ShowOptions(options);
+        Status = options.Count == 0
             ? "Nenhum número do código muda esta cota (ela pode vir de uma conta ou de outra peça)."
-            : "Escolha como mudar e digite o valor novo.";
+            : options.Any(o => o.IsDirect)
+                ? "Escolha como mudar e digite o valor novo."
+                : "Nenhum número é uma medida desta cota. Os de baixo a mudam por tabela: veja o aviso de cada um antes de escolher.";
         IsBusy = false;
+    }
+
+    private void ShowOptions(IReadOnlyList<LeverOption> found)
+    {
+        _found = found;
+        RebuildOptions(keep: null);
+    }
+
+    /// <summary>
+    /// Refaz a lista à vista a partir do que foi achado. Só uma medida vem escolhida: uma indireta (o
+    /// divisor de <c>passo / 2</c>, o sinal de um espelho) o usuário escolhe ele mesmo, sabendo o que é,
+    /// porque o Enter aplica a opção escolhida.
+    /// </summary>
+    private void RebuildOptions(LeverOption? keep)
+    {
+        bool anyDirect = _found.Any(o => o.IsDirect);
+        var visible = _found.Where(o => o.IsDirect || ShowIndirect || !anyDirect).ToList();
+
+        Options.Clear();
+        foreach (var option in visible) Options.Add(new LeverOptionItem(option));
+        SelectedOption = Options.FirstOrDefault(i => ReferenceEquals(i.Option, keep))
+            ?? Options.FirstOrDefault(i => i.Option.IsDirect);
+
+        OnPropertyChanged(nameof(IndirectCount));
+        OnPropertyChanged(nameof(CanToggleIndirect));
+        OnPropertyChanged(nameof(IndirectToggleText));
     }
 
     // ------------------------------------------------------------------ Aplicar
@@ -426,6 +485,18 @@ public sealed class LeverOptionItem(LeverOption option)
     public string Breaks => string.Join("\n", Option.Breaks.Select(r => "⚠ " + Broken(r)));
 
     public bool HasBreaks => Option.Breaks.Count > 0;
+
+    /// <summary>Por que a opção é indireta: o aviso que vai junto dela na lista.</summary>
+    public string Caveat => Option.Caveat switch
+    {
+        LeverCaveat.Factor => "⚠ é o divisor de uma conta: muda a escala, e o código deixa de dizer a medida",
+        LeverCaveat.Direction => "⚠ é componente de uma direção: inclina o elemento em vez de deslocá-lo",
+        LeverCaveat.Scaled =>
+            $"⚠ não é uma medida: 1 no número mexe {Option.Gain.ToString("0.##", CultureInfo.GetCultureInfo("pt-BR"))} mm na peça (um multiplicador, um sinal ou um ângulo)",
+        _ => ""
+    };
+
+    public bool HasCaveat => !Option.IsDirect;
 
     /// <summary>Onde está cada número ("Pecas/Bloco.cs:6"), para a dica.</summary>
     public string Where => string.Join("\n", Option.Shares.Select(s =>

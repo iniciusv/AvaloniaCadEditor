@@ -34,6 +34,16 @@ public sealed class RoslynLeverProbeFactory : ILeverProbeFactory
 
         using var peStream = new MemoryStream();
         var emit = instrumented.Compilation.Emit(peStream, cancellationToken: cancellationToken);
+        if (!emit.Success && instrumented.FreedConstants > 0)
+        {
+            // Tirar um const pode não compilar num uso que a análise não previu (uma função local estática,
+            // por exemplo). A sonda vale mais sem esses números do que não existir: tenta com todo const
+            // como está no código.
+            instrumented = RoslynLeverInstrumenter.Instrument(compilation, trees, partTypeName, cancellationToken, freeConstants: false);
+            if (instrumented == null) return null;
+            peStream.SetLength(0);
+            emit = instrumented.Compilation.Emit(peStream, cancellationToken: cancellationToken);
+        }
         if (!emit.Success) return null;
         peStream.Position = 0;
 

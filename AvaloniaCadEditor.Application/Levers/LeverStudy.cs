@@ -8,7 +8,20 @@ namespace AvaloniaCadEditor.Application.Levers;
 /// <summary>
 /// O efeito de um número sobre a peça: os fatos com ele acrescido de <see cref="Step"/>, e o que mudou.
 /// </summary>
-public sealed record LeverEffect(CodeLever Lever, double Step, IReadOnlyList<PrimitiveFact> Facts, IReadOnlyList<FactChange> Changes);
+public sealed record LeverEffect(CodeLever Lever, double Step, IReadOnlyList<PrimitiveFact> Facts, IReadOnlyList<FactChange> Changes)
+{
+    /// <summary>
+    /// O maior efeito do número sobre um elemento, por unidade: quanto o que mais muda se desloca ou muda de
+    /// tamanho, num eixo. Uma medida dá 1 (uma posição, um comprimento), 2 (um raio, que abre dos dois
+    /// lados) ou 0,5 (algo centrado nela). Um fator dá o valor do que ele multiplica: o sinal do espelho de
+    /// uma peça de 48 mm dá 24. Zero quando nada muda de caixa (só some, aparece ou muda por dentro).
+    /// </summary>
+    public double Gain => Changes.Count == 0 || Step == 0
+        ? 0
+        : Changes.Max(c => Math.Max(Largest(c.Translation), Largest(c.SizeChange))) / Math.Abs(Step);
+
+    private static double Largest(Vector3D v) => Math.Max(Math.Abs(v.X), Math.Max(Math.Abs(v.Y), Math.Abs(v.Z)));
+}
 
 /// <summary>
 /// O estudo de uma peça: os fatos como estão no código e, para cada número que a sonda sabe trocar, o que

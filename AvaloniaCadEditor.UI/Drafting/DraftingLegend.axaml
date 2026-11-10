@@ -59,10 +59,18 @@
                                            IsVisible="{Binding HasKeeps}"/>
                                 <TextBlock Text="{Binding Breaks}" Foreground="Orange" FontSize="10" TextWrapping="Wrap"
                                            IsVisible="{Binding HasBreaks}"/>
+                                <TextBlock Text="{Binding Caveat}" Foreground="#FF6B6B" FontSize="10" TextWrapping="Wrap"
+                                           IsVisible="{Binding HasCaveat}"/>
                             </StackPanel>
                         </DataTemplate>
                     </ListBox.ItemTemplate>
                 </ListBox>
+
+                <!-- Números que mudam a cota por tabela (divisor, direção, multiplicador): só a pedido. -->
+                <Button Content="{Binding IndirectToggleText}" Command="{Binding ToggleIndirectCommand}"
+                        IsVisible="{Binding CanToggleIndirect}" FontSize="10" Padding="4,1" MinHeight="0"
+                        Background="Transparent" Foreground="#AAA" HorizontalAlignment="Left"
+                        ToolTip.Tip="Estes números também mudam a cota, mas não são medidas: gravar por eles muda a escala ou a inclinação."/>
 
                 <StackPanel Orientation="Horizontal" Spacing="6" IsVisible="{Binding HasOptions}">
                     <TextBlock Text="Valor novo" Foreground="#CCC" FontSize="11" VerticalAlignment="Center"/>

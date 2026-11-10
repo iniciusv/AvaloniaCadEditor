@@ -93,7 +93,7 @@ public class DimensionLeverTests
         double.TryParse(text, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out _);
 
     [Fact]
-    public void Sonda_DeixaDeForaContagemInteiraEConst()
+    public void Sonda_DeixaDeForaContagemInteira_EOConstDoubleEntra()
     {
         const string record = """
             public sealed record Grade(double Passo = 10) : Part
@@ -110,9 +110,10 @@ public class DimensionLeverTests
         using var probe = new RoslynLeverProbeFactory().Create(
             [new ScriptDocument(ScriptDocument.DefaultSceneFile, "Add(new Grade(), name: \"g\");"), new ScriptDocument("Pecas/Grade.cs", record)], "Grade")!;
 
-        probe.Levers.Select(l => l.Text).Should().NotContain("0.2", "const exige constante")
-            .And.NotContain("6", "a contagem é int")
+        probe.Levers.Select(l => l.Text).Should().NotContain("6", "a contagem é int")
             .And.NotContain("2", "2 * lados é conta inteira");
+        probe.Levers.Should().Contain(l => l.Label == "Folga" && l.Text == "0.2",
+            "o const double é uma medida com nome: na cópia instrumentada ele deixa de ser const (ver LeverMeasureTests)");
         probe.Levers.Should().Contain(l => l.Text == "5" && l.Path == "radius");
         probe.Run(new Dictionary<int, double>()).Should().ContainSingle(f => f.Name == "g");
     }
@@ -379,9 +380,16 @@ public class DimensionLeverAiCoreTests(Xunit.Abstractions.ITestOutputHelper outp
 
         var instances = result.Features.OfType<PartInstance>().GroupBy(i => i.PartTypeName).Select(g => g.First()).ToList();
         instances.Should().NotBeEmpty();
+        var compilation = RoslynSceneEvaluator.CreateCompilation(documents, out var trees);
 
         foreach (var instance in instances)
         {
+            // Tirar o const na cópia tem de compilar em toda peça real. Se não compilar, a sonda cai para a
+            // versão sem const e perde esses números sem avisar: é aqui que isso aparece.
+            RoslynLeverInstrumenter.Instrument(compilation, trees, instance.PartTypeName)!.Compilation.GetDiagnostics()
+                .Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error)
+                .Should().BeEmpty($"a cópia instrumentada de {instance.PartTypeName}, com os const soltos, precisa compilar");
+
             var watch = System.Diagnostics.Stopwatch.StartNew();
             var probe = new RoslynLeverProbeFactory().Create(documents, instance.PartTypeName);
             probe.Should().NotBeNull($"a cena instrumentada para {instance.PartTypeName} precisa compilar");
@@ -432,7 +440,12 @@ public class DimensionLeverPlacaTests(Xunit.Abstractions.ITestOutputHelper outpu
 
             var options = LeverOptionFinder.Find(study, gauge.Measure);
             if (options.Count > 0) withOptions++;
-            output.WriteLine($"{dimension.Text,-14} {options.Count} opções; 1ª: {options.FirstOrDefault()?.Primary.Label}");
+            output.WriteLine($"{dimension.Text,-14} {options.Count(o => o.IsDirect)} medidas, {options.Count(o => !o.IsDirect)} indiretas; 1ª: {options.FirstOrDefault()?.Primary.Label}");
+
+            // O sinal do espelho (var sx = Espelhado ? -1.0 : 1.0) muda quase toda cota horizontal da placa.
+            // Nunca como medida: gravar 1.11 nele escalaria a peça inteira.
+            options.Where(o => o.IsDirect).Should().NotContain(o => o.Shares.Any(s => s.Lever.Owner == "sx"),
+                $"o sinal do espelho não é uma medida ({dimension.Text})");
         }
         withOptions.Should().BeGreaterThan(measurable.Count / 2);
     }

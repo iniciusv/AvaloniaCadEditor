@@ -19,6 +19,26 @@ public enum LeverRelationKind
 /// <param name="Axis">Para simetria, o eixo normal ao plano.</param>
 public sealed record LeverRelation(LeverRelationKind Kind, string Fact, string Partner, FrameAxis? Axis = null);
 
+/// <summary>Por que uma opção muda a cota só por tabela, e não como uma medida.</summary>
+public enum LeverCaveat
+{
+    /// <summary>É uma medida: o número desloca ou redimensiona 1 para 1.</summary>
+    None,
+
+    /// <summary>O número é o divisor de uma conta (<see cref="CodeLeverRole.Factor"/>).</summary>
+    Factor,
+
+    /// <summary>O número é componente de uma direção (<see cref="CodeLeverRole.Direction"/>).</summary>
+    Direction,
+
+    /// <summary>
+    /// A sintaxe não acusa nada, mas a peça não responde como a uma medida: 1 no número mexe
+    /// <see cref="LeverOption.Gain"/> no elemento que mais muda. É o caso do multiplicador (o sinal de um
+    /// espelho, o <c>2</c> de <c>2 * raio</c>) e de um ângulo.
+    /// </summary>
+    Scaled
+}
+
 /// <summary>
 /// Uma forma de mudar a cota: um número, ou um grupo de números que andam juntos para não quebrar uma
 /// relação (o furo e a porca coaxial a ele; um furo e o simétrico).
@@ -41,6 +61,15 @@ public sealed record LeverOption(
 
     public bool IsGroup => Shares.Count > 1;
 
+    /// <summary>Por que a opção não é uma medida direta; <see cref="LeverCaveat.None"/> quando é.</summary>
+    public LeverCaveat Caveat { get; init; }
+
+    /// <summary>O <see cref="LeverEffect.Gain"/> do número que deu o <see cref="Caveat"/> (ou do principal).</summary>
+    public double Gain { get; init; }
+
+    /// <summary>Uma medida: entra na lista padrão e pode vir escolhida. As outras só aparecem a pedido.</summary>
+    public bool IsDirect => Caveat == LeverCaveat.None;
+
     /// <summary>Elementos que se deslocam.</summary>
     public IReadOnlyList<string> Moved => Changes.Where(c => c.Moves).Select(c => c.Name).ToList();
 
@@ -51,8 +80,9 @@ public sealed record LeverOption(
 /// <summary>
 /// Responde, sobre um <see cref="LeverStudy"/>, quais números mudam uma medida e o que cada um arrasta.
 /// Para cada número que sozinho quebraria uma relação (coaxial, simetria), procura os números que movem o
-/// elemento parceiro na mesma direção e propõe o grupo. As opções saem ordenadas: menos relações quebradas,
-/// menos elementos movidos, menos cotas afetadas, controle direto (1 mm no número = 1 mm na cota).
+/// elemento parceiro na mesma direção e propõe o grupo. As opções saem ordenadas: medidas antes das
+/// indiretas (<see cref="LeverCaveat"/>), depois menos relações quebradas, menos elementos movidos, menos
+/// cotas afetadas, controle direto (1 mm no número = 1 mm na cota).
 ///
 /// Sem estado: a mesma entrada dá a mesma resposta.
 /// </summary>
@@ -63,8 +93,15 @@ public static class LeverOptionFinder
     private const double MotionTolerance = 1e-6;
     private const double WatchTolerance = 1e-7;
 
+    /// <summary>O que uma medida faz com o elemento que mais muda, por unidade (ver <see cref="LeverEffect.Gain"/>).</summary>
+    private static readonly double[] MeasureGains = [0.5, 1, 2];
+
+    private const double GainTolerance = 1e-4;
+
     /// <param name="measure">A medida em questão sobre um conjunto de fatos (a cota selecionada).</param>
     /// <param name="watched">Outras medidas a observar (as demais cotas da folha), para contar os efeitos colaterais.</param>
+    /// <param name="maxOptions">O teto vale para as medidas e, à parte, para as indiretas: uma lista longa de
+    /// fatores não tira o lugar de uma medida.</param>
     public static IReadOnlyList<LeverOption> Find(
         LeverStudy study,
         Func<IReadOnlyList<PrimitiveFact>, double?> measure,
@@ -91,10 +128,15 @@ public static class LeverOptionFinder
 
             var perUnit = Scale(effect.Changes, 1 / effect.Step);
             var requirements = Requirements(perUnit, study.Relations);
+            var (caveat, gain) = CaveatOf([effect]);
             options.Add(new LeverOption(
                 [new LeverShare(effect.Lever, 1)], rate, perUnit,
                 Array.Empty<LeverRelation>(), requirements.Select(r => r.Relation).ToList(),
-                CountChanged(watched, watchedBase, effect.Facts)));
+                CountChanged(watched, watchedBase, effect.Facts))
+            {
+                Caveat = caveat,
+                Gain = gain
+            });
 
             if (requirements.Count > 0 && Group(study, effect, requirements, rates, watched, watchedBase) is { } group)
             {
@@ -102,7 +144,7 @@ public static class LeverOptionFinder
             }
         }
 
-        return options
+        var ordered = options
             .OrderBy(o => o.Breaks.Count)
             .ThenBy(o => o.Changes.Count)
             .ThenBy(o => o.OtherDimensionsChanged)
@@ -110,8 +152,42 @@ public static class LeverOptionFinder
             .ThenBy(o => o.Primary.Kind)
             .ThenBy(o => o.Primary.Label, StringComparer.Ordinal)
             .ThenBy(o => o.Shares.Count)
-            .Take(maxOptions)
             .ToList();
+        return ordered.Where(o => o.IsDirect).Take(maxOptions)
+            .Concat(ordered.Where(o => !o.IsDirect).Take(maxOptions))
+            .ToList();
+    }
+
+    /// <summary>
+    /// Se os números da opção são medidas. A sintaxe acusa o divisor e a direção
+    /// (<see cref="CodeLever.Role"/>); o resto vem da resposta da peça: uma medida mexe 1, 2 ou 0,5 por
+    /// unidade no elemento que mais muda, e um multiplicador mexe o valor do que ele multiplica. Quando
+    /// esse valor calha de ser 1 ou 2, o multiplicador passa por medida: é o limite de quem só sonda.
+    /// </summary>
+    private static (LeverCaveat Caveat, double Gain) CaveatOf(IEnumerable<LeverEffect> effects)
+    {
+        LeverEffect? first = null;
+        foreach (var effect in effects)
+        {
+            first ??= effect;
+            var caveat = effect.Lever.Role switch
+            {
+                CodeLeverRole.Factor => LeverCaveat.Factor,
+                CodeLeverRole.Direction => LeverCaveat.Direction,
+                _ => RespondsAsMeasure(effect) ? LeverCaveat.None : LeverCaveat.Scaled
+            };
+            if (caveat != LeverCaveat.None) return (caveat, effect.Gain);
+        }
+        return (LeverCaveat.None, first?.Gain ?? 0);
+    }
+
+    private static bool RespondsAsMeasure(LeverEffect effect)
+    {
+        if (effect.Changes.Any(c => c.Kind is FactChangeKind.Appeared or FactChangeKind.Vanished)) return false;
+
+        double gain = effect.Gain;
+        if (gain < MotionTolerance) return true; // mudou só por dentro da caixa (o raio de cima de um cone): não dá para dizer que não é
+        return MeasureGains.Any(g => Math.Abs(gain - g) <= GainTolerance * g);
     }
 
     /// <summary>O que um elemento precisa fazer para manter uma relação com outro que se moveu.</summary>
@@ -217,13 +293,18 @@ public static class LeverOptionFinder
         var values = shares.ToDictionary(s => s.Effect.Lever.Id, s => s.Effect.Lever.Value + s.Weight * step);
         var after = study.Evaluate(values);
 
+        var (caveat, gain) = CaveatOf(shares.Select(s => s.Effect));
         return new LeverOption(
             shares.Select(s => new LeverShare(s.Effect.Lever, s.Weight)).ToList(),
             rate,
             changes,
             requirements.Select(r => r.Relation).ToList(),
             Array.Empty<LeverRelation>(),
-            after == null ? 0 : CountChanged(watched, watchedBase, after));
+            after == null ? 0 : CountChanged(watched, watchedBase, after))
+        {
+            Caveat = caveat,
+            Gain = gain
+        };
     }
 
     private static bool Parallel(Vector3D a, Vector3D b)
