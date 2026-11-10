@@ -47,8 +47,8 @@ public class SilkViewportControl : OpenGlControlBase
 
         // Exact rendering order preserved:
         // 1. Solid features (3D) — sombreado ou wireframe, um dos dois desenha (CadViewModel.IsWireframe)
-        // 2. WorkPlane grid & axes — tem que vir logo depois do wireframe: é ele quem aproveita e
-        //    depois limpa o depth das faces do prepasse (RenderContext.SolidDepthPending)
+        // 2. WorkPlane grid & axes — o depth das faces (sombreado ou prepasse do wireframe) vale
+        //    daqui até o fim do quadro: a peça esconde grade, perfis e esboço atrás dela
         // 3. 2D profile faces
         // 4. Sketch wireframe & preview entities
         _renderPasses = new List<IRenderPass>

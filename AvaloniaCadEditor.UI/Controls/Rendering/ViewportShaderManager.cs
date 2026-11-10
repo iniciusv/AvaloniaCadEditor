@@ -22,11 +22,22 @@ public sealed class ViewportShaderManager
 
         void main()
         {
-            gl_Position = uProjection * uView * uModel * vec4(aPos, 1.0);
-            // Aproxima a geometria da câmera em espaço de clip (proporcional a w, então
-            // o efeito independe da distância), evitando z-fighting sem depender de
-            // glDepthRange (indisponível em contextos ANGLE/GLES usados pelo Avalonia).
-            gl_Position.z -= uDepthBias * gl_Position.w;
+            // Aproxima a geometria da câmera para vencer o empate com faces coplanares, sem depender
+            // de glDepthRange (indisponível em contextos ANGLE/GLES usados pelo Avalonia). O viés é
+            // aplicado em espaço de câmera, numa fração da distância: em espaço de clip um valor fixo
+            // vira, depois da perspectiva, centenas de mm a 200 mm da câmera (cresce com z²/near), e
+            // o esboço atravessava sólidos de verdade.
+            vec4 viewPos = uView * uModel * vec4(aPos, 1.0);
+            if (uDepthBias != 0.0) {
+                if (uProjection[3][3] == 0.0) {
+                    // Perspectiva: desliza pelo raio até o olho, então o pixel não muda.
+                    viewPos.xyz *= 1.0 - uDepthBias;
+                } else {
+                    // Ortográfica: o olho está no infinito em +z; a escala é a meia-altura da vista.
+                    viewPos.z += uDepthBias / uProjection[1][1];
+                }
+            }
+            gl_Position = uProjection * viewPos;
 
             vec3 currentColor = aColor;
             vec3 viewNormal = normalize(mat3(uView * uModel) * aNormal);

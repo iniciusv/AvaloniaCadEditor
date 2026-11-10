@@ -205,14 +205,6 @@ public sealed class GridRenderPass : IRenderPass
         gl.DrawArrays(PrimitiveType.Lines, _majorVertexCount + _minorVertexCount, (uint)_axesVertexCount);
 
         gl.BindVertexArray(0);
-
-        // O prepasse de faces do modo wireframe ficou de pé só até aqui, para a peça esconder a
-        // grade; dos perfis e do esboço para a frente o depth tem que estar limpo.
-        if (context.SolidDepthPending)
-        {
-            gl.Clear((uint)ClearBufferMask.DepthBufferBit);
-            context.SolidDepthPending = false;
-        }
     }
 
     private static float Smoothstep(float edge0, float edge1, float x)
