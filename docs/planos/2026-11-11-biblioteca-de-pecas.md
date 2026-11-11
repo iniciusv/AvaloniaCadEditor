@@ -2,7 +2,8 @@
 
 **Status:** Proposto: tela desenhada e decisões tomadas com o usuário, implementação não iniciada · **Data:** 2026-11-11 · **Branch:** `claude/confident-maxwell-yk1mdx`
 
-Protótipo clicável da tela: <https://claude.ai/artifact/DouhKq1HUnZSrFS82Wt3Rf>
+Protótipo clicável da tela: [2026-11-11-biblioteca-de-pecas-prototipo.html](2026-11-11-biblioteca-de-pecas-prototipo.html)
+(abra no navegador; cópia publicada em <https://claude.ai/artifact/DouhKq1HUnZSrFS82Wt3Rf>)
 
 ## Objetivo
 
