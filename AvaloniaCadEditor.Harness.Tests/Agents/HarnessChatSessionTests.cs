@@ -45,7 +45,7 @@ public class HarnessChatSessionTests
         result.IsValid.Should().BeTrue(result.Error);
         result.ChatText.Should().Contain("x 10 a 60");
         result.Changes.Should().BeEmpty();
-        model.Calls.Should().OnlyContain(c => c.Tools == 8, "as 8 ferramentas v1 vão em toda chamada");
+        model.Calls.Should().OnlyContain(c => c.Tools == 10, "as 10 ferramentas vão em toda chamada");
 
         var history = session.History;
         var withCalls = history.Single(m => m.IsAssistant && m.ToolCalls.Count == 2);
@@ -140,7 +140,7 @@ public class HarnessChatSessionTests
 
         result.ChatText.Should().Contain("placa_1");
         session.Mode.Should().Be(ToolMode.Text);
-        model.Calls[0].Tools.Should().Be(8, "a primeira tentativa vai com tools; o servidor recusa");
+        model.Calls[0].Tools.Should().Be(10, "a primeira tentativa vai com tools; o servidor recusa");
         model.Calls.Skip(1).Should().OnlyContain(c => c.Tools == 0);
         session.History.Should().Contain(m => m.IsUser && m.Content.StartsWith("### FERRAMENTAS (protocolo em texto)"));
         session.History.Should().Contain(m => m.IsUser && m.Content.StartsWith("### RESULTADOS DAS FERRAMENTAS") && m.Content.Contains("placa_1"));

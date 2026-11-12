@@ -12,7 +12,7 @@ namespace AvaloniaCadEditor.Harness.Tests.Agents;
 /// </summary>
 public class InspectorTests
 {
-    private static readonly string[] ReadOnlyTools = { "evaluate_scene", "get_bounding_box", "get_dimensions", "get_view", "list_targets" };
+    private static readonly string[] ReadOnlyTools = { "evaluate_scene", "get_bounding_box", "get_dimensions", "get_view", "list_targets", "search_library" };
 
     private static HarnessChatSession Session(ModelRouter router, bool preInspection)
     {

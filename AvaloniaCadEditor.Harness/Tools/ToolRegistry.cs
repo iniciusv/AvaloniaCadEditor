@@ -25,7 +25,9 @@ public sealed class ToolRegistry
         new EvaluateSceneTool(),
         new TranslateInstanceTool(),
         new RotateInstanceTool(),
-        new ReplaceInFileTool()
+        new ReplaceInFileTool(),
+        new SearchLibraryTool(),
+        new ImportLibraryPartTool()
     });
 
     public IReadOnlyCollection<ICadTool> All => _tools.Values;

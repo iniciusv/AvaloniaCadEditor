@@ -1,6 +1,6 @@
 # Biblioteca de peças: uma aba na coluna direita com as peças de uso recorrente, fora de qualquer cena
 
-**Status:** Em andamento: etapas 1, 2 e 3 feitas (ver as seções "Etapa N: como ficou") · **Data:** 2026-11-11 · **Branch:** `claude/confident-maxwell-yk1mdx`
+**Status:** Feito: as quatro etapas (ver as seções "Etapa N: como ficou") · **Data:** 2026-11-11 · **Branch:** `claude/confident-maxwell-yk1mdx`
 
 Protótipo clicável da tela: [2026-11-11-biblioteca-de-pecas-prototipo.html](2026-11-11-biblioteca-de-pecas-prototipo.html)
 (abra no navegador; cópia publicada em <https://claude.ai/artifact/DouhKq1HUnZSrFS82Wt3Rf>)
@@ -200,6 +200,22 @@ Testes em `AvaloniaCadEditor.Tests/Library/PartLibraryDrillTests.cs`.
   que ainda corta (o furo começa `FolgaAntes` antes do alojamento). As regras do dialeto (`CadScriptRules`) não
   ensinam o `IsCutter` à IA: mudar o perfil `atual` exige regravar o golden.
 
+## Etapa 4: como ficou
+
+Arquivos: `CadScriptContext.Library`, `CadToolContext.SceneDocuments`/`Library`, as ferramentas
+`AvaloniaCadEditor.Harness/Tools/Query/SearchLibraryTool.cs` e `AvaloniaCadEditor.Harness/Tools/Edit/ImportLibraryPartTool.cs`,
+um parágrafo em `HarnessPrompt.Tools`. Testes em `AvaloniaCadEditor.Harness.Tests/Agents/LibraryToolsTests.cs`.
+
+- **Sem índice no prompt (pergunta 3).** A biblioteca inteira vai no `CadScriptContext.Library`, que não é enviado ao
+  modelo como texto; só as ferramentas a leem. O custo em toda mensagem é o das duas definições de ferramenta.
+- **`search_library`** (leitura): sem `query`, as categorias com os nomes; com `query`, as peças em que todas as
+  palavras aparecem no nome, na categoria ou na descrição (até 15), com a assinatura, os modelos prontos e as marcas
+  "vazio" e "já está na cena". O Inspetor também a recebe, por ser de leitura.
+- **`import_library_part`** (edição): o mesmo plano do botão Inserir (`PartLibraryImporter`), gravado na cópia de
+  trabalho do turno: as cópias saem como mudanças da resposta, a UI as aplica com o resto e o Ctrl+Z desfaz tudo.
+  Devolve a assinatura e o código da peça. Só em cena de pasta (projeto); a biblioteca nunca muda.
+- O chat de sempre (sem harness) continua só com a peça citada (etapa 2).
+
 ## Etapas
 
 - [x] **1. Catálogo, aba, inserir e miniaturas.** `Application/Library`, porta, store em disco,
@@ -212,7 +228,7 @@ Testes em `AvaloniaCadEditor.Tests/Library/PartLibraryDrillTests.cs`.
       importação automática quando a resposta usa a peça. Acervo inicial: as peças de catálogo da `AiCore`.
 - [x] **3. Vazios.** Marca peça × vazio, "Furar a peça aberta" com clique na face, modelos M3/M4/M5
       para `FuroRebaixado`.
-- [ ] **4. A IA busca sozinha.** Índice no contexto e ferramentas de buscar e importar no Harness.
+- [x] **4. A IA busca sozinha.** Ferramentas de buscar e importar no Harness (o índice ficou fora do contexto).
 
 ## Perguntas em aberto
 

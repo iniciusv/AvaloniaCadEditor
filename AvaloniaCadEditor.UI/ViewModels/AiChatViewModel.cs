@@ -658,6 +658,7 @@ public class AiChatViewModel : INotifyPropertyChanged
         {
             RefreshContextFiles();
             var context = _contextBuilder.Build(CurrentContextRequest());
+            if (LibraryDocuments != null) context = context with { Library = LibraryDocuments() };
             userItem.SentContext = BuildSentContextSnapshot(context);
 
             var result = await _session.SendAsync(instruction, context, _cts.Token);

@@ -44,6 +44,10 @@ public enum CadFileKind
 /// Modo multi-arquivo: os arquivos enviados à IA com o texto completo e que ela pode alterar (montado por
 /// <see cref="Context.AiContextBuilder"/>). Null = modo de arquivo único (só <see cref="CurrentCode"/>).
 /// </param>
+/// <param name="Library">
+/// Os arquivos da biblioteca de peças do usuário (caminhos relativos à pasta dela). Não vão para a IA como texto: as
+/// ferramentas do harness buscam e importam por eles. Null = sem biblioteca.
+/// </param>
 public sealed record CadScriptContext(
     string CurrentCode,
     string? SelectedFeatureName = null,
@@ -52,7 +56,8 @@ public sealed record CadScriptContext(
     string? FileName = null,
     IReadOnlyList<string>? PartSummaries = null,
     IReadOnlyList<ScriptDocument>? ProjectDocuments = null,
-    MultiFileScope? Scope = null)
+    MultiFileScope? Scope = null,
+    IReadOnlyList<ScriptDocument>? Library = null)
 {
     /// <summary>True quando a IA recebe e pode devolver vários arquivos (<see cref="Scope"/>).</summary>
     public bool IsMultiFile => Scope != null;

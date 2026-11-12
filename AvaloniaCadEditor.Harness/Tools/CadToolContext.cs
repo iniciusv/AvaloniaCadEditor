@@ -52,6 +52,27 @@ public sealed class CadToolContext
             .FirstOrDefault(d => Same(d.FilePath, path))?.Text;
     }
 
+    /// <summary>
+    /// Todos os arquivos da cena como estão na cópia de trabalho: os do projeto e os do escopo, com as edições do turno
+    /// por cima e os arquivos novos no fim.
+    /// </summary>
+    public IReadOnlyList<ScriptDocument> SceneDocuments()
+    {
+        var documents = new List<ScriptDocument>();
+        void Add(ScriptDocument document)
+        {
+            if (!documents.Any(d => Same(d.FilePath, document.FilePath))) documents.Add(document);
+        }
+
+        Add(new ScriptDocument(ActiveFile, Context.CurrentCode));
+        foreach (var document in Context.Scope?.Documents ?? Array.Empty<ScriptDocument>()) Add(document);
+        foreach (var document in Context.ProjectDocuments ?? Array.Empty<ScriptDocument>()) Add(document);
+        return WorkingCopyEvaluator.Overlay(documents, _changes);
+    }
+
+    /// <summary>Os arquivos da biblioteca de peças do usuário (vazio sem biblioteca).</summary>
+    public IReadOnlyList<ScriptDocument> Library => Context.Library ?? Array.Empty<ScriptDocument>();
+
     /// <summary>Por que o arquivo não pode ser alterado, ou null se pode (as mesmas regras do <see cref="AiEditScopePolicy"/>).</summary>
     public string? EditError(string path)
     {

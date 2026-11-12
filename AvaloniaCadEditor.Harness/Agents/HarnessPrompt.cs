@@ -29,6 +29,13 @@ public static class HarnessPrompt
           coincidir eixo com eixo: use as coordenadas do MUNDO dos furos das duas peças (get_view).
         - Depois de mover, confira o resultado: a ferramenta devolve a caixa nova; compare-a com a esperada.
 
+        PEÇAS PRONTAS (a biblioteca do usuário):
+        - Antes de modelar do zero uma peça comum (perfil, guia linear, carrinho, rolamento, motor, polia, furo
+          de fixação), procure com search_library.
+        - import_library_part copia a peça (e as de que ela depende) para Pecas/ e devolve o código dela. Use-a
+          como as peças da cena: Add(new Tipo(...), at: ...) em Cena.cs, ou .Instance("nome") dentro do Build()
+          de outra peça (os vazios, marcados "vazio", são para subtrair). Não reescreva a peça importada.
+
         EDITAR:
         - Para mover ou girar uma instância inteira, use translate_instance / rotate_instance.
         - Para mudanças pequenas no código, use replace_in_file (trecho exato) em vez de reescrever o arquivo.
