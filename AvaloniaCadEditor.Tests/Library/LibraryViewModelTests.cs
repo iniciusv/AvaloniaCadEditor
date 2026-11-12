@@ -168,6 +168,11 @@ public class LibraryViewModelTests
         public MemoryStore(params ScriptDocument[] documents) => _documents = documents.ToList();
         public string RootPath { get; private set; } = "C:/Biblioteca";
         public IReadOnlyList<ScriptDocument> ReadDocuments() => _documents;
+        public void Write(string relativePath, string text)
+        {
+            _documents.RemoveAll(d => d.FilePath == relativePath);
+            _documents.Add(new ScriptDocument(relativePath, text));
+        }
         public void SetRootPath(string folder) => RootPath = folder;
     }
 }

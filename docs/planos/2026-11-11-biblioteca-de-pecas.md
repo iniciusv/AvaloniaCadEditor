@@ -1,6 +1,6 @@
 # Biblioteca de peças: uma aba na coluna direita com as peças de uso recorrente, fora de qualquer cena
 
-**Status:** Em andamento: etapa 1 feita (ver "Etapa 1: como ficou") · **Data:** 2026-11-11 · **Branch:** `claude/confident-maxwell-yk1mdx`
+**Status:** Em andamento: etapas 1 e 2 feitas (ver "Etapa 1: como ficou" e "Etapa 2: como ficou") · **Data:** 2026-11-11 · **Branch:** `claude/confident-maxwell-yk1mdx`
 
 Protótipo clicável da tela: [2026-11-11-biblioteca-de-pecas-prototipo.html](2026-11-11-biblioteca-de-pecas-prototipo.html)
 (abra no navegador; cópia publicada em <https://claude.ai/artifact/DouhKq1HUnZSrFS82Wt3Rf>)
@@ -144,6 +144,34 @@ O que mudou em relação ao plano:
 - O combo "Inserir" da aba Código continua (pergunta em aberto 1).
 - A aba Biblioteca entrou com índice 1: `CadViewModel.CodeTabIndex` passou de 1 para 2.
 
+## Etapa 2: como ficou
+
+Arquivos: `AvaloniaCadEditor.Application/Library/PartLibrarySync.cs` (`PartLibrarySync` e `PartLibraryCitation`),
+`IPartLibraryStore.Write`, o motivo `AiContextReason.Library` e `AiContextRequest.LibraryDocuments`,
+`AiChatViewModel.CiteLibraryPart`, `SceneScriptViewModel.UpdatePartFromLibraryAsync`, o menu da árvore
+(`ModelTreeViewModel.SendPartToLibraryRequested`). Testes em `AvaloniaCadEditor.Tests/Library/PartLibrarySyncTests.cs`.
+
+O que mudou em relação ao plano:
+
+- **Sem cabeçalho de origem (decisão 7).** A cópia da cena e a da biblioteca se ligam pelo nome do tipo, que é
+  global na cena. Assim os arquivos ficam idênticos, e "alterada" é simplesmente texto diferente (ignorando a
+  quebra de linha). O caminho na biblioteca vem de quem declara o tipo lá.
+- **Enviar** grava a peça no arquivo que já a declara na biblioteca (substitui) ou, se for nova, em
+  `Projetos/<nome da cena>/`, com as dependências que a biblioteca não tem. Uma dependência que lá está diferente
+  **não** é substituída (aviso): só a peça escolhida muda. Recusa peça que dependa de tipo do arquivo de entrada,
+  e arquivo da biblioteca que declare tipos a mais (substituí-lo os apagaria). Não há confirmação: o botão diz
+  "substitui", e a pasta é versionável.
+- **Atualizar da biblioteca** troca o texto no caminho da cena (`ApplySourceEditAsync`: o arquivo vira o ativo e
+  o Ctrl+Z desfaz) e copia as dependências que faltarem.
+- **Citar no chat.** Peça da cena é só fixada no contexto. Peça da biblioteca entra no contexto, e na validação,
+  no caminho onde a cópia ficaria (`Pecas/X.cs`), com o motivo `Library` (chip com 📚). Ao aplicar a resposta, se
+  ela usa o tipo e nem a cena nem a resposta o declaram, os arquivos são copiados antes. Se a IA reescrever o
+  arquivo citado, quem muda é a cópia da cena, nunca a biblioteca. Tirar o chip descita a peça. "New chat" e
+  troca de cena limpam as citações.
+- **Acervo inicial:** não foi gravado automaticamente na pasta do usuário. Basta "Enviar para a biblioteca" nas
+  peças da `AiCore` (botão direito na árvore ou na aba); elas vão para `Projetos/AiCore/` e podem ser
+  reorganizadas em subpastas à mão.
+
 ## Etapas
 
 - [x] **1. Catálogo, aba, inserir e miniaturas.** `Application/Library`, porta, store em disco,
@@ -151,7 +179,7 @@ O que mudou em relação ao plano:
       "Inserir na cena" com cópia do arquivo e das dependências. Testes: catálogo sobre `AiCore/Pecas`,
       fecho de dependências, conflito de nome, cena importada passa no `SceneCheckService`, rasterizador
       sobre uma caixa.
-- [ ] **2. Enviar para a biblioteca, divergência e citar no chat.** Ação na árvore e no detalhe, marca
+- [x] **2. Enviar para a biblioteca, divergência e citar no chat.** Ação na árvore e no detalhe, marca
       `alterada`, "Atualizar da biblioteca" (desfazível com Ctrl+Z), motivo `Library` no contexto da IA e
       importação automática quando a resposta usa a peça. Acervo inicial: as peças de catálogo da `AiCore`.
 - [ ] **3. Vazios.** Marca peça × vazio, "Furar a peça aberta" com clique na face, modelos M3/M4/M5

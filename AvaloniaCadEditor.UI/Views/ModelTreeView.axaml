@@ -29,6 +29,12 @@
                 <TreeView.ItemTemplate>
                     <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="vm:TreeItemNode">
                         <Border Classes.selectedNode="{Binding IsSelected}" CornerRadius="3" Padding="6,3" Margin="1" DoubleTapped="OnDoubleTapped">
+                            <Border.ContextMenu>
+                                <ContextMenu IsVisible="{Binding IsPartInstance}">
+                                    <MenuItem Header="Enviar para a biblioteca" Click="OnSendToLibraryClick"
+                                              ToolTip.Tip="Grava a peça (e as de que ela depende) na pasta da biblioteca de peças" />
+                                </ContextMenu>
+                            </Border.ContextMenu>
                             <Grid ColumnDefinitions="Auto, Auto, *">
                                 <!-- Eye Toggle for Visibility -->
                                 <ToggleButton Grid.Column="0" 

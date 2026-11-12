@@ -12,6 +12,7 @@ using AvaloniaCadEditor.Application.Ai.Context;
 using AvaloniaCadEditor.Application.Ai.Prompts;
 using AvaloniaCadEditor.Application.Ai.Recording;
 using AvaloniaCadEditor.Application.Interfaces;
+using AvaloniaCadEditor.Application.Library;
 using AvaloniaCadEditor.Domain.Settings;
 using AvaloniaCadEditor.UI.ViewModels.Harness;
 
@@ -41,6 +42,14 @@ public class AiChatViewModel : INotifyPropertyChanged
     // Ajustes manuais do contexto: valem até a próxima "New chat" ou troca de projeto.
     private readonly AiContextAdjustments _contextAdjustments = new();
     private string? _contextProjectName;
+
+    // Peças da biblioteca citadas no chat (aba Biblioteca → "Citar no chat"), pelo nome do tipo.
+    private readonly List<string> _citedLibraryParts = new();
+
+    /// <summary>
+    /// Os arquivos da pasta da biblioteca, para as peças citadas. Null sem biblioteca (testes): citar não faz nada.
+    /// </summary>
+    public Func<IReadOnlyList<ScriptDocument>>? LibraryDocuments { get; set; }
 
     // Id crescente do turno (par pergunta/resposta), usado para deletar o turno inteiro.
     private int _nextTurnId;
@@ -280,6 +289,7 @@ public class AiChatViewModel : INotifyPropertyChanged
             _recorder.Clear();
             _nextTurnId = 0;
             _contextAdjustments.Reset();
+            _citedLibraryParts.Clear();
             RefreshContextFiles();
         }, () => IsAvailable && !IsBusy);
         ToggleSettingsCommand = new RelayCommand(() =>
@@ -305,8 +315,17 @@ public class AiChatViewModel : INotifyPropertyChanged
     // ---------------------------------------------------------------- Contexto (arquivos enviados)
 
     /// <summary>O estado do editor de que o contexto depende (o builder faz o resto).</summary>
-    private AiContextRequest CurrentContextRequest() => new(
-        _scriptEditor.GetSceneDocuments(),
+    private AiContextRequest CurrentContextRequest()
+    {
+        var documents = _scriptEditor.GetSceneDocuments();
+        var library = _citedLibraryParts.Count > 0 && LibraryDocuments != null
+            ? PartLibraryCitation.ContextDocuments(LibraryDocuments(), documents, _citedLibraryParts)
+            : null;
+        return CurrentContextRequest(documents, library);
+    }
+
+    private AiContextRequest CurrentContextRequest(IReadOnlyList<ScriptDocument> documents, IReadOnlyList<ScriptDocument>? library) => new(
+        documents,
         _scriptEditor.EntryFile,
         _scriptEditor.IsProjectOpen ? _scriptEditor.ActiveFile : null,
         _cadViewModel.Sketch.Features.Where(f => f.IsSelected).ToList(),
@@ -314,7 +333,32 @@ public class AiChatViewModel : INotifyPropertyChanged
         _scriptEditor.ToSceneRelativePath,
         _contextAdjustments,
         _cadViewModel.OpenEntity,
-        _cadViewModel.OpenEntity != null ? _cadViewModel.SelectionService.SelectedObject as AvaloniaCadEditor.Domain.Profiles.IProfile : null);
+        _cadViewModel.OpenEntity != null ? _cadViewModel.SelectionService.SelectedObject as AvaloniaCadEditor.Domain.Profiles.IProfile : null,
+        library);
+
+    /// <summary>
+    /// "Citar no chat" de uma peça da biblioteca: ela entra no contexto como se estivesse em <c>Pecas/</c>, e se a
+    /// resposta a usar, o arquivo é copiado para a cena ao aplicar. Peça da cena só é fixada no contexto.
+    /// </summary>
+    public void CiteLibraryPart(PartLibraryItem item)
+    {
+        if (item.Source == PartLibrarySource.Scene)
+        {
+            _contextAdjustments.Pin(item.FilePath);
+        }
+        else if (!_citedLibraryParts.Contains(item.Name))
+        {
+            _citedLibraryParts.Add(item.Name);
+        }
+        RefreshContextFiles();
+        _cadViewModel.SidebarTabIndex = CadViewModel.CodeTabIndex;
+        _cadViewModel.StatusText = item.Source == PartLibrarySource.Scene
+            ? $"{item.Name} fixada no contexto do chat ({item.FilePath})"
+            : $"{item.Name} citada no chat: a IA a vê em {PartLibraryImporter.TargetPath(item.FilePath)}, e ela é copiada para a cena se a resposta a usar";
+    }
+
+    /// <summary>As peças da biblioteca citadas, pelo nome do tipo.</summary>
+    public IReadOnlyList<string> CitedLibraryParts => _citedLibraryParts;
 
     /// <summary>Recalcula os chips a partir da seleção, do arquivo ativo e dos ajustes manuais.</summary>
     private void RefreshContextFiles()
@@ -323,6 +367,7 @@ public class AiChatViewModel : INotifyPropertyChanged
         {
             _contextProjectName = _scriptEditor.ProjectName;
             _contextAdjustments.Reset();
+            _citedLibraryParts.Clear();
         }
 
         var scope = _contextBuilder.ResolveScope(CurrentContextRequest());
@@ -346,6 +391,16 @@ public class AiChatViewModel : INotifyPropertyChanged
 
     private void RemoveContextFile(AiContextFileChip chip)
     {
+        if (chip.Reason == AiContextReason.Library)
+        {
+            // Tirar a peça citada (ou uma dependência dela) descita as peças que a trazem.
+            var library = LibraryDocuments?.Invoke() ?? Array.Empty<ScriptDocument>();
+            var scene = _scriptEditor.GetSceneDocuments();
+            _citedLibraryParts.RemoveAll(type => PartLibraryCitation.ContextDocuments(library, scene, new[] { type })
+                .Any(d => string.Equals(d.FilePath, chip.FilePath, StringComparison.OrdinalIgnoreCase)));
+            RefreshContextFiles();
+            return;
+        }
         _contextAdjustments.Exclude(chip.FilePath);
         RefreshContextFiles();
     }
@@ -637,7 +692,11 @@ public class AiChatViewModel : INotifyPropertyChanged
                 {
                     item.ApplyCommand = new RelayCommand(async () =>
                     {
-                        await _scriptEditor.ApplyExternalChangesAsync(changes);
+                        // Peças citadas da biblioteca que a resposta usa e a cena não tem são copiadas junto.
+                        var toApply = _citedLibraryParts.Count > 0 && LibraryDocuments != null
+                            ? PartLibraryCitation.CompleteChanges(LibraryDocuments(), _scriptEditor.GetSceneDocuments(), changes, _citedLibraryParts)
+                            : changes;
+                        await _scriptEditor.ApplyExternalChangesAsync(toApply);
                         // Só a última resposta aplicada fica marcada; as demais podem ser reaplicadas.
                         foreach (var other in Messages) other.IsApplied = false;
                         item.IsApplied = true;

@@ -1315,6 +1315,36 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         _cadViewModel.StatusText = $"✓ Inserido: {statement} — copiado da biblioteca: {copied}{warnings}";
     }
 
+    /// <summary>
+    /// "Atualizar da biblioteca": o arquivo da cena que declara a peça recebe o texto da biblioteca, e as
+    /// dependências que faltarem são copiadas (<see cref="PartLibrarySync.PlanUpdate"/>). Ctrl+Z desfaz.
+    /// </summary>
+    public async Task UpdatePartFromLibraryAsync(string typeName, IReadOnlyList<ScriptDocument> library)
+    {
+        if (_project == null)
+        {
+            _cadViewModel.StatusText = "Abra ou crie uma cena (pasta) para atualizar peças da biblioteca.";
+            return;
+        }
+
+        var update = PartLibrarySync.PlanUpdate(CurrentDocuments(), library, typeName);
+        if (update.Refusal != null)
+        {
+            _cadViewModel.StatusText = $"✗ {update.Refusal}";
+            return;
+        }
+
+        await ApplySourceEditAsync(update.NewFiles);
+        if (HasErrors)
+        {
+            _cadViewModel.StatusText = $"✗ {ErrorSummary} (Ctrl+Z volta à versão da cena)";
+            return;
+        }
+        string extra = update.NewFiles.Count > 1 ? $"; copiado também: {string.Join(", ", update.NewFiles.Skip(1).Select(f => f.FilePath))}" : string.Empty;
+        string warnings = update.Warnings.Count > 0 ? " ⚠ " + string.Join(" ", update.Warnings) : string.Empty;
+        _cadViewModel.StatusText = $"✓ {update.NewFiles[0].FilePath} atualizado a partir da biblioteca (Ctrl+Z desfaz){extra}{warnings}";
+    }
+
     /// <summary>Acrescenta uma instrução ao arquivo de entrada, executa e seleciona a instância nova.</summary>
     private async Task InsertStatementAsync(string statement, string typeName, string statusSuffix = "")
     {

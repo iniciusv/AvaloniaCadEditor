@@ -18,6 +18,14 @@ public class ModelTreeViewModel : INotifyPropertyChanged
 
         public event Action<AvaloniaCadEditor.Domain.Features.WorkPlaneFeature>? WorkPlaneDoubleClicked;
 
+    /// <summary>Botão direito numa peça → "Enviar para a biblioteca" (ligado à aba Biblioteca na composição).</summary>
+    public event Action<string>? SendPartToLibraryRequested;
+
+    public void RequestSendToLibrary(TreeItemNode node)
+    {
+        if (node.PartTypeName is { } type) SendPartToLibraryRequested?.Invoke(type);
+    }
+
     public void HandleDoubleTap(TreeItemNode node)
     {
         if (node.Tag is AvaloniaCadEditor.Domain.Features.WorkPlaneFeature wpf)

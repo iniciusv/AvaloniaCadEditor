@@ -312,6 +312,7 @@
                                 <Border Background="#2D3B4A" CornerRadius="10" Padding="8,1,2,1" Margin="0,0,4,4"
                                         ToolTip.Tip="{Binding ToolTip}">
                                     <StackPanel Orientation="Horizontal" Spacing="2">
+                                        <TextBlock Text="📚" FontSize="9" VerticalAlignment="Center" IsVisible="{Binding IsLibrary}" />
                                         <TextBlock Text="{Binding DisplayName}" Foreground="#DDDDDD" FontSize="10" VerticalAlignment="Center" />
                                         <Button Classes="pin" Content="📌" Command="{Binding TogglePinCommand}" IsVisible="{Binding CanPin}"
                                                 Classes.pinned="{Binding IsPinned}"

@@ -25,7 +25,13 @@ public enum AiContextReason
     Dependency,
 
     /// <summary>Adicionado/fixado manualmente pelo usuário.</summary>
-    Pinned
+    Pinned,
+
+    /// <summary>
+    /// Peça da biblioteca citada no chat (ou dependência dela), no caminho onde a cópia ficaria na cena: a cena
+    /// ainda não a tem, e ela é copiada se a resposta a usar.
+    /// </summary>
+    Library
 }
 
 /// <summary>Um arquivo do contexto da IA.</summary>
@@ -56,6 +62,11 @@ public sealed record AiContextScope(IReadOnlyList<AiContextFile> Files)
 /// não saberia em que peça o usuário está: ela entra como seleção, com o aviso de que está aberta.
 /// </param>
 /// <param name="SelectedFace">A face selecionada dentro da entidade aberta, se houver.</param>
+/// <param name="LibraryDocuments">
+/// Peças da biblioteca citadas no chat que a cena ainda não tem, já nos caminhos da cena
+/// (<see cref="AvaloniaCadEditor.Application.Library.PartLibraryCitation.ContextDocuments"/>). Entram no contexto
+/// e na validação como se fossem da cena.
+/// </param>
 public sealed record AiContextRequest(
     IReadOnlyList<ScriptDocument> Documents,
     string EntryFile,
@@ -65,8 +76,15 @@ public sealed record AiContextRequest(
     Func<string, string>? ToRelative = null,
     AiContextAdjustments? Adjustments = null,
     IFeature? OpenEntity = null,
-    AvaloniaCadEditor.Domain.Profiles.IProfile? SelectedFace = null)
+    AvaloniaCadEditor.Domain.Profiles.IProfile? SelectedFace = null,
+    IReadOnlyList<ScriptDocument>? LibraryDocuments = null)
 {
+    /// <summary>A cena com as peças citadas da biblioteca: o que a IA enxerga e o que a validação compila.</summary>
+    public IReadOnlyList<ScriptDocument> DocumentsWithLibrary =>
+        LibraryDocuments is not { Count: > 0 } extra
+            ? Documents
+            : Documents.Concat(extra.Where(e => !Documents.Any(d => string.Equals(d.FilePath, e.FilePath, StringComparison.OrdinalIgnoreCase)))).ToList();
+
     /// <summary>A seleção mais a entidade aberta (se não estava selecionada), que é o que a IA trata como selecionado.</summary>
     public IReadOnlyList<IFeature> SelectedWithOpenEntity =>
         OpenEntity == null || Selected.Any(f => f.Name == OpenEntity.Name) ? Selected : Selected.Append(OpenEntity).ToList();
@@ -91,7 +109,7 @@ public interface IAiContextBuilder
 public sealed class AiContextBuilder : IAiContextBuilder
 {
     public AiContextScope ResolveScope(AiContextRequest request) =>
-        request.IsProjectOpen ? ResolveScope(new SceneSyntaxIndex(request.Documents), request) : AiContextScope.Empty;
+        request.IsProjectOpen ? ResolveScope(new SceneSyntaxIndex(request.DocumentsWithLibrary), request) : AiContextScope.Empty;
 
     public CadScriptContext Build(AiContextRequest request)
     {
@@ -104,11 +122,12 @@ public sealed class AiContextBuilder : IAiContextBuilder
             return new CadScriptContext(code, primarySelection, Kind: CadFileKind.StandaloneScript, FileName: ScriptDocument.DefaultSceneFile);
         }
 
-        var index = new SceneSyntaxIndex(request.Documents);
+        var documents = request.DocumentsWithLibrary;
+        var index = new SceneSyntaxIndex(documents);
         var scope = ResolveScope(index, request);
         var toRelative = request.ToRelative ?? DefaultToRelative;
 
-        var kinds = request.Documents.ToDictionary(
+        var kinds = documents.ToDictionary(
             d => d.FilePath,
             d => AiEditScopePolicy.KindOf(d.FilePath, request.EntryFile, index),
             StringComparer.OrdinalIgnoreCase);
@@ -129,7 +148,7 @@ public sealed class AiContextBuilder : IAiContextBuilder
             Kind: kinds.TryGetValue(activeFile, out var kind) ? kind : CadFileKind.PartFile,
             FileName: activeFile,
             PartSummaries: partSummaries,
-            ProjectDocuments: request.Documents,
+            ProjectDocuments: documents,
             Scope: multiFile);
     }
 
@@ -158,6 +177,11 @@ public sealed class AiContextBuilder : IAiContextBuilder
         foreach (var path in request.Adjustments?.Pinned ?? new HashSet<string>())
         {
             Include(path, AiContextReason.Pinned);
+        }
+
+        foreach (var doc in request.LibraryDocuments ?? Array.Empty<ScriptDocument>())
+        {
+            Include(doc.FilePath, AiContextReason.Library, "biblioteca");
         }
 
         foreach (var hit in TypeDependencyResolver.Resolve(files.Select(f => f.FilePath).ToList(), index, request.EntryFile, excluded))

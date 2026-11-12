@@ -69,8 +69,12 @@ public partial class App : Avalonia.Application
 			var thumbnails = new AvaloniaCadEditor.Application.Library.PartThumbnailService(evaluator,
 				() => new AvaloniaCadEditor.Infrastructure.OpenCascade.OpenCascadeGeometryKernel(),
 				new AvaloniaCadEditor.Infrastructure.Library.DiskThumbnailCache());
-			viewModel.Library = new LibraryViewModel(scriptEditor,
+			var library = new LibraryViewModel(scriptEditor,
 				new AvaloniaCadEditor.Infrastructure.Library.DiskPartLibraryStore(), thumbnails, filePicker);
+			viewModel.Library = library;
+			library.CiteInChat = viewModel.AiChat.CiteLibraryPart;
+			viewModel.AiChat.LibraryDocuments = () => library.LibraryDocuments;
+			viewModel.ModelTree.SendPartToLibraryRequested += type => _ = library.SendToLibraryAsync(type);
 
 			desktop.MainWindow.DataContext = viewModel;
 		}

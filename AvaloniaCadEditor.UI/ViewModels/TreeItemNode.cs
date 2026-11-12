@@ -25,6 +25,10 @@ public class TreeItemNode : INotifyPropertyChanged
     public TreeItemCategory Category { get; set; }
     public object? Tag { get; set; }
 
+    /// <summary>Tipo da peça quando o nó é uma instância de peça (menu "Enviar para a biblioteca").</summary>
+    public string? PartTypeName => (Tag as AvaloniaCadEditor.Domain.Features.PartInstance)?.PartTypeName;
+    public bool IsPartInstance => PartTypeName != null;
+
     private bool _isSelected;
     public bool IsSelected
     {

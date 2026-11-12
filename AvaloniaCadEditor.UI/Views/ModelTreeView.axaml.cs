@@ -16,6 +16,14 @@ public partial class ModelTreeView : UserControl
     private TreeItemNode? _draggedNode;
     private PointerPressedEventArgs? _dragStartEvent;
 
+    private void OnSendToLibraryClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        if (sender is Control { DataContext: TreeItemNode node } && DataContext is ModelTreeViewModel tree)
+        {
+            tree.RequestSendToLibrary(node);
+        }
+    }
+
     public ModelTreeView()
     {
         InitializeComponent();

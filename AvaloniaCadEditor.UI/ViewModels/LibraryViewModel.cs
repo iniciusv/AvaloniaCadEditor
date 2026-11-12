@@ -28,6 +28,7 @@ public sealed class LibraryViewModel : ObservableObject
     private readonly PartThumbnailService? _thumbnails;
     private readonly IFilePickerService? _filePicker;
     private readonly Action<Action> _uiInvoker;
+    private IReadOnlyDictionary<string, PartLibraryState> _states = new Dictionary<string, PartLibraryState>();
 
     private IReadOnlyList<ScriptDocument> _libraryDocuments = Array.Empty<ScriptDocument>();
     private IReadOnlyList<ScriptDocument> _sceneDocuments = Array.Empty<ScriptDocument>();
@@ -54,6 +55,9 @@ public sealed class LibraryViewModel : ObservableObject
         RefreshCommand = new RelayCommand(Refresh);
         ChangeFolderCommand = new RelayCommand(async () => await ChangeFolderAsync());
         InsertCommand = new RelayCommand(async () => await InsertAsync());
+        SendToLibraryCommand = new RelayCommand(async () => { if (_selected != null) await SendToLibraryAsync(_selected.Name); });
+        UpdateFromLibraryCommand = new RelayCommand(async () => { if (_selected != null) await UpdateFromLibraryAsync(_selected.Name); });
+        CiteCommand = new RelayCommand(() => { if (_selected != null) CiteInChat?.Invoke(_selected.Item); });
         SetFilterCommand = new RelayCommand<string>(f => Filter = Enum.TryParse<LibrarySourceFilter>(f, out var v) ? v : LibrarySourceFilter.All);
 
         _script.SceneDocumentsChanged += (_, _) => ReloadScene();
@@ -66,6 +70,65 @@ public sealed class LibraryViewModel : ObservableObject
     public ICommand ChangeFolderCommand { get; }
     public ICommand InsertCommand { get; }
     public ICommand SetFilterCommand { get; }
+    public ICommand SendToLibraryCommand { get; }
+    public ICommand UpdateFromLibraryCommand { get; }
+    public ICommand CiteCommand { get; }
+
+    /// <summary>"Citar no chat": ligado ao chat da IA na composição. Null sem chat (testes).</summary>
+    public Action<PartLibraryItem>? CiteInChat { get; set; }
+
+    /// <summary>Os arquivos atuais da pasta da biblioteca (o chat lê as peças citadas daqui).</summary>
+    public IReadOnlyList<ScriptDocument> LibraryDocuments => _libraryDocuments;
+
+    /// <summary>
+    /// Pasta da biblioteca para uma peça nova enviada da cena: <c>Projetos/(nome da cena)</c>. Depois ela pode
+    /// ser movida para outra subpasta à mão; o que liga as cópias é o nome do tipo, não o caminho.
+    /// </summary>
+    public string FolderForNewParts => "Projetos/" + (_script.ProjectName ?? "Cena");
+
+    /// <summary>
+    /// Enviar a peça da cena para a biblioteca, com as peças de que ela depende (<see cref="PartLibrarySync.PlanSend"/>).
+    /// Substitui o arquivo da biblioteca que já a declara: o usuário mandou, e a pasta é versionável.
+    /// </summary>
+    public Task SendToLibraryAsync(string typeName)
+    {
+        var scene = _script.GetSceneDocuments();
+        var library = _store.ReadDocuments();
+        var plan = PartLibrarySync.PlanSend(scene, library, typeName, FolderForNewParts, _script.EntryFile);
+        if (plan.Refusal != null)
+        {
+            _script.ReportStatus($"✗ {plan.Refusal}");
+            return Task.CompletedTask;
+        }
+        if (plan.Writes.Count == 0)
+        {
+            _script.ReportStatus($"{typeName} já está igual na biblioteca.");
+            return Task.CompletedTask;
+        }
+
+        try
+        {
+            foreach (var write in plan.Writes) _store.Write(write.FilePath, write.Text);
+        }
+        catch (Exception ex) when (ex is System.IO.IOException or UnauthorizedAccessException or InvalidOperationException)
+        {
+            _script.ReportStatus($"✗ Não consegui gravar na biblioteca: {ex.Message}");
+            Refresh();
+            return Task.CompletedTask;
+        }
+
+        Refresh();
+        string warnings = plan.Warnings.Count > 0 ? " ⚠ " + string.Join(" ", plan.Warnings) : string.Empty;
+        _script.ReportStatus($"✓ Enviado para a biblioteca: {string.Join(", ", plan.Writes.Select(w => w.FilePath))}{warnings}");
+        return Task.CompletedTask;
+    }
+
+    /// <summary>Trazer a versão da biblioteca para a cena (Ctrl+Z desfaz).</summary>
+    public async Task UpdateFromLibraryAsync(string typeName)
+    {
+        _libraryDocuments = _store.ReadDocuments();
+        await _script.UpdatePartFromLibraryAsync(typeName, _libraryDocuments);
+    }
 
     /// <summary>Linhas da lista: <see cref="LibraryCategoryRow"/> e <see cref="LibraryItemViewModel"/>, já filtradas.</summary>
     public ObservableCollection<object> Rows { get; } = new();
@@ -182,21 +245,22 @@ public sealed class LibraryViewModel : ObservableObject
     {
         var sceneItems = PartLibraryCatalog.Read(_sceneDocuments, PartLibrarySource.Scene);
         var libraryItems = PartLibraryCatalog.Read(_libraryDocuments, PartLibrarySource.Library);
-        var sceneTypes = new HashSet<string>(sceneItems.Select(i => i.Name), StringComparer.Ordinal);
+        _states = PartLibrarySync.Compare(_sceneDocuments, _libraryDocuments);
 
         var previous = _items.ToDictionary(i => (i.Item.Source, i.Name, i.Item.FilePath));
         var items = new List<LibraryItemViewModel>();
         foreach (var item in sceneItems.Concat(libraryItems))
         {
-            bool inScene = item.Source == PartLibrarySource.Library && sceneTypes.Contains(item.Name);
+            var state = _states.TryGetValue(item.Name, out var known) ? known
+                : item.Source == PartLibrarySource.Scene ? PartLibraryState.SceneOnly : PartLibraryState.LibraryOnly;
             if (previous.TryGetValue((item.Source, item.Name, item.FilePath), out var old) && old.Item.Parameters.SequenceEqual(item.Parameters))
             {
-                old.Update(item, inScene);
+                old.Update(item, state);
                 items.Add(old);
             }
             else
             {
-                items.Add(new LibraryItemViewModel(item, inScene));
+                items.Add(new LibraryItemViewModel(item, state));
             }
         }
         _items = items;
@@ -287,14 +351,14 @@ public sealed record LibraryCategoryRow(string Title, int Count);
 public sealed class LibraryItemViewModel : ObservableObject
 {
     private PartLibraryItem _item;
-    private bool _inScene;
+    private PartLibraryState _state;
     private string? _preset;
     private byte[]? _thumbnailPng;
 
-    public LibraryItemViewModel(PartLibraryItem item, bool inScene)
+    public LibraryItemViewModel(PartLibraryItem item, PartLibraryState state)
     {
         _item = item;
-        _inScene = inScene;
+        _state = state;
         var initial = PartLibraryInsertion.InitialValues(item);
         Parameters = item.Parameters.Select(p => new LibraryParameterViewModel(p, initial[p.Name], OnParameterEdited)).ToList();
         Presets = item.Presets.Select(p => new LibraryPresetViewModel(p, this)).ToList();
@@ -313,11 +377,32 @@ public sealed class LibraryItemViewModel : ObservableObject
         ? "Nesta cena"
         : string.IsNullOrEmpty(_item.Category) ? "Minha biblioteca" : _item.Category;
 
-    /// <summary>Marca da linha: "na cena" para peça da biblioteca que a cena já tem.</summary>
-    public string? Tag => _inScene ? "na cena" : null;
-    public bool HasTag => _inScene;
+    public PartLibraryState State => _state;
 
-    public string InsertLabel => _item.Source == PartLibrarySource.Library && !_inScene ? "Inserir na cena (copia o arquivo)" : "Inserir na cena";
+    /// <summary>
+    /// Marca da linha: "na cena" para peça da biblioteca que a cena já tem igual; "alterada" nos dois lados quando
+    /// a cópia da cena difere da biblioteca.
+    /// </summary>
+    public string? Tag => _state switch
+    {
+        PartLibraryState.Altered => "alterada",
+        PartLibraryState.Same when _item.Source == PartLibrarySource.Library => "na cena",
+        _ => null
+    };
+    public bool HasTag => Tag != null;
+    public bool IsAltered => _state == PartLibraryState.Altered;
+
+    public string InsertLabel => NeedsCopy ? "Inserir na cena (copia o arquivo)" : "Inserir na cena";
+
+    /// <summary>Peça da cena que a biblioteca não tem, ou que está diferente lá.</summary>
+    public bool CanSendToLibrary => _state is PartLibraryState.SceneOnly or PartLibraryState.Altered;
+
+    public string SendLabel => _state == PartLibraryState.Altered ? "Enviar para a biblioteca (substitui)" : "Enviar para a biblioteca";
+
+    /// <summary>A cópia da cena difere da biblioteca: dá para trazer a versão de lá.</summary>
+    public bool CanUpdateFromLibrary => _state == PartLibraryState.Altered;
+
+    private bool NeedsCopy => _item.Source == PartLibrarySource.Library && _state == PartLibraryState.LibraryOnly;
 
     public IReadOnlyList<LibraryParameterViewModel> Parameters { get; }
     public bool HasParameters => Parameters.Count > 0;
@@ -343,7 +428,7 @@ public sealed class LibraryItemViewModel : ObservableObject
         get
         {
             string statement = PartLibraryInsertion.AddStatement(PartExpression);
-            return _item.Source == PartLibrarySource.Library && !_inScene
+            return NeedsCopy
                 ? $"// copia {_item.FilePath} para {PartLibraryImporter.TargetPath(_item.FilePath)}\n{statement}"
                 : statement;
         }
@@ -355,10 +440,10 @@ public sealed class LibraryItemViewModel : ObservableObject
     public bool Matches(string query) =>
         (_item.Name + " " + _item.Summary + " " + _item.Category).Contains(query, StringComparison.OrdinalIgnoreCase);
 
-    internal void Update(PartLibraryItem item, bool inScene)
+    internal void Update(PartLibraryItem item, PartLibraryState state)
     {
         _item = item;
-        _inScene = inScene;
+        _state = state;
         OnPropertyChanged(string.Empty);
     }
 

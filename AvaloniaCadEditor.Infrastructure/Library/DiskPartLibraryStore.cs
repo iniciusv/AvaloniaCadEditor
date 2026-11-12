@@ -71,6 +71,18 @@ public sealed class DiskPartLibraryStore : IPartLibraryStore
         return documents.OrderBy(d => d.FilePath, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
+    public void Write(string relativePath, string text)
+    {
+        string normalized = relativePath.Replace('\\', '/');
+        if (Path.IsPathRooted(normalized) || normalized.Split('/').Any(p => p == ".."))
+        {
+            throw new InvalidOperationException($"Caminho fora da biblioteca: {relativePath}");
+        }
+        string full = Path.Combine(RootPath, normalized.Replace('/', Path.DirectorySeparatorChar));
+        Directory.CreateDirectory(Path.GetDirectoryName(full)!);
+        File.WriteAllText(full, text);
+    }
+
     public void SetRootPath(string folder)
     {
         RootPath = Path.GetFullPath(folder);

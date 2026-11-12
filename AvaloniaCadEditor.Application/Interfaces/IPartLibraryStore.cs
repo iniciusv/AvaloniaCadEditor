@@ -17,6 +17,9 @@ public interface IPartLibraryStore
     /// </summary>
     IReadOnlyList<ScriptDocument> ReadDocuments();
 
+    /// <summary>Grava um arquivo (caminho relativo, com '/'), criando as pastas. Só a pedido do usuário (Enviar).</summary>
+    void Write(string relativePath, string text);
+
     /// <summary>Troca a pasta e lembra a escolha nas configurações.</summary>
     void SetRootPath(string folder);
 }

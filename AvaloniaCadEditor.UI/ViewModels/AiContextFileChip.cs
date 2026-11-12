@@ -20,6 +20,7 @@ public sealed class AiContextFileChip
             AiContextReason.Active => $"{FilePath} — open in the editor",
             AiContextReason.Selection => $"{FilePath} — selected: {file.Detail}",
             AiContextReason.Dependency => $"{FilePath} — declares {file.Detail}, used by another file in the context",
+            AiContextReason.Library => $"{FilePath} — from the part library (not in the scene yet; copied if the answer uses it)",
             _ => $"{FilePath} — added manually"
         };
     }
@@ -36,7 +37,10 @@ public sealed class AiContextFileChip
     /// <summary>O arquivo de entrada não pode sair do contexto.</summary>
     public bool CanRemove => Reason != AiContextReason.Entry;
 
-    public bool CanPin => Reason != AiContextReason.Entry;
+    public bool CanPin => Reason is not (AiContextReason.Entry or AiContextReason.Library);
+
+    /// <summary>Peça citada da biblioteca: o chip mostra a origem.</summary>
+    public bool IsLibrary => Reason == AiContextReason.Library;
 
     public ICommand RemoveCommand { get; }
     public ICommand TogglePinCommand { get; }

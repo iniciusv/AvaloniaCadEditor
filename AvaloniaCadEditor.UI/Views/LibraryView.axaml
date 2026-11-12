@@ -9,6 +9,18 @@
              x:DataType="vm:LibraryViewModel">
 
     <UserControl.Styles>
+        <Style Selector="Border.tag">
+            <Setter Property="BorderBrush" Value="#27AE60" />
+        </Style>
+        <Style Selector="Border.tag TextBlock">
+            <Setter Property="Foreground" Value="#27AE60" />
+        </Style>
+        <Style Selector="Border.tag.altered">
+            <Setter Property="BorderBrush" Value="#D9A441" />
+        </Style>
+        <Style Selector="Border.tag.altered TextBlock">
+            <Setter Property="Foreground" Value="#D9A441" />
+        </Style>
         <Style Selector="RadioButton.chip">
             <Setter Property="FontSize" Value="11" />
             <Setter Property="Padding" Value="8,2" />
@@ -61,9 +73,9 @@
                                 <TextBlock Text="{Binding ShortSummary}" Foreground="#8A8A8A" FontSize="11" TextTrimming="CharacterEllipsis"
                                            ToolTip.Tip="{Binding Summary}" />
                             </StackPanel>
-                            <Border Grid.Column="2" BorderBrush="#27AE60" BorderThickness="1" CornerRadius="2" Padding="4,0"
+                            <Border Grid.Column="2" Classes="tag" Classes.altered="{Binding IsAltered}" BorderThickness="1" CornerRadius="2" Padding="4,0"
                                     VerticalAlignment="Center" IsVisible="{Binding HasTag}">
-                                <TextBlock Text="{Binding Tag}" Foreground="#27AE60" FontSize="10" />
+                                <TextBlock Text="{Binding Tag}" FontSize="10" />
                             </Border>
                         </Grid>
                     </DataTemplate>
@@ -130,11 +142,24 @@
                                          Foreground="#D4D4D4" TextWrapping="Wrap" />
                 </Border>
 
-                <Button Content="{Binding InsertLabel}"
-                        Command="{Binding $parent[views:LibraryView].((vm:LibraryViewModel)DataContext).InsertCommand}"
-                        Background="#27AE60" Foreground="White" FontWeight="SemiBold" FontSize="12" Padding="12,5"
-                        HorizontalAlignment="Left"
-                        ToolTip.Tip="Acrescenta a peça ao arquivo de entrada. Da biblioteca, copia antes o .cs dela (e das dependências) para Pecas/. Ctrl+Z desfaz" />
+                <WrapPanel Orientation="Horizontal">
+                    <Button Content="{Binding InsertLabel}"
+                            Command="{Binding $parent[views:LibraryView].((vm:LibraryViewModel)DataContext).InsertCommand}"
+                            Background="#27AE60" Foreground="White" FontWeight="SemiBold" FontSize="12" Padding="12,5" Margin="0,0,6,6"
+                            ToolTip.Tip="Acrescenta a peça ao arquivo de entrada. Da biblioteca, copia antes o .cs dela (e das dependências) para Pecas/. Ctrl+Z desfaz" />
+                    <Button Content="Atualizar da biblioteca" IsVisible="{Binding CanUpdateFromLibrary}"
+                            Command="{Binding $parent[views:LibraryView].((vm:LibraryViewModel)DataContext).UpdateFromLibraryCommand}"
+                            FontSize="12" Padding="10,5" Margin="0,0,6,6"
+                            ToolTip.Tip="O arquivo da cena recebe a versão da biblioteca. Ctrl+Z desfaz" />
+                    <Button Content="{Binding SendLabel}" IsVisible="{Binding CanSendToLibrary}"
+                            Command="{Binding $parent[views:LibraryView].((vm:LibraryViewModel)DataContext).SendToLibraryCommand}"
+                            FontSize="12" Padding="10,5" Margin="0,0,6,6"
+                            ToolTip.Tip="Grava a peça da cena (e as de que ela depende) na pasta da biblioteca. Peça nova vai para Projetos/(nome da cena)" />
+                    <Button Content="Citar no chat"
+                            Command="{Binding $parent[views:LibraryView].((vm:LibraryViewModel)DataContext).CiteCommand}"
+                            FontSize="12" Padding="10,5" Margin="0,0,6,6"
+                            ToolTip.Tip="Põe a peça no contexto do chat da IA. Da biblioteca, ela é copiada para a cena se a resposta a usar" />
+                </WrapPanel>
             </StackPanel>
         </ScrollViewer>
     </Grid>
