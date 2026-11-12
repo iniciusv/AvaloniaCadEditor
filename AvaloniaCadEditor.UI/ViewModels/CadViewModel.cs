@@ -1435,6 +1435,7 @@ public partial class CadViewModel : INotifyPropertyChanged
 				// Entrar em outra entidade (ou voltar à cena) é trocar de nível: o esboço em que se estava fica para
 				// trás, senão ele continuaria por cima e a entidade nova abriria pegando linhas em vez de faces.
 				if (IsSketchEditing) ExitSketchMode();
+				CancelFacePick(quiet: true); // o furo era para a peça que estava aberta
 				HighlightedToolId = null;
 				SelectedPartSolid = null;
 				// Entrar ou sair muda o que é selecionável: o que estava marcado no nível anterior (um sólido
@@ -1749,8 +1750,65 @@ public partial class CadViewModel : INotifyPropertyChanged
 		return RaycastReference(ray);
 	}
 
-	/// <summary>O Workplane tira o plano de uma face, de qualquer sólido da cena, em qualquer nível.</summary>
-	private bool IsPickingWorkPlaneFace => CurrentTool is SetWorkPlaneCommand;
+	/// <summary>
+	/// O Workplane tira o plano de uma face, de qualquer sólido da cena, em qualquer nível; a escolha da face de
+	/// um furo (<see cref="BeginFacePick"/>) realça e alterna com TAB do mesmo jeito.
+	/// </summary>
+	private bool IsPickingWorkPlaneFace => CurrentTool is SetWorkPlaneCommand || _facePick != null;
+
+	private Func<RaycastHit, System.Threading.Tasks.Task>? _facePick;
+
+	/// <summary>True enquanto o próximo clique na viewport escolhe uma face da peça aberta (ver <see cref="BeginFacePick"/>).</summary>
+	public bool IsPickingFace => _facePick != null;
+
+	/// <summary>
+	/// O próximo clique numa face da peça aberta vai para <paramref name="onPicked"/>, com o ponto e a normal no
+	/// mundo ("Furar a peça aberta", na aba Biblioteca). Esc, ou sair da peça, desiste.
+	/// </summary>
+	public void BeginFacePick(string prompt, Func<RaycastHit, System.Threading.Tasks.Task> onPicked)
+	{
+		ArgumentNullException.ThrowIfNull(onPicked);
+		if (CurrentTool is not Application.Commands.SelectTool) SelectSelectToolCommand.Execute(null);
+		_facePick = onPicked;
+		_pickOverride = null;
+		_pickCandidates = null;
+		StatusText = prompt;
+		OnPropertyChanged(nameof(IsPickingFace));
+	}
+
+	/// <summary>Desiste da escolha da face; false se não havia nenhuma.</summary>
+	public bool CancelFacePick(bool quiet = false)
+	{
+		if (_facePick == null) return false;
+		_facePick = null;
+		HoveredFaceProfile = null;
+		if (!quiet) StatusText = "Furo cancelado.";
+		OnPropertyChanged(nameof(IsPickingFace));
+		return true;
+	}
+
+	/// <summary>
+	/// O clique durante <see cref="BeginFacePick"/>: só vale uma face da peça aberta (a escolhida com TAB, se houver).
+	/// False se não há escolha de face em andamento, e o clique segue o caminho normal.
+	/// </summary>
+	public bool TryCompleteFacePick(Ray ray)
+	{
+		if (_facePick is not { } pick) return false;
+
+		var hit = RaycastWorkPlaneTarget(ray);
+		var open = OpenEntity;
+		if (hit?.FeatureId is not Guid id || open == null || id != open.Id)
+		{
+			StatusText = "Clique numa face da peça aberta (Esc desiste).";
+			return true;
+		}
+
+		_facePick = null;
+		HoveredFaceProfile = null;
+		OnPropertyChanged(nameof(IsPickingFace));
+		_ = pick(hit.Value);
+		return true;
+	}
 
 	/// <summary>Realça já o que está sob o raio (o timer do hover chama isto depois da pausa do mouse).</summary>
 	public void HoverNow(Ray ray)
@@ -2301,6 +2359,7 @@ public partial class CadViewModel : INotifyPropertyChanged
 				break;
 			case "ESCAPE":
 				VcbService.Clear();
+				if (CancelFacePick()) break;
 				UpdateStatusText(CurrentSnappedPoint);
 
 				if (CurrentTool is not Application.Commands.SelectTool)

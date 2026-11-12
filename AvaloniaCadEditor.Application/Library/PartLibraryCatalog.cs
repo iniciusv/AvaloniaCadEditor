@@ -42,7 +42,8 @@ public static class PartLibraryCatalog
                 source,
                 CategoryOf(type.FilePath),
                 SummaryOf(declaration),
-                PresetsOf(declaration, type)));
+                PresetsOf(declaration, type),
+                IsCutter(declaration)));
         }
 
         return items
@@ -84,6 +85,26 @@ public static class PartLibraryCatalog
         text = Regex.Replace(text, @"<[^>]+>", string.Empty);
         text = WebUtility.HtmlDecode(text);
         return Regex.Replace(text, @"\s+", " ").Trim();
+    }
+
+    /// <summary>
+    /// O record se declara vazio (<c>public override bool IsCutter =&gt; true;</c>, ou com <c>get { return true; }</c>).
+    /// </summary>
+    public static bool IsCutter(RecordDeclarationSyntax record)
+    {
+        var property = record.Members.OfType<PropertyDeclarationSyntax>()
+            .FirstOrDefault(p => p.Identifier.ValueText == "IsCutter" && p.Modifiers.Any(SyntaxKind.OverrideKeyword));
+        if (property == null) return false;
+
+        var value = property.ExpressionBody?.Expression
+            ?? property.AccessorList?.Accessors
+                .FirstOrDefault(a => a.IsKind(SyntaxKind.GetAccessorDeclaration)) switch
+            {
+                { ExpressionBody: { } body } => body.Expression,
+                { Body.Statements: [ReturnStatementSyntax { Expression: { } returned }] } => returned,
+                _ => null
+            };
+        return value is LiteralExpressionSyntax literal && literal.IsKind(SyntaxKind.TrueLiteralExpression);
     }
 
     private static IReadOnlyList<PartLibraryPreset> PresetsOf(RecordDeclarationSyntax record, PartTypeInfo type)

@@ -75,6 +75,12 @@ public partial class App : Avalonia.Application
 			library.CiteInChat = viewModel.AiChat.CiteLibraryPart;
 			viewModel.AiChat.LibraryDocuments = () => library.LibraryDocuments;
 			viewModel.ModelTree.SendPartToLibraryRequested += type => _ = library.SendToLibraryAsync(type);
+			library.OpenPart = () => viewModel.EditContext;
+			library.PickFace = viewModel.BeginFacePick;
+			viewModel.PropertyChanged += (_, e) =>
+			{
+				if (e.PropertyName == nameof(CadViewModel.EditContext)) library.NotifyOpenPartChanged();
+			};
 
 			desktop.MainWindow.DataContext = viewModel;
 		}

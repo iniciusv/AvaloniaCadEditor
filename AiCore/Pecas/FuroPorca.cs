@@ -43,6 +43,9 @@ public sealed record FuroPorca(
     double? DiametroFuro = null,
     double? LarguraPorca = null) : Part
 {
+    /// <summary>Vazio: a biblioteca oferece "Furar a peça aberta" (Entrada e Direcao vêm do clique).</summary>
+    public override bool IsCutter => true;
+
     protected override IFeature Build()
     {
         var direcao = (Direcao ?? Vector3D.UnitZ).Normalize();

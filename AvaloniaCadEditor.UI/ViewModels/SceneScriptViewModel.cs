@@ -1316,6 +1316,86 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
     }
 
     /// <summary>
+    /// "Furar a peça aberta": o vazio entra no <c>Build()</c> da peça aberta como ferramenta da diferença, no
+    /// ponto e na direção do clique (<see cref="PartLibraryDrill"/>, gravado pelo
+    /// <see cref="AvaloniaCadEditor.Application.EditContext.PartSolidInserter"/>). Vazio da biblioteca que a cena
+    /// não tem é copiado para <c>Pecas/</c> antes, e um Ctrl+Z desfaz a cópia e o furo juntos. Na recusa, nada
+    /// muda (o vazio não faz sentido solto na cena) e o motivo vai para o status.
+    /// </summary>
+    public async Task DrillPartFromLibraryAsync(
+        AvaloniaCadEditor.Application.EditContext.PartEditContext context, PartLibraryItem item,
+        IReadOnlyList<ScriptDocument> library, IReadOnlyDictionary<string, string> values,
+        AvaloniaCadEditor.Domain.ValueObjects.Point3D worldPoint, AvaloniaCadEditor.Domain.ValueObjects.Vector3D worldNormal)
+    {
+        if (PartLibraryDrill.Refusal(item) is { } refusal)
+        {
+            _cadViewModel.StatusText = $"✗ {refusal}";
+            return;
+        }
+        if (_sceneEvaluator == null)
+        {
+            _cadViewModel.StatusText = "✗ Evaluator não configurado.";
+            return;
+        }
+
+        var documents = CurrentDocuments();
+        IReadOnlyList<ScriptDocument> copies = Array.Empty<ScriptDocument>();
+        string warnings = string.Empty;
+        if (item.Source == PartLibrarySource.Library)
+        {
+            if (_project == null)
+            {
+                _cadViewModel.StatusText = "Abra ou crie uma cena (pasta) para usar vazios da biblioteca: eles são copiados para Pecas/.";
+                return;
+            }
+            var import = PartLibraryImporter.Plan(library, documents, item.Name);
+            if (import.Refusal != null)
+            {
+                _cadViewModel.StatusText = $"✗ {import.Refusal}";
+                return;
+            }
+            copies = import.NewFiles;
+            if (import.Warnings.Count > 0) warnings = " ⚠ " + string.Join(" ", import.Warnings);
+            documents = documents
+                .Where(d => !copies.Any(c => string.Equals(c.FilePath, d.FilePath, StringComparison.OrdinalIgnoreCase)))
+                .Concat(copies)
+                .ToList();
+        }
+
+        string snippet = PartLibraryDrill.Snippet(item, values, context, worldPoint, worldNormal, PartLibraryDrill.NamesIn(documents));
+        var insertion = await new AvaloniaCadEditor.Application.EditContext.PartSolidInserter(_sceneEvaluator, _partMerger)
+            .InsertAsync(documents, EntryFile, snippet, context, PartMergeMode.SubtractAsTool);
+        if (insertion.Refusal != null)
+        {
+            _cadViewModel.StatusText = $"✗ {item.Name} não gravado em {context.PartTypeName}: {insertion.Refusal}";
+            return;
+        }
+
+        var partFile = insertion.Changes[^1].FilePath;
+        if (_project != null && !string.Equals(_activeFile, partFile, StringComparison.OrdinalIgnoreCase))
+        {
+            SwitchActiveFile(partFile);
+        }
+
+        var changes = copies
+            .Where(c => !insertion.Changes.Any(i => string.Equals(i.FilePath, c.FilePath, StringComparison.OrdinalIgnoreCase)))
+            .Concat(insertion.Changes)
+            .ToList();
+        await ApplyCrossFileChangesAsync(changes);
+        if (HasErrors)
+        {
+            _cadViewModel.StatusText = $"✗ {ErrorSummary} (Ctrl+Z desfaz)";
+            return;
+        }
+
+        string status = $"✓ {item.Name} {insertion.InsertedName} gravado em {context.PartTypeName} ({partFile})";
+        if (copies.Count > 0) status += $" — copiado da biblioteca: {string.Join(", ", copies.Select(c => c.FilePath))}";
+        if (!insertion.GeometryVerified) status += " — a cena executa, mas esta geometria não pôde ser comparada com a original";
+        if (insertion.Warnings.Count > 0) status += " ⚠ " + string.Join(" ", insertion.Warnings);
+        _cadViewModel.StatusText = status + warnings;
+    }
+
+    /// <summary>
     /// "Atualizar da biblioteca": o arquivo da cena que declara a peça recebe o texto da biblioteca, e as
     /// dependências que faltarem são copiadas (<see cref="PartLibrarySync.PlanUpdate"/>). Ctrl+Z desfaz.
     /// </summary>

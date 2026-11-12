@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
+using AvaloniaCadEditor.Application.EditContext;
 using AvaloniaCadEditor.Application.Interfaces;
 using AvaloniaCadEditor.Application.Library;
 using AvaloniaCadEditor.Application.Scenes;
@@ -58,6 +59,7 @@ public sealed class LibraryViewModel : ObservableObject
         SendToLibraryCommand = new RelayCommand(async () => { if (_selected != null) await SendToLibraryAsync(_selected.Name); });
         UpdateFromLibraryCommand = new RelayCommand(async () => { if (_selected != null) await UpdateFromLibraryAsync(_selected.Name); });
         CiteCommand = new RelayCommand(() => { if (_selected != null) CiteInChat?.Invoke(_selected.Item); });
+        DrillCommand = new RelayCommand(BeginDrill);
         SetFilterCommand = new RelayCommand<string>(f => Filter = Enum.TryParse<LibrarySourceFilter>(f, out var v) ? v : LibrarySourceFilter.All);
 
         _script.SceneDocumentsChanged += (_, _) => ReloadScene();
@@ -73,6 +75,55 @@ public sealed class LibraryViewModel : ObservableObject
     public ICommand SendToLibraryCommand { get; }
     public ICommand UpdateFromLibraryCommand { get; }
     public ICommand CiteCommand { get; }
+    public ICommand DrillCommand { get; }
+
+    /// <summary>A peça aberta com duplo clique, se houver (ligado ao <c>CadViewModel.EditContext</c> na composição).</summary>
+    public Func<PartEditContext?>? OpenPart { get; set; }
+
+    /// <summary>
+    /// Pede à viewport que o próximo clique escolha uma face da peça aberta (<c>CadViewModel.BeginFacePick</c>):
+    /// o texto vai para o status, e o acerto (ponto e normal no mundo) volta para a função.
+    /// </summary>
+    public Action<string, Func<AvaloniaCadEditor.Domain.ValueObjects.RaycastHit, Task>>? PickFace { get; set; }
+
+    /// <summary>Há uma peça aberta para receber um vazio.</summary>
+    public bool HasOpenPart => OpenPart?.Invoke() != null;
+
+    /// <summary>Avisa que a peça aberta mudou (a composição chama quando o <c>EditContext</c> muda).</summary>
+    public void NotifyOpenPartChanged() => OnPropertyChanged(nameof(HasOpenPart));
+
+    /// <summary>
+    /// "Furar a peça aberta": o próximo clique numa face da peça dá o ponto e a direção do vazio escolhido, e ele
+    /// entra no <c>Build()</c> dela (<see cref="SceneScriptViewModel.DrillPartFromLibraryAsync"/>).
+    /// </summary>
+    private void BeginDrill()
+    {
+        var item = _selected;
+        if (item == null) return;
+        if (PartLibraryDrill.Refusal(item.Item) is { } refusal)
+        {
+            _script.ReportStatus($"✗ {refusal}");
+            return;
+        }
+        if (item.ValidationError is { } error)
+        {
+            _script.ReportStatus($"✗ {error}");
+            return;
+        }
+        if (OpenPart?.Invoke() is not { } context || PickFace == null)
+        {
+            _script.ReportStatus("Abra (duplo clique) a peça que vai receber o furo e escolha Furar de novo.");
+            return;
+        }
+
+        var values = item.Values();
+        var library = _libraryDocuments;
+        PickFace($"Clique na face de {context.PartTypeName} por onde entra o {item.Name} (TAB alterna, Esc desiste).", async hit =>
+        {
+            var current = OpenPart?.Invoke() ?? context;
+            await _script.DrillPartFromLibraryAsync(current, item.Item, library, values, hit.Point, hit.Normal);
+        });
+    }
 
     /// <summary>"Citar no chat": ligado ao chat da IA na composição. Null sem chat (testes).</summary>
     public Action<PartLibraryItem>? CiteInChat { get; set; }
@@ -392,6 +443,10 @@ public sealed class LibraryItemViewModel : ObservableObject
     public bool HasTag => Tag != null;
     public bool IsAltered => _state == PartLibraryState.Altered;
 
+    /// <summary>Vazio (<c>Part.IsCutter</c>): fura a peça aberta em vez de entrar na cena; a linha ganha a marca "vazio".</summary>
+    public bool IsCutter => _item.IsCutter;
+    public bool CanInsert => !_item.IsCutter;
+
     public string InsertLabel => NeedsCopy ? "Inserir na cena (copia o arquivo)" : "Inserir na cena";
 
     /// <summary>Peça da cena que a biblioteca não tem, ou que está diferente lá.</summary>
@@ -422,16 +477,30 @@ public sealed class LibraryItemViewModel : ObservableObject
 
     public string PartExpression => PartLibraryInsertion.PartExpression(_item, Values(), _preset);
 
-    /// <summary>O código que "Inserir" grava no arquivo de entrada (a posição em X é escolhida na hora).</summary>
+    /// <summary>
+    /// O código que "Inserir" grava no arquivo de entrada (a posição em X é escolhida na hora); num vazio, a linha
+    /// que entra no <c>Build()</c> da peça aberta, com o ponto e a direção vindos do clique.
+    /// </summary>
     public string CodePreview
     {
         get
         {
+            if (_item.IsCutter) return CutterPreview();
             string statement = PartLibraryInsertion.AddStatement(PartExpression);
             return NeedsCopy
                 ? $"// copia {_item.FilePath} para {PartLibraryImporter.TargetPath(_item.FilePath)}\n{statement}"
                 : statement;
         }
+    }
+
+    private string CutterPreview()
+    {
+        var values = new Dictionary<string, string>(Values(), StringComparer.Ordinal);
+        if (PartLibraryDrill.PointParameter(_item) is { } point) values[point.Name] = "‹clique›";
+        if (PartLibraryDrill.DirectionParameter(_item) is { } direction) values[direction.Name] = "‹clique›";
+        string name = PartLibraryDrill.InstanceName(_item.Name, Array.Empty<string>());
+        string copy = NeedsCopy ? $"// copia {_item.FilePath} para {PartLibraryImporter.TargetPath(_item.FilePath)}\n" : string.Empty;
+        return $"{copy}// no Build() da peça aberta, subtraído dela\nvar {name} = {PartLibraryInsertion.PartExpression(_item, values)}.Instance(\"{name}\");";
     }
 
     /// <summary>O primeiro valor inválido, ou null.</summary>
@@ -471,7 +540,7 @@ public sealed class LibraryItemViewModel : ObservableObject
         OnPropertyChanged(nameof(ValidationError));
     }
 
-    private IReadOnlyDictionary<string, string> Values() =>
+    internal IReadOnlyDictionary<string, string> Values() =>
         Parameters.ToDictionary(p => p.Name, p => p.Value, StringComparer.Ordinal);
 }
 

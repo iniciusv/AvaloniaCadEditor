@@ -17,6 +17,18 @@ public sealed record FuroRebaixado(
     double DiametroRebaixo = 7.5,
     double ProfundidadeRebaixo = 5.3) : Part
 {
+    /// <summary>Parafuso M3 de cabeça cilíndrica (cabeça Ø5,5 × 3), com folga de impressão.</summary>
+    public static FuroRebaixado M3 => new(DiametroFuro: 3.4, DiametroRebaixo: 6.5, ProfundidadeRebaixo: 3.3);
+
+    /// <summary>Parafuso M4 de cabeça cilíndrica (cabeça Ø7 × 4), com folga de impressão.</summary>
+    public static FuroRebaixado M4 => new(DiametroFuro: 4.5, DiametroRebaixo: 7.5, ProfundidadeRebaixo: 4.3);
+
+    /// <summary>Parafuso M5 de cabeça cilíndrica (cabeça Ø8,5 × 5), com folga de impressão.</summary>
+    public static FuroRebaixado M5 => new(DiametroFuro: 5.5, DiametroRebaixo: 9.5, ProfundidadeRebaixo: 5.3);
+
+    /// <summary>Vazio: a biblioteca oferece "Furar a peça aberta" (Face e Direcao vêm do clique).</summary>
+    public override bool IsCutter => true;
+
     protected override IFeature Build()
     {
         const double sobra = 1;

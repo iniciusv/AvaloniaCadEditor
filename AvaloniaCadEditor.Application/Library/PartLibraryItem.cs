@@ -31,12 +31,14 @@ public sealed record PartLibraryPreset(string Name, string Summary, IReadOnlyDic
 /// <param name="Category">Subpasta na biblioteca (<c>Perfis</c>, <c>Projetos/Impressora 3D</c>); vazia na raiz.</param>
 /// <param name="Summary">Texto do <c>&lt;summary&gt;</c>, sem as tags, em uma linha.</param>
 /// <param name="Presets">Modelos prontos declarados no record.</param>
+/// <param name="IsCutter">Vazio (<c>Part.IsCutter</c>): fura a peça aberta em vez de entrar na cena.</param>
 public sealed record PartLibraryItem(
     PartTypeInfo Type,
     PartLibrarySource Source,
     string Category,
     string Summary,
-    IReadOnlyList<PartLibraryPreset> Presets)
+    IReadOnlyList<PartLibraryPreset> Presets,
+    bool IsCutter = false)
 {
     public string Name => Type.Name;
     public string FilePath => Type.FilePath;

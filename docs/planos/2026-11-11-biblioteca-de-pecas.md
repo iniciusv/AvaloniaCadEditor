@@ -1,6 +1,6 @@
 # Biblioteca de peças: uma aba na coluna direita com as peças de uso recorrente, fora de qualquer cena
 
-**Status:** Em andamento: etapas 1 e 2 feitas (ver "Etapa 1: como ficou" e "Etapa 2: como ficou") · **Data:** 2026-11-11 · **Branch:** `claude/confident-maxwell-yk1mdx`
+**Status:** Em andamento: etapas 1, 2 e 3 feitas (ver as seções "Etapa N: como ficou") · **Data:** 2026-11-11 · **Branch:** `claude/confident-maxwell-yk1mdx`
 
 Protótipo clicável da tela: [2026-11-11-biblioteca-de-pecas-prototipo.html](2026-11-11-biblioteca-de-pecas-prototipo.html)
 (abra no navegador; cópia publicada em <https://claude.ai/artifact/DouhKq1HUnZSrFS82Wt3Rf>)
@@ -172,6 +172,34 @@ O que mudou em relação ao plano:
   peças da `AiCore` (botão direito na árvore ou na aba); elas vão para `Projetos/AiCore/` e podem ser
   reorganizadas em subpastas à mão.
 
+## Etapa 3: como ficou
+
+Arquivos: `Part.IsCutter` (Domain), `PartLibraryCatalog.IsCutter`, `AvaloniaCadEditor.Application/Library/PartLibraryDrill.cs`,
+`SceneScriptViewModel.DrillPartFromLibraryAsync`, `CadViewModel.BeginFacePick`/`TryCompleteFacePick`, o botão na aba.
+Testes em `AvaloniaCadEditor.Tests/Library/PartLibraryDrillTests.cs`.
+
+- **Marca (pergunta 2): propriedade em `Part`.** `public virtual bool IsCutter => false;`, no molde de `DrawingLabel`. O
+  vazio declara `public override bool IsCutter => true;` e a biblioteca a lê pela sintaxe, então vale também para as
+  peças da cena, que não têm subpasta. `FuroRebaixado` e `FuroPorca` (na `AiCore`) já a declaram.
+- **A lista** mostra a marca `vazio` ao lado das outras. O detalhe troca "Inserir na cena" por **Furar a peça aberta**,
+  ligado só com uma peça aberta (duplo clique), e o código mostra a linha que vai para o `Build()`, com `‹clique›`
+  no lugar do ponto e da direção.
+- **O clique.** Furar põe a viewport em escolha de face (o realce e o TAB são os do Workplane). Só vale uma face da peça
+  aberta; Esc, ou sair da peça, desiste. O ponto vai para o primeiro parâmetro `Point3D` do vazio (`Face`, `Entrada`) e
+  a normal invertida, para dentro do material, para o primeiro `Vector3D` (`Direcao`), os dois já nas coordenadas do
+  `Build()` (ponto em centésimos de mm). Os outros parâmetros são os do detalhe; o modelo pronto nunca entra pelo
+  nome, porque não traria o ponto.
+- **A gravação** é a do Extrude na peça aberta: um trecho de cena com
+  `AddFeature(furo.Transformed(posição da peça))` passa pelo `PartSolidInserter` como ferramenta da diferença. Como os
+  parâmetros já são locais, a conversão mundo → local é a identidade e a linha entra como está, sem `at:`, conferida
+  pelo `PartMergeCheck`. Vazio da biblioteca que a cena não tem é copiado para `Pecas/` antes, e um Ctrl+Z desfaz a
+  cópia e o furo juntos. Na recusa nada muda: o vazio não faz sentido solto na cena.
+- **Modelos M3/M4/M5** no `FuroRebaixado` (`DiametroFuro`, `DiametroRebaixo`, `ProfundidadeRebaixo` com folga de
+  impressão). Os padrões do record não mudaram, para as peças que já o usam não mexerem.
+- **Fora desta etapa:** a `FuroPorca` pede a `Entrada` 1 mm fora da face, por convenção; o clique a põe sobre a face, o
+  que ainda corta (o furo começa `FolgaAntes` antes do alojamento). As regras do dialeto (`CadScriptRules`) não
+  ensinam o `IsCutter` à IA: mudar o perfil `atual` exige regravar o golden.
+
 ## Etapas
 
 - [x] **1. Catálogo, aba, inserir e miniaturas.** `Application/Library`, porta, store em disco,
@@ -182,7 +210,7 @@ O que mudou em relação ao plano:
 - [x] **2. Enviar para a biblioteca, divergência e citar no chat.** Ação na árvore e no detalhe, marca
       `alterada`, "Atualizar da biblioteca" (desfazível com Ctrl+Z), motivo `Library` no contexto da IA e
       importação automática quando a resposta usa a peça. Acervo inicial: as peças de catálogo da `AiCore`.
-- [ ] **3. Vazios.** Marca peça × vazio, "Furar a peça aberta" com clique na face, modelos M3/M4/M5
+- [x] **3. Vazios.** Marca peça × vazio, "Furar a peça aberta" com clique na face, modelos M3/M4/M5
       para `FuroRebaixado`.
 - [ ] **4. A IA busca sozinha.** Índice no contexto e ferramentas de buscar e importar no Harness.
 
@@ -191,8 +219,10 @@ O que mudou em relação ao plano:
 1. A linha "combo de peças + Inserir" da aba Código (só aparece quando a cena tem peças;
    `SceneScriptViewModel.InsertPartCommand`) sai quando a aba Biblioteca existir, ou as duas convivem?
    Proposta: sai.
-2. Como marcar um vazio: propriedade em `Part` ou convenção de pasta?
-3. O índice da biblioteca vai em toda mensagem à IA, ou só pela ferramenta de busca?
+2. ~~Como marcar um vazio: propriedade em `Part` ou convenção de pasta?~~ Propriedade (`Part.IsCutter`), decidido
+   com o usuário em 2026-11-12.
+3. ~~O índice da biblioteca vai em toda mensagem à IA, ou só pela ferramenta de busca?~~ Só pela ferramenta do Harness,
+   decidido com o usuário em 2026-11-12.
 
 ## Riscos
 

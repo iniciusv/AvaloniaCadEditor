@@ -106,6 +106,13 @@ public sealed class ViewportInputHandler
                     return;
                 }
 
+                // "Furar a peça aberta" (aba Biblioteca): este clique escolhe a face, e nada mais.
+                if (viewModel.TryCompleteFacePick(ray))
+                {
+                    requestRender();
+                    return;
+                }
+
                 // Candidato a seleção por retângulo. O snapshot é tirado antes do clique abaixo,
                 // que pode limpar a seleção - com Ctrl o retângulo soma ao que já estava marcado.
                 // Além do SelectTool, qualquer ferramenta que escolha geometria pelo retângulo (o

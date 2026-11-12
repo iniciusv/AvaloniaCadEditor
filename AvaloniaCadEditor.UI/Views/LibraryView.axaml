@@ -21,6 +21,12 @@
         <Style Selector="Border.tag.altered TextBlock">
             <Setter Property="Foreground" Value="#D9A441" />
         </Style>
+        <Style Selector="Border.cutter">
+            <Setter Property="BorderBrush" Value="#C0504D" />
+        </Style>
+        <Style Selector="Border.cutter TextBlock">
+            <Setter Property="Foreground" Value="#E07A77" />
+        </Style>
         <Style Selector="RadioButton.chip">
             <Setter Property="FontSize" Value="11" />
             <Setter Property="Padding" Value="8,2" />
@@ -59,7 +65,7 @@
                         </Grid>
                     </DataTemplate>
                     <DataTemplate DataType="vm:LibraryItemViewModel">
-                        <Grid ColumnDefinitions="36,*,Auto" ColumnSpacing="8">
+                        <Grid ColumnDefinitions="36,*,Auto,Auto" ColumnSpacing="8">
                             <Border Width="36" Height="36" Background="#2D2D2D" CornerRadius="3">
                                 <Panel>
                                     <TextBlock Text="▣" Foreground="#5D6F80" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"
@@ -76,6 +82,11 @@
                             <Border Grid.Column="2" Classes="tag" Classes.altered="{Binding IsAltered}" BorderThickness="1" CornerRadius="2" Padding="4,0"
                                     VerticalAlignment="Center" IsVisible="{Binding HasTag}">
                                 <TextBlock Text="{Binding Tag}" FontSize="10" />
+                            </Border>
+                            <Border Grid.Column="3" Classes="cutter" BorderThickness="1" CornerRadius="2" Padding="4,0"
+                                    VerticalAlignment="Center" IsVisible="{Binding IsCutter}"
+                                    ToolTip.Tip="Vazio: corta a peça aberta (Furar), não entra solto na cena">
+                                <TextBlock Text="vazio" FontSize="10" />
                             </Border>
                         </Grid>
                     </DataTemplate>
@@ -142,11 +153,18 @@
                                          Foreground="#D4D4D4" TextWrapping="Wrap" />
                 </Border>
 
+                <TextBlock Text="Abra a peça que vai receber o furo (duplo clique nela), clique em Furar e depois na face por onde ele entra."
+                           Foreground="#8A8A8A" FontSize="11" TextWrapping="Wrap" IsVisible="{Binding IsCutter}" />
                 <WrapPanel Orientation="Horizontal">
-                    <Button Content="{Binding InsertLabel}"
+                    <Button Content="{Binding InsertLabel}" IsVisible="{Binding CanInsert}"
                             Command="{Binding $parent[views:LibraryView].((vm:LibraryViewModel)DataContext).InsertCommand}"
                             Background="#27AE60" Foreground="White" FontWeight="SemiBold" FontSize="12" Padding="12,5" Margin="0,0,6,6"
                             ToolTip.Tip="Acrescenta a peça ao arquivo de entrada. Da biblioteca, copia antes o .cs dela (e das dependências) para Pecas/. Ctrl+Z desfaz" />
+                    <Button Content="Furar a peça aberta" IsVisible="{Binding IsCutter}"
+                            IsEnabled="{Binding $parent[views:LibraryView].((vm:LibraryViewModel)DataContext).HasOpenPart}"
+                            Command="{Binding $parent[views:LibraryView].((vm:LibraryViewModel)DataContext).DrillCommand}"
+                            Background="#C0504D" Foreground="White" FontWeight="SemiBold" FontSize="12" Padding="12,5" Margin="0,0,6,6"
+                            ToolTip.Tip="Depois, clique na face da peça aberta por onde o furo entra: o ponto e a direção vêm do clique. Ctrl+Z desfaz" />
                     <Button Content="Atualizar da biblioteca" IsVisible="{Binding CanUpdateFromLibrary}"
                             Command="{Binding $parent[views:LibraryView].((vm:LibraryViewModel)DataContext).UpdateFromLibraryCommand}"
                             FontSize="12" Padding="10,5" Margin="0,0,6,6"

@@ -54,7 +54,7 @@ a IA ou em `~/.claude/plans/`, onde se perdem.
 | 2026-11-07 | [Modelar dentro da peça: duplo clique abre a peça e o Extrude grava no `Build()`](planos/2026-11-07-modelar-na-peca-isolada.md) | Em andamento: entregas 1 e 2 implementadas, falta verificar no app |
 | 2026-11-07 | [Booleana e Sweep dentro da peça aberta](planos/2026-11-07-booleana-e-sweep-na-peca-aberta.md) | Implementado, falta verificar no app |
 | 2026-11-10 | [Selecionar uma cota: o que ela mede, o que a move (literais e parâmetros) e mudar o valor por ela](planos/2026-11-10-cota-alavancas.md) | **Congelado** (ARCHITECTURE §9.1): funciona, sem extensão |
-| 2026-11-11 | [Biblioteca de peças: aba na coluna direita com as peças de uso recorrente, fora de qualquer cena](planos/2026-11-11-biblioteca-de-pecas.md) | Em andamento: etapas 1 (catálogo, aba, inserir, miniaturas) e 2 (enviar, atualizar, citar no chat) feitas |
+| 2026-11-11 | [Biblioteca de peças: aba na coluna direita com as peças de uso recorrente, fora de qualquer cena](planos/2026-11-11-biblioteca-de-pecas.md) | Em andamento: etapas 1 (catálogo, aba, inserir, miniaturas), 2 (enviar, atualizar, citar no chat) e 3 (vazios: furar a peça aberta) feitas |
 
 ### Histórico (planos do modo de planejamento do Claude Code)
 

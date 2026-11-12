@@ -41,6 +41,14 @@ public abstract record Part
     /// </summary>
     public virtual string? DrawingLabel => null;
 
+    /// <summary>
+    /// True num <b>vazio</b>: peça feita para ser subtraída de outra (furo com rebaixo, alojamento de porca),
+    /// construída já no lugar pelos parâmetros de ponto e direção e não por um <see cref="Placement"/>.
+    /// A biblioteca lê isto pela sintaxe (<c>public override bool IsCutter =&gt; true;</c>) para oferecer
+    /// "Furar a peça aberta" em vez de "Inserir na cena".
+    /// </summary>
+    public virtual bool IsCutter => false;
+
     /// <summary>Parâmetros do construtor primário, na ordem declarada, com os valores desta peça.</summary>
     public IReadOnlyList<PartParameter> GetParameters()
     {
