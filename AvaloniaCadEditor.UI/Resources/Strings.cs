@@ -64,6 +64,7 @@ public static class Strings
     public static string EdgeColorByAxis => ResourceManager.GetString("EdgeColorByAxis") ?? "Edge Color By Axis";
     public static string HiddenEdges => ResourceManager.GetString("HiddenEdges") ?? "Hidden Edges";
     public static string TreeTab => ResourceManager.GetString("TreeTab") ?? "Model";
+    public static string LibraryTab => ResourceManager.GetString("LibraryTab") ?? "Library";
     public static string CodeTab => ResourceManager.GetString("CodeTab") ?? "Code";
     public static string IOTab => ResourceManager.GetString("IOTab") ?? "Tools";
     public static string NewScene => ResourceManager.GetString("NewScene") ?? "New";

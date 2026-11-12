@@ -1,6 +1,6 @@
 # Biblioteca de peças: uma aba na coluna direita com as peças de uso recorrente, fora de qualquer cena
 
-**Status:** Proposto: tela desenhada e decisões tomadas com o usuário, implementação não iniciada · **Data:** 2026-11-11 · **Branch:** `claude/confident-maxwell-yk1mdx`
+**Status:** Em andamento: etapa 1 feita (ver "Etapa 1: como ficou") · **Data:** 2026-11-11 · **Branch:** `claude/confident-maxwell-yk1mdx`
 
 Protótipo clicável da tela: [2026-11-11-biblioteca-de-pecas-prototipo.html](2026-11-11-biblioteca-de-pecas-prototipo.html)
 (abra no navegador; cópia publicada em <https://claude.ai/artifact/DouhKq1HUnZSrFS82Wt3Rf>)
@@ -121,9 +121,32 @@ sub-peça (`new Tipo(...).Instance("x", at:)`) e o `IPartMerger` já converte mu
 
 Ao implementar, o ARCHITECTURE.md ganha uma linha na §4 ("Mudar a biblioteca de peças").
 
+## Etapa 1: como ficou
+
+Arquivos: `AvaloniaCadEditor.Application/Library/` (`PartLibraryCatalog`, `PartLibraryImporter` com o
+`PartDependencyIndex`, `PartLibraryInsertion`, `PartThumbnailService`, `ThumbnailRasterizer`), as portas
+`IPartLibraryStore` e `IThumbnailCache`, `AvaloniaCadEditor.Infrastructure/Library/DiskPartLibraryStore.cs`
+(também o `DiskThumbnailCache`), `LibraryViewModel` e `LibraryView`. Testes em `AvaloniaCadEditor.Tests/Library/`.
+
+O que mudou em relação ao plano:
+
+- **Conflito com a cena.** Um tipo que a cena já declara fica com a versão da cena. Se o texto for diferente
+  do da biblioteca, a inserção segue e o status avisa, em vez de recusar: sem o cabeçalho de origem (decisão 7,
+  etapa 2), não dá para separar "cópia alterada" de "outra peça com o mesmo nome". A recusa fica para o que
+  quebraria a compilação: um arquivo cujos tipos a cena já tem só em parte, ou um caminho de destino ocupado.
+- **Miniaturas com kernel próprio**, não pela fila do `SceneMeshManager`: o cache dele é por execução da cena e
+  o lock faria a UI esperar. É o mesmo arranjo do Harness. O `PureMathGeometryKernel` não constrói instância de
+  peça, por isso o teste da miniatura usa o OCCT.
+- **Ctrl+Z da inserção** esvazia os arquivos copiados, não os apaga (o desfazer de vários arquivos só troca
+  texto). Um arquivo vazio no destino pode ser ocupado de novo pela próxima inserção.
+- **A biblioteca começa vazia.** O acervo inicial vem com "Enviar para a biblioteca" (etapa 2). Até lá, a aba
+  mostra o caminho da pasta e o que fazer.
+- O combo "Inserir" da aba Código continua (pergunta em aberto 1).
+- A aba Biblioteca entrou com índice 1: `CadViewModel.CodeTabIndex` passou de 1 para 2.
+
 ## Etapas
 
-- [ ] **1. Catálogo, aba, inserir e miniaturas.** `Application/Library`, porta, store em disco,
+- [x] **1. Catálogo, aba, inserir e miniaturas.** `Application/Library`, porta, store em disco,
       configuração da pasta, aba com busca, origens, lista com miniatura, detalhe com parâmetros e
       "Inserir na cena" com cópia do arquivo e das dependências. Testes: catálogo sobre `AiCore/Pecas`,
       fecho de dependências, conflito de nome, cena importada passa no `SceneCheckService`, rasterizador

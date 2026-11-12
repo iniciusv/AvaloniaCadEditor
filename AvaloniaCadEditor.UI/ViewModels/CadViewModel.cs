@@ -49,15 +49,20 @@ public partial class CadViewModel : INotifyPropertyChanged
 	public SceneScriptViewModel ScriptEditor { get; set; }
 	public AiChatViewModel? AiChat { get; set; }
 	public AvaloniaCadEditor.UI.ReferenceGuides.ReferenceGuidesViewModel? ReferenceGuides { get; set; }
+	/// <summary>A aba Biblioteca (peças de uso recorrente). Null quando o VM é montado sem ela (testes).</summary>
+	public LibraryViewModel? Library { get; set; }
 
 	public ISelectionService SelectionService => _selectionService;
 	public IFeature? SelectedFeature => _selectionService.SelectedObject as IFeature;
 
+	/// <summary>Índice da aba "Biblioteca" no painel da direita.</summary>
+	public const int LibraryTabIndex = 1;
+
 	/// <summary>Índice da aba "Código" no painel da direita.</summary>
-	public const int CodeTabIndex = 1;
+	public const int CodeTabIndex = 2;
 
 	private int _sidebarTabIndex;
-	/// <summary>Aba visível no painel da direita (0 = Modelo, 1 = Código, 2 = Ferramentas).</summary>
+	/// <summary>Aba visível no painel da direita (0 = Modelo, 1 = Biblioteca, 2 = Código, 3 = Ferramentas).</summary>
 	public int SidebarTabIndex
 	{
 		get => _sidebarTabIndex;

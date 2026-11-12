@@ -1456,7 +1456,8 @@ public static class PartSourceEditor
         return first != null && IsLiteral(first.Expression) ? first.Expression.ToString() : null;
     }
 
-    private static string NeutralValue(string typeName) => typeName switch
+    /// <summary>Valor que compila para um parâmetro obrigatório sem [Range] (10, false, "" ou default).</summary>
+    public static string NeutralValue(string typeName) => typeName switch
     {
         "double" or "float" or "decimal" or "int" or "long" => "10",
         "bool" => "false",

@@ -232,7 +232,7 @@
             <!-- Vertical Resizer / Splitter 2 -->
             <GridSplitter Grid.Column="3" Width="4" Background="#141414" ResizeDirection="Columns" />
 
-            <!-- Right Sidebar: Model Tree (+ Properties) / Code (+ AI Chat) / I-O -->
+            <!-- Right Sidebar: Model Tree (+ Properties) / Library / Code (+ AI Chat) / I-O -->
             <Grid Grid.Column="4" Background="#1E1E1E">
                 <TabControl Margin="0" Padding="0" SelectedIndex="{Binding SidebarTabIndex, Mode=TwoWay}">
                     <TabItem Header="{x:Static res:Strings.TreeTab}" Padding="10,5">
@@ -242,6 +242,10 @@
                             <GridSplitter Grid.Row="1" Height="4" Background="#141414" ResizeDirection="Rows" />
                             <views:PropertyInspectorView Grid.Row="2" DataContext="{Binding PropertyInspector}" />
                         </Grid>
+                    </TabItem>
+                    <TabItem Header="{x:Static res:Strings.LibraryTab}" Padding="10,5">
+                        <!-- Biblioteca de peças: as da cena e as da pasta única, fora de qualquer cena -->
+                        <views:LibraryView DataContext="{Binding Library}" />
                     </TabItem>
                     <TabItem Header="{x:Static res:Strings.CodeTab}" Padding="10,5">
                         <!-- C# Code editor on top, AI Chat below -->

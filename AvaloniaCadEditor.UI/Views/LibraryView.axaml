@@ -1,0 +1,141 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:AvaloniaCadEditor.UI.ViewModels"
+             xmlns:views="clr-namespace:AvaloniaCadEditor.UI.Views"
+             mc:Ignorable="d" d:DesignWidth="360" d:DesignHeight="700"
+             x:Class="AvaloniaCadEditor.UI.Views.LibraryView"
+             x:DataType="vm:LibraryViewModel">
+
+    <UserControl.Styles>
+        <Style Selector="RadioButton.chip">
+            <Setter Property="FontSize" Value="11" />
+            <Setter Property="Padding" Value="8,2" />
+            <Setter Property="Margin" Value="0,0,4,0" />
+        </Style>
+    </UserControl.Styles>
+
+    <!-- De cima para baixo: busca e origens, lista por categoria, detalhe da peça escolhida -->
+    <Grid Background="#1E1E1E" RowDefinitions="Auto,*,4,Auto">
+        <StackPanel Grid.Row="0" Margin="6" Spacing="6">
+            <TextBox Text="{Binding SearchText, Mode=TwoWay}" Watermark="Buscar: nome, medida ou descrição (ex.: mgn, m3, 2020)"
+                     FontSize="12" Height="26" />
+            <WrapPanel Orientation="Horizontal">
+                <RadioButton Classes="chip" GroupName="libsrc" Content="Todas" IsChecked="{Binding IsFilterAll, Mode=TwoWay}" />
+                <RadioButton Classes="chip" GroupName="libsrc" Content="Nesta cena" IsChecked="{Binding IsFilterScene, Mode=TwoWay}" />
+                <RadioButton Classes="chip" GroupName="libsrc" Content="Minha biblioteca" IsChecked="{Binding IsFilterLibrary, Mode=TwoWay}" />
+            </WrapPanel>
+            <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="4">
+                <TextBlock Grid.Column="0" Text="{Binding LibraryPath}" Foreground="#8A8A8A" FontSize="10"
+                           TextTrimming="CharacterEllipsis" VerticalAlignment="Center" ToolTip.Tip="{Binding LibraryPath}" />
+                <Button Grid.Column="1" Content="Trocar pasta…" Command="{Binding ChangeFolderCommand}" FontSize="10" Padding="6,2"
+                        ToolTip.Tip="Escolhe a pasta da biblioteca (uma só; as subpastas são as categorias)" />
+                <Button Grid.Column="2" Content="⟳" Command="{Binding RefreshCommand}" FontSize="11" Padding="6,2"
+                        ToolTip.Tip="Reler a pasta da biblioteca" />
+            </Grid>
+        </StackPanel>
+
+        <Panel Grid.Row="1">
+            <ListBox ItemsSource="{Binding Rows}" SelectedItem="{Binding SelectedRow, Mode=TwoWay}"
+                     Background="Transparent" BorderThickness="0,1" BorderBrush="#141414">
+                <ListBox.DataTemplates>
+                    <DataTemplate DataType="vm:LibraryCategoryRow">
+                        <Grid ColumnDefinitions="*,Auto" Margin="0,6,0,0">
+                            <TextBlock Text="{Binding Title}" Foreground="#8A8A8A" FontSize="10" FontWeight="SemiBold" />
+                            <TextBlock Grid.Column="1" Text="{Binding Count}" Foreground="#6A6A6A" FontSize="10" />
+                        </Grid>
+                    </DataTemplate>
+                    <DataTemplate DataType="vm:LibraryItemViewModel">
+                        <Grid ColumnDefinitions="36,*,Auto" ColumnSpacing="8">
+                            <Border Width="36" Height="36" Background="#2D2D2D" CornerRadius="3">
+                                <Panel>
+                                    <TextBlock Text="▣" Foreground="#5D6F80" FontSize="18" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                               IsVisible="{Binding !HasThumbnail}" />
+                                    <Image Source="{Binding ThumbnailPng, Converter={x:Static views:PngBytesToBitmapConverter.Instance}}"
+                                           IsVisible="{Binding HasThumbnail}" Stretch="Uniform" />
+                                </Panel>
+                            </Border>
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Name}" Foreground="White" FontSize="12" TextTrimming="CharacterEllipsis" />
+                                <TextBlock Text="{Binding ShortSummary}" Foreground="#8A8A8A" FontSize="11" TextTrimming="CharacterEllipsis"
+                                           ToolTip.Tip="{Binding Summary}" />
+                            </StackPanel>
+                            <Border Grid.Column="2" BorderBrush="#27AE60" BorderThickness="1" CornerRadius="2" Padding="4,0"
+                                    VerticalAlignment="Center" IsVisible="{Binding HasTag}">
+                                <TextBlock Text="{Binding Tag}" Foreground="#27AE60" FontSize="10" />
+                            </Border>
+                        </Grid>
+                    </DataTemplate>
+                </ListBox.DataTemplates>
+            </ListBox>
+            <TextBlock Text="{Binding EmptyMessage}" Foreground="#8A8A8A" FontSize="11" TextWrapping="Wrap" Margin="12"
+                       IsVisible="{Binding EmptyMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+        </Panel>
+
+        <GridSplitter Grid.Row="2" Height="4" Background="#141414" ResizeDirection="Rows" />
+
+        <!-- Detalhe: descrição, modelos prontos, parâmetros, código e Inserir -->
+        <ScrollViewer Grid.Row="3" MaxHeight="420" VerticalScrollBarVisibility="Auto" Background="#252526"
+                      IsVisible="{Binding HasSelection}">
+            <StackPanel DataContext="{Binding Selected}" x:DataType="vm:LibraryItemViewModel" Margin="10" Spacing="8">
+                <Grid ColumnDefinitions="72,*" ColumnSpacing="10">
+                    <Border Width="72" Height="72" Background="#1E1E1E" CornerRadius="3">
+                        <Panel>
+                            <TextBlock Text="▣" Foreground="#5D6F80" FontSize="30" HorizontalAlignment="Center" VerticalAlignment="Center"
+                                       IsVisible="{Binding !HasThumbnail}" />
+                            <Image Source="{Binding ThumbnailPng, Converter={x:Static views:PngBytesToBitmapConverter.Instance}}"
+                                   IsVisible="{Binding HasThumbnail}" Stretch="Uniform" />
+                        </Panel>
+                    </Border>
+                    <StackPanel Grid.Column="1" Spacing="2">
+                        <TextBlock Text="{Binding Name}" Foreground="White" FontWeight="SemiBold" FontSize="14" />
+                        <TextBlock Text="{Binding Location}" Foreground="#8A8A8A" FontSize="10" TextTrimming="CharacterEllipsis" />
+                    </StackPanel>
+                </Grid>
+                <TextBlock Text="{Binding Summary}" Foreground="#D4D4D4" FontSize="11" TextWrapping="Wrap" />
+
+                <ItemsControl ItemsSource="{Binding Presets}" IsVisible="{Binding HasPresets}">
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate><WrapPanel Orientation="Horizontal" /></ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:LibraryPresetViewModel">
+                            <ToggleButton Content="{Binding Name}" IsChecked="{Binding IsChosen, Mode=OneWay}"
+                                          Command="{Binding Command}" CommandParameter="{Binding Name}"
+                                          FontSize="11" Padding="8,2" Margin="0,0,4,4" ToolTip.Tip="{Binding Tooltip}" />
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <ItemsControl ItemsSource="{Binding Parameters}" IsVisible="{Binding HasParameters}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:LibraryParameterViewModel">
+                            <StackPanel Margin="0,0,0,4">
+                                <Grid ColumnDefinitions="*,110" ColumnSpacing="8">
+                                    <TextBlock Text="{Binding Name}" Foreground="#D4D4D4" FontSize="11" VerticalAlignment="Center"
+                                               TextTrimming="CharacterEllipsis" ToolTip.Tip="{Binding Tooltip}" />
+                                    <TextBox Grid.Column="1" Text="{Binding Value, Mode=TwoWay}" FontSize="11" Height="24"
+                                             ToolTip.Tip="{Binding Tooltip}" />
+                                </Grid>
+                                <TextBlock Text="{Binding Error}" Foreground="#FF6B6B" FontSize="10" TextWrapping="Wrap"
+                                           IsVisible="{Binding Error, Converter={x:Static StringConverters.IsNotNullOrEmpty}}" />
+                            </StackPanel>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <Border Background="#1E1E1E" BorderBrush="#3F3F46" BorderThickness="1" CornerRadius="3" Padding="6">
+                    <SelectableTextBlock Text="{Binding CodePreview}" FontFamily="Consolas,Menlo,monospace" FontSize="11"
+                                         Foreground="#D4D4D4" TextWrapping="Wrap" />
+                </Border>
+
+                <Button Content="{Binding InsertLabel}"
+                        Command="{Binding $parent[views:LibraryView].((vm:LibraryViewModel)DataContext).InsertCommand}"
+                        Background="#27AE60" Foreground="White" FontWeight="SemiBold" FontSize="12" Padding="12,5"
+                        HorizontalAlignment="Left"
+                        ToolTip.Tip="Acrescenta a peça ao arquivo de entrada. Da biblioteca, copia antes o .cs dela (e das dependências) para Pecas/. Ctrl+Z desfaz" />
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

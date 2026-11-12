@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Input;
 using AvaloniaCadEditor.Application.Interfaces;
+using AvaloniaCadEditor.Application.Library;
 using AvaloniaCadEditor.Application.Scenes;
 using AvaloniaCadEditor.Application.Services;
 using AvaloniaCadEditor.Domain.Features;
@@ -1258,8 +1259,66 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
             return;
         }
 
+        await InsertStatementAsync(PartSourceEditor.BuildAddStatement(type, NextFreeX()), type.Name);
+    }
+
+    /// <summary>
+    /// Insere uma peça escolhida na aba Biblioteca. Da cena, só acrescenta a instância; da biblioteca, copia
+    /// antes o arquivo dela e o das dependências para <c>Pecas/</c> (<see cref="PartLibraryImporter"/>), e o
+    /// Ctrl+Z desfaz a cópia e a instância juntas.
+    /// </summary>
+    /// <param name="library">Arquivos da pasta da biblioteca (só usados para item da biblioteca).</param>
+    /// <param name="partExpression">A peça como vai no código (<c>new Tipo(...)</c> ou <c>Tipo.Modelo</c>).</param>
+    public async Task InsertLibraryPartAsync(PartLibraryItem item, IReadOnlyList<ScriptDocument> library, string partExpression)
+    {
+        string statement = PartLibraryInsertion.AddStatement(partExpression, NextFreeX());
+        if (item.Source == PartLibrarySource.Scene)
+        {
+            await InsertStatementAsync(statement, item.Name);
+            return;
+        }
+
+        if (_project == null)
+        {
+            _cadViewModel.StatusText = "Abra ou crie uma cena (pasta) para inserir peças da biblioteca: elas são copiadas para Pecas/.";
+            return;
+        }
+
+        var import = PartLibraryImporter.Plan(library, CurrentDocuments(), item.Name);
+        if (import.Refusal != null)
+        {
+            _cadViewModel.StatusText = $"✗ {import.Refusal}";
+            return;
+        }
+
+        string warnings = import.Warnings.Count > 0 ? " ⚠ " + string.Join(" ", import.Warnings) : string.Empty;
+        if (import.NewFiles.Count == 0)
+        {
+            await InsertStatementAsync(statement, item.Name, warnings);
+            return;
+        }
+
         EnsureEntryDocumentActive();
-        string statement = PartSourceEditor.BuildAddStatement(type, NextFreeX());
+        string entry = GeneratedCSharpCode.StartsWith("// Pressione") ? string.Empty : GeneratedCSharpCode;
+        var changes = import.NewFiles
+            .Append(new ScriptDocument(_entryFile, PartSourceEditor.InsertTopLevelStatement(entry, statement)))
+            .ToList();
+        await ApplyCrossFileChangesAsync(changes);
+        if (HasErrors)
+        {
+            _cadViewModel.StatusText = $"✗ {ErrorSummary} (Ctrl+Z desfaz a inserção e a cópia)";
+            return;
+        }
+
+        SelectInserted(item.Name);
+        string copied = string.Join(", ", import.NewFiles.Select(f => f.FilePath));
+        _cadViewModel.StatusText = $"✓ Inserido: {statement} — copiado da biblioteca: {copied}{warnings}";
+    }
+
+    /// <summary>Acrescenta uma instrução ao arquivo de entrada, executa e seleciona a instância nova.</summary>
+    private async Task InsertStatementAsync(string statement, string typeName, string statusSuffix = "")
+    {
+        EnsureEntryDocumentActive();
         string current = GeneratedCSharpCode.StartsWith("// Pressione") ? string.Empty : GeneratedCSharpCode;
 
         _history.SaveState(GeneratedCSharpCode);
@@ -1269,16 +1328,28 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         await RunCodeAsync();
         if (HasErrors) return;
 
-        var inserted = _cadViewModel.Sketch.Features.OfType<PartInstance>().LastOrDefault(i => i.PartTypeName == type.Name);
+        SelectInserted(typeName);
+        _cadViewModel.StatusText = $"✓ Inserido: {statement}{statusSuffix}";
+    }
+
+    private void SelectInserted(string typeName)
+    {
+        var inserted = _cadViewModel.Sketch.Features.OfType<PartInstance>().LastOrDefault(i => i.PartTypeName == typeName);
         if (inserted != null)
         {
             _cadViewModel.SelectionService.SelectFeature(inserted);
         }
-        _cadViewModel.StatusText = $"✓ Inserido: {statement}";
     }
+
+    /// <summary>Mensagem na barra de status (para quem delega ao editor de script, como a aba Biblioteca).</summary>
+    public void ReportStatus(string text) => _cadViewModel.StatusText = text;
+
+    /// <summary>Depois de cada execução: os fontes da cena podem ter mudado (a aba Biblioteca relê as peças dela).</summary>
+    public event EventHandler? SceneDocumentsChanged;
 
     private void RefreshPartTypes()
     {
+        SceneDocumentsChanged?.Invoke(this, EventArgs.Empty);
         _partTypeInfos = PartSourceEditor.FindPartTypes(CurrentDocuments());
         var names = _partTypeInfos.Select(t => t.Name).Distinct().ToList();
         if (!names.SequenceEqual(PartTypes))

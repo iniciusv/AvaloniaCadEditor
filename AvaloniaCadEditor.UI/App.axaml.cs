@@ -1,4 +1,4 @@
-using Avalonia.Controls.ApplicationLifetimes;
+﻿using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using AvaloniaCadEditor.Application.Services;
 using AvaloniaCadEditor.Infrastructure.Engines;
@@ -64,6 +64,13 @@ public partial class App : Avalonia.Application
 			viewModel.ReferenceGuides = new AvaloniaCadEditor.UI.ReferenceGuides.ReferenceGuidesViewModel(referenceGuideService, () => viewModel.Sketch.Features);
 			viewModel.Drafting = new AvaloniaCadEditor.UI.Drafting.DraftingViewModel(viewModel,
 				new AvaloniaCadEditor.Infrastructure.Scripting.RoslynLeverProbeFactory());
+
+			// Biblioteca de peças: a pasta fica nas configurações; as miniaturas usam um kernel próprio, em segundo plano.
+			var thumbnails = new AvaloniaCadEditor.Application.Library.PartThumbnailService(evaluator,
+				() => new AvaloniaCadEditor.Infrastructure.OpenCascade.OpenCascadeGeometryKernel(),
+				new AvaloniaCadEditor.Infrastructure.Library.DiskThumbnailCache());
+			viewModel.Library = new LibraryViewModel(scriptEditor,
+				new AvaloniaCadEditor.Infrastructure.Library.DiskPartLibraryStore(), thumbnails, filePicker);
 
 			desktop.MainWindow.DataContext = viewModel;
 		}

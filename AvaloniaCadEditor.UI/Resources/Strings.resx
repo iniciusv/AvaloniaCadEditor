@@ -55,6 +55,7 @@
   <data name="EdgeColorByAxis" xml:space="preserve"><value>Edge Color By Axis</value></data>
   <data name="HiddenEdges" xml:space="preserve"><value>Hidden Edges</value></data>
   <data name="TreeTab" xml:space="preserve"><value>Model</value></data>
+  <data name="LibraryTab" xml:space="preserve"><value>Library</value></data>
   <data name="CodeTab" xml:space="preserve"><value>Code</value></data>
   <data name="IOTab" xml:space="preserve"><value>Tools</value></data>
   <data name="NewScene" xml:space="preserve"><value>New</value></data>
