@@ -11,22 +11,27 @@ var blocoConexaoMotorPeca = new BlocoConexaoMotor2020();
 var placaSuporteCarrinhoYPeca = new PlacaSuporteCarrinhoY();
 // --- Referência de altura: z = 0 é o chão (face de baixo da base, onde a impressora apoia) ---
 // A cena é montada a partir do gantry (base dos trilhos Y) e a estrutura fixa pende dele: o carrinho Z
-// fica folgaCarrinhoZAbaixoExtrusao abaixo das extrusões Y, o trilho Z é centrado no carrinho, os perfis
+// fica onde o suporte_u_carrinho_z apoia no topo do tubo travessa, o trilho Z é centrado no carrinho, os perfis
 // verticais são centrados no trilho e o perfil deitado da base fica uma altura de perfil abaixo dele.
 // zBaseTrilhosY soma essa cadeia (com o carrinho Z no meio do curso), para a base cair em z = 0. Se a
 // cadeia do eixo Z mudar de forma (lá embaixo), esta soma precisa acompanhar, ou o chão sai do zero.
 // posicaoGantryZ é a altura do gantry medida do meio do curso (negativo = para baixo): move tudo o que
 // os carrinhos Z levam e deixa parada a estrutura fixa (trilhos e perfis Z, base, motor, acoplamento,
-// fuso e mesa), que é ancorada no meio do curso. O curso do trilho é ±119,3; −184,4 põe o bico no topo
-// da mesa (244,4 → 60) com o adaptador de Desnivel 20, além do fim do trilho em 65,1 mm.
+// fuso e mesa), que é ancorada no meio do curso. O curso do trilho é ±119,3; −134 põe o bico no topo
+// da mesa (194 → 60) com o adaptador de Desnivel 20, além do fim do trilho em 14,7 mm. Nessa altura a
+// chapa do suporte_fuso_z também desce abaixo do topo do acoplamento do motor Z (ver suporte_fuso_z).
 var extrusaoSobTrilhoYPeca = new Extrusao2020(Comprimento: 400);
 var carrinhoZPeca = new CarrinhoHgh15();
 var extrusaoTrilhoZPeca = new Extrusao2020(Comprimento: 400);
-// Ponta de cima do carrinho Z 10 mm abaixo da base das extrusões Y; a posição dele no trilho é a
-// altura do gantry.
-const double folgaCarrinhoZAbaixoExtrusao = 10;
-var zBaseTrilhosYMeioCurso = extrusaoSobTrilhoYPeca.Altura + folgaCarrinhoZAbaixoExtrusao + carrinhoZPeca.Comprimento / 2 + extrusaoTrilhoZPeca.Comprimento / 2 + extrusaoTrilhoZPeca.Altura;
-const double posicaoGantryZ = -184.4;
+// O suporte_u_carrinho_z, preso no topo do carrinho Z e centrado nele em altura, apoia em cima do tubo
+// travessa, que fica a altura do espaçador abaixo da base das extrusões Y: o tubo carrega os carrinhos.
+// Daí o centro do carrinho fica descidaCentroCarrinhoZ abaixo da base das extrusões Y (negativo: acima).
+// A posição dele no trilho é a altura do gantry.
+var espacadorTuboTravessaPeca = new EspacadorTuboTravessa(Largura: extrusaoSobTrilhoYPeca.Largura, Profundidade: 50, Altura: 10);
+var suporteUCarrinhoZPeca = new SuporteUCarrinhoZ();
+var descidaCentroCarrinhoZ = espacadorTuboTravessaPeca.Altura - suporteUCarrinhoZPeca.Altura / 2;
+var zBaseTrilhosYMeioCurso = extrusaoSobTrilhoYPeca.Altura + descidaCentroCarrinhoZ + extrusaoTrilhoZPeca.Comprimento / 2 + extrusaoTrilhoZPeca.Altura;
+const double posicaoGantryZ = -134.0;
 var zBaseTrilhosY = zBaseTrilhosYMeioCurso + posicaoGantryZ;
 // Leva um ponto calculado sobre o gantry para onde ele estaria no meio do curso: é por aqui que a
 // estrutura fixa é posicionada a partir das peças móveis.
@@ -107,9 +112,9 @@ var extrusaoSobTrilhoX = Add(extrusaoSobTrilhoXPeca with { Comprimento = 208 }, 
 // Os carrinhos Z são a parte móvel: levam o gantry inteiro (extrusões, trilhos Y e tudo o que está neles)
 // para cima e para baixo; os trilhos Z ficam presos na estrutura da máquina, nas verticais traseiras
 // internas (ver "Eixo Z", depois das verticais).
-// carrinhoZPeca e folgaCarrinhoZAbaixoExtrusao são declarados no topo (referência de altura).
+// carrinhoZPeca e descidaCentroCarrinhoZ são declarados no topo (referência de altura).
 var zBaseExtrusoesY = zBaseTrilhosY - extrusaoSobTrilhoYPeca.Altura;
-var zCentroCarrinhoZ = zBaseExtrusoesY - folgaCarrinhoZAbaixoExtrusao - carrinhoZPeca.Comprimento / 2;
+var zCentroCarrinhoZ = zBaseExtrusoesY - descidaCentroCarrinhoZ;
 // Canto de referência de cada lado: face externa da extrusão, na altura da base dela e onde a ponta -Y
 // ficava antes do recuo (recuoExtrusoesYParaMotoresY à frente da ponta atual). Tubo, estrutura e motores Y
 // se posicionam a partir dele.
@@ -318,7 +323,7 @@ var blocoFicacaoBeltVaoCorreiaB = Add(blocoFicacaoBeltVaoCorreiaPecaB, at: Place
 // A haste encosta na face interna da parede do bloco, no rasgo do lado dos rolamentos (rasgo_1 na A,
 // rasgo_2 na B, que é a imagem dele), e avança sobre a placa até o C. Um M3 vem de fora da parede,
 // passa pelo rasgo e rosqueia na porca da haste. O suporte fica na altura da correia: o parafuso cai
-// em z local AlturaParafuso, dentro do curso do rasgo (ZRasgo ± RasgoMeiaAltura).
+// no meio do curso do rasgo (AlturaParafuso, calculado pela peça), dentro do rasgo (ZRasgo ± RasgoMeiaAltura).
 var suporteRolamentosCorreiaPeca = new SuporteRolamentosCorreia(AlturaRolamentos: 2 * rolamentoF623Peca.Largura);
 var rasgoRolamentosA = blocoFicacaoBeltVaoCorreiaA.ToWorld(new Point3D(blocoFicacaoBeltVaoCorreiaPeca.XRasgo1, 0, 0));
 var rasgoRolamentosB = blocoFicacaoBeltVaoCorreiaB.ToWorld(new Point3D(blocoFicacaoBeltVaoCorreiaPecaB.XRasgo2, 0, 0));
@@ -395,13 +400,15 @@ var chapaFurosBelt = Add(chapaFurosBeltPeca, at: Placement.At(xChapaFurosBelt, y
 // O tubo ficava sobre as extrusões, na altura do motor X, e limitava o curso Y para −Y. Agora fica sob
 // elas, afastado por um espaçador impresso sob cada extrusão Y: o motor X (base 1 mm abaixo das
 // extrusões) passa por cima do tubo. O fuso Z passa atrás do tubo (ver
-// suporte_fuso_z, no fim do arquivo), então o tubo não tem mais o furo passante.
-var espacadorTuboTravessaPeca = new EspacadorTuboTravessa(Largura: extrusaoSobTrilhoYPeca.Largura, Profundidade: 50, Altura: 10);
+// suporte_fuso_z, no fim do arquivo), então o tubo não tem mais o furo passante. Tem, sim, os dois furos M5
+// que prendem o suporte_fuso_z em cima dele, atravessando as duas paredes: as medidas são as do suporte.
+// (espacadorTuboTravessaPeca é declarada no topo, porque entra na referência de altura.)
 var zTopoTuboTravessa = zBaseExtrusoesY - espacadorTuboTravessaPeca.Altura;
 // Em X passa um pouco além da face externa de cada extrusão Y. Os furos que prendem o tubo nas extrusões
 // ainda vão ser refeitos e não estão modelados. A fixação do carrinho Z no tubo (no vão de
 // vaoCarrinhoZTubo) ainda não está modelada.
-var tuboTravessaPeca = new TuboRetangular(Comprimento: 280, Largura: espacadorTuboTravessaPeca.Profundidade, Altura: 30);
+// Girado −90° em Z, a face x = Largura do tubo é a traseira (−Y do mundo), a do lado do fuso.
+var tuboTravessaPeca = new TuboRetangular(Comprimento: 280, Largura: espacadorTuboTravessaPeca.Profundidade, Altura: 30, DiametroFurosPar: SuporteFusoZ.DiametroFurosTubo, DistanciaFurosPar: SuporteFusoZ.DistanciaFurosTubo, RecuoFurosPar: SuporteFusoZ.RecuoFurosTubo);
 var xCentroGantry = (cantoExtrusaoYA.X + cantoExtrusaoYB.X) / 2;
 const double vaoCarrinhoZTubo = 12;
 var yTopoCarrinhosZ = Math.Max(carrinhoZA.ToWorld(new Point3D(0, 0, carrinhoZPeca.Altura)).Y, carrinhoZB.ToWorld(new Point3D(0, 0, carrinhoZPeca.Altura)).Y);
@@ -415,8 +422,8 @@ var espacadorTuboTravessaB = Add(espacadorTuboTravessaPeca, at: Placement.At(can
 // parede de fundo encosta no topo do carrinho (voltado para +Y) e o vão do U abre para o tubo. Os 4 M4
 // atravessam o fundo e casam com a malha 26 × 26 do carrinho: a origem da peça (centro em Y e em Z) vai
 // no centro da malha, sobre o topo do carrinho. A e B são iguais (a peça é simétrica no Y local).
-// Os 35 mm da peça em Y passam do vão de vaoCarrinhoZTubo e entram no tubo, na faixa de altura dele.
-var suporteUCarrinhoZPeca = new SuporteUCarrinhoZ();
+// A base do U apoia no topo do tubo: é isso que dá a altura do carrinho Z (suporteUCarrinhoZPeca é declarada
+// no topo, na referência de altura).
 var centroTopoCarrinhoZA = carrinhoZA.ToWorld(new Point3D(carrinhoZPeca.Largura / 2, carrinhoZPeca.Comprimento / 2, carrinhoZPeca.Altura));
 var centroTopoCarrinhoZB = carrinhoZB.ToWorld(new Point3D(carrinhoZPeca.Largura / 2, carrinhoZPeca.Comprimento / 2, carrinhoZPeca.Altura));
 var girarSuporteUCarrinhoZ = Placement.Rotation(Vector3D.UnitZ, 90);
@@ -498,7 +505,7 @@ var poliaYB = Add(poliaYPeca, at: inverterMotorY.Then(Placement.At(motorYB.ToWor
 // --- Retorno da correia Y, na ponta +Y de cada extrusão Y ---
 // A correia de 10 mm sai da polia, entra numa ponta da garra do bloco_ficacao_belt_vao_correia, sai pela
 // outra, dá a volta nos rolamentos de retorno e volta pela polia, passando por fora da garra. Os rolamentos
-// ficam num suporte_rolamentos_correia, o mesmo C do eixo X, preso pelo rasgo da parede de um
+// ficam num suporte_rolamentos_correia_y (o C do eixo X com as medidas da polia larga), preso pelo rasgo da parede de um
 // suporte_retorno_correia_y, que é a mesma conexão da parede do bloco.
 //  - Três 623 empilhados, F623 embaixo e em cima com as flanges para fora e um 623 sem flange no meio:
 //    10 mm entre flanges, como os dois F623 do eixo X dão os 6 mm daquela correia.
@@ -513,13 +520,9 @@ var rolamento623Peca = new Rolamento(); // 623ZZ: 3 × 10 × 4, sem flange
 var alturaRolamentosRetornoY = rolamentoF623Peca.Largura + rolamento623Peca.Largura + rolamentoF623Peca.Largura;
 var zCentroCorreiaY = poliaYA.ToWorld(new Point3D(0, 0, poliaYPeca.AlturaCubo + poliaYPeca.EspessuraFlange + poliaYPeca.LarguraDentes / 2)).Z;
 var zBaseRolamentosRetornoY = zCentroCorreiaY - alturaRolamentosRetornoY / 2;
-// O C do Y é mais curto (cabe entre o fim do curso e a travessa da frente) e a haste desce até a base dele,
-// porque aqui não há cabeça de parafuso embaixo; o parafuso do rasgo fica no meio da pilha.
-var suporteRolamentosYBase = new SuporteRolamentosCorreia(DistanciaEixo: 17.5, AlturaRolamentos: alturaRolamentosRetornoY, AlturaParafuso: alturaRolamentosRetornoY / 2);
-var suporteRolamentosYPeca = suporteRolamentosYBase with
-{
-    AlturaHaste = suporteRolamentosYBase.ZBase
-};
+// O C do Y tem peça própria, com as medidas fixas no arquivo dela: as duas pontas usam a mesma peça, sem
+// nada mudado aqui.
+var suporteRolamentosYPeca = new SuporteRolamentosCorreiaY();
 var raioCorreiaPoliaY = poliaYPeca.DiametroExterno / 2 + espessuraCorreiaY / 2;
 var garraCorreiaY = blocoFicacaoBeltVaoCorreiaPeca.Garra;
 // Linha do canal: a camada da correia que entra, encostada na parede do canal (y local = YParede da garra).
@@ -540,7 +543,7 @@ var eixoRetornoYB = new Point3D((xCanalGarraB + xRetornoPoliaB) / 2, pontaExtrus
 // O C abre para −Y (os dois ramos saem por ali) e a haste vai para +Y até a parede: girado −90° em Z, o
 // +X local (da parede para o eixo) aponta para −Y. É simétrico no Y local, então A e B são iguais.
 var suporteRolamentosYA = Add(suporteRolamentosYPeca, at: Placement.At(eixoRetornoYA.X, eixoRetornoYA.Y + suporteRolamentosYPeca.DistanciaEixo, eixoRetornoYA.Z, rotationZDegrees: -90), name: "suporte_rolamentos_correia_y_a", color: "#00CC6A");
-var suporteRolamentosYB = Add(suporteRolamentosYPeca with { AlturaRolamentos = 15 }, at: Placement.At(eixoRetornoYB.X, eixoRetornoYB.Y + suporteRolamentosYPeca.DistanciaEixo, eixoRetornoYB.Z, rotationZDegrees: -90), name: "suporte_rolamentos_correia_y_b", color: "#00CC6A");
+var suporteRolamentosYB = Add(suporteRolamentosYPeca, at: Placement.At(eixoRetornoYB.X, eixoRetornoYB.Y + suporteRolamentosYPeca.DistanciaEixo, eixoRetornoYB.Z, rotationZDegrees: -90), name: "suporte_rolamentos_correia_y_b", color: "#00CC6A");
 var rolamentoRetornoYAInferior = Add(rolamentoF623Peca, at: Placement.At(eixoRetornoYA), name: "rolamento_f623_retorno_y_a_inferior");
 var rolamentoRetornoYAMeio = Add(rolamento623Peca, at: Placement.At(eixoRetornoYA.X, eixoRetornoYA.Y, eixoRetornoYA.Z + rolamentoF623Peca.Largura), name: "rolamento_623_retorno_y_a_meio");
 var rolamentoRetornoYASuperior = Add(rolamentoF623Peca with { FlangeNoTopo = true }, at: Placement.At(eixoRetornoYA.X, eixoRetornoYA.Y, eixoRetornoYA.Z + rolamentoF623Peca.Largura + rolamento623Peca.Largura), name: "rolamento_f623_retorno_y_a_superior");
@@ -565,25 +568,27 @@ var suporteRetornoCorreiaYB = Add(suporteRetornoCorreiaYPecaB, at: Placement.At(
 // O motor fica na estrutura fixa, em pé (eixo em +Z), com a base no chão: a face de baixo das extrusões
 // da base (extrusao_2020_base_y_*), uma altura de perfil abaixo da ponta de baixo das
 // verticais (a base do lado A está 0,45 mm acima da do B; vale a do B). O acoplamento liga o eixo do
-// motor ao fuso; a porca, parafusada por baixo na placa do suporte_fuso_z, leva o gantry (preso aos
+// motor ao fuso; a porca, parafusada em cima da chapa do suporte_fuso_z, leva o gantry (preso aos
 // carrinhos Z) quando o fuso gira.
-// O eixo fica atrás do tubo (−Y), no meio dele em X, preso à estrutura: o motor Z para
-// folgaMotorZTravessaFundo antes da travessa X do fundo. O suporte é parafusado na face traseira do tubo e
+// O eixo fica atrás do tubo (−Y), no meio dele em X, preso à estrutura, à distância da face traseira do tubo
+// que o suporte_fuso_z pede (SuporteFusoZ.DistanciaFusoFurosTubo até os furos M5). O suporte é parafusado em cima do tubo e
 // carrega todo o gantry; soltar os dois parafusos dele desacopla o eixo Z, o que facilita a desmontagem.
-const double folgaMotorZTravessaFundo = 1;
 var zPontaBaixoExtrusoesZ = extrusaoTrilhoZA.ToWorld(new Point3D(0, 0, 0)).Z;
 // Pela referência de altura (topo do arquivo), zChao dá 0. Ele continua medido da geometria, e não
 // fixo em 0, para o motor e a mesa ficarem certos mesmo que a soma do topo saia de sincronia.
 var zChao = zPontaBaixoExtrusoesZ - extrusaoTrilhoZPeca.Altura;
 // A face traseira do tubo é o x local = Largura (girado −90° em Z, o X local aponta para −Y do mundo).
-// O suporte é preso na face traseira do tubo por dois braços laterais, fora da faixa em X do motor X: ele
-// passa entre os braços, por cima do tubo, e só para na porca. A placa fica no topo das extrusões Y, onde a
-// porca ficava quando o tubo estava em cima: assim o motor, o acoplamento e o fuso não mudam de altura, e o
-// fundo do curso Z continua o mesmo. Os braços vencem o vão entre o tubo e o eixo (DistanciaEixoTubo).
-var yEixoFusoZ = yFaceTrasTraseiras + folgaMotorZTravessaFundo + motorNema17Peca.Lado / 2;
+// O suporte é uma chapa apoiada no topo do tubo, que avança para trás dele até o eixo (DistanciaEixoTubo, que
+// sai da peça: o eixo é posicionado a partir do tubo, e o motor, o acoplamento e o fuso vão junto).
+// Dois M5 de cabeça cilíndrica descem pela chapa e pelas duas paredes do tubo, nos furos do tubo (centrados no
+// fuso em X, a SuporteFusoZ.RecuoFurosTubo da face traseira), com a cabeça em cima da chapa e a porca por
+// baixo do tubo.
+// Com o gantry no fundo do curso a chapa desce até o acoplamento: com o bico na mesa (posicaoGantryZ), a
+// face de baixo dela fica abaixo do topo do acoplamento. Ver o fundo do curso no topo do arquivo.
 var centroTopoTraseiroTubo = tuboTravessa.ToWorld(new Point3D(tuboTravessaPeca.Largura, tuboTravessaPeca.Comprimento / 2, tuboTravessaPeca.Altura));
-var suporteFusoZPeca = new SuporteFusoZ(DistanciaEixoTubo: centroTopoTraseiroTubo.Y - yEixoFusoZ, AlturaPlaca: espacadorTuboTravessaPeca.Altura + extrusaoSobTrilhoYPeca.Altura, AlturaTubo: tuboTravessaPeca.Altura);
-var eixoFusoZ = new Point3D(centroTopoTraseiroTubo.X, yEixoFusoZ, centroTopoTraseiroTubo.Z + suporteFusoZPeca.AlturaPlaca);
+var suporteFusoZPeca = new SuporteFusoZ();
+var yEixoFusoZ = centroTopoTraseiroTubo.Y - suporteFusoZPeca.DistanciaEixoTubo;
+var eixoFusoZ = new Point3D(centroTopoTraseiroTubo.X, yEixoFusoZ, centroTopoTraseiroTubo.Z + suporteFusoZPeca.Espessura);
 var suporteFusoZ = Add(suporteFusoZPeca, at: Placement.At(eixoFusoZ), name: "suporte_fuso_z", color: "#00CC6A");
 var motorZ = Add(motorNema17Peca, at: Placement.At(eixoFusoZ.X, eixoFusoZ.Y, zChao), name: "motor_nema17_z");
 // O eixo do motor entra insercaoEixoAcoplamentoZ no furo de baixo do acoplamento (que tem metade
@@ -593,19 +598,19 @@ var acoplamentoZPeca = new AcoplamentoFlexivel();
 var zPontaEixoMotorZ = motorZ.ToWorld(new Point3D(0, 0, motorNema17Peca.Comprimento + motorNema17Peca.AlturaBoss + motorNema17Peca.ComprimentoEixo)).Z;
 var zBaseAcoplamentoZ = zPontaEixoMotorZ - insercaoEixoAcoplamentoZ;
 var acoplamentoZ = Add(acoplamentoZPeca, at: Placement.At(eixoFusoZ.X, eixoFusoZ.Y, zBaseAcoplamentoZ), name: "acoplamento_z");
-// O fuso começa no meio do acoplamento e vai até folgaFusoAcimaPorcaZ acima da porca com o gantry no
+// O fuso começa no meio do acoplamento e vai até folgaFusoAcimaPorcaZ acima do topo da porca com o gantry no
 // topo do curso. O trilho é centrado no carrinho com o gantry no meio do curso, então o curso para cada
 // lado é a sobra do trilho dividida por dois, contado da base do tubo nesse meio do curso (o fuso é fixo
-// e não acompanha posicaoGantryZ); no fundo do curso o fuso sobe por trás do tubo, pela passagem do suporte.
+// e não acompanha posicaoGantryZ); o fuso sobe por trás do tubo, pela passagem da chapa.
 const double folgaFusoAcimaPorcaZ = 10;
 var cursoGantryZ = (trilhoZPeca.Comprimento - carrinhoZPeca.Comprimento) / 2;
 var zBaseFusoZ = zBaseAcoplamentoZ + acoplamentoZPeca.Comprimento / 2;
-var zTopoFusoZ = NoMeioDoCursoZ(suporteFusoZ.ToWorld(Point3D.Origin)).Z + cursoGantryZ + folgaFusoAcimaPorcaZ;
+var porcaFusoZPeca = new PorcaFlangeadaT8();
+var zTopoFusoZ = NoMeioDoCursoZ(suporteFusoZ.ToWorld(Point3D.Origin)).Z + porcaFusoZPeca.Comprimento + cursoGantryZ + folgaFusoAcimaPorcaZ;
 var fusoZ = Add(new FusoTrapezoidal(Comprimento: zTopoFusoZ - zBaseFusoZ), at: Placement.At(eixoFusoZ.X, eixoFusoZ.Y, zBaseFusoZ), name: "fuso_z");
-// Porca com o flange encostado na face de baixo da placa do suporte e o corpo para baixo: girada 180° em
-// X, o +Z local (do flange para o corpo) aponta para −Z do mundo. Os furos do flange ficam nos eixos X e
-// Y, então continuam sobre os do suporte depois do giro.
-var porcaFusoZ = Add(new PorcaFlangeadaT8(), at: Placement.Rotation(Vector3D.UnitX, 180).Then(Placement.At(eixoFusoZ)), name: "porca_fuso_z");
+// Porca com o flange assentado em cima da chapa do suporte e o corpo para cima (a orientação da peça). Os
+// furos do flange ficam nos eixos X e Y, os mesmos do suporte.
+var porcaFusoZ = Add(porcaFusoZPeca, at: Placement.At(eixoFusoZ), name: "porca_fuso_z");
 // --- Mesa de impressão (200 x 300), fixa na estrutura ---
 // Topo a alturaMesaAcimaDoChao do ponto mais baixo da base (zChao), como na máquina hoje. Centrada no
 // bico com os carrinhos X e Y no meio do curso (é a posição em que eles estão na cena). Os apoios da
@@ -641,8 +646,5 @@ AddFeature(chapa_mdf_mesa);
 // A face +X fica encostada na extrusao_2020_trilho_z_b (X = 180,11); o espaçador cresce dela para −X.
 var espacadorPeca = new Espacador();
 var espacador = Add(espacadorPeca, at: Placement.At(180.11328 - espacadorPeca.EspessuraAba - espacadorPeca.Espessura, -205.5, 20), name: "espacador");
-var box_0e7e = new BoxFeature(baseCorner: new Point3D(65.1118, -265.5, 40), width: 30, length: 20, height: 20)
-{
-    Name = "box_0e7e"
-};
-AddFeature(box_0e7e);
+// --- Bloco de fixação 30 x 20 x 20 com três furos passantes para M4 (dois em Z, um em Y) ---
+var bloco_fixacao_m4 = Add(new BlocoFixacaoM4(), at: Placement.At(65.1118, -265.5, 40), name: "bloco_fixacao_m4");

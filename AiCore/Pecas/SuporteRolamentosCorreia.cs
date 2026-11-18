@@ -10,9 +10,11 @@
 /// - haste: de x = 0 até as costas, de AlturaHaste para cima. Embaixo dela fica a fixação superior do
 ///   bloco com a cabeça do parafuso furo_fixacao_1, por isso ela começa acima dessa cabeça.
 /// - fixacao_parede: M3 horizontal que vem de fora da parede do bloco, atravessa o rasgo e rosqueia
-///   numa porca inserida pelo canal aberto no topo da haste. O furo vaza pela face interna das costas
+///   numa porca inserida por um canal aberto na LATERAL da haste (face +Y), e não pelo topo. O furo vaza pela face interna das costas
 ///   (o parafuso pode ser mais longo que a haste). O rasgo é vertical: a altura do parafuso pode variar
-///   no curso dele, e o suporte é posto na altura da correia.
+///   no curso dele, e o suporte é posto na altura da correia. O furo fica sempre no MEIO do curso do
+///   rasgo (entre a face de baixo da haste e o topo dela), e o alojamento da porca sai do mesmo valor
+///   (<see cref="AlturaParafuso"/>), então os dois acompanham qualquer mudança de altura.
 /// - costas, braco_superior e braco_inferior: o C. As costas ficam a FolgaRolamento do eixo, longe da
 ///   flange e da correia enrolada no rolamento.
 /// - colar_inferior e colar_superior: anéis estreitos em que só o anel interno dos rolamentos encosta
@@ -30,7 +32,6 @@ public sealed record SuporteRolamentosCorreia(
     double EspessuraBraco = 5.5,
     double EspessuraCostas = 4.0,
     double AlturaHaste = 2.0,         // face de baixo da haste (acima da cabeça do parafuso do bloco)
-    double AlturaParafuso = 7.5,      // eixo do parafuso do rasgo
     double ProfundidadePorcaParede = 4.0,
     double FolgaColar = 0.5,          // altura dos colares
     double DiametroColar = 5.0,
@@ -43,6 +44,13 @@ public sealed record SuporteRolamentosCorreia(
     public double ZTopo => AlturaRolamentos + FolgaColar + EspessuraBraco;
 
     public double ZBase => -FolgaColar - EspessuraBraco;
+
+    /// <summary>
+    /// Eixo do parafuso do rasgo: o meio do curso vertical dele, entre a face de baixo da haste
+    /// (<see cref="AlturaHaste"/>) e o topo dela (<see cref="ZTopo"/>). Calculado, para o furo e o
+    /// alojamento da porca ficarem sempre centrados, qualquer que seja a altura da haste.
+    /// </summary>
+    public double AlturaParafuso => (AlturaHaste + ZTopo) / 2.0;
 
     protected override IFeature Build()
     {
@@ -95,12 +103,14 @@ public sealed record SuporteRolamentosCorreia(
             Rosca: RoscaEixo, Insercao: InsercaoPorca.Axial, EspessuraAlojamento: espessuraAlojamentoEixo,
             FolgaDepois: zTopo + 1.0 - (zEntradaEixo + espessuraAlojamentoEixo)).Instance("fixacao_eixo");
 
-        // M3 do rasgo: entra pela face de apoio, porca no canal aberto no topo da haste. O furo vaza pela
-        // face interna das costas e sai 1 mm além dela, no vão do C.
+        // M3 do rasgo: entra pela face de apoio e a porca entra por um canal na LATERAL da haste (face +Y),
+        // que atravessa a peça de fora a fora, no plano do furo; o topo da haste fica fechado. O furo vaza
+        // pela face interna das costas e sai 1 mm além dela, no vão do C. A altura sai de AlturaParafuso (o
+        // meio do curso do rasgo), então o furo e o alojamento da porca ficam sempre centrados na haste.
         const double espessuraAlojamentoParede = 3.0;
         var xFimFuroParede = xFaceInternaCostas + 1.0;
         var fixacao_parede = new FuroPorca(new Point3D(-1.0, 0, AlturaParafuso), Vector3D.UnitX, ProfundidadePorcaParede,
-            Insercao: InsercaoPorca.Lateral, EixoHexagono: Vector3D.UnitZ, ComprimentoCanal: zTopo - AlturaParafuso + 1.0,
+            Insercao: InsercaoPorca.Lateral, EixoHexagono: Vector3D.UnitY, ComprimentoCanal: metadeY + 1.0,
             EspessuraAlojamento: espessuraAlojamentoParede,
             FolgaDepois: xFimFuroParede - (-1.0 + ProfundidadePorcaParede + espessuraAlojamentoParede)).Instance("fixacao_parede");
 
