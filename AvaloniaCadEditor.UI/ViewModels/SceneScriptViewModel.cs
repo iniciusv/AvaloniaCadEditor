@@ -1208,6 +1208,14 @@ public class SceneScriptViewModel : INotifyPropertyChanged, IPartCodeEditor, ICo
         }, bottomUp: true);
 
     /// <summary>
+    /// Apaga instâncias de peça tirando a instrução <c>Add(...)</c> que as criou, achada pela origem (arquivo e
+    /// linha) e não pelo nome: o nome automático (<c>Tipo_1</c>) não está escrito no código. Não reexecuta;
+    /// devolve true se algum código mudou. O que não dá para apagar sozinho vai para a barra de status.
+    /// </summary>
+    public bool RemovePartInstances(IEnumerable<PartInstance> instances) =>
+        EditFeatureCalls(instances, PartSourceEditor.RemoveInstance, bottomUp: true);
+
+    /// <summary>
     /// Move uma feature solta (registrada por <c>AddFeature(x)</c>, não <c>Add(...)</c>), envolvendo
     /// (ou somando a) um <c>x.Transformed(Placement.Translate(...))</c> — sem reescrever as
     /// coordenadas originais de <c>x</c>. Mesmo padrão de <see cref="MovePartInstances"/>.

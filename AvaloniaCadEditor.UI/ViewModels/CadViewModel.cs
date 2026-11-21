@@ -1299,6 +1299,17 @@ public partial class CadViewModel : INotifyPropertyChanged
 			if (selectedId.HasValue)
 			{
 				var feature = System.Linq.Enumerable.FirstOrDefault(Sketch.Features, f => f.Id == selectedId.Value);
+				if (feature is AvaloniaCadEditor.Domain.Features.PartInstance instance)
+				{
+					// Pela linha do Add(...), não pelo nome: instância inserida sem name: tem nome automático
+					// (Tipo_1), que não está no código. Se não der, o motivo já foi para a barra de status.
+					if (ScriptEditor.RemovePartInstances(new[] { instance }))
+					{
+						ScriptEditor.RunCodeCommand.Execute(null);
+						_selectionService.ClearSelection(Sketch);
+					}
+					return;
+				}
 				if (feature != null && feature is not AvaloniaCadEditor.Domain.Features.WorkPlaneFeature)
 				{
 					if (feature is AvaloniaCadEditor.Domain.Features.BooleanFeature boolF)

@@ -362,6 +362,51 @@ public static class PartSourceEditor
         return (updated, LineOf(statement.GetLastToken()) + 1);
     }
 
+    // ---------------------------------------------------------------- Apagar uma instância
+
+    /// <summary>
+    /// Apaga a instrução da chamada <c>Add(...)</c> da linha dada: <c>Add(...);</c> solto (como a biblioteca
+    /// insere) ou <c>var x = Add(...);</c> cuja variável ninguém mais usa. Só as linhas da instrução saem; os
+    /// comentários acima ficam. Recusa, sem mexer no texto, quando a variável é usada em outra linha (apagar
+    /// quebraria a compilação ou levaria junto outras peças) ou quando a chamada está num laço (apagaria todas).
+    /// </summary>
+    public static string RemoveInstance(string source, int line)
+    {
+        var root = Parse(source);
+        var call = FindAddCall(root, line)
+            ?? throw new InvalidOperationException($"Não achei a chamada Add(...) na linha {line}.");
+        if (IsInsideLoop(call))
+            throw new InvalidOperationException("A chamada está num laço e cria várias instâncias; apague no código.");
+
+        StatementSyntax statement = call.Parent switch
+        {
+            ExpressionStatementSyntax expression => expression,
+            EqualsValueClauseSyntax { Parent: VariableDeclaratorSyntax { Parent: VariableDeclarationSyntax { Variables.Count: 1, Parent: LocalDeclarationStatementSyntax declaration } } } => declaration,
+            _ => throw new InvalidOperationException("A chamada Add(...) faz parte de uma expressão maior; apague no código.")
+        };
+
+        if (statement is LocalDeclarationStatementSyntax local)
+        {
+            string variable = local.Declaration.Variables[0].Identifier.ValueText;
+            var use = root.DescendantNodes()
+                .OfType<IdentifierNameSyntax>()
+                .FirstOrDefault(id => id.Identifier.ValueText == variable && !statement.Span.Contains(id.Span));
+            if (use != null)
+                throw new InvalidOperationException($"'{variable}' é usada na linha {LineOf(use.Identifier)}; apague no código.");
+        }
+
+        var text = SourceText.From(source);
+        var first = text.Lines.GetLineFromPosition(statement.SpanStart);
+        var last = text.Lines.GetLineFromPosition(statement.Span.End);
+        bool aloneOnLines =
+            string.IsNullOrWhiteSpace(text.ToString(TextSpan.FromBounds(first.Start, statement.SpanStart)))
+            && string.IsNullOrWhiteSpace(text.ToString(TextSpan.FromBounds(statement.Span.End, last.End)));
+        var span = aloneOnLines
+            ? TextSpan.FromBounds(first.Start, last.EndIncludingLineBreak)
+            : statement.Span;
+        return Replace(source, span, string.Empty);
+    }
+
     private static bool IsInsideLoop(SyntaxNode node) =>
         node.Ancestors().Any(a => a is ForStatementSyntax or ForEachStatementSyntax or WhileStatementSyntax
             or DoStatementSyntax or AnonymousFunctionExpressionSyntax);

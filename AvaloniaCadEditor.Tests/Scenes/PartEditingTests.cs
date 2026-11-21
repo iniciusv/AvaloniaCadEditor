@@ -301,6 +301,57 @@ public class PartEditingTests
         vm.Sketch.Features.OfType<PartInstance>().Should().HaveCount(4);
     }
 
+    // ------------------------------------------------------------ Apagar instâncias (Del)
+
+    [Theory]
+    [InlineData("var a = 1;\nAdd(new Chapa(80), at: Placement.At(1, 2, 3));\nvar b = 2;", 2, "var a = 1;\nvar b = 2;")]
+    [InlineData("var a = 1;\r\n    Add(new Chapa(80));\r\nvar b = 2;", 2, "var a = 1;\r\nvar b = 2;")]
+    [InlineData("// a chapa\nvar chapa = Add(new Chapa(80), name: \"chapa\");\nvar b = 2;", 2, "// a chapa\nvar b = 2;")]
+    [InlineData("Add(new Chapa(80),\n    at: Placement.At(1, 2, 3));\nvar b = 2;", 1, "var b = 2;")]
+    [InlineData("var b = 2;\nAdd(new Chapa(80));", 2, "var b = 2;\n")]
+    public void RemoveInstance_TiraSoAsLinhasDaInstrucao(string code, int line, string expected)
+    {
+        PartSourceEditor.RemoveInstance(code, line).Should().Be(expected);
+    }
+
+    [Fact]
+    public void RemoveInstance_VariavelUsadaEmOutraLinha_RecusaSemMexer()
+    {
+        string code = "var a = Add(new Chapa(80));\nvar b = Add(a.Part with { Largura = 10 });";
+
+        Action act = () => PartSourceEditor.RemoveInstance(code, 1);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("'a' é usada na linha 2*");
+    }
+
+    [Fact]
+    public void RemoveInstance_DentroDeLaco_Recusa()
+    {
+        string loop = "for (int i = 0; i < 2; i++)\n{\n    Add(new Chapa(i));\n}";
+
+        Action act = () => PartSourceEditor.RemoveInstance(loop, 3);
+
+        act.Should().Throw<InvalidOperationException>().WithMessage("*laço*");
+    }
+
+    [Fact]
+    public async Task Delete_InstanciaSemNomeInseridaPelaBiblioteca_SomeDoCodigoEDaCena()
+    {
+        var vm = CreateViewModel();
+        vm.ScriptEditor.GeneratedCSharpCode =
+            "var fica = Add(new Chapa(60), name: \"fica\");\n" +
+            "Add(new Chapa(80), at: Placement.At(100, 0, 0));\n\n" + ChapaRecord;
+        await vm.ScriptEditor.RunCodeAsync();
+        var semNome = vm.Sketch.Features.OfType<PartInstance>().Single(f => f.Name != "fica");
+        vm.SelectionService.SelectFeature(semNome);
+
+        vm.DeleteSelectedCommand.Execute(null);
+        await vm.ScriptEditor.RunCodeAsync();
+
+        vm.ScriptEditor.GeneratedCSharpCode.Should().StartWith("var fica = Add(new Chapa(60), name: \"fica\");\n\n");
+        vm.Sketch.Features.OfType<PartInstance>().Select(f => f.Name).Should().Equal("fica");
+    }
+
     [Fact]
     public void RotateInstance_LinhaSemAddCall_Lanca()
     {
