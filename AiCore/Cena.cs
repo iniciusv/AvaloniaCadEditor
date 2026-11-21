@@ -54,8 +54,12 @@ var trilhoYB = Add(trilhoYPeca, at: Placement.At(trilhoYBX, trilhoYBY, zBaseTril
 var carrinhoYY = -carrinhoYPeca.Comprimento / 2 - 12.5;
 var carrinhoYA = Add(carrinhoYPeca, at: Placement.At(centroXTrilhoA - carrinhoYPeca.Largura / 2 - 12.5, carrinhoYY, zBaseTrilhosY), name: "carrinho_mgn15h_a");
 var carrinhoYB = Add(carrinhoYPeca, at: Placement.At(centroXTrilhoB - carrinhoYPeca.Largura / 2 + 12.5, carrinhoYY, zBaseTrilhosY), name: "carrinho_mgn15h_b");
-// --- Trilho X: MGN9 (250 mm), girado 90° para correr no sentido X, apoiado no topo dos carrinhos Y ---
+// --- Trilho X: MGN9 (250 mm), girado 90° para correr no sentido X, sobre o perfil 2020, com dois apoios de 3 mm ---
 var alturaTopoCarrinhosY = zBaseTrilhosY + carrinhoYPeca.Altura;
+// O trilho X não encosta no perfil sob ele: fica sobre dois apoios impressos de 3 mm (apoio_trilho_x_a/b),
+// então ele, o carrinho X e tudo o que vai no carrinho partem desta altura, não do topo dos carrinhos Y.
+var apoioTrilhoXPeca = new ApoioTrilhoX();
+var zBaseTrilhoX = alturaTopoCarrinhosY + apoioTrilhoXPeca.Espessura;
 // --- Placas de suporte impressas, uma parafusada no topo de cada carrinho MGN15H ---
 // Base da placa (Z local = -5,5) encosta no topo do carrinho (16 acima da base dos trilhos Y); os 3 furos passantes
 // alinham com a malha 25 × 25 dos furos M3 do topo do carrinho. As duas peças são giradas 180°
@@ -64,8 +68,14 @@ var alturaTopoCarrinhosY = zBaseTrilhosY + carrinhoYPeca.Altura;
 // A placa B é espelhada no eixo Y (EspelhadoNoEixoY), tornando-se a imagem especular da placa A.
 var placaSuporteYA = Add(placaSuporteCarrinhoYPeca, at: Placement.At(centroXTrilhoA - 12.5, -12.5, alturaTopoCarrinhosY + 5.5, rotationZDegrees: 180), name: "placa_suporte_carrinho_y_a", color: "#00CC6A");
 var placaSuporteYB = Add(placaSuporteCarrinhoYPeca with { EspelhadoNoEixoY = true }, at: Placement.At(centroXTrilhoB + 12.5, -12.5, alturaTopoCarrinhosY + 5.5, rotationZDegrees: 180), name: "placa_suporte_carrinho_y_b", color: "#00CC6A");
-var trilhoX = Add(trilhoXPeca, at: Placement.At(-trilhoXPeca.Comprimento / 2, trilhoXPeca.Largura / 2, alturaTopoCarrinhosY, rotationZDegrees: -90), name: "trilho_mgn9_x");
-var carrinhoX = Add(carrinhoXPeca, at: Placement.At(-carrinhoXPeca.Comprimento / 2, carrinhoXPeca.Largura / 2, alturaTopoCarrinhosY, rotationZDegrees: -90), name: "carrinho_mgn9c_x");
+var trilhoX = Add(trilhoXPeca, at: Placement.At(-trilhoXPeca.Comprimento / 2, trilhoXPeca.Largura / 2, zBaseTrilhoX, rotationZDegrees: -90), name: "trilho_mgn9_x");
+var carrinhoX = Add(carrinhoXPeca, at: Placement.At(-carrinhoXPeca.Comprimento / 2, carrinhoXPeca.Largura / 2, zBaseTrilhoX, rotationZDegrees: -90), name: "carrinho_mgn9c_x");
+// Apoios do trilho X: só dois, sob o penúltimo furo de cada ponta (X = ±90), os mais afastados que ainda caem
+// sobre o perfil; o trilho é preso por esses dois parafusos M3 para não haver cargas desiguais. Quadrados de
+// 20 mm, cobrem a largura do perfil.
+var xApoioTrilhoX = trilhoXPeca.DistanciaEntreUltimosFuros / 2 - 20;
+var apoioTrilhoXA = Add(apoioTrilhoXPeca, at: Placement.At(-xApoioTrilhoX, 0, alturaTopoCarrinhosY), name: "apoio_trilho_x_a", color: "#00CC6A");
+var apoioTrilhoXB = Add(apoioTrilhoXPeca, at: Placement.At(xApoioTrilhoX, 0, alturaTopoCarrinhosY), name: "apoio_trilho_x_b", color: "#00CC6A");
 // --- Lados da extrusora e do motor em relação ao trilho X (plano Y = 0) ---
 // Os dois subconjuntos ficam em lados opostos do trilho. Trocar os dois sinais abaixo inverte
 // um pelo outro; a rotação de 180° em Z acompanha o sinal, porque as peças são simétricas em X
@@ -80,15 +90,15 @@ var rotacaoMotorZ = ladoMotorY > 0 ? 0.0 : 180.0;
 var conexaoBlocoSuporteHotendPeca = new ConexaoBlocoSuporteHotend(Largura: blocoFixacaoPeca.Largura, Espessura: 8, Desnivel: 20, AlturaBloco: blocoFixacaoPeca.Altura, AlturaSuporte: suporteHotendPeca.Altura);
 // --- Hotend V6, pendurado sob o carrinho X ---
 var alturaHotend = hotendPeca.AlturaBico + hotendPeca.AlturaBloco + hotendPeca.AlturaPescoco + hotendPeca.AlturaHeatsink;
-var hotend = Add(hotendPeca, at: Placement.At(0, ladoExtrusoraY * (23 + conexaoBlocoSuporteHotendPeca.Espessura), alturaTopoCarrinhosY - alturaHotend + 10 - conexaoBlocoSuporteHotendPeca.Desnivel, rotationZDegrees: rotacaoExtrusoraZ), name: "hotend_v6");
+var hotend = Add(hotendPeca, at: Placement.At(0, ladoExtrusoraY * (23 + conexaoBlocoSuporteHotendPeca.Espessura), zBaseTrilhoX - alturaHotend + 10 - conexaoBlocoSuporteHotendPeca.Desnivel, rotationZDegrees: rotacaoExtrusoraZ), name: "hotend_v6");
 // --- Bloco impresso para fixação ao carrinho MGN9C ---
 // Simétrico em Y (alojamentos de porca frontal e traseiro), então não muda com a inversão.
-var blocoFixacao = Add(blocoFixacaoPeca, at: Placement.At(0, 0, alturaTopoCarrinhosY + carrinhoXPeca.Altura), name: "bloco_fixacao_mgn9", color: "#00CC6A");
+var blocoFixacao = Add(blocoFixacaoPeca, at: Placement.At(0, 0, zBaseTrilhoX + carrinhoXPeca.Altura), name: "bloco_fixacao_mgn9", color: "#00CC6A");
 // --- Suporte impresso do Hotend V6 ---
-var suporteHotend = Add(suporteHotendPeca, at: Placement.At(0, ladoExtrusoraY * (blocoFixacaoPeca.Comprimento / 2 + conexaoBlocoSuporteHotendPeca.Espessura), alturaTopoCarrinhosY + carrinhoXPeca.Altura - conexaoBlocoSuporteHotendPeca.Desnivel, rotationZDegrees: rotacaoExtrusoraZ), name: "suporte_hotend_v6", color: "#00CC6A");
+var suporteHotend = Add(suporteHotendPeca, at: Placement.At(0, ladoExtrusoraY * (blocoFixacaoPeca.Comprimento / 2 + conexaoBlocoSuporteHotendPeca.Espessura), zBaseTrilhoX + carrinhoXPeca.Altura - conexaoBlocoSuporteHotendPeca.Desnivel, rotationZDegrees: rotacaoExtrusoraZ), name: "suporte_hotend_v6", color: "#00CC6A");
 // A conexão encosta na face do bloco do lado da extrusora, com a base rente à do suporte; girada
 // como o suporte, o −Y local (para o suporte) aponta para o lado da extrusora.
-var conexaoBlocoSuporteHotend = Add(conexaoBlocoSuporteHotendPeca, at: Placement.At(0, ladoExtrusoraY * blocoFixacaoPeca.Comprimento / 2, alturaTopoCarrinhosY + carrinhoXPeca.Altura - conexaoBlocoSuporteHotendPeca.Desnivel, rotationZDegrees: rotacaoExtrusoraZ), name: "conexao_bloco_suporte_hotend", color: "#00CC6A");
+var conexaoBlocoSuporteHotend = Add(conexaoBlocoSuporteHotendPeca, at: Placement.At(0, ladoExtrusoraY * blocoFixacaoPeca.Comprimento / 2, zBaseTrilhoX + carrinhoXPeca.Altura - conexaoBlocoSuporteHotendPeca.Desnivel, rotationZDegrees: rotacaoExtrusoraZ), name: "conexao_bloco_suporte_hotend", color: "#00CC6A");
 // --- Extrusões de alumínio 2020: estrutura de apoio dos trilhos ---
 // Extrusões sob os trilhos Y: 400 mm, crescendo só para +Y a partir da ponta -Y (que continua
 // onde estava, junto ao carrinho Z e ao tubo travessa).
@@ -274,7 +284,7 @@ var cilindroEspacadorMotor2 = Add(cilindroEspacadorMotor.Part, at: Placement.At(
 // justamente para passar livre do bloco_conexao_motor_2020. A peça já traz o rebaixo cilíndrico
 // do topo (furo_vertical) para alojar a cabeça dos parafusos M3 dos dois furos verticais.
 var blocoFixacaoBeltPeca = new BlocoFixacaoBelt();
-var blocoFixacaoBelt = Add(blocoFixacaoBeltPeca, at: Placement.At(0, 0, alturaTopoCarrinhosY + carrinhoXPeca.Altura, rotationZDegrees: rotacaoMotorZ), name: "bloco_fixacao_belt", color: "#00CC6A");
+var blocoFixacaoBelt = Add(blocoFixacaoBeltPeca, at: Placement.At(0, 0, zBaseTrilhoX + carrinhoXPeca.Altura, rotationZDegrees: rotacaoMotorZ), name: "bloco_fixacao_belt", color: "#00CC6A");
 // --- Altura da correia do eixo X ---
 // A correia de 6 mm corre apoiada no fundo do vão da garra do bloco_fixacao_belt: é o carrinho que
 // fixa essa altura, e a polia e os rolamentos se alinham a ela.
@@ -387,7 +397,7 @@ var furoVerticalBeltA = blocoFixacaoBelt.ToWorld(new Point3D(blocoFixacaoBeltPec
 var furoVerticalBeltB = blocoFixacaoBelt.ToWorld(new Point3D(2.0 * xPlanoEspelhoBelt - blocoFixacaoBeltPeca.FuroVerticalX, blocoFixacaoBeltPeca.FuroVerticalY, 0));
 var xChapaFurosBelt = (furoVerticalBeltA.X + furoVerticalBeltB.X) / 2.0 - chapaFurosBeltPeca.LarguraX / 2.0;
 var yChapaFurosBelt = (furoVerticalBeltA.Y + furoVerticalBeltB.Y) / 2.0 - chapaFurosBeltPeca.ComprimentoY / 2.0;
-var zChapaFurosBelt = alturaTopoCarrinhosY + carrinhoXPeca.Altura + blocoFixacaoBeltPeca.AlturaCorpo;
+var zChapaFurosBelt = zBaseTrilhoX + carrinhoXPeca.Altura + blocoFixacaoBeltPeca.AlturaCorpo;
 var chapaFurosBelt = Add(chapaFurosBeltPeca, at: Placement.At(xChapaFurosBelt, yChapaFurosBelt, zChapaFurosBelt), name: "chapa_furos_belt", color: "#00CC6A");
 // --- Tubo retangular 50 x 30 (parede 2, quinas R2) de aço, preso sob as extrusões Y ---
 // O tubo real tem 280 mm e fica centrado entre as extrusões. Em Y a face de trás fica vaoCarrinhoZTubo à
@@ -648,3 +658,7 @@ var espacadorPeca = new Espacador();
 var espacador = Add(espacadorPeca, at: Placement.At(180.11328 - espacadorPeca.EspessuraAba - espacadorPeca.Espessura, -205.5, 20), name: "espacador");
 // --- Bloco de fixação 30 x 20 x 20 com três furos passantes para M4 (dois em Z, um em Y) ---
 var bloco_fixacao_m4 = Add(new BlocoFixacaoM4(), at: Placement.At(65.1118, -265.5, 40), name: "bloco_fixacao_m4");
+// --- Bloco de fixação da ponta 30 x 20 x 20 para M3 com rebaixo de 3 mm nas duas bocas: dois furos em Z num lado, o furo em Y no outro ---
+var bloco_fixacao_ponta_m3 = Add(new BlocoFixacaoPontaM3(), at: Placement.At(105.1118, -265.5, 40), name: "bloco_fixacao_ponta_m3");
+Add(new KnobParafusoM3(Altura: 5), at: Placement.At(243.784546, 30.128352, 0));
+Add(new KnobPorcaM3(), at: Placement.At(271, 41, 0));
